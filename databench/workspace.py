@@ -27,8 +27,9 @@ import polars as pl
 from .catalog import SQLiteCatalog
 from .dataset import Dataset
 from .hashing import hash_obj
+from .io import read_jsonl
 from .recipe import Recipe, RecipeSource, mix
-from .schema import Sample
+from .schema import Kind, Sample
 from .store import LocalBlobStore
 from .transform import Transform
 
@@ -59,6 +60,19 @@ class Workspace:
         if name:
             self.catalog.set_ref(name, ds.version, message)
         return ds
+
+    def add_jsonl(
+        self,
+        path: str | os.PathLike[str],
+        name: Optional[str] = None,
+        kind: Optional[Kind] = None,
+        source: Optional[str] = None,
+        message: Optional[str] = None,
+    ) -> Dataset:
+        """Ingest a JSONL file as a new dataset (kind auto-detected per line)."""
+
+        samples = list(read_jsonl(path, kind=kind, source=source))
+        return self.add_samples(samples, name=name, message=message)
 
     def add(self, ds: Dataset, name: Optional[str] = None, message: Optional[str] = None) -> Dataset:
         self._persist(ds)

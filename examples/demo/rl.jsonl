@@ -1,0 +1,2 @@
+{"prompt": "Compute 17 * 23.", "answer": "391", "verifier": "exact_match", "rollouts": [{"text": "17 * 23 = 391", "reward": 1.0}, {"text": "17 * 23 = 380", "reward": 0.0}]}
+{"prompt": "What is 144 / 12?", "answer": "12", "verifier": "exact_match", "rollouts": [{"text": "144 / 12 = 12", "reward": 1.0}]}
