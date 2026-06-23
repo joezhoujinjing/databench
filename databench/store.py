@@ -16,12 +16,14 @@ from pathlib import Path
 import polars as pl
 
 from .dataset import Dataset, Manifest
+from .vocabulary import Vocabulary
 
 
 class LocalBlobStore:
     def __init__(self, root: str | os.PathLike[str]):
         self.root = Path(root)
         (self.root / "objects").mkdir(parents=True, exist_ok=True)
+        (self.root / "vocabularies").mkdir(parents=True, exist_ok=True)
 
     def _dir(self, version: str) -> Path:
         return self.root / "objects" / version[:2]
@@ -60,3 +62,33 @@ class LocalBlobStore:
         frame = pl.read_parquet(self._parquet(version))
         manifest = Manifest.model_validate_json(self._manifest(version).read_text())
         return Dataset(frame, manifest)
+
+    # -- vocabularies --------------------------------------------------------
+    # Vocabularies are small structured documents, so they are stored as JSON
+    # keyed by content id - same write-once, hash-addressed contract as datasets.
+
+    def _vocab_dir(self, vid: str) -> Path:
+        return self.root / "vocabularies" / vid[:2]
+
+    def _vocab_path(self, vid: str) -> Path:
+        return self._vocab_dir(vid) / f"{vid}.json"
+
+    def vocabulary_exists(self, vid: str) -> bool:
+        return self._vocab_path(vid).exists()
+
+    def write_vocabulary(self, vocab: Vocabulary) -> str:
+        """Persist a vocabulary. Idempotent: identical content is a no-op."""
+
+        vid = vocab.id
+        if self.vocabulary_exists(vid):
+            return vid
+        self._vocab_dir(vid).mkdir(parents=True, exist_ok=True)
+        tmp = self._vocab_path(vid).with_suffix(".json.tmp")
+        tmp.write_text(vocab.model_dump_json(indent=2), encoding="utf-8")
+        os.replace(tmp, self._vocab_path(vid))
+        return vid
+
+    def read_vocabulary(self, vid: str) -> Vocabulary:
+        if not self.vocabulary_exists(vid):
+            raise KeyError(f"vocabulary not found in store: {vid}")
+        return Vocabulary.model_validate_json(self._vocab_path(vid).read_text(encoding="utf-8"))

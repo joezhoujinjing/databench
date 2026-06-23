@@ -32,8 +32,19 @@ from .recipe import Recipe, RecipeSource, mix
 from .schema import Kind, Sample
 from .store import LocalBlobStore
 from .transform import Transform
+from .vocabulary import (
+    Dimension,
+    Vocabulary,
+    derive_vocabulary as _derive_vocabulary,
+    normalize_samples,
+    validate_samples,
+)
 
 DatasetLike = Union[Dataset, str]
+VocabularyLike = Union[Vocabulary, str]
+
+# Op version for vocabulary lineage rows (mirrors a Transform's code version).
+VOCAB_OP_VERSION = "1"
 
 
 class Workspace:
@@ -149,6 +160,147 @@ class Workspace:
             self.catalog.set_ref(ref, out.version)
         return out
 
+    # -- vocabularies --------------------------------------------------------
+
+    def derive_vocabulary(
+        self, dataset: DatasetLike, dimension: Dimension, name: Optional[str] = None
+    ) -> Vocabulary:
+        """Bootstrap a draft vocabulary from a dataset's labels (cached + lineage).
+
+        ``name`` doubles as the human-friendly ref pointing at the derived id.
+        """
+
+        ds = self.get(dataset)
+        cache_key = hash_obj(
+            {
+                "op": "vocabulary:derive",
+                "op_version": VOCAB_OP_VERSION,
+                "inputs": [ds.version],
+                "params": {"dimension": dimension},
+            }
+        )
+
+        cached = self.catalog.find_run(cache_key)
+        if cached and self.store.vocabulary_exists(cached):
+            vocab = self.store.read_vocabulary(cached)
+        else:
+            vocab = _derive_vocabulary(ds.to_samples(), dimension=dimension, name=name)
+            self._persist_vocabulary(vocab)
+            self.catalog.record_run(
+                cache_key,
+                "vocabulary:derive",
+                VOCAB_OP_VERSION,
+                {"dimension": dimension},
+                [ds.version],
+                vocab.id,
+            )
+
+        if name:
+            # name is not part of identity; reflect the requested ref on the
+            # returned object even on a cache hit.
+            vocab = vocab.model_copy(update={"name": name})
+            self.catalog.set_vocab_ref(name, vocab.id)
+        return vocab
+
+    def save_vocabulary(self, vocab: Vocabulary) -> Vocabulary:
+        """Persist a (curated) vocabulary as a new content-addressed version.
+
+        If a vocabulary already exists under the same name, a ``curate`` lineage
+        edge is recorded from the previous version to this one.
+        """
+
+        parent = self.catalog.get_vocab_ref(vocab.name) if vocab.name else None
+        self._persist_vocabulary(vocab)
+        if parent and parent != vocab.id:
+            cache_key = hash_obj(
+                {
+                    "op": "vocabulary:curate",
+                    "op_version": VOCAB_OP_VERSION,
+                    "inputs": [parent],
+                    "params": {},
+                }
+            )
+            self.catalog.record_run(
+                cache_key, "vocabulary:curate", VOCAB_OP_VERSION, {}, [parent], vocab.id
+            )
+        if vocab.name:
+            self.catalog.set_vocab_ref(vocab.name, vocab.id)
+        return vocab
+
+    def get_vocabulary(self, name_or_id: str) -> Vocabulary:
+        vid = self.catalog.get_vocab_ref(name_or_id) or name_or_id
+        if not self.store.vocabulary_exists(vid):
+            raise KeyError(f"vocabulary not found: {name_or_id}")
+        return self.store.read_vocabulary(vid)
+
+    def list_vocabularies(self) -> list[dict[str, Any]]:
+        return self.catalog.list_vocabularies()
+
+    def normalize_vocabulary(
+        self, dataset: DatasetLike, vocab: VocabularyLike, ref: Optional[str] = None
+    ) -> Dataset:
+        """Map ``raw_*`` -> canonical over a dataset, writing a new dataset."""
+
+        ds = self.get(dataset)
+        v = vocab if isinstance(vocab, Vocabulary) else self.get_vocabulary(vocab)
+        cache_key = hash_obj(
+            {
+                "op": "vocabulary:normalize",
+                "op_version": VOCAB_OP_VERSION,
+                "inputs": [ds.version, v.id],
+                "params": {"dimension": v.dimension},
+            }
+        )
+
+        cached = self.catalog.find_run(cache_key)
+        if cached and self.store.exists(cached):
+            out = self.store.read(cached)
+        else:
+            out = Dataset.from_samples(normalize_samples(ds.to_samples(), v), name=ref or ds.name)
+            self._persist(out)
+            self.catalog.record_run(
+                cache_key,
+                "vocabulary:normalize",
+                VOCAB_OP_VERSION,
+                {"dimension": v.dimension},
+                [ds.version, v.id],
+                out.version,
+            )
+
+        if ref:
+            self.catalog.set_ref(ref, out.version)
+        return out
+
+    def validate_vocabulary(
+        self, dataset: DatasetLike, vocab: VocabularyLike, ref: Optional[str] = None
+    ) -> tuple[Dataset, dict[str, Any]]:
+        """Flag off-vocabulary ``std_*`` values; returns (dataset, summary)."""
+
+        ds = self.get(dataset)
+        v = vocab if isinstance(vocab, Vocabulary) else self.get_vocabulary(vocab)
+        samples, summary = validate_samples(ds.to_samples(), v)
+        out = Dataset.from_samples(samples, name=ref or ds.name)
+        self._persist(out)
+        cache_key = hash_obj(
+            {
+                "op": "vocabulary:validate",
+                "op_version": VOCAB_OP_VERSION,
+                "inputs": [ds.version, v.id],
+                "params": {"dimension": v.dimension},
+            }
+        )
+        self.catalog.record_run(
+            cache_key,
+            "vocabulary:validate",
+            VOCAB_OP_VERSION,
+            {"dimension": v.dimension},
+            [ds.version, v.id],
+            out.version,
+        )
+        if ref:
+            self.catalog.set_ref(ref, out.version)
+        return out, summary
+
     # -- lineage -------------------------------------------------------------
 
     def lineage(self, ref_or_version: DatasetLike) -> dict[str, Any]:
@@ -194,6 +346,10 @@ class Workspace:
     def _persist(self, ds: Dataset) -> None:
         self.store.write(ds)
         self.catalog.register_dataset(ds.version, ds.manifest.name, len(ds), ds.manifest.kinds)
+
+    def _persist_vocabulary(self, vocab: Vocabulary) -> None:
+        self.store.write_vocabulary(vocab)
+        self.catalog.register_vocabulary(vocab.id, vocab.name, vocab.dimension, len(vocab.terms))
 
 
 def _coerce(result: Any, name: Optional[str]) -> Dataset:

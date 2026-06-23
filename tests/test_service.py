@@ -80,6 +80,7 @@ def test_capabilities_handshake(client):
     assert features["transforms"] is True
     assert features["recipes"] is True
     assert features["lineage"] is True
+    assert features["vocabularies"] is True
     # ...while modules this deployment does not ship stay False (not hardcoded).
     assert features["synthesis"] is False
     assert features["annotation"] is False

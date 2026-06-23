@@ -739,6 +739,32 @@
         "title": "SamplesPage",
         "type": "object"
       },
+      "Term": {
+        "description": "One canonical term plus the raw forms that map onto it.",
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "canonical": {
+            "title": "Canonical",
+            "type": "string"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "title": "Meta",
+            "type": "object"
+          }
+        },
+        "required": [
+          "canonical"
+        ],
+        "title": "Term",
+        "type": "object"
+      },
       "ToolCall": {
         "description": "A single tool invocation emitted by an assistant turn.",
         "properties": {
@@ -971,6 +997,195 @@
           "schema_version"
         ],
         "title": "VersionInfo",
+        "type": "object"
+      },
+      "VocabulariesPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VocabularyInfo"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "page size actually applied (<= server cap)",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "description": "number of items skipped",
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "total number of items available",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "items"
+        ],
+        "title": "VocabulariesPage",
+        "type": "object"
+      },
+      "Vocabulary-Input": {
+        "description": "A controlled, content-addressed registry of canonical terms.",
+        "properties": {
+          "dimension": {
+            "enum": [
+              "brand",
+              "unit"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "title": "Meta",
+            "type": "object"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "signals": {
+            "additionalProperties": true,
+            "title": "Signals",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/Term"
+            },
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dimension"
+        ],
+        "title": "Vocabulary",
+        "type": "object"
+      },
+      "Vocabulary-Output": {
+        "description": "A controlled, content-addressed registry of canonical terms.",
+        "properties": {
+          "dimension": {
+            "enum": [
+              "brand",
+              "unit"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "id": {
+            "readOnly": true,
+            "title": "Id",
+            "type": "string"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "title": "Meta",
+            "type": "object"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "signals": {
+            "additionalProperties": true,
+            "title": "Signals",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/Term"
+            },
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dimension",
+          "id"
+        ],
+        "title": "Vocabulary",
+        "type": "object"
+      },
+      "VocabularyInfo": {
+        "description": "List-view summary of a named vocabulary (latest version).",
+        "properties": {
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "num_terms": {
+            "title": "Num Terms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "dimension",
+          "num_terms"
+        ],
+        "title": "VocabularyInfo",
         "type": "object"
       }
     }
@@ -1623,6 +1838,226 @@
         "summary": "Run Transform",
         "tags": [
           "transforms"
+        ]
+      }
+    },
+    "/v1/vocabularies": {
+      "get": {
+        "description": "Paginated list of named vocabularies (latest version each).",
+        "operationId": "list_vocabularies_v1_vocabularies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabulariesPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Vocabularies",
+        "tags": [
+          "vocabularies"
+        ]
+      }
+    },
+    "/v1/vocabularies/{name}": {
+      "get": {
+        "description": "Get a vocabulary by name (or content id). 404 if unknown.",
+        "operationId": "get_vocabulary_v1_vocabularies__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vocabulary-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Vocabulary",
+        "tags": [
+          "vocabularies"
+        ]
+      },
+      "put": {
+        "description": "Accept a curated vocabulary as a new content-addressed version.",
+        "operationId": "put_vocabulary_v1_vocabularies__name__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Vocabulary-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vocabulary-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Vocabulary",
+        "tags": [
+          "vocabularies"
+        ]
+      }
+    },
+    "/v1/vocabularies/{name}:derive": {
+      "post": {
+        "description": "Derive a draft vocabulary from a dataset's labels, persist it, return it.",
+        "operationId": "derive_vocabulary_v1_vocabularies__name__derive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "source dataset ref or version",
+            "in": "query",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "description": "source dataset ref or version",
+              "title": "Dataset",
+              "type": "string"
+            }
+          },
+          {
+            "description": "which controlled dimension to derive",
+            "in": "query",
+            "name": "dimension",
+            "required": true,
+            "schema": {
+              "description": "which controlled dimension to derive",
+              "enum": [
+                "brand",
+                "unit"
+              ],
+              "title": "Dimension",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vocabulary-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Derive Vocabulary",
+        "tags": [
+          "vocabularies"
         ]
       }
     },

@@ -57,6 +57,7 @@ def detect_features() -> dict[str, bool]:
         "transforms": len(TRANSFORMS) > 0,
         "recipes": hasattr(Workspace, "materialize"),
         "lineage": hasattr(Workspace, "lineage"),
+        "vocabularies": hasattr(Workspace, "derive_vocabulary"),
         "jsonl_ingest": hasattr(Workspace, "add_jsonl"),
         "export": hasattr(Workspace, "export"),
         # Optional modules not present in this deployment yet; probed so the flag

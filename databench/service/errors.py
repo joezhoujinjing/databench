@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ValidationError
@@ -59,11 +60,13 @@ def _envelope(status: int, code: str, message: str, detail: Any | None = None) -
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def _on_request_validation(_: Request, exc: RequestValidationError) -> JSONResponse:
-        return _envelope(422, "validation_error", "request validation failed", exc.errors())
+        # jsonable_encoder strips non-serialisable bits (e.g. the original
+        # exception a model validator embeds in ``ctx``) so the envelope encodes.
+        return _envelope(422, "validation_error", "request validation failed", jsonable_encoder(exc.errors()))
 
     @app.exception_handler(ValidationError)
     async def _on_validation(_: Request, exc: ValidationError) -> JSONResponse:
-        return _envelope(422, "validation_error", "payload validation failed", exc.errors())
+        return _envelope(422, "validation_error", "payload validation failed", jsonable_encoder(exc.errors()))
 
     @app.exception_handler(StarletteHTTPException)
     async def _on_http(_: Request, exc: StarletteHTTPException) -> JSONResponse:

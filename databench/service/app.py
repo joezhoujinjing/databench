@@ -16,7 +16,7 @@ from .. import __version__
 from .deps import workspace_root
 from .errors import install_error_handlers
 from .meta import API_VERSION, Capabilities, VersionInfo, capabilities, version_info
-from .routers import datasets, lineage, recipes, refs, transforms
+from .routers import datasets, lineage, recipes, refs, transforms, vocabularies
 
 # Domain routes are served under this prefix; within a version, changes are
 # additive only. Handshake/meta routes stay unversioned at root.
@@ -72,7 +72,7 @@ def create_app() -> FastAPI:
 
         return capabilities()
 
-    for module in (datasets, transforms, recipes, lineage, refs):
+    for module in (datasets, transforms, recipes, lineage, refs, vocabularies):
         app.include_router(module.router, prefix=V1_PREFIX)
 
     install_error_handlers(app)

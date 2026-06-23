@@ -61,3 +61,16 @@ class RefsPage(Page):
 class MaterializeRequest(BaseModel):
     recipe: Recipe
     ref: str | None = None
+
+
+class VocabularyInfo(BaseModel):
+    """List-view summary of a named vocabulary (latest version)."""
+
+    name: str | None = None
+    id: str
+    dimension: str
+    num_terms: int
+
+
+class VocabulariesPage(Page):
+    items: list[VocabularyInfo]

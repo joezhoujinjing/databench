@@ -44,6 +44,18 @@ CREATE TABLE IF NOT EXISTS refs (
     message    TEXT,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS vocabularies (
+    id         TEXT PRIMARY KEY,
+    name       TEXT,
+    dimension  TEXT NOT NULL,
+    num_terms  INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS vocab_refs (
+    name       TEXT PRIMARY KEY,
+    vocab_id   TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -145,6 +157,38 @@ class SQLiteCatalog:
         with self._connect() as conn:
             rows = conn.execute("SELECT name, version FROM refs ORDER BY name").fetchall()
         return {r["name"]: r["version"] for r in rows}
+
+    # -- vocabularies --------------------------------------------------------
+
+    def register_vocabulary(self, vid: str, name: Optional[str], dimension: str, num_terms: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO vocabularies (id, name, dimension, num_terms, created_at) VALUES (?,?,?,?,?)",
+                (vid, name, dimension, num_terms, _now()),
+            )
+
+    def set_vocab_ref(self, name: str, vocab_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO vocab_refs (name, vocab_id, updated_at) VALUES (?,?,?) "
+                "ON CONFLICT(name) DO UPDATE SET vocab_id=excluded.vocab_id, updated_at=excluded.updated_at",
+                (name, vocab_id, _now()),
+            )
+
+    def get_vocab_ref(self, name: str) -> Optional[str]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT vocab_id FROM vocab_refs WHERE name = ?", (name,)).fetchone()
+        return row["vocab_id"] if row else None
+
+    def list_vocabularies(self) -> list[dict[str, Any]]:
+        """Current named vocabularies (latest version per name), sorted by name."""
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT r.name AS name, r.vocab_id AS id, v.dimension AS dimension, v.num_terms AS num_terms "
+                "FROM vocab_refs r JOIN vocabularies v ON v.id = r.vocab_id ORDER BY r.name"
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def resolve(self, ref_or_version: str) -> str:
         """Resolve a name or version string to a concrete dataset version."""

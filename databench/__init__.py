@@ -22,6 +22,13 @@ from .schema import (
     parse_sample,
 )
 from .transform import Transform, transform
+from .vocabulary import (
+    Term,
+    Vocabulary,
+    derive_vocabulary,
+    normalize_samples,
+    validate_samples,
+)
 from .workspace import Workspace
 from . import ops
 
@@ -34,6 +41,12 @@ __all__ = [
     "transform",
     "Transform",
     "ops",
+    # vocabulary
+    "Vocabulary",
+    "Term",
+    "derive_vocabulary",
+    "normalize_samples",
+    "validate_samples",
     # io
     "read_jsonl",
     "record_to_sample",
