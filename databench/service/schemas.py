@@ -32,11 +32,30 @@ class TransformInfo(BaseModel):
     params_schema: dict[str, Any] | None = None
 
 
-class SamplesPage(BaseModel):
-    total: int
-    limit: int
-    offset: int
+class RefInfo(BaseModel):
+    name: str
+    version: str
+
+
+class Page(BaseModel):
+    """Common pagination envelope: ``total`` is the full count, ``items`` the
+    current slice bounded by the server-side limit cap."""
+
+    total: int = Field(description="total number of items available")
+    limit: int = Field(description="page size actually applied (<= server cap)")
+    offset: int = Field(description="number of items skipped")
+
+
+class SamplesPage(Page):
     items: list[Sample]
+
+
+class TransformsPage(Page):
+    items: list[TransformInfo]
+
+
+class RefsPage(Page):
+    items: list[RefInfo]
 
 
 class MaterializeRequest(BaseModel):

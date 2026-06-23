@@ -1,0 +1,29 @@
+name: contract
+
+# Backend half of the cross-repo contract CI: the test suite must pass and the
+# committed OpenAPI artifact must match what the app generates. The frontend
+# pins openapi/openapi.json and regenerates its client from it, so drift here
+# would silently break that client.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Run test suite
+        run: uv run --extra dev --extra service pytest -q
+
+      - name: Schema drift gate (OpenAPI artifact must be up to date)
+        run: uv run --extra service python scripts/export_openapi.py --check

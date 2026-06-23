@@ -17,6 +17,7 @@ from databench.schema import Kind
 from databench.workspace import _export_record
 
 from ..deps import get_workspace
+from ..meta import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
 from ..schemas import IngestSamplesRequest, SamplesPage
 
 router = APIRouter(tags=["datasets"])
@@ -65,7 +66,7 @@ def get_dataset(ref: str, ws: Workspace = Depends(get_workspace)) -> Manifest:
 @router.get("/datasets/{ref}/samples", response_model=SamplesPage)
 def preview_samples(
     ref: str,
-    limit: int = Query(20, ge=1, le=500),
+    limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
     ws: Workspace = Depends(get_workspace),
 ) -> SamplesPage:

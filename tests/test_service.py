@@ -59,9 +59,35 @@ def test_health(client):
     assert r.json()["status"] == "ok"
 
 
+def test_version_handshake(client):
+    # Unversioned, at root. The frontend pins these on connect.
+    r = client.get("/version")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["api_version"] == "v1"
+    assert set(body) == {"api_version", "service_version", "schema_version"}
+    assert body["service_version"]  # from databench.__version__
+
+
+def test_capabilities_handshake(client):
+    r = client.get("/capabilities")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["api_version"] == "v1"
+    assert body["min_client"]
+    features = body["features"]
+    # Wired-up modules feature-detect to True for this deployment...
+    assert features["transforms"] is True
+    assert features["recipes"] is True
+    assert features["lineage"] is True
+    # ...while modules this deployment does not ship stay False (not hardcoded).
+    assert features["synthesis"] is False
+    assert features["annotation"] is False
+
+
 def test_full_lifecycle(client):
     # 1. ingest SFT via JSON body
-    r = client.post("/datasets", json={"name": "sft-raw", "samples": SFT_SAMPLES})
+    r = client.post("/v1/datasets", json={"name": "sft-raw", "samples": SFT_SAMPLES})
     assert r.status_code == 200, r.text
     sft = r.json()
     assert sft["num_rows"] == 3
@@ -69,7 +95,7 @@ def test_full_lifecycle(client):
 
     # 2. ingest preference data via JSONL upload
     r = client.post(
-        "/datasets:ingest-jsonl",
+        "/v1/datasets:ingest-jsonl",
         params={"name": "pref-raw"},
         files={"file": ("preference.jsonl", io.BytesIO(PREF_JSONL), "application/x-ndjson")},
     )
@@ -77,47 +103,47 @@ def test_full_lifecycle(client):
     assert r.json()["num_rows"] == 2
 
     # provenance defaults to the uploaded filename, not a temp path
-    pref_items = client.get("/datasets/pref-raw/samples").json()["items"]
+    pref_items = client.get("/v1/datasets/pref-raw/samples").json()["items"]
     assert all(s["source"] == "preference" for s in pref_items)
 
     # 3. inspect + paginate
-    r = client.get("/datasets/sft-raw")
+    r = client.get("/v1/datasets/sft-raw")
     assert r.status_code == 200
     assert r.json()["version"] == sft["version"]
 
-    r = client.get("/datasets/sft-raw/samples", params={"limit": 2, "offset": 1})
+    r = client.get("/v1/datasets/sft-raw/samples", params={"limit": 2, "offset": 1})
     assert r.status_code == 200
     page = r.json()
     assert page["total"] == 3 and page["offset"] == 1 and len(page["items"]) == 2
 
-    # 4. transforms: list, enrich, then dedup (chained on output version)
-    names = {t["name"] for t in client.get("/transforms").json()}
+    # 4. transforms: list (paginated), enrich, then dedup (chained on output version)
+    names = {t["name"] for t in client.get("/v1/transforms").json()["items"]}
     assert {"dedup", "enrich_length", "filter_by_signal", "sample_n"} <= names
 
-    r = client.post("/transforms/enrich_length/run", json={"inputs": ["sft-raw"]})
+    r = client.post("/v1/transforms/enrich_length/run", json={"inputs": ["sft-raw"]})
     assert r.status_code == 200, r.text
     enriched_version = r.json()["version"]
 
     r = client.post(
-        "/transforms/dedup/run",
+        "/v1/transforms/dedup/run",
         json={"inputs": [enriched_version], "ref": "sft-clean"},
     )
     assert r.status_code == 200, r.text
     assert r.json()["num_rows"] == 2  # one duplicate dropped
 
     # 5. lineage of the cleaned set traces back through enrich -> raw
-    lin = client.get("/lineage/sft-clean").json()
+    lin = client.get("/v1/lineage/sft-clean").json()
     assert lin["produced_by"]["op"] == "dedup"
     assert lin["inputs"][0]["produced_by"]["op"] == "enrich_length"
 
-    # 6. refs
-    refs = client.get("/refs").json()
+    # 6. refs (paginated list of {name, version})
+    refs = {r["name"]: r["version"] for r in client.get("/v1/refs").json()["items"]}
     assert "sft-clean" in refs
-    assert client.get("/refs/sft-clean").json()["version"] == refs["sft-clean"]
+    assert client.get("/v1/refs/sft-clean").json()["version"] == refs["sft-clean"]
 
     # 7. materialize a mixture
     r = client.post(
-        "/recipes:materialize",
+        "/v1/recipes:materialize",
         json={
             "recipe": {
                 "name": "demo-mix",
@@ -133,28 +159,62 @@ def test_full_lifecycle(client):
     assert r.json()["num_rows"] == 4
 
     # 8. export streams JSONL
-    r = client.get("/datasets/train/export")
+    r = client.get("/v1/datasets/train/export")
     assert r.status_code == 200
     lines = [l for l in r.text.splitlines() if l.strip()]
     assert len(lines) == 4
 
 
-def test_error_mapping(client):
-    # unknown dataset -> 404
-    assert client.get("/datasets/does-not-exist").status_code == 404
-    # unknown transform -> 404
-    assert client.post("/transforms/nope/run", json={"inputs": ["x"]}).status_code == 404
-    # bad sample payload -> 422
-    assert client.post("/datasets", json={"samples": [{"kind": "sft"}]}).status_code == 422
+def test_error_envelope(client):
+    # Every error shares one shape: {error: {code, message, detail?}}.
+    r = client.get("/v1/datasets/does-not-exist")
+    assert r.status_code == 404
+    err = r.json()["error"]
+    assert err["code"] == "not_found"
+    assert "message" in err
+
+    # unknown transform -> 404 via HTTPException, still enveloped
+    r = client.post("/v1/transforms/nope/run", json={"inputs": ["x"]})
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "not_found"
+
+    # bad sample payload -> 422 with structured detail
+    r = client.post("/v1/datasets", json={"samples": [{"kind": "sft"}]})
+    assert r.status_code == 422
+    err = r.json()["error"]
+    assert err["code"] == "validation_error"
+    assert isinstance(err["detail"], list)
+
     # unknown ref -> 404
-    assert client.get("/refs/missing").status_code == 404
+    r = client.get("/v1/refs/missing")
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "not_found"
+
+
+def test_pagination_cap_enforced(client):
+    client.post("/v1/datasets", json={"name": "sft-raw", "samples": SFT_SAMPLES})
+    # A client cannot request more than the hard server-side cap (500).
+    r = client.get("/v1/datasets/sft-raw/samples", params={"limit": 5000})
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "validation_error"
+
+    # The cap itself is accepted.
+    r = client.get("/v1/datasets/sft-raw/samples", params={"limit": 500})
+    assert r.status_code == 200
+    assert r.json()["limit"] == 500
+
+
+def test_legacy_unversioned_paths_removed(client):
+    # The /v1 cutover is clean: old unprefixed domain routes no longer exist.
+    assert client.post("/datasets", json={"name": "x", "samples": SFT_SAMPLES}).status_code == 404
+    assert client.get("/refs").status_code == 404
 
 
 @pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:5173"])
 def test_cors_allows_local_dev(client, origin):
     # CORS preflight
     r = client.options(
-        "/datasets",
+        "/v1/datasets",
         headers={
             "Origin": origin,
             "Access-Control-Request-Method": "POST",
@@ -213,7 +273,7 @@ def test_pna_preflight_sets_allow_private_network(tmp_path, monkeypatch):
     c = _client_with_prod_origin(tmp_path)
 
     r = c.options(
-        "/refs",
+        "/v1/refs",
         headers={
             "Origin": PROD_ORIGIN,
             "Access-Control-Request-Method": "GET",
@@ -231,7 +291,7 @@ def test_pna_header_absent_without_request(tmp_path, monkeypatch):
     c = _client_with_prod_origin(tmp_path)
 
     r = c.options(
-        "/refs",
+        "/v1/refs",
         headers={"Origin": PROD_ORIGIN, "Access-Control-Request-Method": "GET"},
     )
     assert r.status_code == 200
