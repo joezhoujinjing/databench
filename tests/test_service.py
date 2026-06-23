@@ -148,3 +148,45 @@ def test_error_mapping(client):
     assert client.post("/datasets", json={"samples": [{"kind": "sft"}]}).status_code == 422
     # unknown ref -> 404
     assert client.get("/refs/missing").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://my-frontend.oss-cn-hongkong.aliyuncs.com",
+        "http://my-frontend.oss-cn-hongkong.aliyuncs.com",
+    ],
+)
+def test_cors_allows_known_origins(client, origin):
+    # CORS preflight
+    r = client.options(
+        "/datasets",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["access-control-allow-origin"] == origin
+
+    # actual request also echoes the allowed origin
+    r = client.get("/health", headers={"Origin": origin})
+    assert r.headers["access-control-allow-origin"] == origin
+
+
+def test_cors_rejects_unknown_origin(client):
+    r = client.get("/health", headers={"Origin": "https://evil.example.com"})
+    assert r.status_code == 200  # request itself succeeds...
+    assert "access-control-allow-origin" not in r.headers  # ...but no CORS grant
+
+
+def test_cors_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABENCH_CORS_ORIGINS", "https://app.databench.dev, https://staging.databench.dev")
+    ws = Workspace.open(tmp_path / "bench")
+    app = create_app()
+    app.dependency_overrides[get_workspace] = lambda: ws
+    c = TestClient(app)
+    r = c.get("/health", headers={"Origin": "https://app.databench.dev"})
+    assert r.headers["access-control-allow-origin"] == "https://app.databench.dev"

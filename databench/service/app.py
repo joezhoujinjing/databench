@@ -11,13 +11,29 @@ plain exceptions onto HTTP status codes:
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from .. import __version__
 from .deps import get_workspace, workspace_root
 from .routers import datasets, lineage, recipes, refs, transforms
+
+# Static allowlist (regex): local Vite dev server + Alibaba Cloud OSS Hong Kong,
+# where the frontend is hosted. Extra exact origins can be added at runtime via
+# the DATABENCH_CORS_ORIGINS env var (comma-separated) without a code change.
+CORS_ORIGIN_REGEX = (
+    r"^https?://(localhost|127\.0\.0\.1):5173$"
+    r"|^https?://[^/]*\.oss-cn-hongkong\.aliyuncs\.com$"
+)
+
+
+def cors_origins() -> list[str]:
+    raw = os.environ.get("DATABENCH_CORS_ORIGINS", "")
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 def create_app() -> FastAPI:
@@ -26,6 +42,15 @@ def create_app() -> FastAPI:
         version=__version__,
         description="HTTP surface over a databench Workspace: ingest, transform, "
         "recipe, lineage and export for LLM post-training data.",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins(),
+        allow_origin_regex=CORS_ORIGIN_REGEX,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=False,  # no cookies; tokens go in headers
     )
 
     @app.get("/health", tags=["meta"])
