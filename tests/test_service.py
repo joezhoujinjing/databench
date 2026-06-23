@@ -150,16 +150,8 @@ def test_error_mapping(client):
     assert client.get("/refs/missing").status_code == 404
 
 
-@pytest.mark.parametrize(
-    "origin",
-    [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "https://my-frontend.oss-cn-hongkong.aliyuncs.com",
-        "http://my-frontend.oss-cn-hongkong.aliyuncs.com",
-    ],
-)
-def test_cors_allows_known_origins(client, origin):
+@pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:5173"])
+def test_cors_allows_local_dev(client, origin):
     # CORS preflight
     r = client.options(
         "/datasets",
@@ -176,17 +168,34 @@ def test_cors_allows_known_origins(client, origin):
     assert r.headers["access-control-allow-origin"] == origin
 
 
-def test_cors_rejects_unknown_origin(client):
-    r = client.get("/health", headers={"Origin": "https://evil.example.com"})
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://evil.example.com",
+        # OSS HK is a shared multi-tenant domain: a random bucket there must NOT
+        # be trusted by default — only the exact origin set via env is allowed.
+        "https://someone-elses-bucket.oss-cn-hongkong.aliyuncs.com",
+    ],
+)
+def test_cors_rejects_unconfigured_origin(client, origin):
+    r = client.get("/health", headers={"Origin": origin})
     assert r.status_code == 200  # request itself succeeds...
     assert "access-control-allow-origin" not in r.headers  # ...but no CORS grant
 
 
-def test_cors_env_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("DATABENCH_CORS_ORIGINS", "https://app.databench.dev, https://staging.databench.dev")
+def test_cors_env_override_allows_exact_origin(tmp_path, monkeypatch):
+    # The production OSS bucket origin is whitelisted exactly, via env, not regex.
+    prod = "https://databench-ui.oss-cn-hongkong.aliyuncs.com"
+    monkeypatch.setenv("DATABENCH_CORS_ORIGINS", f"{prod}, https://app.databench.dev")
     ws = Workspace.open(tmp_path / "bench")
     app = create_app()
     app.dependency_overrides[get_workspace] = lambda: ws
     c = TestClient(app)
-    r = c.get("/health", headers={"Origin": "https://app.databench.dev"})
-    assert r.headers["access-control-allow-origin"] == "https://app.databench.dev"
+
+    r = c.get("/health", headers={"Origin": prod})
+    assert r.headers["access-control-allow-origin"] == prod
+
+    # a different bucket on the same shared domain is still rejected
+    other = "https://attacker.oss-cn-hongkong.aliyuncs.com"
+    r = c.get("/health", headers={"Origin": other})
+    assert "access-control-allow-origin" not in r.headers

@@ -22,13 +22,12 @@ from .. import __version__
 from .deps import get_workspace, workspace_root
 from .routers import datasets, lineage, recipes, refs, transforms
 
-# Static allowlist (regex): local Vite dev server + Alibaba Cloud OSS Hong Kong,
-# where the frontend is hosted. Extra exact origins can be added at runtime via
-# the DATABENCH_CORS_ORIGINS env var (comma-separated) without a code change.
-CORS_ORIGIN_REGEX = (
-    r"^https?://(localhost|127\.0\.0\.1):5173$"
-    r"|^https?://[^/]*\.oss-cn-hongkong\.aliyuncs\.com$"
-)
+# Static allowlist (regex): local Vite dev server only. The production frontend
+# lives on Alibaba Cloud OSS Hong Kong, whose *.oss-cn-hongkong.aliyuncs.com is a
+# shared multi-tenant domain — a wildcard there would trust every tenant's bucket.
+# So the exact production origin (https://<bucket>.oss-cn-hongkong.aliyuncs.com)
+# is configured at runtime via DATABENCH_CORS_ORIGINS, never hardcoded here.
+CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1):5173$"
 
 
 def cors_origins() -> list[str]:
