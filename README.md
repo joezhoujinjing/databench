@@ -109,6 +109,18 @@ file named by its content hash, so transforms never overwrite — they add new
 objects. Source files you ingest are copied in, not owned, and nothing is stored
 in git.
 
+## Reproducibility
+
+Every materialised dataset records how it was produced. A transform's
+`op_version` is a **content hash of its source code** (`code:…`), so editing a
+transform automatically invalidates its cache and creates a new lineage edge —
+no hand-maintained version numbers. The git commit of the code is also captured
+best-effort as a human-readable `code_ref` (e.g. `a1b2c3d` or `a1b2c3d+dirty`);
+git is never a hard dependency, and capture falls back to `None` when absent.
+
+The loop is exact: a dataset version equals *its transform's code* applied to
+*its input versions* with *its params* — all hashed.
+
 ## Development
 
 ```bash

@@ -29,6 +29,7 @@ from .config import resolve_root
 from .dataset import Dataset
 from .hashing import hash_obj
 from .io import read_jsonl
+from .provenance import git_sha
 from .recipe import Recipe, RecipeSource, mix
 from .schema import Kind, Sample
 from .store import LocalBlobStore
@@ -102,7 +103,7 @@ class Workspace:
         cache_key = hash_obj(
             {
                 "op": transform.name,
-                "op_version": transform.version,
+                "op_version": transform.effective_version,
                 "inputs": [d.version for d in input_ds],
                 "params": params_dict,
             }
@@ -118,10 +119,11 @@ class Workspace:
             self.catalog.record_run(
                 cache_key,
                 transform.name,
-                transform.version,
+                transform.effective_version,
                 params_dict,
                 [d.version for d in input_ds],
                 out.version,
+                op_source_ref=git_sha(transform.source_dir),
             )
 
         if ref:
@@ -146,7 +148,7 @@ class Workspace:
             self.catalog.record_run(
                 cache_key,
                 f"recipe:{recipe.name}",
-                "1",
+                fingerprint,  # a recipe's "version" is its config fingerprint
                 recipe.model_dump(mode="json"),
                 sorted(set(resolved.values())),
                 out.version,
@@ -181,6 +183,7 @@ class Workspace:
             node["produced_by"] = {
                 "op": run["op"],
                 "op_version": run["op_version"],
+                "code_ref": run.get("op_source_ref"),
                 "params": run["params"],
             }
             node["inputs"] = [self._lineage(v, seen) for v in run["inputs"]]

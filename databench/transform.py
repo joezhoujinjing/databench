@@ -16,18 +16,33 @@ every materialised dataset has a recorded provenance edge.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from pydantic import BaseModel
+
+from .provenance import code_version, source_dir
 
 
 @dataclass
 class Transform:
     fn: Callable[..., Any]
     name: str
-    version: str
+    version: Optional[str] = None  # manual override; None => auto code hash
     params_model: Optional[type[BaseModel]] = None
+    code_version: str = field(init=False)
+    source_dir: Optional[str] = field(init=False)
+
+    def __post_init__(self) -> None:
+        # Computed once at definition time and tied to the function's source.
+        self.code_version = code_version(self.fn)
+        self.source_dir = source_dir(self.fn)
+
+    @property
+    def effective_version(self) -> str:
+        """The version that feeds the cache key and lineage (op_version)."""
+
+        return self.version or self.code_version
 
     def build_params(self, kwargs: dict[str, Any]) -> tuple[Optional[BaseModel], dict[str, Any]]:
         """Validate kwargs into (params_obj, canonical_params_dict).
@@ -45,22 +60,26 @@ class Transform:
         return obj, obj.model_dump(mode="json")
 
     def __repr__(self) -> str:
-        return f"Transform(name={self.name!r}, version={self.version!r})"
+        return f"Transform(name={self.name!r}, version={self.effective_version!r})"
 
 
 def transform(
     name: Optional[str] = None,
-    version: str = "1",
+    version: Optional[str] = None,
     params: Optional[type[BaseModel]] = None,
 ) -> Callable[[Callable[..., Any]], Transform]:
     """Decorator registering a function as a databench transform.
+
+    ``op_version`` defaults to a content hash of the function's source, so
+    editing the transform invalidates its cache and creates a new lineage edge.
+    Pass ``version`` to pin it manually instead.
 
     Example::
 
         class Params(BaseModel):
             min_quality: float = 0.7
 
-        @transform(version="1", params=Params)
+        @transform(params=Params)
         def filter_quality(ds, p):
             ...
     """

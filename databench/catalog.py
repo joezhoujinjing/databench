@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS runs (
     params_json    TEXT NOT NULL,
     inputs_json    TEXT NOT NULL,
     output_version TEXT NOT NULL,
+    op_source_ref  TEXT,
     created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_runs_output ON runs (output_version);
@@ -55,7 +56,17 @@ class SQLiteCatalog:
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        # Additive migrations for catalogs created by older versions.
+        self._ensure_column("runs", "op_source_ref", "TEXT")
+
+    def _ensure_column(self, table: str, column: str, decl: str) -> None:
+        cols = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     def close(self) -> None:
         self._conn.close()
@@ -83,11 +94,22 @@ class SQLiteCatalog:
         params: dict[str, Any],
         inputs: list[str],
         output_version: str,
+        op_source_ref: Optional[str] = None,
     ) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO runs (cache_key, op, op_version, params_json, inputs_json, output_version, created_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (cache_key, op, op_version, json.dumps(params), json.dumps(inputs), output_version, _now()),
+            "INSERT OR REPLACE INTO runs "
+            "(cache_key, op, op_version, params_json, inputs_json, output_version, op_source_ref, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (
+                cache_key,
+                op,
+                op_version,
+                json.dumps(params),
+                json.dumps(inputs),
+                output_version,
+                op_source_ref,
+                _now(),
+            ),
         )
         self._conn.commit()
 
@@ -149,5 +171,6 @@ def _row_to_run(row: sqlite3.Row) -> dict[str, Any]:
         "params": json.loads(row["params_json"]),
         "inputs": json.loads(row["inputs_json"]),
         "output_version": row["output_version"],
+        "op_source_ref": row["op_source_ref"],
         "created_at": row["created_at"],
     }

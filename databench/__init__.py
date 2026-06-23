@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from .dataset import Dataset, Manifest
 from .io import read_jsonl, record_to_sample, detect_kind
+from .provenance import code_version, git_sha
 from .recipe import Recipe, RecipeSource
 from .schema import (
     Candidate,
@@ -38,6 +39,9 @@ __all__ = [
     "read_jsonl",
     "record_to_sample",
     "detect_kind",
+    # provenance
+    "code_version",
+    "git_sha",
     # schema
     "Sample",
     "SFTSample",

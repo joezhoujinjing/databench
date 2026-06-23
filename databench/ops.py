@@ -18,7 +18,7 @@ from .schema import Message, Sample
 from .transform import transform
 
 
-@transform(version="1")
+@transform()
 def dedup(ds: Dataset) -> Dataset:
     """Drop exact-duplicate samples (same content id), keeping the first."""
 
@@ -32,7 +32,7 @@ class SignalFilterParams(BaseModel):
     max: float | None = None
 
 
-@transform(version="1", params=SignalFilterParams)
+@transform(params=SignalFilterParams)
 def filter_by_signal(ds: Dataset, p: SignalFilterParams) -> Dataset:
     """Keep rows whose numeric ``signals[key]`` falls within [min, max]."""
 
@@ -51,7 +51,7 @@ class SampleNParams(BaseModel):
     seed: int = 0
 
 
-@transform(version="1", params=SampleNParams)
+@transform(params=SampleNParams)
 def sample_n(ds: Dataset, p: SampleNParams) -> Dataset:
     """Randomly subsample down to ``n`` rows (no-op if already smaller)."""
 
@@ -61,7 +61,7 @@ def sample_n(ds: Dataset, p: SampleNParams) -> Dataset:
     return Dataset.from_frame(frame, name=ds.name)
 
 
-@transform(version="1")
+@transform()
 def enrich_length(ds: Dataset) -> Dataset:
     """Attach char/word length signals (non-destructive enrichment)."""
 
