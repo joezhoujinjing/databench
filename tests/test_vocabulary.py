@@ -110,6 +110,53 @@ def test_derive_unit_dimension():
     assert v.terms[0].aliases == ["m"]
 
 
+def test_derive_resolves_alias_labelled_to_two_canonicals():
+    # Real noise: the same raw form is labelled against two different standards.
+    # Derive must still emit a valid vocab (majority wins, conflict recorded).
+    samples = [_sft("中超控股", "中超"), _sft("中超控股", "中超"), _sft("中超控股", "江苏中超控股")]
+    v = db.derive_vocabulary(samples, dimension="brand")
+    assert v.normalize("中超控股") == "中超"  # majority (2 vs 1) wins, deterministically
+
+    by_canon = {t.canonical: t for t in v.terms}
+    assert "中超控股" not in by_canon["江苏中超控股"].aliases  # never added to the loser
+    conflict = by_canon["中超"].meta["alias_conflicts"]["中超控股"]
+    assert conflict["chosen"] == "中超"
+    assert conflict["also_seen"] == ["江苏中超控股"]
+    assert conflict["counts"] == {"中超": 2, "江苏中超控股": 1}
+
+
+def test_derive_raw_that_is_also_a_canonical_stays_canonical():
+    # '个' is its own canonical (count 1) yet one row labels raw '个' -> std '包'.
+    # '个' must remain a canonical and never become an alias of '包'.
+    samples = [
+        _sft("X", "X", raw_unit="个", std_unit="个"),
+        _sft("X", "X", raw_unit="个", std_unit="包"),
+        _sft("X", "X", raw_unit="只", std_unit="包"),
+    ]
+    v = db.derive_vocabulary(samples, dimension="unit")
+    assert "个" in v.canonical_set()
+    assert v.alias_index().get("个") is None  # not an alias of anything
+    assert v.normalize("个") == "个"
+
+    by_canon = {t.canonical: t for t in v.terms}
+    assert "个" not in by_canon["包"].aliases
+    assert "只" in by_canon["包"].aliases  # a genuine alias still maps
+    conflict = by_canon["个"].meta["alias_conflicts"]["个"]
+    assert conflict["chosen"] == "个"
+    assert conflict["also_seen"] == ["包"]
+
+
+def test_derive_never_raises_on_dense_conflicts():
+    # A pile of contradictory labels must not raise: derive always returns a vocab.
+    samples = []
+    for std in ("A", "B", "C"):
+        for _ in range(3):
+            samples.append(_sft("messy", std))
+    v = db.derive_vocabulary(samples, dimension="brand")
+    assert v.id  # constructed successfully (invariant satisfied)
+    assert sum(1 for t in v.terms if "messy" in t.aliases) == 1  # exactly one owner
+
+
 # -- normalize ---------------------------------------------------------------
 
 

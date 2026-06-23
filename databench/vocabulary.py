@@ -160,11 +160,27 @@ def derive_vocabulary(
     Groups ``std_*`` values as canonicals and collects the distinct ``raw_*``
     values that differ from their ``std_*`` as aliases. Per-term counts land in
     ``term.meta`` as ``{"count": N, "alias_counts": {alias: n}}``.
+
+    Real labels are noisy and the result must satisfy the one-canonical-per-alias
+    invariant, so conflicts are resolved deterministically (the derive builder is
+    the *only* path that auto-resolves; direct construction and curation stay
+    strict):
+
+    * A raw form labelled against several canonicals is assigned to the one it
+      co-occurs with most often (ties broken by the lexicographically smaller
+      canonical); it is never added to the losing canonicals.
+    * A raw form that is itself a canonical stays its own canonical and is never
+      registered as another term's alias.
+    * Every dropped/conflicting mapping is recorded under the winning term's
+      ``meta["alias_conflicts"]`` so a curator can review it.
+
+    The output is therefore always a structurally valid *draft*.
     """
 
     raw_key, std_key = _dimension_keys(dimension)
     canonical_counts: Counter[str] = Counter()
-    alias_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    # raw alias -> {canonical: how many rows mapped this raw to that canonical}
+    seen: dict[str, dict[str, int]] = defaultdict(dict)
 
     for sample in samples:
         payload = _assistant_payload(sample)
@@ -176,19 +192,42 @@ def derive_vocabulary(
         canonical_counts[std] += 1
         raw = payload.get(raw_key)
         if isinstance(raw, str) and raw and raw != std:
-            alias_counts[std][raw] += 1
+            seen[raw][std] = seen[raw].get(std, 0) + 1
 
-    terms = [
-        Term(
-            canonical=canonical,
-            aliases=sorted(alias_counts[canonical]),
-            meta={
-                "count": canonical_counts[canonical],
-                "alias_counts": dict(alias_counts[canonical]),
-            },
-        )
-        for canonical in sorted(canonical_counts)
-    ]
+    aliases_of: dict[str, dict[str, int]] = defaultdict(dict)  # canonical -> {alias: count}
+    conflicts_of: dict[str, dict[str, Any]] = defaultdict(dict)  # canonical -> {alias: detail}
+
+    for raw in sorted(seen):
+        candidates = seen[raw]  # {canonical: count}
+        if raw in canonical_counts:
+            # The raw form is itself a canonical: it keeps its own identity and
+            # the cross-mappings are dropped, but recorded for the curator.
+            conflicts_of[raw][raw] = {
+                "chosen": raw,
+                "also_seen": sorted(candidates),
+                "counts": dict(sorted(candidates.items())),
+            }
+            continue
+        winner = min(candidates, key=lambda c: (-candidates[c], c))
+        aliases_of[winner][raw] = candidates[winner]
+        if len(candidates) > 1:
+            conflicts_of[winner][raw] = {
+                "chosen": winner,
+                "also_seen": sorted(c for c in candidates if c != winner),
+                "counts": dict(sorted(candidates.items())),
+            }
+
+    terms = []
+    for canonical in sorted(canonical_counts):
+        owned = aliases_of.get(canonical, {})
+        meta: dict[str, Any] = {
+            "count": canonical_counts[canonical],
+            "alias_counts": dict(sorted(owned.items())),
+        }
+        if canonical in conflicts_of:
+            meta["alias_conflicts"] = dict(sorted(conflicts_of[canonical].items()))
+        terms.append(Term(canonical=canonical, aliases=sorted(owned), meta=meta))
+
     return Vocabulary(name=name, dimension=dimension, terms=terms, meta={"derived": True})
 
 
