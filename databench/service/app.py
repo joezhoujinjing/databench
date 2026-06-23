@@ -1,26 +1,26 @@
 """FastAPI application factory.
 
-Wires the routers together and installs error handlers that map databench's
-plain exceptions onto HTTP status codes:
-
-* :class:`KeyError`        -> 404 (dataset/version not found)
-* :class:`pydantic.ValidationError` -> 422 (bad params/payload)
-* :class:`ValueError`      -> 400 (unparseable input, undetectable kind, ...)
-* :class:`TypeError`       -> 400 (e.g. params passed to a param-less transform)
+Wires the routers together under the ``/v1`` contract prefix, exposes the
+unversioned handshake surface (``/health``, ``/version``, ``/capabilities``),
+and installs the unified error envelope (see :mod:`.errors`).
 """
 
 from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 
 from .. import __version__
-from .deps import get_workspace, workspace_root
+from .deps import workspace_root
+from .errors import install_error_handlers
+from .meta import API_VERSION, Capabilities, VersionInfo, capabilities, version_info
 from .routers import datasets, lineage, recipes, refs, transforms
+
+# Domain routes are served under this prefix; within a version, changes are
+# additive only. Handshake/meta routes stay unversioned at root.
+V1_PREFIX = f"/{API_VERSION}"
 
 # Static allowlist (regex): local Vite dev server only. The production frontend is
 # served from a single fixed origin (https://databench.jinjing.me); it is set at
@@ -60,32 +60,23 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "workspace_root": workspace_root(), "version": __version__}
 
-    app.include_router(datasets.router)
-    app.include_router(transforms.router)
-    app.include_router(recipes.router)
-    app.include_router(lineage.router)
-    app.include_router(refs.router)
+    @app.get("/version", tags=["meta"], response_model=VersionInfo)
+    def version() -> VersionInfo:
+        """API/service/schema versions the frontend pins against."""
 
-    _install_error_handlers(app)
+        return version_info()
+
+    @app.get("/capabilities", tags=["meta"], response_model=Capabilities)
+    def get_capabilities() -> Capabilities:
+        """Runtime feature flags for what this deployment actually has wired up."""
+
+        return capabilities()
+
+    for module in (datasets, transforms, recipes, lineage, refs):
+        app.include_router(module.router, prefix=V1_PREFIX)
+
+    install_error_handlers(app)
     return app
-
-
-def _install_error_handlers(app: FastAPI) -> None:
-    @app.exception_handler(ValidationError)
-    async def _on_validation(_: Request, exc: ValidationError) -> JSONResponse:
-        return JSONResponse(status_code=422, content={"detail": exc.errors()})
-
-    @app.exception_handler(KeyError)
-    async def _on_key(_: Request, exc: KeyError) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"detail": str(exc.args[0] if exc.args else exc)})
-
-    @app.exception_handler(ValueError)
-    async def _on_value(_: Request, exc: ValueError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"detail": str(exc)})
-
-    @app.exception_handler(TypeError)
-    async def _on_type(_: Request, exc: TypeError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 app = create_app()
