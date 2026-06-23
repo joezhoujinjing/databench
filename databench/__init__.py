@@ -23,6 +23,7 @@ from .schema import (
 )
 from .transform import Transform, transform
 from .vocabulary import (
+    Extractor,
     Term,
     Vocabulary,
     derive_vocabulary,
@@ -44,6 +45,7 @@ __all__ = [
     # vocabulary
     "Vocabulary",
     "Term",
+    "Extractor",
     "derive_vocabulary",
     "normalize_samples",
     "validate_samples",

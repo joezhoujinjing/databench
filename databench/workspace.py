@@ -33,7 +33,7 @@ from .schema import Kind, Sample
 from .store import LocalBlobStore
 from .transform import Transform
 from .vocabulary import (
-    Dimension,
+    Extractor,
     Vocabulary,
     derive_vocabulary as _derive_vocabulary,
     normalize_samples,
@@ -163,20 +163,28 @@ class Workspace:
     # -- vocabularies --------------------------------------------------------
 
     def derive_vocabulary(
-        self, dataset: DatasetLike, dimension: Dimension, name: Optional[str] = None
+        self,
+        dataset: DatasetLike,
+        dimension: str,
+        extractor: Extractor,
+        name: Optional[str] = None,
     ) -> Vocabulary:
         """Bootstrap a draft vocabulary from a dataset's labels (cached + lineage).
 
-        ``name`` doubles as the human-friendly ref pointing at the derived id.
+        ``extractor`` says how to pull the ``(raw, std)`` label pair from each
+        sample; it is recorded both as derive provenance (in the vocabulary meta)
+        and in the lineage run params, so the derivation is reproducible. ``name``
+        doubles as the human-friendly ref pointing at the derived id.
         """
 
         ds = self.get(dataset)
+        params = {"dimension": dimension, "extractor": extractor.model_dump()}
         cache_key = hash_obj(
             {
                 "op": "vocabulary:derive",
                 "op_version": VOCAB_OP_VERSION,
                 "inputs": [ds.version],
-                "params": {"dimension": dimension},
+                "params": params,
             }
         )
 
@@ -184,13 +192,15 @@ class Workspace:
         if cached and self.store.vocabulary_exists(cached):
             vocab = self.store.read_vocabulary(cached)
         else:
-            vocab = _derive_vocabulary(ds.to_samples(), dimension=dimension, name=name)
+            vocab = _derive_vocabulary(
+                ds.to_samples(), dimension=dimension, extractor=extractor, name=name
+            )
             self._persist_vocabulary(vocab)
             self.catalog.record_run(
                 cache_key,
                 "vocabulary:derive",
                 VOCAB_OP_VERSION,
-                {"dimension": dimension},
+                params,
                 [ds.version],
                 vocab.id,
             )
@@ -210,6 +220,8 @@ class Workspace:
         """
 
         parent = self.catalog.get_vocab_ref(vocab.name) if vocab.name else None
+        if vocab.status != "curated":
+            vocab = vocab.model_copy(update={"status": "curated"})
         self._persist_vocabulary(vocab)
         if parent and parent != vocab.id:
             cache_key = hash_obj(
@@ -237,18 +249,29 @@ class Workspace:
         return self.catalog.list_vocabularies()
 
     def normalize_vocabulary(
-        self, dataset: DatasetLike, vocab: VocabularyLike, ref: Optional[str] = None
+        self,
+        dataset: DatasetLike,
+        vocab: VocabularyLike,
+        extractor: Optional[Extractor] = None,
+        ref: Optional[str] = None,
     ) -> Dataset:
-        """Map ``raw_*`` -> canonical over a dataset, writing a new dataset."""
+        """Map raw labels -> canonical over a dataset, writing a new dataset.
+
+        ``extractor`` defaults to the one recorded as the vocabulary's derive
+        provenance; pass it explicitly to override (or when the vocab carries no
+        provenance).
+        """
 
         ds = self.get(dataset)
         v = vocab if isinstance(vocab, Vocabulary) else self.get_vocabulary(vocab)
+        ext = self._resolve_extractor(v, extractor)
+        params = {"dimension": v.dimension, "extractor": ext.model_dump()}
         cache_key = hash_obj(
             {
                 "op": "vocabulary:normalize",
                 "op_version": VOCAB_OP_VERSION,
                 "inputs": [ds.version, v.id],
-                "params": {"dimension": v.dimension},
+                "params": params,
             }
         )
 
@@ -256,13 +279,15 @@ class Workspace:
         if cached and self.store.exists(cached):
             out = self.store.read(cached)
         else:
-            out = Dataset.from_samples(normalize_samples(ds.to_samples(), v), name=ref or ds.name)
+            out = Dataset.from_samples(
+                normalize_samples(ds.to_samples(), v, ext), name=ref or ds.name
+            )
             self._persist(out)
             self.catalog.record_run(
                 cache_key,
                 "vocabulary:normalize",
                 VOCAB_OP_VERSION,
-                {"dimension": v.dimension},
+                params,
                 [ds.version, v.id],
                 out.version,
             )
@@ -272,34 +297,50 @@ class Workspace:
         return out
 
     def validate_vocabulary(
-        self, dataset: DatasetLike, vocab: VocabularyLike, ref: Optional[str] = None
+        self,
+        dataset: DatasetLike,
+        vocab: VocabularyLike,
+        extractor: Optional[Extractor] = None,
+        ref: Optional[str] = None,
     ) -> tuple[Dataset, dict[str, Any]]:
-        """Flag off-vocabulary ``std_*`` values; returns (dataset, summary)."""
+        """Flag off-vocabulary standard labels; returns (dataset, summary)."""
 
         ds = self.get(dataset)
         v = vocab if isinstance(vocab, Vocabulary) else self.get_vocabulary(vocab)
-        samples, summary = validate_samples(ds.to_samples(), v)
+        ext = self._resolve_extractor(v, extractor)
+        samples, summary = validate_samples(ds.to_samples(), v, ext)
         out = Dataset.from_samples(samples, name=ref or ds.name)
         self._persist(out)
+        params = {"dimension": v.dimension, "extractor": ext.model_dump()}
         cache_key = hash_obj(
             {
                 "op": "vocabulary:validate",
                 "op_version": VOCAB_OP_VERSION,
                 "inputs": [ds.version, v.id],
-                "params": {"dimension": v.dimension},
+                "params": params,
             }
         )
         self.catalog.record_run(
             cache_key,
             "vocabulary:validate",
             VOCAB_OP_VERSION,
-            {"dimension": v.dimension},
+            params,
             [ds.version, v.id],
             out.version,
         )
         if ref:
             self.catalog.set_ref(ref, out.version)
         return out, summary
+
+    @staticmethod
+    def _resolve_extractor(vocab: Vocabulary, extractor: Optional[Extractor]) -> Extractor:
+        ext = extractor or vocab.extractor()
+        if ext is None:
+            raise ValueError(
+                "no extractor: pass one explicitly or use a vocabulary that "
+                "records its derive extractor in meta"
+            )
+        return ext
 
     # -- lineage -------------------------------------------------------------
 

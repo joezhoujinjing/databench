@@ -89,6 +89,31 @@
         "title": "Capabilities",
         "type": "object"
       },
+      "Extractor": {
+        "description": "A declarative, serializable rule for pulling label pairs out of samples.\n\n``source=\"assistant_json\"`` parses the last assistant turn as a JSON object\nand reads ``raw_key`` / ``std_key`` from it. The keys are data, so the same\ngeneric extractor serves any dataset that labels with a raw/standard pair -\nnothing dataset-specific lives in the core type. Because it serializes, the\nexact extraction used by :func:`derive_vocabulary` can be recorded as\nprovenance and replayed by normalize/validate.",
+        "properties": {
+          "raw_key": {
+            "title": "Raw Key",
+            "type": "string"
+          },
+          "source": {
+            "const": "assistant_json",
+            "default": "assistant_json",
+            "title": "Source",
+            "type": "string"
+          },
+          "std_key": {
+            "title": "Std Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "raw_key",
+          "std_key"
+        ],
+        "title": "Extractor",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1037,10 +1062,6 @@
         "description": "A controlled, content-addressed registry of canonical terms.",
         "properties": {
           "dimension": {
-            "enum": [
-              "brand",
-              "unit"
-            ],
             "title": "Dimension",
             "type": "string"
           },
@@ -1060,11 +1081,6 @@
             ],
             "title": "Name"
           },
-          "signals": {
-            "additionalProperties": true,
-            "title": "Signals",
-            "type": "object"
-          },
           "source": {
             "anyOf": [
               {
@@ -1075,6 +1091,15 @@
               }
             ],
             "title": "Source"
+          },
+          "status": {
+            "default": "curated",
+            "enum": [
+              "draft",
+              "curated"
+            ],
+            "title": "Status",
+            "type": "string"
           },
           "terms": {
             "items": {
@@ -1094,10 +1119,6 @@
         "description": "A controlled, content-addressed registry of canonical terms.",
         "properties": {
           "dimension": {
-            "enum": [
-              "brand",
-              "unit"
-            ],
             "title": "Dimension",
             "type": "string"
           },
@@ -1122,11 +1143,6 @@
             ],
             "title": "Name"
           },
-          "signals": {
-            "additionalProperties": true,
-            "title": "Signals",
-            "type": "object"
-          },
           "source": {
             "anyOf": [
               {
@@ -1137,6 +1153,15 @@
               }
             ],
             "title": "Source"
+          },
+          "status": {
+            "default": "curated",
+            "enum": [
+              "draft",
+              "curated"
+            ],
+            "title": "Status",
+            "type": "string"
           },
           "terms": {
             "items": {
@@ -1994,7 +2019,7 @@
     },
     "/v1/vocabularies/{name}:derive": {
       "post": {
-        "description": "Derive a draft vocabulary from a dataset's labels, persist it, return it.",
+        "description": "Derive a draft vocabulary from a dataset's labels, persist it, return it.\n\nThe extraction rule comes from the request body when provided, otherwise from\na server-side preset keyed by ``dimension``. If neither resolves, 400.",
         "operationId": "derive_vocabulary_v1_vocabularies__name__derive_post",
         "parameters": [
           {
@@ -2018,21 +2043,35 @@
             }
           },
           {
-            "description": "which controlled dimension to derive",
+            "description": "namespace label for the derived vocabulary",
             "in": "query",
             "name": "dimension",
             "required": true,
             "schema": {
-              "description": "which controlled dimension to derive",
-              "enum": [
-                "brand",
-                "unit"
-              ],
+              "description": "namespace label for the derived vocabulary",
               "title": "Dimension",
               "type": "string"
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Extractor"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "how to pull (raw, std) labels; defaults to a server preset by dimension",
+                "title": "Extractor"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

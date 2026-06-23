@@ -10,16 +10,25 @@ from __future__ import annotations
 
 from itertools import islice
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from databench import Workspace
-from databench.vocabulary import Dimension, Vocabulary
+from databench.vocabulary import Extractor, Vocabulary
 
 from ..deps import get_workspace
 from ..meta import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
 from ..schemas import VocabulariesPage, VocabularyInfo
 
 router = APIRouter(tags=["vocabularies"])
+
+# Convenience extractors for the dataset shapes this deployment knows about.
+# This is the *only* place dimension-specific payload knowledge lives, and it is
+# pure data at the edge - the core library stays agnostic. A request may always
+# override by supplying its own extractor in the body.
+_EXTRACTOR_PRESETS: dict[str, Extractor] = {
+    "brand": Extractor(source="assistant_json", raw_key="raw_brand", std_key="std_brand"),
+    "unit": Extractor(source="assistant_json", raw_key="raw_unit", std_key="std_unit"),
+}
 
 
 @router.get("/vocabularies", response_model=VocabulariesPage)
@@ -47,12 +56,29 @@ def get_vocabulary(name: str, ws: Workspace = Depends(get_workspace)) -> Vocabul
 def derive_vocabulary(
     name: str,
     dataset: str = Query(..., description="source dataset ref or version"),
-    dimension: Dimension = Query(..., description="which controlled dimension to derive"),
+    dimension: str = Query(..., description="namespace label for the derived vocabulary"),
+    extractor: Extractor | None = Body(
+        default=None,
+        description="how to pull (raw, std) labels; defaults to a server preset by dimension",
+    ),
     ws: Workspace = Depends(get_workspace),
 ) -> Vocabulary:
-    """Derive a draft vocabulary from a dataset's labels, persist it, return it."""
+    """Derive a draft vocabulary from a dataset's labels, persist it, return it.
 
-    return ws.derive_vocabulary(dataset, dimension=dimension, name=name)
+    The extraction rule comes from the request body when provided, otherwise from
+    a server-side preset keyed by ``dimension``. If neither resolves, 400.
+    """
+
+    ext = extractor or _EXTRACTOR_PRESETS.get(dimension)
+    if ext is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"no extractor preset for dimension {dimension!r}; supply an "
+                "extractor in the request body"
+            ),
+        )
+    return ws.derive_vocabulary(dataset, dimension=dimension, extractor=ext, name=name)
 
 
 @router.put("/vocabularies/{name}", response_model=Vocabulary)
