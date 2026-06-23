@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 from itertools import islice
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -40,6 +41,10 @@ async def ingest_jsonl(
     """Ingest an uploaded ``.jsonl`` file (kind auto-detected per line)."""
 
     payload = await file.read()
+    # Default provenance to the uploaded filename, not the random temp path that
+    # read_jsonl would otherwise fall back to.
+    if source is None and file.filename:
+        source = Path(file.filename).stem
     tmp = tempfile.NamedTemporaryFile("wb", suffix=".jsonl", delete=False)
     try:
         tmp.write(payload)
