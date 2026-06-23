@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="382" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13">
+<rect width="560" height="382" fill="#ffffff"/>
+<text x="14" y="26" font-size="15" font-weight="700" fill="#111">Top standard units (std_unit) — top 12</text>
+<text x="222" y="62" text-anchor="end" fill="#333">米</text>
+<rect x="230" y="50" width="260" height="16" rx="3" fill="#4c78a8"/>
+<text x="496" y="62" fill="#333">896</text>
+<text x="222" y="88" text-anchor="end" fill="#333">箱</text>
+<rect x="230" y="76" width="29" height="16" rx="3" fill="#4c78a8"/>
+<text x="265" y="88" fill="#333">103</text>
+<text x="222" y="114" text-anchor="end" fill="#333">台</text>
+<rect x="230" y="102" width="25" height="16" rx="3" fill="#4c78a8"/>
+<text x="261" y="114" fill="#333">88</text>
+<text x="222" y="140" text-anchor="end" fill="#333">个</text>
+<rect x="230" y="128" width="24" height="16" rx="3" fill="#4c78a8"/>
+<text x="260" y="140" fill="#333">85</text>
+<text x="222" y="166" text-anchor="end" fill="#333">千米</text>
+<rect x="230" y="154" width="23" height="16" rx="3" fill="#4c78a8"/>
+<text x="259" y="166" fill="#333">81</text>
+<text x="222" y="192" text-anchor="end" fill="#333">支</text>
+<rect x="230" y="180" width="14" height="16" rx="3" fill="#4c78a8"/>
+<text x="250" y="192" fill="#333">51</text>
+<text x="222" y="218" text-anchor="end" fill="#333">包</text>
+<rect x="230" y="206" width="12" height="16" rx="3" fill="#4c78a8"/>
+<text x="248" y="218" fill="#333">43</text>
+<text x="222" y="244" text-anchor="end" fill="#333">套</text>
+<rect x="230" y="232" width="6" height="16" rx="3" fill="#4c78a8"/>
+<text x="242" y="244" fill="#333">23</text>
+<text x="222" y="270" text-anchor="end" fill="#333">盒</text>
+<rect x="230" y="258" width="6" height="16" rx="3" fill="#4c78a8"/>
+<text x="242" y="270" fill="#333">21</text>
+<text x="222" y="296" text-anchor="end" fill="#333">卷</text>
+<rect x="230" y="284" width="3" height="16" rx="3" fill="#4c78a8"/>
+<text x="239" y="296" fill="#333">13</text>
+<text x="222" y="322" text-anchor="end" fill="#333">提</text>
+<rect x="230" y="310" width="3" height="16" rx="3" fill="#4c78a8"/>
+<text x="239" y="322" fill="#333">11</text>
+<text x="222" y="348" text-anchor="end" fill="#333">平方毫米</text>
+<rect x="230" y="336" width="2" height="16" rx="3" fill="#4c78a8"/>
+<text x="238" y="348" fill="#333">7</text>
+</svg>

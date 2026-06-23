@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="460" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13">
+<rect width="560" height="460" fill="#ffffff"/>
+<text x="14" y="26" font-size="15" font-weight="700" fill="#111">Most common param keys — top 15</text>
+<text x="222" y="62" text-anchor="end" fill="#333">主芯标称截面</text>
+<rect x="230" y="50" width="260" height="16" rx="3" fill="#4c78a8"/>
+<text x="496" y="62" fill="#333">990</text>
+<text x="222" y="88" text-anchor="end" fill="#333">导体芯数</text>
+<rect x="230" y="76" width="253" height="16" rx="3" fill="#4c78a8"/>
+<text x="489" y="88" fill="#333">965</text>
+<text x="222" y="114" text-anchor="end" fill="#333">绝缘材料</text>
+<rect x="230" y="102" width="251" height="16" rx="3" fill="#4c78a8"/>
+<text x="487" y="114" fill="#333">957</text>
+<text x="222" y="140" text-anchor="end" fill="#333">护套材料</text>
+<rect x="230" y="128" width="239" height="16" rx="3" fill="#4c78a8"/>
+<text x="475" y="140" fill="#333">911</text>
+<text x="222" y="166" text-anchor="end" fill="#333">额定电压</text>
+<rect x="230" y="154" width="186" height="16" rx="3" fill="#4c78a8"/>
+<text x="422" y="166" fill="#333">711</text>
+<text x="222" y="192" text-anchor="end" fill="#333">阻燃等级</text>
+<rect x="230" y="180" width="154" height="16" rx="3" fill="#4c78a8"/>
+<text x="390" y="192" fill="#333">590</text>
+<text x="222" y="218" text-anchor="end" fill="#333">铠装层类型</text>
+<rect x="230" y="206" width="112" height="16" rx="3" fill="#4c78a8"/>
+<text x="348" y="218" fill="#333">428</text>
+<text x="222" y="244" text-anchor="end" fill="#333">包装形式</text>
+<rect x="230" y="232" width="106" height="16" rx="3" fill="#4c78a8"/>
+<text x="342" y="244" fill="#333">404</text>
+<text x="222" y="270" text-anchor="end" fill="#333">接地导体标称截面积</text>
+<rect x="230" y="258" width="73" height="16" rx="3" fill="#4c78a8"/>
+<text x="309" y="270" fill="#333">280</text>
+<text x="222" y="296" text-anchor="end" fill="#333">接地导体根数</text>
+<rect x="230" y="284" width="72" height="16" rx="3" fill="#4c78a8"/>
+<text x="308" y="296" fill="#333">277</text>
+<text x="222" y="322" text-anchor="end" fill="#333">产品类型</text>
+<rect x="230" y="310" width="55" height="16" rx="3" fill="#4c78a8"/>
+<text x="291" y="322" fill="#333">211</text>
+<text x="222" y="348" text-anchor="end" fill="#333">耐火特性</text>
+<rect x="230" y="336" width="53" height="16" rx="3" fill="#4c78a8"/>
+<text x="289" y="348" fill="#333">203</text>
+<text x="222" y="374" text-anchor="end" fill="#333">无卤性能</text>
+<rect x="230" y="362" width="52" height="16" rx="3" fill="#4c78a8"/>
+<text x="288" y="374" fill="#333">201</text>
+<text x="222" y="400" text-anchor="end" fill="#333">型号</text>
+<rect x="230" y="388" width="52" height="16" rx="3" fill="#4c78a8"/>
+<text x="288" y="400" fill="#333">199</text>
+<text x="222" y="426" text-anchor="end" fill="#333">颜色</text>
+<rect x="230" y="414" width="50" height="16" rx="3" fill="#4c78a8"/>
+<text x="286" y="426" fill="#333">192</text>
+</svg>

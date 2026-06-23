@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="382" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13">
+<rect width="560" height="382" fill="#ffffff"/>
+<text x="14" y="26" font-size="15" font-weight="700" fill="#111">Top standard brands (std_brand) — top 12</text>
+<text x="222" y="62" text-anchor="end" fill="#333">惠普</text>
+<rect x="230" y="50" width="260" height="16" rx="3" fill="#4c78a8"/>
+<text x="496" y="62" fill="#333">63</text>
+<text x="222" y="88" text-anchor="end" fill="#333">特变电工</text>
+<rect x="230" y="76" width="206" height="16" rx="3" fill="#4c78a8"/>
+<text x="442" y="88" fill="#333">50</text>
+<text x="222" y="114" text-anchor="end" fill="#333">远东电缆</text>
+<rect x="230" y="102" width="185" height="16" rx="3" fill="#4c78a8"/>
+<text x="421" y="114" fill="#333">45</text>
+<text x="222" y="140" text-anchor="end" fill="#333">江苏上上</text>
+<rect x="230" y="128" width="173" height="16" rx="3" fill="#4c78a8"/>
+<text x="409" y="140" fill="#333">42</text>
+<text x="222" y="166" text-anchor="end" fill="#333">宝胜</text>
+<rect x="230" y="154" width="156" height="16" rx="3" fill="#4c78a8"/>
+<text x="392" y="166" fill="#333">38</text>
+<text x="222" y="192" text-anchor="end" fill="#333">中天科技</text>
+<rect x="230" y="180" width="123" height="16" rx="3" fill="#4c78a8"/>
+<text x="359" y="192" fill="#333">30</text>
+<text x="222" y="218" text-anchor="end" fill="#333">起帆电缆</text>
+<rect x="230" y="206" width="111" height="16" rx="3" fill="#4c78a8"/>
+<text x="347" y="218" fill="#333">27</text>
+<text x="222" y="244" text-anchor="end" fill="#333">安徽华能</text>
+<rect x="230" y="232" width="107" height="16" rx="3" fill="#4c78a8"/>
+<text x="343" y="244" fill="#333">26</text>
+<text x="222" y="270" text-anchor="end" fill="#333">天康</text>
+<rect x="230" y="258" width="99" height="16" rx="3" fill="#4c78a8"/>
+<text x="335" y="270" fill="#333">24</text>
+<text x="222" y="296" text-anchor="end" fill="#333">昆电工</text>
+<rect x="230" y="284" width="90" height="16" rx="3" fill="#4c78a8"/>
+<text x="326" y="296" fill="#333">22</text>
+<text x="222" y="322" text-anchor="end" fill="#333">得力</text>
+<rect x="230" y="310" width="86" height="16" rx="3" fill="#4c78a8"/>
+<text x="322" y="322" fill="#333">21</text>
+<text x="222" y="348" text-anchor="end" fill="#333">万马神</text>
+<rect x="230" y="336" width="82" height="16" rx="3" fill="#4c78a8"/>
+<text x="318" y="348" fill="#333">20</text>
+</svg>

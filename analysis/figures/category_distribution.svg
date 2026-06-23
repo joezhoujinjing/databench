@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="382" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13">
+<rect width="560" height="382" fill="#ffffff"/>
+<text x="14" y="26" font-size="15" font-weight="700" fill="#111">Category (spu_name) distribution — top 12</text>
+<text x="222" y="62" text-anchor="end" fill="#333">电力电缆</text>
+<rect x="230" y="50" width="260" height="16" rx="3" fill="#4c78a8"/>
+<text x="496" y="62" fill="#333">1000</text>
+<text x="222" y="88" text-anchor="end" fill="#333">复印纸</text>
+<rect x="230" y="76" width="31" height="16" rx="3" fill="#4c78a8"/>
+<text x="267" y="88" fill="#333">120</text>
+<text x="222" y="114" text-anchor="end" fill="#333">硒鼓</text>
+<rect x="230" y="102" width="30" height="16" rx="3" fill="#4c78a8"/>
+<text x="266" y="114" fill="#333">117</text>
+<text x="222" y="140" text-anchor="end" fill="#333">家用分体式空调</text>
+<rect x="230" y="128" width="12" height="16" rx="3" fill="#4c78a8"/>
+<text x="248" y="140" fill="#333">48</text>
+<text x="222" y="166" text-anchor="end" fill="#333">电视机</text>
+<rect x="230" y="154" width="6" height="16" rx="3" fill="#4c78a8"/>
+<text x="242" y="166" fill="#333">26</text>
+<text x="222" y="192" text-anchor="end" fill="#333">碳粉盒</text>
+<rect x="230" y="180" width="5" height="16" rx="3" fill="#4c78a8"/>
+<text x="241" y="192" fill="#333">23</text>
+<text x="222" y="218" text-anchor="end" fill="#333">面巾纸</text>
+<rect x="230" y="206" width="5" height="16" rx="3" fill="#4c78a8"/>
+<text x="241" y="218" fill="#333">22</text>
+<text x="222" y="244" text-anchor="end" fill="#333">卷纸</text>
+<rect x="230" y="232" width="5" height="16" rx="3" fill="#4c78a8"/>
+<text x="241" y="244" fill="#333">20</text>
+<text x="222" y="270" text-anchor="end" fill="#333">标签</text>
+<rect x="230" y="258" width="3" height="16" rx="3" fill="#4c78a8"/>
+<text x="239" y="270" fill="#333">12</text>
+<text x="222" y="296" text-anchor="end" fill="#333">普通干电池</text>
+<rect x="230" y="284" width="2" height="16" rx="3" fill="#4c78a8"/>
+<text x="238" y="296" fill="#333">11</text>
+<text x="222" y="322" text-anchor="end" fill="#333">插排</text>
+<rect x="230" y="310" width="2" height="16" rx="3" fill="#4c78a8"/>
+<text x="238" y="322" fill="#333">9</text>
+<text x="222" y="348" text-anchor="end" fill="#333">打印墨水</text>
+<rect x="230" y="336" width="2" height="16" rx="3" fill="#4c78a8"/>
+<text x="238" y="348" fill="#333">8</text>
+</svg>
