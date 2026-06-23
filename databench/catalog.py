@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS vocabularies (
     name       TEXT,
     dimension  TEXT NOT NULL,
     num_terms  INTEGER NOT NULL,
+    status     TEXT,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS vocab_refs (
@@ -77,6 +78,11 @@ class SQLiteCatalog:
         with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.executescript(_SCHEMA)
+            # Self-healing additive column for catalogs created before `status`
+            # existed (CREATE TABLE IF NOT EXISTS won't add it to an old table).
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(vocabularies)")}
+            if "status" not in cols:
+                conn.execute("ALTER TABLE vocabularies ADD COLUMN status TEXT")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -160,11 +166,14 @@ class SQLiteCatalog:
 
     # -- vocabularies --------------------------------------------------------
 
-    def register_vocabulary(self, vid: str, name: Optional[str], dimension: str, num_terms: int) -> None:
+    def register_vocabulary(
+        self, vid: str, name: Optional[str], dimension: str, num_terms: int, status: Optional[str] = None
+    ) -> None:
         with self._connect() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO vocabularies (id, name, dimension, num_terms, created_at) VALUES (?,?,?,?,?)",
-                (vid, name, dimension, num_terms, _now()),
+                "INSERT OR IGNORE INTO vocabularies (id, name, dimension, num_terms, status, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (vid, name, dimension, num_terms, status, _now()),
             )
 
     def set_vocab_ref(self, name: str, vocab_id: str) -> None:
@@ -185,7 +194,8 @@ class SQLiteCatalog:
 
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT r.name AS name, r.vocab_id AS id, v.dimension AS dimension, v.num_terms AS num_terms "
+                "SELECT r.name AS name, r.vocab_id AS id, v.dimension AS dimension, "
+                "v.num_terms AS num_terms, v.status AS status "
                 "FROM vocab_refs r JOIN vocabularies v ON v.id = r.vocab_id ORDER BY r.name"
             ).fetchall()
         return [dict(r) for r in rows]

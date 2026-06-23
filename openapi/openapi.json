@@ -1203,6 +1203,17 @@
           "num_terms": {
             "title": "Num Terms",
             "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
           }
         },
         "required": [

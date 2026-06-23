@@ -240,10 +240,18 @@ class Workspace:
         return vocab
 
     def get_vocabulary(self, name_or_id: str) -> Vocabulary:
-        vid = self.catalog.get_vocab_ref(name_or_id) or name_or_id
+        ref_id = self.catalog.get_vocab_ref(name_or_id)
+        vid = ref_id or name_or_id
         if not self.store.vocabulary_exists(vid):
             raise KeyError(f"vocabulary not found: {name_or_id}")
-        return self.store.read_vocabulary(vid)
+        vocab = self.store.read_vocabulary(vid)
+        # ``name`` is a pointer, not identity, so two refs can share one content
+        # blob (e.g. a re-derive that cache-hits an earlier vocab's id). Overlay
+        # the ref we were fetched by, so the served name matches the lookup
+        # rather than whatever name the blob was first written under.
+        if ref_id is not None and vocab.name != name_or_id:
+            vocab = vocab.model_copy(update={"name": name_or_id})
+        return vocab
 
     def list_vocabularies(self) -> list[dict[str, Any]]:
         return self.catalog.list_vocabularies()
@@ -390,7 +398,9 @@ class Workspace:
 
     def _persist_vocabulary(self, vocab: Vocabulary) -> None:
         self.store.write_vocabulary(vocab)
-        self.catalog.register_vocabulary(vocab.id, vocab.name, vocab.dimension, len(vocab.terms))
+        self.catalog.register_vocabulary(
+            vocab.id, vocab.name, vocab.dimension, len(vocab.terms), vocab.status
+        )
 
 
 def _coerce(result: Any, name: Optional[str]) -> Dataset:

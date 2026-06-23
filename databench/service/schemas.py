@@ -70,6 +70,7 @@ class VocabularyInfo(BaseModel):
     id: str
     dimension: str
     num_terms: int
+    status: str | None = None
 
 
 class VocabulariesPage(Page):

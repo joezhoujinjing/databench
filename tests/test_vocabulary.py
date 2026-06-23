@@ -275,6 +275,26 @@ def test_curation_is_a_new_version_with_lineage(ws):
     assert runs[0]["inputs"] == [draft.id]
 
 
+def test_two_refs_sharing_one_blob_each_serve_their_own_name(ws):
+    # name is a pointer, not identity: a re-derive with a different ref cache-hits
+    # the same content blob. Each GET must report the ref it was fetched by, not
+    # the name the blob was first written under.
+    first = ws.derive_vocabulary("raw", dimension="brand", extractor=BRAND, name="brand")
+    second = ws.derive_vocabulary("raw", dimension="brand", extractor=BRAND, name="brand-test")
+    assert first.id == second.id  # same content -> same blob
+
+    assert ws.get_vocabulary("brand").name == "brand"
+    assert ws.get_vocabulary("brand-test").name == "brand-test"
+    # fetching by raw content id leaves whatever name the blob carries
+    assert ws.get_vocabulary(first.id).id == first.id
+
+
+def test_list_vocabularies_includes_status(ws):
+    ws.derive_vocabulary("raw", dimension="brand", extractor=BRAND, name="brand")
+    listed = {v["name"]: v for v in ws.list_vocabularies()}
+    assert listed["brand"]["status"] == "draft"
+
+
 def test_normalize_lineage_chains_through_vocab(ws):
     # No extractor passed: normalize replays the one the derived vocab recorded.
     vocab = ws.derive_vocabulary("raw", dimension="brand", extractor=BRAND, name="brand")
@@ -316,6 +336,7 @@ def test_endpoint_derive_get_list(client):
     assert page["total"] == 1
     assert page["items"][0]["name"] == "brand"
     assert page["items"][0]["num_terms"] == 3
+    assert page["items"][0]["status"] == "draft"
 
 
 def test_endpoint_derive_with_explicit_extractor_body(client):
