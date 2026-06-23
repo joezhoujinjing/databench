@@ -7,6 +7,7 @@ lineage and reproducible mixtures. Start from :class:`Workspace`.
 from __future__ import annotations
 
 from .dataset import Dataset, Manifest
+from .io import read_jsonl, record_to_sample, detect_kind
 from .recipe import Recipe, RecipeSource
 from .schema import (
     Candidate,
@@ -33,6 +34,10 @@ __all__ = [
     "transform",
     "Transform",
     "ops",
+    # io
+    "read_jsonl",
+    "record_to_sample",
+    "detect_kind",
     # schema
     "Sample",
     "SFTSample",

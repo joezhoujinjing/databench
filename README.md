@@ -44,6 +44,27 @@ engine                    Polars (lazy) + Arrow as the interchange boundary
 Backends are pluggable: SQLite→Postgres, local Parquet→S3, single-node
 Polars→Ray Data, all behind the same surface.
 
+## Add your first dataset
+
+JSONL is the first-class ingestion path. Kind is auto-detected per line, and the
+common shorthand layouts (e.g. `chosen`/`rejected` as plain strings) are
+normalised into the unified schema:
+
+```python
+ws = db.Workspace.open("./bench")
+sft  = ws.add_jsonl("data/sft.jsonl",        name="sft-raw")   # {"messages": [...]}
+pref = ws.add_jsonl("data/preference.jsonl", name="pref-raw")  # {"prompt","chosen","rejected"}
+rl   = ws.add_jsonl("data/rl.jsonl",         name="rl-raw")    # {"prompt","rollouts":[...]}
+```
+
+A runnable end-to-end demo (ingest → enrich → dedup → lineage → recipe → export)
+lives in [`examples/load_demo.py`](examples/load_demo.py) with sample data under
+[`examples/demo/`](examples/demo):
+
+```bash
+uv run python examples/load_demo.py
+```
+
 ## Quickstart
 
 ```python

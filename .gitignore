@@ -16,4 +16,6 @@ venv/
 # databench local workspaces / scratch
 *.db
 bench/
+bench-demo/
 scratch/
+examples/.bench-demo/
