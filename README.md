@@ -109,6 +109,27 @@ file named by its content hash, so transforms never overwrite — they add new
 objects. Source files you ingest are copied in, not owned, and nothing is stored
 in git.
 
+## Synthetic data
+
+Generation is just a transform that takes an LLM and records lineage. databench
+depends only on a thin `LLM` protocol (`id` + `generate`), never a specific
+provider — adapt Anthropic / OpenAI / vLLM / distilabel by implementing it. A
+deterministic `TestLLM` runs the whole path offline.
+
+```python
+from databench import gen, TestLLM
+
+llm = TestLLM()                       # swap for a real adapter
+sft  = ws.run(gen.generate_responses, prompts, llm=llm, ref="sft")
+pref = ws.run(gen.make_preference_pairs, sft, llm=llm, ref="pref")
+judged = ws.run(gen.judge, sft, llm=llm, signal="quality")   # LLM-as-judge → signals
+```
+
+Generation is **pinned-once**: the llm's `id` enters the cache key, so re-running
+with the same inputs/params/llm reuses the prior output (a data hub generates
+once). Change the model or bump a `seed` param to produce a fresh version. See
+[`examples/synth_demo.py`](examples/synth_demo.py).
+
 ## Reproducibility
 
 Every materialised dataset records how it was produced. A transform's
@@ -132,6 +153,9 @@ uv run pytest
 
 - **M1 — asset spine (done):** schema, immutable versioned datasets, CAS store,
   catalog, `@transform` with automatic lineage + caching, recipes, export.
-- **M2 — synthesis & annotation:** distilabel-backed synthetic transforms;
-  Argilla-style "feedback as a data state" annotation loop.
-- **M3 — exploration:** Lance backend + web UI for browse / slice / cluster.
+- **M2 — synthesis (done) & annotation (next):** provider-agnostic generation
+  transforms (`generate_responses`, `make_preference_pairs`, `judge`) over a thin
+  `LLM` protocol with pinned-once caching. Next: Argilla-style "feedback as a data
+  state" annotation round-trip.
+- **M3 — exploration:** Lance backend + web UI for browse / slice / cluster, and
+  the read API service (FastAPI over Postgres + S3).

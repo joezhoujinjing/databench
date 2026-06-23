@@ -29,6 +29,7 @@ from .config import resolve_root
 from .dataset import Dataset
 from .hashing import hash_obj
 from .io import read_jsonl
+from .llm import LLM
 from .provenance import git_sha
 from .recipe import Recipe, RecipeSource, mix
 from .schema import Kind, Sample
@@ -96,31 +97,47 @@ class Workspace:
 
     # -- transforms ----------------------------------------------------------
 
-    def run(self, transform: Transform, *inputs: DatasetLike, ref: Optional[str] = None, **params: Any) -> Dataset:
+    def run(
+        self,
+        transform: Transform,
+        *inputs: DatasetLike,
+        ref: Optional[str] = None,
+        llm: Optional["LLM"] = None,
+        **params: Any,
+    ) -> Dataset:
         input_ds = [self.get(i) for i in inputs]
         params_obj, params_dict = transform.build_params(params)
 
-        cache_key = hash_obj(
-            {
-                "op": transform.name,
-                "op_version": transform.effective_version,
-                "inputs": [d.version for d in input_ds],
-                "params": params_dict,
-            }
-        )
+        key_payload: dict[str, Any] = {
+            "op": transform.name,
+            "op_version": transform.effective_version,
+            "inputs": [d.version for d in input_ds],
+            "params": params_dict,
+        }
+        recorded_params = dict(params_dict)
+        if transform.needs_llm:
+            if llm is None:
+                raise TypeError(f"transform {transform.name!r} requires an llm= argument")
+            key_payload["llm"] = llm.id
+            recorded_params["__llm__"] = llm.id  # surfaced in lineage
+
+        cache_key = hash_obj(key_payload)
 
         cached = self.catalog.find_run(cache_key)
         if cached and self.store.exists(cached):
             out = self.store.read(cached)
         else:
-            result = transform.fn(*input_ds, params_obj) if params_obj is not None else transform.fn(*input_ds)
+            if transform.needs_llm:
+                result = transform.fn(*input_ds, llm, params_obj)
+            else:
+                result = transform.fn(*input_ds, params_obj) if params_obj is not None else transform.fn(*input_ds)
             out = _coerce(result, name=ref)
             self._persist(out)
             self.catalog.record_run(
                 cache_key,
                 transform.name,
                 transform.effective_version,
-                params_dict,
+                recorded_params,
                 [d.version for d in input_ds],
                 out.version,
                 op_source_ref=git_sha(transform.source_dir),

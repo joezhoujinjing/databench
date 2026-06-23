@@ -30,6 +30,7 @@ class Transform:
     name: str
     version: Optional[str] = None  # manual override; None => auto code hash
     params_model: Optional[type[BaseModel]] = None
+    needs_llm: bool = False  # generation transforms; see @generator
     code_version: str = field(init=False)
     source_dir: Optional[str] = field(init=False)
 
@@ -86,5 +87,26 @@ def transform(
 
     def deco(fn: Callable[..., Any]) -> Transform:
         return Transform(fn=fn, name=name or fn.__name__, version=version, params_model=params)
+
+    return deco
+
+
+def generator(
+    name: Optional[str] = None,
+    version: Optional[str] = None,
+    params: Optional[type[BaseModel]] = None,
+) -> Callable[[Callable[..., Any]], Transform]:
+    """Decorator for a generation transform: ``fn(*datasets, llm, params)``.
+
+    Run it via ``Workspace.run(gen_op, ds, llm=...)``. The llm's ``id`` enters
+    the cache key, so re-running with the same inputs/params/llm reuses the
+    pinned generation (a data hub generates once); change the model or a ``seed``
+    param to produce a fresh version.
+    """
+
+    def deco(fn: Callable[..., Any]) -> Transform:
+        return Transform(
+            fn=fn, name=name or fn.__name__, version=version, params_model=params, needs_llm=True
+        )
 
     return deco

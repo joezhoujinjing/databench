@@ -22,9 +22,10 @@ from .schema import (
     TrajectorySample,
     parse_sample,
 )
-from .transform import Transform, transform
+from .transform import Transform, transform, generator
+from .llm import LLM, TestLLM
 from .workspace import Workspace
-from . import ops
+from . import ops, gen
 
 __all__ = [
     "Workspace",
@@ -34,7 +35,12 @@ __all__ = [
     "RecipeSource",
     "transform",
     "Transform",
+    "generator",
     "ops",
+    # synthesis
+    "gen",
+    "LLM",
+    "TestLLM",
     # io
     "read_jsonl",
     "record_to_sample",
