@@ -76,6 +76,10 @@ def test_full_lifecycle(client):
     assert r.status_code == 200, r.text
     assert r.json()["num_rows"] == 2
 
+    # provenance defaults to the uploaded filename, not a temp path
+    pref_items = client.get("/datasets/pref-raw/samples").json()["items"]
+    assert all(s["source"] == "preference" for s in pref_items)
+
     # 3. inspect + paginate
     r = client.get("/datasets/sft-raw")
     assert r.status_code == 200
