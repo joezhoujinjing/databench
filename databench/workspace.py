@@ -25,6 +25,7 @@ from typing import Any, Iterable, Optional, Union
 import polars as pl
 
 from .catalog import SQLiteCatalog
+from .config import resolve_root
 from .dataset import Dataset
 from .hashing import hash_obj
 from .io import read_jsonl
@@ -43,8 +44,14 @@ class Workspace:
         self.catalog = catalog
 
     @classmethod
-    def open(cls, root: str | os.PathLike[str]) -> "Workspace":
-        root = Path(root)
+    def open(cls, root: str | os.PathLike[str] | None = None) -> "Workspace":
+        """Open (creating if needed) a workspace.
+
+        With no argument, opens your personal hub at ``$DATABENCH_HOME`` or
+        ``~/.databench``. Pass an explicit ``root`` for an isolated workspace.
+        """
+
+        root = resolve_root(root)
         root.mkdir(parents=True, exist_ok=True)
         store = LocalBlobStore(root / "store")
         catalog = SQLiteCatalog(str(root / "catalog.db"))

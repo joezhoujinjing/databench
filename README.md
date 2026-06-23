@@ -51,7 +51,9 @@ common shorthand layouts (e.g. `chosen`/`rejected` as plain strings) are
 normalised into the unified schema:
 
 ```python
-ws = db.Workspace.open("./bench")
+# No argument -> your personal hub at $DATABENCH_HOME or ~/.databench.
+# Pass an explicit path for an isolated, portable workspace instead.
+ws = db.Workspace.open()                      # or db.Workspace.open("./bench")
 sft  = ws.add_jsonl("data/sft.jsonl",        name="sft-raw")   # {"messages": [...]}
 pref = ws.add_jsonl("data/preference.jsonl", name="pref-raw")  # {"prompt","chosen","rejected"}
 rl   = ws.add_jsonl("data/rl.jsonl",         name="rl-raw")    # {"prompt","rollouts":[...]}
@@ -89,6 +91,23 @@ recipe = db.Recipe(name="sft-v1", sources=[db.RecipeSource(dataset="clean")])
 train = ws.materialize(recipe, ref="train")          # reproducible mixture
 ws.export(train, "train.jsonl")                       # training-ready
 ```
+
+## Where your data lives
+
+A workspace is a single directory holding the control plane and data plane:
+
+```
+<workspace>/
+├── catalog.db                       # SQLite: datasets, runs (=lineage+cache), refs
+└── store/objects/<ab>/<hash>.parquet (+ .manifest.json)   # content-addressed, write-once
+```
+
+By default that directory is your personal hub at **`~/.databench`** (override
+with **`$DATABENCH_HOME`**); pass an explicit path to `Workspace.open(path)` for
+an isolated, portable workspace. Each dataset version is one immutable Parquet
+file named by its content hash, so transforms never overwrite — they add new
+objects. Source files you ingest are copied in, not owned, and nothing is stored
+in git.
 
 ## Development
 
