@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS datasets (
@@ -51,26 +52,48 @@ def _now() -> str:
 
 
 class SQLiteCatalog:
-    def __init__(self, db_path: str):
-        self._conn = sqlite3.connect(db_path)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_SCHEMA)
-        self._conn.commit()
+    """SQLite-backed control plane.
 
-    def close(self) -> None:
-        self._conn.close()
+    Connections are opened per operation rather than shared, so the catalog is
+    safe to use from multiple threads/workers (e.g. behind uvicorn). WAL mode
+    lets concurrent readers run alongside a single writer; a ``busy_timeout``
+    makes writers wait-and-retry instead of failing with "database is locked".
+    """
+
+    def __init__(self, db_path: str):
+        self._db_path = db_path
+        with self._connect() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.executescript(_SCHEMA)
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        # check_same_thread=False is safe because each call owns its own short-
+        # lived connection; we never share one connection across threads.
+        conn = sqlite3.connect(self._db_path, check_same_thread=False, timeout=30)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    def close(self) -> None:  # retained for API compatibility; nothing to close
+        pass
 
     # -- datasets ------------------------------------------------------------
 
     def register_dataset(self, version: str, name: Optional[str], num_rows: int, kinds: dict[str, int]) -> None:
-        self._conn.execute(
-            "INSERT OR IGNORE INTO datasets (version, name, num_rows, kinds_json, created_at) VALUES (?,?,?,?,?)",
-            (version, name, num_rows, json.dumps(kinds), _now()),
-        )
-        self._conn.commit()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO datasets (version, name, num_rows, kinds_json, created_at) VALUES (?,?,?,?,?)",
+                (version, name, num_rows, json.dumps(kinds), _now()),
+            )
 
     def get_dataset(self, version: str) -> Optional[dict[str, Any]]:
-        row = self._conn.execute("SELECT * FROM datasets WHERE version = ?", (version,)).fetchone()
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM datasets WHERE version = ?", (version,)).fetchone()
         return _row_to_dataset(row) if row else None
 
     # -- runs (lineage + cache) ---------------------------------------------
@@ -84,39 +107,43 @@ class SQLiteCatalog:
         inputs: list[str],
         output_version: str,
     ) -> None:
-        self._conn.execute(
-            "INSERT OR REPLACE INTO runs (cache_key, op, op_version, params_json, inputs_json, output_version, created_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (cache_key, op, op_version, json.dumps(params), json.dumps(inputs), output_version, _now()),
-        )
-        self._conn.commit()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO runs (cache_key, op, op_version, params_json, inputs_json, output_version, created_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (cache_key, op, op_version, json.dumps(params), json.dumps(inputs), output_version, _now()),
+            )
 
     def find_run(self, cache_key: str) -> Optional[str]:
         """Return the cached output version for a cache key, if any."""
 
-        row = self._conn.execute("SELECT output_version FROM runs WHERE cache_key = ?", (cache_key,)).fetchone()
+        with self._connect() as conn:
+            row = conn.execute("SELECT output_version FROM runs WHERE cache_key = ?", (cache_key,)).fetchone()
         return row["output_version"] if row else None
 
     def runs_producing(self, version: str) -> list[dict[str, Any]]:
-        rows = self._conn.execute("SELECT * FROM runs WHERE output_version = ?", (version,)).fetchall()
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM runs WHERE output_version = ?", (version,)).fetchall()
         return [_row_to_run(r) for r in rows]
 
     # -- refs (named pointers) ----------------------------------------------
 
     def set_ref(self, name: str, version: str, message: Optional[str] = None) -> None:
-        self._conn.execute(
-            "INSERT INTO refs (name, version, message, updated_at) VALUES (?,?,?,?) "
-            "ON CONFLICT(name) DO UPDATE SET version=excluded.version, message=excluded.message, updated_at=excluded.updated_at",
-            (name, version, message, _now()),
-        )
-        self._conn.commit()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO refs (name, version, message, updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(name) DO UPDATE SET version=excluded.version, message=excluded.message, updated_at=excluded.updated_at",
+                (name, version, message, _now()),
+            )
 
     def get_ref(self, name: str) -> Optional[str]:
-        row = self._conn.execute("SELECT version FROM refs WHERE name = ?", (name,)).fetchone()
+        with self._connect() as conn:
+            row = conn.execute("SELECT version FROM refs WHERE name = ?", (name,)).fetchone()
         return row["version"] if row else None
 
     def list_refs(self) -> dict[str, str]:
-        rows = self._conn.execute("SELECT name, version FROM refs ORDER BY name").fetchall()
+        with self._connect() as conn:
+            rows = conn.execute("SELECT name, version FROM refs ORDER BY name").fetchall()
         return {r["name"]: r["version"] for r in rows}
 
     def resolve(self, ref_or_version: str) -> str:
