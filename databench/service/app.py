@@ -11,13 +11,28 @@ plain exceptions onto HTTP status codes:
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from .. import __version__
 from .deps import get_workspace, workspace_root
 from .routers import datasets, lineage, recipes, refs, transforms
+
+# Static allowlist (regex): local Vite dev server only. The production frontend is
+# served from a single fixed origin (https://databench.jinjing.me); it is set at
+# runtime via DATABENCH_CORS_ORIGINS as an exact match, never hardcoded or
+# wildcarded here. Example:
+#   DATABENCH_CORS_ORIGINS="https://databench.jinjing.me"
+CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1):5173$"
+
+
+def cors_origins() -> list[str]:
+    raw = os.environ.get("DATABENCH_CORS_ORIGINS", "")
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 def create_app() -> FastAPI:
@@ -26,6 +41,19 @@ def create_app() -> FastAPI:
         version=__version__,
         description="HTTP surface over a databench Workspace: ingest, transform, "
         "recipe, lineage and export for LLM post-training data.",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins(),
+        allow_origin_regex=CORS_ORIGIN_REGEX,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=False,  # no cookies; tokens go in headers
+        # Chrome's Private Network Access: a public HTTPS page (databench.jinjing.me)
+        # calling a loopback backend must get Access-Control-Allow-Private-Network:
+        # true on the preflight. Starlette gates this and answers it for us.
+        allow_private_network=True,
     )
 
     @app.get("/health", tags=["meta"])
