@@ -22,11 +22,11 @@ from .. import __version__
 from .deps import get_workspace, workspace_root
 from .routers import datasets, lineage, recipes, refs, transforms
 
-# Static allowlist (regex): local Vite dev server only. The production frontend
-# lives on Alibaba Cloud OSS Hong Kong, whose *.oss-cn-hongkong.aliyuncs.com is a
-# shared multi-tenant domain — a wildcard there would trust every tenant's bucket.
-# So the exact production origin (https://<bucket>.oss-cn-hongkong.aliyuncs.com)
-# is configured at runtime via DATABENCH_CORS_ORIGINS, never hardcoded here.
+# Static allowlist (regex): local Vite dev server only. The production frontend is
+# served from a single fixed origin (https://databench.jinjing.me); it is set at
+# runtime via DATABENCH_CORS_ORIGINS as an exact match, never hardcoded or
+# wildcarded here. Example:
+#   DATABENCH_CORS_ORIGINS="https://databench.jinjing.me"
 CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1):5173$"
 
 
@@ -50,6 +50,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
         allow_credentials=False,  # no cookies; tokens go in headers
+        # Chrome's Private Network Access: a public HTTPS page (databench.jinjing.me)
+        # calling a loopback backend must get Access-Control-Allow-Private-Network:
+        # true on the preflight. Starlette gates this and answers it for us.
+        allow_private_network=True,
     )
 
     @app.get("/health", tags=["meta"])

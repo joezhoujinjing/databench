@@ -168,13 +168,15 @@ def test_cors_allows_local_dev(client, origin):
     assert r.headers["access-control-allow-origin"] == origin
 
 
+PROD_ORIGIN = "https://databench.jinjing.me"
+
+
 @pytest.mark.parametrize(
     "origin",
     [
         "https://evil.example.com",
-        # OSS HK is a shared multi-tenant domain: a random bucket there must NOT
-        # be trusted by default — only the exact origin set via env is allowed.
-        "https://someone-elses-bucket.oss-cn-hongkong.aliyuncs.com",
+        # not the configured prod origin -> must not be trusted by default
+        "https://databench.jinjing.me.attacker.com",
     ],
 )
 def test_cors_rejects_unconfigured_origin(client, origin):
@@ -183,19 +185,54 @@ def test_cors_rejects_unconfigured_origin(client, origin):
     assert "access-control-allow-origin" not in r.headers  # ...but no CORS grant
 
 
-def test_cors_env_override_allows_exact_origin(tmp_path, monkeypatch):
-    # The production OSS bucket origin is whitelisted exactly, via env, not regex.
-    prod = "https://databench-ui.oss-cn-hongkong.aliyuncs.com"
-    monkeypatch.setenv("DATABENCH_CORS_ORIGINS", f"{prod}, https://app.databench.dev")
+def _client_with_prod_origin(tmp_path) -> TestClient:
     ws = Workspace.open(tmp_path / "bench")
     app = create_app()
     app.dependency_overrides[get_workspace] = lambda: ws
-    c = TestClient(app)
+    return TestClient(app)
 
-    r = c.get("/health", headers={"Origin": prod})
-    assert r.headers["access-control-allow-origin"] == prod
 
-    # a different bucket on the same shared domain is still rejected
-    other = "https://attacker.oss-cn-hongkong.aliyuncs.com"
-    r = c.get("/health", headers={"Origin": other})
+def test_cors_env_override_allows_exact_origin(tmp_path, monkeypatch):
+    # The production origin is whitelisted exactly, via env, not regex.
+    monkeypatch.setenv("DATABENCH_CORS_ORIGINS", f"{PROD_ORIGIN}, https://app.databench.dev")
+    c = _client_with_prod_origin(tmp_path)
+
+    r = c.get("/health", headers={"Origin": PROD_ORIGIN})
+    assert r.headers["access-control-allow-origin"] == PROD_ORIGIN
+
+    # a look-alike origin is still rejected (exact match, not prefix/suffix)
+    r = c.get("/health", headers={"Origin": "https://databench.jinjing.me.evil.com"})
     assert "access-control-allow-origin" not in r.headers
+
+
+def test_pna_preflight_sets_allow_private_network(tmp_path, monkeypatch):
+    # Chrome's Private Network Access preflight: a public HTTPS page hitting a
+    # loopback backend must get Access-Control-Allow-Private-Network: true, plus
+    # the usual exact-origin echo.
+    monkeypatch.setenv("DATABENCH_CORS_ORIGINS", PROD_ORIGIN)
+    c = _client_with_prod_origin(tmp_path)
+
+    r = c.options(
+        "/refs",
+        headers={
+            "Origin": PROD_ORIGIN,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Private-Network": "true",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["access-control-allow-origin"] == PROD_ORIGIN
+    assert r.headers["access-control-allow-private-network"] == "true"
+
+
+def test_pna_header_absent_without_request(tmp_path, monkeypatch):
+    # A normal preflight (no PNA request header) must NOT advertise PNA.
+    monkeypatch.setenv("DATABENCH_CORS_ORIGINS", PROD_ORIGIN)
+    c = _client_with_prod_origin(tmp_path)
+
+    r = c.options(
+        "/refs",
+        headers={"Origin": PROD_ORIGIN, "Access-Control-Request-Method": "GET"},
+    )
+    assert r.status_code == 200
+    assert "access-control-allow-private-network" not in r.headers
