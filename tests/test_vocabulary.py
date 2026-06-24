@@ -413,3 +413,62 @@ def test_endpoint_alias_conflict_is_enveloped(client):
     r = client.put("/v1/vocabularies/bad", json=bad)
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "validation_error"
+
+
+def test_endpoint_normalize_produces_new_dataset(client):
+    # derive records the extractor, so normalize needs no body.
+    client.post("/v1/vocabularies/brand:derive", params={"dataset": "raw", "dimension": "brand"})
+    r = client.post(
+        "/v1/vocabularies/brand:normalize", params={"dataset": "raw", "ref": "raw-norm"}
+    )
+    assert r.status_code == 200, r.text
+    man = r.json()
+    assert man["num_rows"] == 5 and man["version"]
+    # the produced ref resolves and every std label is now a known canonical
+    items = client.get("/v1/datasets/raw-norm/samples").json()["items"]
+    stds = {json.loads(s["messages"][-1]["content"])["std_brand"] for s in items}
+    assert stds <= {"远东电缆", "特变电工", "亚星"}
+
+
+def test_endpoint_normalize_with_explicit_extractor_body(client):
+    # A vocab whose dimension has no preset still works when the body supplies one.
+    client.put("/v1/vocabularies/myb", json={"dimension": "myb", "terms": [
+        {"canonical": "远东电缆", "aliases": ["远东"]},
+    ]})
+    r = client.post(
+        "/v1/vocabularies/myb:normalize",
+        params={"dataset": "raw"},
+        json={"source": "assistant_json", "raw_key": "raw_brand", "std_key": "std_brand"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["num_rows"] == 5
+
+
+def test_endpoint_validate_returns_summary_and_persists_signal(client):
+    client.post("/v1/vocabularies/brand:derive", params={"dataset": "raw", "dimension": "brand"})
+    r = client.post(
+        "/v1/vocabularies/brand:validate", params={"dataset": "raw", "ref": "raw-checked"}
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # FIXTURE std labels are all canonical -> nothing off-vocabulary
+    assert body["summary"] == {"checked": 5, "invalid": 0, "offending_values": {}}
+    assert body["dataset"]["version"]
+    items = client.get("/v1/datasets/raw-checked/samples").json()["items"]
+    assert all(s["signals"]["vocab_brand_valid"] is True for s in items)
+
+
+def test_endpoint_normalize_missing_extractor_400(client):
+    # A curated vocab with no recorded extractor and a dimension with no preset.
+    client.put("/v1/vocabularies/mystery", json={"dimension": "mystery", "terms": [
+        {"canonical": "A"},
+    ]})
+    r = client.post("/v1/vocabularies/mystery:normalize", params={"dataset": "raw"})
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "bad_request"
+
+
+def test_endpoint_validate_unknown_vocab_404(client):
+    r = client.post("/v1/vocabularies/nope:validate", params={"dataset": "raw"})
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "not_found"
