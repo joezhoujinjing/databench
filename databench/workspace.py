@@ -206,17 +206,21 @@ class Workspace:
             )
 
         if name:
-            # name is not part of identity; reflect the requested ref on the
-            # returned object even on a cache hit.
-            vocab = vocab.model_copy(update={"name": name})
-            self.catalog.set_vocab_ref(name, vocab.id)
+            # name/status are pointer state, not identity; reflect the requested
+            # ref on the returned object even on a cache hit. derive always yields
+            # a draft, so the ref's lifecycle status is reset to "draft".
+            vocab = vocab.model_copy(update={"name": name, "status": "draft"})
+            self.catalog.set_vocab_ref(name, vocab.id, status="draft")
         return vocab
 
     def save_vocabulary(self, vocab: Vocabulary) -> Vocabulary:
-        """Persist a (curated) vocabulary as a new content-addressed version.
+        """Persist a (curated) vocabulary, promoting its ref to ``curated``.
 
-        If a vocabulary already exists under the same name, a ``curate`` lineage
-        edge is recorded from the previous version to this one.
+        Curation is a property of the named ref, not of the immutable content, so
+        promoting a draft whose terms are unchanged keeps the same content id but
+        still flips the ref to ``curated`` (the blob is write-once and is not
+        rewritten). If the terms changed, a new content version is written and a
+        ``curate`` lineage edge is recorded from the previous version to it.
         """
 
         parent = self.catalog.get_vocab_ref(vocab.name) if vocab.name else None
@@ -236,21 +240,30 @@ class Workspace:
                 cache_key, "vocabulary:curate", VOCAB_OP_VERSION, {}, [parent], vocab.id
             )
         if vocab.name:
-            self.catalog.set_vocab_ref(vocab.name, vocab.id)
+            self.catalog.set_vocab_ref(vocab.name, vocab.id, status="curated")
         return vocab
 
     def get_vocabulary(self, name_or_id: str) -> Vocabulary:
-        ref_id = self.catalog.get_vocab_ref(name_or_id)
+        ref = self.catalog.get_vocab_ref_row(name_or_id)
+        ref_id = ref["vocab_id"] if ref else None
         vid = ref_id or name_or_id
         if not self.store.vocabulary_exists(vid):
             raise KeyError(f"vocabulary not found: {name_or_id}")
         vocab = self.store.read_vocabulary(vid)
-        # ``name`` is a pointer, not identity, so two refs can share one content
-        # blob (e.g. a re-derive that cache-hits an earlier vocab's id). Overlay
-        # the ref we were fetched by, so the served name matches the lookup
-        # rather than whatever name the blob was first written under.
-        if ref_id is not None and vocab.name != name_or_id:
-            vocab = vocab.model_copy(update={"name": name_or_id})
+        # name and status are pointer state, not identity, so two refs can share
+        # one content blob (e.g. a re-derive that cache-hits an earlier vocab's
+        # id, or a same-terms promote). Overlay the ref we were fetched by so the
+        # served name/status match the lookup rather than the frozen blob. When
+        # resolved by raw content id (no ref), fall back to the blob's own status.
+        if ref is not None:
+            updates: dict[str, Any] = {}
+            if vocab.name != name_or_id:
+                updates["name"] = name_or_id
+            ref_status = ref.get("status")
+            if ref_status and vocab.status != ref_status:
+                updates["status"] = ref_status
+            if updates:
+                vocab = vocab.model_copy(update=updates)
         return vocab
 
     def list_vocabularies(self) -> list[dict[str, Any]]:
@@ -398,9 +411,7 @@ class Workspace:
 
     def _persist_vocabulary(self, vocab: Vocabulary) -> None:
         self.store.write_vocabulary(vocab)
-        self.catalog.register_vocabulary(
-            vocab.id, vocab.name, vocab.dimension, len(vocab.terms), vocab.status
-        )
+        self.catalog.register_vocabulary(vocab.id, vocab.name, vocab.dimension, len(vocab.terms))
 
 
 def _coerce(result: Any, name: Optional[str]) -> Dataset:

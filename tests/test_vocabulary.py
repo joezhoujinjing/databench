@@ -295,6 +295,34 @@ def test_list_vocabularies_includes_status(ws):
     assert listed["brand"]["status"] == "draft"
 
 
+def test_promote_to_curated_without_term_change(ws):
+    # The "promote" button: same terms, draft -> curated. Status lives on the
+    # ref, so this must take effect even though the content id is unchanged.
+    draft = ws.derive_vocabulary("raw", dimension="brand", extractor=BRAND, name="brand")
+    assert draft.status == "draft"
+
+    promoted = ws.save_vocabulary(draft.model_copy(update={"status": "curated"}))
+    assert promoted.id == draft.id  # terms unchanged -> same content id
+
+    assert ws.get_vocabulary("brand").status == "curated"
+    listed = {v["name"]: v for v in ws.list_vocabularies()}
+    assert listed["brand"]["status"] == "curated"
+
+
+def test_status_is_per_ref_not_per_content(ws):
+    # Two refs sharing one content blob carry independent lifecycle status.
+    ws.derive_vocabulary("raw", dimension="brand", extractor=BRAND, name="brand")
+    second = ws.derive_vocabulary("raw", dimension="brand", extractor=BRAND, name="brand-test")
+
+    ws.save_vocabulary(second.model_copy(update={"status": "curated"}))
+
+    assert ws.get_vocabulary("brand-test").status == "curated"
+    assert ws.get_vocabulary("brand").status == "draft"  # other ref untouched
+    listed = {v["name"]: v for v in ws.list_vocabularies()}
+    assert listed["brand"]["status"] == "draft"
+    assert listed["brand-test"]["status"] == "curated"
+
+
 def test_normalize_lineage_chains_through_vocab(ws):
     # No extractor passed: normalize replays the one the derived vocab recorded.
     vocab = ws.derive_vocabulary("raw", dimension="brand", extractor=BRAND, name="brand")

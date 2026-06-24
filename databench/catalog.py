@@ -49,12 +49,12 @@ CREATE TABLE IF NOT EXISTS vocabularies (
     name       TEXT,
     dimension  TEXT NOT NULL,
     num_terms  INTEGER NOT NULL,
-    status     TEXT,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS vocab_refs (
     name       TEXT PRIMARY KEY,
     vocab_id   TEXT NOT NULL,
+    status     TEXT,
     updated_at TEXT NOT NULL
 );
 """
@@ -80,9 +80,11 @@ class SQLiteCatalog:
             conn.executescript(_SCHEMA)
             # Self-healing additive column for catalogs created before `status`
             # existed (CREATE TABLE IF NOT EXISTS won't add it to an old table).
-            cols = {r["name"] for r in conn.execute("PRAGMA table_info(vocabularies)")}
+            # status is a property of the curation pointer (the ref), not the
+            # immutable content row, so it lives on vocab_refs.
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(vocab_refs)")}
             if "status" not in cols:
-                conn.execute("ALTER TABLE vocabularies ADD COLUMN status TEXT")
+                conn.execute("ALTER TABLE vocab_refs ADD COLUMN status TEXT")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -166,22 +168,20 @@ class SQLiteCatalog:
 
     # -- vocabularies --------------------------------------------------------
 
-    def register_vocabulary(
-        self, vid: str, name: Optional[str], dimension: str, num_terms: int, status: Optional[str] = None
-    ) -> None:
+    def register_vocabulary(self, vid: str, name: Optional[str], dimension: str, num_terms: int) -> None:
         with self._connect() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO vocabularies (id, name, dimension, num_terms, status, created_at) "
-                "VALUES (?,?,?,?,?,?)",
-                (vid, name, dimension, num_terms, status, _now()),
+                "INSERT OR IGNORE INTO vocabularies (id, name, dimension, num_terms, created_at) VALUES (?,?,?,?,?)",
+                (vid, name, dimension, num_terms, _now()),
             )
 
-    def set_vocab_ref(self, name: str, vocab_id: str) -> None:
+    def set_vocab_ref(self, name: str, vocab_id: str, status: Optional[str] = None) -> None:
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO vocab_refs (name, vocab_id, updated_at) VALUES (?,?,?) "
-                "ON CONFLICT(name) DO UPDATE SET vocab_id=excluded.vocab_id, updated_at=excluded.updated_at",
-                (name, vocab_id, _now()),
+                "INSERT INTO vocab_refs (name, vocab_id, status, updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(name) DO UPDATE SET vocab_id=excluded.vocab_id, "
+                "status=excluded.status, updated_at=excluded.updated_at",
+                (name, vocab_id, status, _now()),
             )
 
     def get_vocab_ref(self, name: str) -> Optional[str]:
@@ -189,13 +189,26 @@ class SQLiteCatalog:
             row = conn.execute("SELECT vocab_id FROM vocab_refs WHERE name = ?", (name,)).fetchone()
         return row["vocab_id"] if row else None
 
+    def get_vocab_ref_row(self, name: str) -> Optional[dict[str, Any]]:
+        """The full ref row (vocab_id + status) for a name, or ``None``."""
+
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT vocab_id, status FROM vocab_refs WHERE name = ?", (name,)
+            ).fetchone()
+        return dict(row) if row else None
+
     def list_vocabularies(self) -> list[dict[str, Any]]:
-        """Current named vocabularies (latest version per name), sorted by name."""
+        """Current named vocabularies (latest version per name), sorted by name.
+
+        ``status`` is read from the ref (the curation pointer), so two refs that
+        share one content blob can report different lifecycle statuses.
+        """
 
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT r.name AS name, r.vocab_id AS id, v.dimension AS dimension, "
-                "v.num_terms AS num_terms, v.status AS status "
+                "v.num_terms AS num_terms, r.status AS status "
                 "FROM vocab_refs r JOIN vocabularies v ON v.id = r.vocab_id ORDER BY r.name"
             ).fetchall()
         return [dict(r) for r in rows]
