@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from databench import Recipe, Sample
+from databench import Manifest, Recipe, Sample
 
 
 class IngestSamplesRequest(BaseModel):
@@ -75,3 +75,20 @@ class VocabularyInfo(BaseModel):
 
 class VocabulariesPage(Page):
     items: list[VocabularyInfo]
+
+
+class ValidateSummary(BaseModel):
+    """Outcome of checking a dataset's standard labels against a vocabulary."""
+
+    checked: int = Field(description="samples that carried a standard label to check")
+    invalid: int = Field(description="checked samples whose label is off-vocabulary")
+    offending_values: dict[str, int] = Field(
+        default_factory=dict, description="each off-vocabulary value and its frequency"
+    )
+
+
+class ValidateResponse(BaseModel):
+    """Validation summary plus the persisted, signal-annotated dataset."""
+
+    summary: ValidateSummary
+    dataset: Manifest

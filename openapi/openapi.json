@@ -958,6 +958,52 @@
         "title": "TransformsPage",
         "type": "object"
       },
+      "ValidateResponse": {
+        "description": "Validation summary plus the persisted, signal-annotated dataset.",
+        "properties": {
+          "dataset": {
+            "$ref": "#/components/schemas/Manifest"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ValidateSummary"
+          }
+        },
+        "required": [
+          "summary",
+          "dataset"
+        ],
+        "title": "ValidateResponse",
+        "type": "object"
+      },
+      "ValidateSummary": {
+        "description": "Outcome of checking a dataset's standard labels against a vocabulary.",
+        "properties": {
+          "checked": {
+            "description": "samples that carried a standard label to check",
+            "title": "Checked",
+            "type": "integer"
+          },
+          "invalid": {
+            "description": "checked samples whose label is off-vocabulary",
+            "title": "Invalid",
+            "type": "integer"
+          },
+          "offending_values": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "each off-vocabulary value and its frequency",
+            "title": "Offending Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "checked",
+          "invalid"
+        ],
+        "title": "ValidateSummary",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2106,6 +2152,186 @@
           }
         },
         "summary": "Derive Vocabulary",
+        "tags": [
+          "vocabularies"
+        ]
+      }
+    },
+    "/v1/vocabularies/{name}:normalize": {
+      "post": {
+        "description": "Rewrite each sample's standard label to the vocab's canonical.\n\nProduces a new content-addressed dataset (with lineage) and returns its\nmanifest. 404 if the vocabulary is unknown; 400 if no extractor resolves.",
+        "operationId": "normalize_vocabulary_v1_vocabularies__name__normalize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "source dataset ref or version",
+            "in": "query",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "description": "source dataset ref or version",
+              "title": "Dataset",
+              "type": "string"
+            }
+          },
+          {
+            "description": "optional name for the produced dataset",
+            "in": "query",
+            "name": "ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "optional name for the produced dataset",
+              "title": "Ref"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Extractor"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "how to read/write labels; defaults to the vocab's own then a preset",
+                "title": "Extractor"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Manifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Normalize Vocabulary",
+        "tags": [
+          "vocabularies"
+        ]
+      }
+    },
+    "/v1/vocabularies/{name}:validate": {
+      "post": {
+        "description": "Flag samples whose standard label is off-vocabulary.\n\nPersists a dataset annotated with a ``vocab_<dimension>_valid`` per-sample\nsignal (with lineage) and returns the summary alongside its manifest. 404 if\nthe vocabulary is unknown; 400 if no extractor resolves.",
+        "operationId": "validate_vocabulary_v1_vocabularies__name__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "source dataset ref or version",
+            "in": "query",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "description": "source dataset ref or version",
+              "title": "Dataset",
+              "type": "string"
+            }
+          },
+          {
+            "description": "optional name for the annotated dataset",
+            "in": "query",
+            "name": "ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "optional name for the annotated dataset",
+              "title": "Ref"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Extractor"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "how to read labels; defaults to the vocab's own then a preset",
+                "title": "Extractor"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Vocabulary",
         "tags": [
           "vocabularies"
         ]
