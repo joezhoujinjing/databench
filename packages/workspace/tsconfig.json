@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../catalog" },
+    { "path": "../engine" },
+    { "path": "../hashing" },
+    { "path": "../io" },
+    { "path": "../ops" },
+    { "path": "../schema" },
+    { "path": "../store" }
+  ]
+}

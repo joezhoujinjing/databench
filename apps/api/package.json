@@ -1,0 +1,34 @@
+{
+  "name": "@databench/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --sourcemap --clean && tsc --emitDeclarationOnly",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node ../../scripts/with-test-db-schema.mjs databench_test_api pnpm --dir ../.. exec prisma migrate deploy && node ../../scripts/with-test-db-schema.mjs databench_test_api vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@databench/schema": "workspace:*",
+    "@databench/workspace": "workspace:*",
+    "@hono/node-server": "^1.13.0",
+    "@hono/zod-openapi": "^1.4.0",
+    "hono": "^4.10.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0"
+  }
+}

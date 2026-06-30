@@ -1,0 +1,26 @@
+{
+  "name": "@databench/openapi-export",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --sourcemap --clean && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "openapi:check": "pnpm build && node dist/index.js --check"
+  },
+  "dependencies": {
+    "@databench/api": "workspace:*"
+  }
+}

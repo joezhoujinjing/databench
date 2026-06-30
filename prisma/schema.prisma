@@ -1,0 +1,63 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model DatasetRecord {
+  version   String   @id
+  name      String?
+  numRows   Int      @map("num_rows")
+  kinds     Json     @map("kinds_json")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("datasets")
+}
+
+model RunRecord {
+  cacheKey      String   @id @map("cache_key")
+  op            String
+  opVersion     String   @map("op_version")
+  params        Json     @map("params_json")
+  inputs        Json     @map("inputs_json")
+  outputVersion String   @map("output_version")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([outputVersion], map: "idx_runs_output")
+  @@map("runs")
+}
+
+model RefRecord {
+  name      String   @id
+  version   String
+  message   String?
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("refs")
+}
+
+model VocabularyRecord {
+  id        String   @id
+  name      String?
+  dimension String
+  numTerms  Int      @map("num_terms")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  refs VocabularyRefRecord[]
+
+  @@map("vocabularies")
+}
+
+model VocabularyRefRecord {
+  name      String   @id
+  vocabId   String   @map("vocab_id")
+  status    String?
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  vocabulary VocabularyRecord @relation(fields: [vocabId], references: [id])
+
+  @@map("vocab_refs")
+}

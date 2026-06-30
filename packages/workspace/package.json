@@ -1,0 +1,31 @@
+{
+  "name": "@databench/workspace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --sourcemap --clean && tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "node ../../scripts/with-test-db-schema.mjs databench_test_workspace pnpm --dir ../.. exec prisma migrate deploy && node ../../scripts/with-test-db-schema.mjs databench_test_workspace vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@databench/catalog": "workspace:*",
+    "@databench/engine": "workspace:*",
+    "@databench/hashing": "workspace:*",
+    "@databench/io": "workspace:*",
+    "@databench/ops": "workspace:*",
+    "@databench/schema": "workspace:*",
+    "@databench/store": "workspace:*"
+  }
+}

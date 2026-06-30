@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+coverage/
+.turbo/
+
+# Local env and machine files
+.env
+.env.*
+!.env.example
+.DS_Store
+.claude/
+.codex/
+.playwright-cli/
+output/
+design-qa.md
+fix-api-brief.md
+
+# Logs
+*.log
+pnpm-debug.log*

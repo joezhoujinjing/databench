@@ -1,0 +1,28 @@
+{
+  "name": "@databench/catalog",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prisma:generate": "pnpm --dir ../.. exec prisma generate",
+    "build": "pnpm prisma:generate && tsup src/index.ts --format esm --sourcemap --clean && tsc --emitDeclarationOnly",
+    "typecheck": "pnpm prisma:generate && tsc --noEmit",
+    "test": "node ../../scripts/with-test-db-schema.mjs databench_test_catalog pnpm prisma:generate && node ../../scripts/with-test-db-schema.mjs databench_test_catalog pnpm --dir ../.. exec prisma migrate deploy && node ../../scripts/with-test-db-schema.mjs databench_test_catalog vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "pg": "^8.22.0"
+  }
+}

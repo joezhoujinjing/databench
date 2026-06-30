@@ -1,0 +1,60 @@
+{
+  "reference": {
+    "benchRoot": "/Users/hanlu/Desktop/databench/databench/bench",
+    "pythonExecutable": "/Users/hanlu/Desktop/databench/databench/.venv/bin/python",
+    "pythonPolarsVersion": "1.41.2",
+    "nodejsPolarsVersion": "0.25.1",
+    "blake3Package": "hash-wasm"
+  },
+  "sampling": {
+    "seeds": [0, 1, 7, 42],
+    "positional": {
+      "checkedCases": 44,
+      "passed": true,
+      "failures": []
+    },
+    "objectOverload": {
+      "usableForSeededSampling": false,
+      "implementationPath": "/Users/hanlu/Desktop/databench-ts/node_modules/.pnpm/nodejs-polars@0.25.1/node_modules/nodejs-polars/bin/dataframe.js",
+      "forwardsOptsSeed": false,
+      "forwardsOuterSeed": true,
+      "conclusion": "The object overload does not forward opts.seed in nodejs-polars 0.25.1, so seeded sampling must use positional arguments."
+    }
+  },
+  "hashing": {
+    "canonicalFixtures": [
+      {
+        "name": "unicode-null-nested-float",
+        "passed": true,
+        "nodeCanonical": "{\"items\":[3,2,1],\"nested\":{\"a\":1.25,\"b\":true},\"z\":null,\"中文\":\"值\"}",
+        "pythonCanonical": "{\"items\":[3,2,1],\"nested\":{\"a\":1.25,\"b\":true},\"z\":null,\"中文\":\"值\"}",
+        "nodeHash": "b0faca1656f78383ac26aee1eb72965c78da69a837b7d586875dae09442d5aa7",
+        "pythonHash": "b0faca1656f78383ac26aee1eb72965c78da69a837b7d586875dae09442d5aa7"
+      },
+      {
+        "name": "integer-valued-floats",
+        "passed": true,
+        "nodeCanonical": "{\"items\":[1.0,0.5,null],\"reward\":1.0,\"text\":\"中文\",\"zero\":0.0}",
+        "pythonCanonical": "{\"items\":[1.0,0.5,null],\"reward\":1.0,\"text\":\"中文\",\"zero\":0.0}",
+        "nodeHash": "7a61c0d6f1ac2487b2dae5d6b1b7da67f19444dae4ccd11eefca9c83eb00c966",
+        "pythonHash": "7a61c0d6f1ac2487b2dae5d6b1b7da67f19444dae4ccd11eefca9c83eb00c966"
+      }
+    ],
+    "benchRows": {
+      "checkedRows": 25,
+      "passed": true,
+      "failures": []
+    },
+    "emptyHash": {
+      "passed": true,
+      "nodeHash": "6bdf3fe55052831d222fc6b82b2ba03f32b3599410fafd317642e21925c38f16",
+      "pythonHash": "6bdf3fe55052831d222fc6b82b2ba03f32b3599410fafd317642e21925c38f16"
+    }
+  },
+  "conclusion": {
+    "samplingEnginePath": "Use nodejs-polars DataFrame.sample(n, undefined, false, seed) through a local wrapper; do not use the object overload for seeded sampling.",
+    "canonicalJsonPath": "Use canonical JSON with sorted keys, no whitespace, ensure_ascii=false semantics, and source-aware number lexeme preservation for JSON inputs so integer-valued floats such as 1.0 remain byte-compatible with Python.",
+    "blake3Path": "hash-wasm blake3 matches Python blake3 for text inputs and bench row digests."
+  },
+  "ok": true
+}
