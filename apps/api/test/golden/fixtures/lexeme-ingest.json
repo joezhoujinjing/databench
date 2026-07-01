@@ -1,0 +1,6 @@
+{
+  "_comment": "Committed Python expectation (generated with ~/Desktop/databench/databench/.venv). An RL sample whose OPEN dicts carry integer-valued floats: top-level signals.quality=1.0 (feeds row_digest -> dataset version) and rollout.meta.s=2.0 (feeds sample content -> id). `sampleText` is the RAW JSON body text (1.0/2.0 preserved as lexemes); it must NOT be pre-parsed, or the lexeme is lost. See fix #1.",
+  "sampleText": "{\"kind\":\"rl\",\"source\":\"lexeme-fixture\",\"signals\":{\"quality\":1.0},\"prompt\":[{\"role\":\"user\",\"content\":\"2+2?\"}],\"answer\":\"4\",\"rollouts\":[{\"text\":\"4\",\"reward\":1,\"meta\":{\"s\":2.0}}]}",
+  "id": "10711440d06e968823ddd81bb519f1881ca3dced793aacaa98cc3d7b072c17dd",
+  "version": "0e0ce1c508e582742833650f0017789ea69a01dd26a0535a535bf52274d27995"
+}

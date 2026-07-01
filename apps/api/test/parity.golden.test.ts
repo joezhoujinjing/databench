@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,31 +9,39 @@ import { expect, test } from 'vitest'
 import { createApp } from '../src/app.js'
 import { createMemoryStore } from './memory-store.js'
 
-const LEGACY_REPO = '/Users/hanlu/Desktop/databench/databench'
+// The legacy Python repo lives outside this monorepo, so its path is
+// configurable via `DATABENCH_LEGACY_REPO`. When it (or its venv) is absent —
+// e.g. on CI or another machine — this end-to-end parity test skips gracefully
+// via `test.runIf` rather than hard-failing on a spawn timeout.
+const LEGACY_REPO = process.env.DATABENCH_LEGACY_REPO ?? '/Users/hanlu/Desktop/databench/databench'
 const LEGACY_UVICORN = `${LEGACY_REPO}/.venv/bin/uvicorn`
 
-test('S20 G-parity: TS API matches legacy Python service for the lifecycle semantics', async () => {
-  const prefix = `s20-${randomUUID()}`
-  const python = await startLegacyService()
-  const workspace = Workspace.open({ root: `./${prefix}`, store: createMemoryStore() })
+test.runIf(existsSync(LEGACY_UVICORN))(
+  'S20 G-parity: TS API matches legacy Python service for the lifecycle semantics',
+  async () => {
+    const prefix = `s20-${randomUUID()}`
+    const python = await startLegacyService()
+    const workspace = Workspace.open({ root: `./${prefix}`, store: createMemoryStore() })
 
-  try {
-    const legacy = await runLifecycle(httpClient(python.baseUrl), prefix)
-    const ts = await runLifecycle(honoClient(createApp({ workspace })), prefix)
+    try {
+      const legacy = await runLifecycle(httpClient(python.baseUrl), prefix)
+      const ts = await runLifecycle(honoClient(createApp({ workspace })), prefix)
 
-    expect(projectManifests(ts.manifests)).toEqual(projectManifests(legacy.manifests))
-    expect(projectPage(ts.rawPage)).toEqual(projectPage(legacy.rawPage))
-    expect(projectPage(ts.trainPage)).toEqual(projectPage(legacy.trainPage))
-    expect(projectRefs(ts.refs, prefix)).toEqual(projectRefs(legacy.refs, prefix))
-    expect(projectLineage(ts.cleanLineage)).toEqual(projectLineage(legacy.cleanLineage))
-    expect(projectLineage(ts.trainLineage)).toEqual(projectLineage(legacy.trainLineage))
-    expect(projectLineage(ts.unknownLineage)).toEqual(projectLineage(legacy.unknownLineage))
-    expect(ts.exportRows).toEqual(legacy.exportRows)
-  } finally {
-    await workspace.close()
-    await stopLegacyService(python)
-  }
-}, 90_000)
+      expect(projectManifests(ts.manifests)).toEqual(projectManifests(legacy.manifests))
+      expect(projectPage(ts.rawPage)).toEqual(projectPage(legacy.rawPage))
+      expect(projectPage(ts.trainPage)).toEqual(projectPage(legacy.trainPage))
+      expect(projectRefs(ts.refs, prefix)).toEqual(projectRefs(legacy.refs, prefix))
+      expect(projectLineage(ts.cleanLineage)).toEqual(projectLineage(legacy.cleanLineage))
+      expect(projectLineage(ts.trainLineage)).toEqual(projectLineage(legacy.trainLineage))
+      expect(projectLineage(ts.unknownLineage)).toEqual(projectLineage(legacy.unknownLineage))
+      expect(ts.exportRows).toEqual(legacy.exportRows)
+    } finally {
+      await workspace.close()
+      await stopLegacyService(python)
+    }
+  },
+  90_000,
+)
 
 interface TestClient {
   fetch(path: string, init?: RequestInit): Promise<Response>

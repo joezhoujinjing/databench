@@ -5,6 +5,7 @@ import { Catalog, createPrismaClient } from '@databench/catalog'
 import { Dataset } from '@databench/engine'
 import { dedup, enrichLength, filterBySignal } from '@databench/ops'
 import type { Extractor, SFTSample } from '@databench/schema'
+import { ValidationError } from '@databench/schema'
 import { afterAll, beforeEach, describe, expect, test } from 'vitest'
 import { mix, Workspace } from '../src/index.js'
 import { createMemoryStore } from './memory-store.js'
@@ -231,6 +232,29 @@ describe('Workspace', () => {
     expect(
       [...validation.dataset.toSamples()].every((sample) => sample.signals.vocab_brand_valid),
     ).toBe(true)
+  })
+
+  test('saveVocabulary enforces the invariants at the domain boundary (not just via HTTP)', async () => {
+    const workspace = openWorkspace()
+
+    // An alias mapping to two canonicals — illegal. `withVocabularyId` alone
+    // would happily persist this; the domain method must reject it like Python.
+    await expect(
+      workspace.saveVocabulary({
+        name: null,
+        dimension: 'brand',
+        status: 'curated',
+        terms: [
+          { canonical: 'A', aliases: ['x'], meta: {} },
+          { canonical: 'B', aliases: ['x'], meta: {} },
+        ],
+        meta: {},
+        source: null,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError)
+
+    // The rejected write left nothing behind.
+    expect(await workspace.listVocabularies()).toEqual([])
   })
 })
 

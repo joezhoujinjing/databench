@@ -106,10 +106,14 @@ export function vocabularyContent(input: Pick<VocabularyInput, 'dimension' | 'te
   return {
     dimension: input.dimension,
     terms: [...input.terms]
-      .sort((left, right) => left.canonical.localeCompare(right.canonical))
+      // Sort by Unicode code point (matching Python `sorted()`), NOT
+      // `localeCompare` — ICU collation depends on the host locale, so the same
+      // vocabulary would hash to different ids on different machines and would
+      // disagree with Python's `content_dict` ordering.
+      .sort((left, right) => compareCodePoints(left.canonical, right.canonical))
       .map((term) => ({
         canonical: term.canonical,
-        aliases: [...term.aliases].sort(),
+        aliases: [...term.aliases].sort(compareCodePoints),
       })),
   }
 }

@@ -1,0 +1,22 @@
+{
+  "_comment": "Committed Python expectation (Vocabulary(**input).id / .content_dict() from ~/Desktop/databench/databench). Mixed-case canonicals (Apple/apple, Banana/banana) make the id sensitive to sort order: Python sorts by Unicode code point ('A'<'a'), while String.localeCompare depends on host locale. See fix #2.",
+  "input": {
+    "dimension": "brand",
+    "terms": [
+      { "canonical": "Apple", "aliases": ["APPL"] },
+      { "canonical": "apple", "aliases": ["apl"] },
+      { "canonical": "Banana", "aliases": [] },
+      { "canonical": "banana", "aliases": [] }
+    ]
+  },
+  "content": {
+    "dimension": "brand",
+    "terms": [
+      { "canonical": "Apple", "aliases": ["APPL"] },
+      { "canonical": "Banana", "aliases": [] },
+      { "canonical": "apple", "aliases": ["apl"] },
+      { "canonical": "banana", "aliases": [] }
+    ]
+  },
+  "id": "4f8709070ee23120e79f85ebc440030df5724f7ed81df3e15022bd648259d4bb"
+}

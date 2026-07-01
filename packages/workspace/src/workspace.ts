@@ -8,6 +8,7 @@ import {
 } from '@databench/engine'
 import { exportRecord, type ReadJsonlOptions, readJsonl } from '@databench/io'
 import {
+  assertVocabularyInput,
   deriveVocabulary as deriveVocabularyFromSamples,
   type Extractor,
   NotFoundError,
@@ -313,7 +314,11 @@ export class Workspace {
   }
 
   async saveVocabulary(input: VocabularyInput | Vocabulary): Promise<Vocabulary> {
-    let vocabulary = withVocabularyId(input)
+    // Enforce the three vocabulary invariants (unique canonicals / one canonical
+    // per alias / aliases disjoint from canonicals) at the domain boundary —
+    // `withVocabularyId` alone skips `superRefine`, so a non-HTTP caller could
+    // otherwise persist an illegal blob (Python enforces these in the ctor).
+    let vocabulary = withVocabularyId(assertVocabularyInput(input))
     const parent = vocabulary.name ? await this.catalog.getVocabularyRef(vocabulary.name) : null
 
     if (vocabulary.status !== 'curated') {
