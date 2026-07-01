@@ -10,6 +10,7 @@ import {
   IngestSamplesOpenApiRequestSchema,
   IngestSamplesRequestSchema,
   PaginationQuerySchema,
+  parseJsonValue,
   SamplesPageOpenApiSchema,
   toJsonCompatible,
 } from '@databench/schema'
@@ -107,7 +108,12 @@ export function registerDatasetRoutes(app: OpenAPIHono<ApiEnv>): void {
   app.openapi(ingestSamplesRoute, async (context) => {
     // The route schema is a surrogate (SampleSchema embeds the unrenderable
     // JSON-number lexeme), so validate the full body with the real schema here.
-    const body = IngestSamplesRequestSchema.parse(await context.req.json())
+    // Parse the raw body text via `parseJsonValue` (lexeme-capturing canonical
+    // JSON) — NOT `context.req.json()`/native `JSON.parse`, which drops the
+    // numeric source text and would fold integer-valued floats (`1.0`) inside
+    // open dicts (signals/meta/rollout.meta/tool_call.arguments) to `1`, making
+    // HTTP-ingested id/version disagree with the JSONL path and with Python.
+    const body = IngestSamplesRequestSchema.parse(parseJsonValue(await context.req.text()))
     const dataset = await getWorkspace(context).addSamples(body.samples, {
       name: body.name,
       message: body.message,

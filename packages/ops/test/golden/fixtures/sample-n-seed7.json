@@ -1,0 +1,10 @@
+{
+  "_comment": "Committed Python expectation for seeded sampling (ADR-flagged determinism risk #1). `ids` are the exact rows selected by `ops.sample_n(n=3, seed=7)` over the ops fixture, in Python polars order. nodejs-polars must select the same ids in the same order. See fix #5.",
+  "n": 3,
+  "seed": 7,
+  "ids": [
+    "d9d1b62e735973e2acfd20d9ea636b701701831a0f1eac2d1be4fa34ad2fe921",
+    "6440ac5480d8fb1648630912be0f9e4d0633c8171ef6eff8c73dd88b44526992",
+    "65ab59b2924aef9c5d694754e572947b906a8b55cc92245d28c2cbb45d95b749"
+  ]
+}

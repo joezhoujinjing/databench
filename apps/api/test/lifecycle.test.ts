@@ -253,6 +253,41 @@ describe('api lifecycle', () => {
     const checkedSamples = await getJson<SamplesPage>(app, `/v1/datasets/${validateRef}/samples`)
     expect(checkedSamples.items.every((sample) => sample.signals.vocab_brand_valid)).toBe(true)
   })
+
+  test('vocabulary routes surface invariant and extractor errors in the shared envelope', async () => {
+    const { app, prefix } = makeApp()
+
+    // 422: a vocabulary whose alias maps to two canonicals violates the
+    // invariants; PUT must reject it as a validation error (parity: test_vocabulary.py).
+    const conflict = await app.fetch(
+      request(`/v1/vocabularies/${encodeURIComponent(`${prefix}-bad`)}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          dimension: 'brand',
+          terms: [
+            { canonical: 'A', aliases: ['x'] },
+            { canonical: 'B', aliases: ['x'] },
+          ],
+        }),
+      }),
+    )
+    expect(conflict.status).toBe(422)
+    expect(((await conflict.json()) as ErrorResponse).error.code).toBe('validation_error')
+
+    // 400: deriving for a dimension with no extractor preset and no override
+    // body is a bad request.
+    const missingExtractor = await app.fetch(
+      request(
+        `/v1/vocabularies/${encodeURIComponent(`${prefix}-color`)}:derive?dataset=${encodeURIComponent(
+          `${prefix}-missing`,
+        )}&dimension=color`,
+        { method: 'POST' },
+      ),
+    )
+    expect(missingExtractor.status).toBe(400)
+    expect(((await missingExtractor.json()) as ErrorResponse).error.code).toBe('bad_request')
+  })
 })
 
 function makeApp(): {

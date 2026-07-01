@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   CreateBucketCommand,
@@ -23,7 +23,11 @@ const MINIO_CONFIG = {
   forcePathStyle: true,
 }
 
-const BENCH_STORE = '/Users/hanlu/Desktop/databench/databench/bench/store'
+// Legacy bench store lives in the external Python repo; its path is configurable
+// via `DATABENCH_LEGACY_REPO`. The test that reads it is gated on its presence
+// (see `test.runIf` below) so CI/other machines skip it instead of ENOENT-ing.
+const LEGACY_REPO = process.env.DATABENCH_LEGACY_REPO ?? '/Users/hanlu/Desktop/databench/databench'
+const BENCH_STORE = join(LEGACY_REPO, 'bench', 'store')
 const BENCH_VERSION = '0021f72168030ba1d57110c96a10a4cc7f2194d37dfe1a131726785c2e215b44'
 
 const client = new S3Client({
@@ -100,27 +104,30 @@ describe('S3Store against MinIO', () => {
     await expect(store.read(dataset.version)).rejects.toBeInstanceOf(NotFoundError)
   })
 
-  test('can read objects laid out like the legacy bench store', async () => {
-    const keys = storeObjectKeys(BENCH_VERSION)
-    const shard = BENCH_VERSION.slice(0, 2)
-    await putObject(
-      keys.parquet,
-      readFileSync(join(BENCH_STORE, 'objects', shard, `${BENCH_VERSION}.parquet`)),
-      'application/vnd.apache.parquet',
-    )
-    await putObject(
-      keys.manifest,
-      readFileSync(join(BENCH_STORE, 'objects', shard, `${BENCH_VERSION}.manifest.json`)),
-      'application/json',
-    )
+  test.runIf(existsSync(BENCH_STORE))(
+    'can read objects laid out like the legacy bench store',
+    async () => {
+      const keys = storeObjectKeys(BENCH_VERSION)
+      const shard = BENCH_VERSION.slice(0, 2)
+      await putObject(
+        keys.parquet,
+        readFileSync(join(BENCH_STORE, 'objects', shard, `${BENCH_VERSION}.parquet`)),
+        'application/vnd.apache.parquet',
+      )
+      await putObject(
+        keys.manifest,
+        readFileSync(join(BENCH_STORE, 'objects', shard, `${BENCH_VERSION}.manifest.json`)),
+        'application/json',
+      )
 
-    const dataset = await store.read(BENCH_VERSION)
+      const dataset = await store.read(BENCH_VERSION)
 
-    expect(dataset.version).toBe(BENCH_VERSION)
-    expect(dataset.manifest.version).toBe(BENCH_VERSION)
-    expect(dataset.manifest.name).toBe('pref-raw')
-    expect(dataset.length).toBe(dataset.manifest.num_rows)
-  })
+      expect(dataset.version).toBe(BENCH_VERSION)
+      expect(dataset.manifest.version).toBe(BENCH_VERSION)
+      expect(dataset.manifest.name).toBe('pref-raw')
+      expect(dataset.length).toBe(dataset.manifest.num_rows)
+    },
+  )
 })
 
 function makeDataset(): Dataset {

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import {
   deriveVocabulary,
@@ -8,10 +8,22 @@ import {
   type Sample,
   sampleId,
   validateSamples,
+  vocabularyContent,
   withVocabularyId,
 } from '../src/index.js'
 
 const PYTHON = '/Users/hanlu/Desktop/databench/databench/.venv/bin/python'
+
+// Committed Python expectation: a vocabulary whose canonicals mix case, so the
+// content-hash (id) depends on sort order. Python sorts by Unicode code point
+// ('A' < 'a'); `localeCompare` would reorder them per host locale (fix #2).
+const vocabFixture = JSON.parse(
+  readFileSync(new URL('./golden/fixtures/vocabulary-id.json', import.meta.url), 'utf8'),
+) as {
+  input: { dimension: string; terms: Array<{ canonical: string; aliases: string[] }> }
+  content: { dimension: string; terms: Array<{ canonical: string; aliases: string[] }> }
+  id: string
+}
 const BRAND = { source: 'assistant_json' as const, raw_key: 'raw_brand', std_key: 'std_brand' }
 const UNIT = { source: 'assistant_json' as const, raw_key: 'raw_unit', std_key: 'std_unit' }
 
@@ -166,7 +178,49 @@ describe('vocabulary', () => {
   })
 })
 
+describe('vocabulary content id is code-point ordered (locale independent)', () => {
+  test('mixed-case canonicals hash to the Python golden id', () => {
+    const vocabulary = withVocabularyId(parseVocabularyInput(vocabFixture.input))
+
+    expect(vocabulary.id).toBe(vocabFixture.id)
+    expect(vocabularyContent(vocabFixture.input)).toEqual(vocabFixture.content)
+  })
+
+  test('content order follows Unicode code points, not host-locale collation', () => {
+    const canonicals = vocabFixture.input.terms.map((term) => term.canonical)
+    const contentOrder = vocabularyContent(vocabFixture.input).terms.map((term) => term.canonical)
+    const localeOrder = [...canonicals].sort((left, right) => left.localeCompare(right))
+
+    // Code-point order puts uppercase first; this is what we hash.
+    expect(contentOrder).toEqual(['Apple', 'Banana', 'apple', 'banana'])
+    // Guard: the fixture is chosen so locale collation genuinely disagrees, so
+    // this test would break if the sort ever regressed to `localeCompare`.
+    expect(localeOrder).not.toEqual(contentOrder)
+  })
+})
+
 describe.runIf(existsSync(PYTHON))('live Python vocabulary parity', () => {
+  test('vocabulary id matches Python for mixed-case canonicals', () => {
+    const script = `
+import json
+import sys
+from databench import Vocabulary
+
+vocab = Vocabulary(**json.loads(sys.stdin.read()))
+print(json.dumps({"id": vocab.id, "content": vocab.content_dict()}, ensure_ascii=False))
+`
+    const output = spawnSync(PYTHON, ['-c', script], {
+      encoding: 'utf8',
+      input: JSON.stringify(vocabFixture.input),
+    })
+
+    expect(output.status, output.stderr).toBe(0)
+    const python = JSON.parse(output.stdout) as { id: string; content: unknown }
+
+    expect(python.id).toBe(vocabFixture.id)
+    expect(python.content).toEqual(vocabFixture.content)
+  })
+
   test('normalize writes assistant JSON and sample ids the same way as Python', () => {
     const input = sft('远东', '远东')
     const vocabulary = withVocabularyId(

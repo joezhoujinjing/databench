@@ -9,7 +9,10 @@ export const enrichLength = defineTransform(
 
       sample.signals = {
         ...sample.signals,
-        char_len: text.length,
+        // Count Unicode code points (matching Python `len(str)`), NOT
+        // `text.length` (UTF-16 code units) — otherwise astral characters
+        // (emoji, CJK ext-B) inflate the count and diverge from Python.
+        char_len: [...text].length,
         word_len: pythonWordCount(text),
       }
 

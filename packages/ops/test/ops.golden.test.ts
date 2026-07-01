@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Dataset } from '@databench/engine'
@@ -16,6 +16,13 @@ import {
 } from '../src/index.js'
 
 const PYTHON = '/Users/hanlu/Desktop/databench/databench/.venv/bin/python'
+
+// Committed Python expectation: exact rows chosen by seeded sampling (ADR-flagged
+// determinism risk #1). nodejs-polars must select the same ids in the same order
+// as Python polars for seed=7 (fix #5).
+const seedSample = JSON.parse(
+  readFileSync(new URL('./golden/fixtures/sample-n-seed7.json', import.meta.url), 'utf8'),
+) as { n: number; seed: number; ids: string[] }
 
 const samples = [
   {
@@ -148,7 +155,22 @@ describe('built-in transforms', () => {
 
     const noOp = sampleN.fn(dataset(), sampleN.buildParams({ n: 99 }).params) as Dataset
     expect(ids(noOp)).toEqual(ids(dataset()))
-    expect(result.sampledIds).toHaveLength(3)
+    // Seeded sampling must be reproducible AND match Python's selection, not
+    // merely return three rows (the old assertion let a seed→row drift slip by).
+    expect(result.sampledIds).toEqual(seedSample.ids)
+  })
+
+  test('char_len counts Unicode code points like Python len(), not UTF-16 units', () => {
+    // "a🍎b" is 3 code points but 4 UTF-16 code units; Python len() == 3.
+    expect('a🍎b'.length).toBe(4)
+
+    const astral = Dataset.fromSamples(
+      [{ kind: 'sft', messages: [{ role: 'user', content: 'a🍎b' }] }],
+      'astral',
+    )
+    const [sample] = Array.from((enrichLength.fn(astral) as Dataset).toSamples())
+
+    expect(normalizeSignals(sample?.signals ?? {}).char_len).toBe(3)
   })
 
   test('filter_by_signal defaults keep all rows', () => {
