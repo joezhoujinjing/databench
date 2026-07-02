@@ -11,21 +11,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      # Install pnpm (version from the root packageManager field) BEFORE
+      # setup-node, so setup-node's pnpm store cache can resolve the binary.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
-          # pnpm is provided by corepack in the next step, so it isn't on PATH
-          # when setup-node runs. Disable its package-manager cache probe, which
-          # would otherwise fail with "Unable to locate executable file: pnpm".
-          package-manager-cache: false
-      - run: corepack enable
+          cache: pnpm
+
       - run: pnpm install --frozen-lockfile
-      - run: docker compose up -d
-      - run: docker compose ps
+
+      # Stateful backends for the golden/e2e tests. --wait blocks until postgres
+      # and minio report healthy (docker-compose healthchecks); store tests
+      # create their own buckets, so minio-init is not required here.
+      - run: docker compose up -d --wait postgres minio
+
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm openapi:check
+
       - if: always()
-        run: docker compose down
+        run: docker compose down -v

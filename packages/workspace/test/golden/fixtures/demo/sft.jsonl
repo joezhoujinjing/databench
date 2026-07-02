@@ -1,0 +1,5 @@
+{"messages": [{"role": "user", "content": "What is the capital of France?"}, {"role": "assistant", "content": "The capital of France is Paris."}]}
+{"messages": [{"role": "user", "content": "What is the capital of Japan?"}, {"role": "assistant", "content": "The capital of Japan is Tokyo."}]}
+{"messages": [{"role": "user", "content": "What is the capital of France?"}, {"role": "assistant", "content": "The capital of France is Paris."}]}
+{"messages": [{"role": "system", "content": "You are concise."}, {"role": "user", "content": "Define entropy in one sentence."}, {"role": "assistant", "content": "Entropy is a measure of the disorder or uncertainty in a system."}]}
+{"messages": [{"role": "user", "content": "Translate 'hello' to Spanish."}, {"role": "assistant", "content": "'Hello' in Spanish is 'hola'."}]}

@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Catalog, createPrismaClient } from '@databench/catalog'
 import { Dataset } from '@databench/engine'
 import { dedup, enrichLength, filterBySignal } from '@databench/ops'
@@ -10,7 +11,9 @@ import { afterAll, beforeEach, describe, expect, test } from 'vitest'
 import { mix, Workspace } from '../src/index.js'
 import { createMemoryStore } from './memory-store.js'
 
-const DEMO = '/Users/hanlu/Desktop/databench/databench/examples/demo'
+// Demo fixtures vendored into the repo (byte-identical to legacy examples/demo)
+// so this test is CI-portable without the Python repo.
+const DEMO = fileURLToPath(new URL('./golden/fixtures/demo', import.meta.url))
 
 const prisma = createPrismaClient()
 
