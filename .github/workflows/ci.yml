@@ -28,6 +28,13 @@ jobs:
       # create their own buckets, so minio-init is not required here.
       - run: docker compose up -d --wait postgres minio
 
+      # The pg driver adapter ignores the connection URL's ?schema param, so the
+      # runtime queries the public schema. Migrate it here (CI's DB starts empty;
+      # locally it happens to be migrated already).
+      - run: pnpm exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://databench:databench@localhost:55432/databench?schema=public
+
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm typecheck
