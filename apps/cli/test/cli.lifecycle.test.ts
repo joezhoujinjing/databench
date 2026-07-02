@@ -248,7 +248,8 @@ describe('cli lifecycle (real Workspace)', () => {
     await run(['lineage', 'mixed', '--compact'])
     expect((json() as { produced_by?: { op: string } }).produced_by?.op).toBe('recipe:cli-mix')
 
-    // re-materializing the same recipe is reproducible (cache hit → same version)
+    // re-materializing the same recipe yields the same version (deterministic;
+    // also served from the run cache — this asserts idempotence, not the cache path)
     stdout.length = 0
     await run(['recipe', 'materialize', recipePath, '--compact'])
     expect((json() as { version: string }).version).toBe(first.version)
@@ -287,7 +288,18 @@ describe('cli lifecycle (real Workspace)', () => {
         '--compact',
       ]),
     ).toBe(EXIT.ok)
-    expect(json()).toMatchObject({ name: 'brand', dimension: 'brand', status: 'draft' })
+    const draft = json() as {
+      name: string
+      dimension: string
+      status: string
+      terms: { canonical: string; aliases: string[] }[]
+    }
+    expect(draft).toMatchObject({ name: 'brand', dimension: 'brand', status: 'draft' })
+    // derive must fold the (raw → std) pairs into canonical terms with aliases
+    const canonicals = draft.terms.map((term) => term.canonical)
+    expect(canonicals).toEqual(expect.arrayContaining(['远东电缆', '特变电工', '怪牌']))
+    const yuandong = draft.terms.find((term) => term.canonical === '远东电缆')
+    expect(yuandong?.aliases).toContain('远东')
 
     stdout.length = 0
     await run(['vocab', 'list', '--compact'])
@@ -297,7 +309,26 @@ describe('cli lifecycle (real Workspace)', () => {
     await run(['vocab', 'show', 'brand', '--compact'])
     expect((json() as { name: string }).name).toBe('brand')
 
-    // normalize rewrites the dataset in place (extractor resolved from the vocab)
+    // normalize a dataset whose std is wrong: the alias 远东 must be rewritten to
+    // the canonical 远东电缆 (proves normalize actually rewrites, not passes through)
+    const denormPath = join(dir, 'denorm.json')
+    await writeFile(
+      denormPath,
+      JSON.stringify([
+        {
+          kind: 'sft',
+          messages: [
+            { role: 'user', content: 'x' },
+            {
+              role: 'assistant',
+              content: JSON.stringify({ raw_brand: '远东', std_brand: 'WRONG', params: {} }),
+            },
+          ],
+        },
+      ]),
+    )
+    await run(['dataset', 'add', '--samples', denormPath, '--name', 'vocab_denorm', '--compact'])
+
     stdout.length = 0
     expect(
       await run([
@@ -305,21 +336,113 @@ describe('cli lifecycle (real Workspace)', () => {
         'normalize',
         'brand',
         '--dataset',
-        'vocab_raw',
+        'vocab_denorm',
         '--ref',
         'vocab_norm',
         '--compact',
       ]),
     ).toBe(EXIT.ok)
-    expect((json() as { num_rows: number }).num_rows).toBe(4)
+    expect((json() as { num_rows: number }).num_rows).toBe(1)
 
-    // validate returns a summary + annotated dataset manifest
+    // read the normalized sample back and confirm std_brand was rewritten
+    stdout.length = 0
+    await run(['dataset', 'samples', 'vocab_norm', '--compact'])
+    const normalized = json() as { items: { messages: { content: string }[] }[] }
+    const payload = JSON.parse(normalized.items[0]?.messages.at(-1)?.content ?? '{}') as {
+      std_brand?: string
+    }
+    expect(payload.std_brand).toBe('远东电缆')
+
+    // validate the clean dataset: everything resolves, so nothing is offending
     stdout.length = 0
     expect(await run(['vocab', 'validate', 'brand', '--dataset', 'vocab_raw', '--compact'])).toBe(
       EXIT.ok,
     )
-    const validation = json() as { summary: { checked: number }; dataset: { num_rows: number } }
-    expect(validation.summary.checked).toBe(4)
+    const validation = json() as {
+      summary: { checked: number; invalid: number; offending_values: Record<string, number> }
+      dataset: { num_rows: number }
+    }
+    expect(validation.summary).toEqual({ checked: 4, invalid: 0, offending_values: {} })
     expect(validation.dataset.num_rows).toBe(4)
+  })
+
+  test('vocab validate flags out-of-vocabulary values', async () => {
+    const badPath = join(dir, 'bad.json')
+    await writeFile(
+      badPath,
+      JSON.stringify([
+        {
+          kind: 'sft',
+          messages: [
+            { role: 'user', content: 'x' },
+            {
+              role: 'assistant',
+              content: JSON.stringify({ raw_brand: '陌生牌', std_brand: '陌生牌', params: {} }),
+            },
+          ],
+        },
+      ]),
+    )
+    await run(['dataset', 'add', '--samples', badPath, '--name', 'vocab_bad', '--compact'])
+
+    stdout.length = 0
+    expect(await run(['vocab', 'validate', 'brand', '--dataset', 'vocab_bad', '--compact'])).toBe(
+      EXIT.ok,
+    )
+    const summary = (
+      json() as { summary: { invalid: number; offending_values: Record<string, number> } }
+    ).summary
+    expect(summary.invalid).toBeGreaterThan(0)
+    expect(summary.offending_values).toHaveProperty('陌生牌')
+  })
+
+  test('vocab derive honors an explicit --extractor override over the preset', async () => {
+    stdout.length = 0
+    expect(
+      await run([
+        'vocab',
+        'derive',
+        'brand_x',
+        '--dataset',
+        'vocab_raw',
+        '--dimension',
+        'brand',
+        '--extractor',
+        JSON.stringify({ source: 'assistant_json', raw_key: 'raw_x', std_key: 'std_x' }),
+        '--compact',
+      ]),
+    ).toBe(EXIT.ok)
+    // the recorded extractor is the override, not the brand preset (raw_brand)
+    expect((json() as { meta: { extractor: { raw_key: string } } }).meta.extractor.raw_key).toBe(
+      'raw_x',
+    )
+  })
+
+  test('vocab curate saves a curated vocabulary; the CLI name overrides the file', async () => {
+    const curatePath = join(dir, 'curate.json')
+    await writeFile(
+      curatePath,
+      JSON.stringify({
+        name: 'name_in_file',
+        dimension: 'color',
+        terms: [{ canonical: '红', aliases: ['red'], meta: {} }],
+        meta: {},
+      }),
+    )
+
+    stdout.length = 0
+    expect(await run(['vocab', 'curate', 'curated_color', '--file', curatePath, '--compact'])).toBe(
+      EXIT.ok,
+    )
+    const saved = json() as { name: string; status: string; dimension: string }
+    expect(saved).toMatchObject({ name: 'curated_color', status: 'curated', dimension: 'color' })
+  })
+
+  test('vocab normalize on an unknown dataset exits 3', async () => {
+    stdout.length = 0
+    expect(
+      await run(['vocab', 'normalize', 'brand', '--dataset', 'no_such_dataset', '--compact']),
+    ).toBe(EXIT.notFound)
+    expect(JSON.parse(stderr.join('')).error.code).toBe('not_found')
   })
 })
