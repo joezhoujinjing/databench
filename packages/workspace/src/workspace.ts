@@ -89,6 +89,16 @@ export interface JsonlExport {
   readonly lines: Iterable<string>
 }
 
+export interface CheckResult {
+  readonly ok: boolean
+  readonly error?: string
+}
+
+export interface HealthReport {
+  readonly database: CheckResult
+  readonly store: CheckResult
+}
+
 export class Workspace {
   readonly root: string | null
   readonly store: Store
@@ -108,6 +118,19 @@ export class Workspace {
 
   async close(): Promise<void> {
     await this.catalog.close()
+  }
+
+  // Probe the two stateful backends so callers (e.g. the CLI `doctor`) can tell
+  // a broken environment (DB unreachable, migrations not applied, bucket
+  // missing) apart from an ordinary not-found. The error message distinguishes
+  // the cases (connection refused vs "relation does not exist" vs NoSuchBucket).
+  async check(): Promise<HealthReport> {
+    return {
+      database: await probeHealth(() => this.catalog.listRefs()),
+      store: await probeHealth(() =>
+        this.store.ping ? this.store.ping() : this.store.exists('__databench_doctor__'),
+      ),
+    }
   }
 
   async addSamples(
@@ -554,6 +577,15 @@ export class Workspace {
       vocabulary.dimension,
       vocabulary.terms.length,
     )
+  }
+}
+
+async function probeHealth(probe: () => Promise<unknown>): Promise<CheckResult> {
+  try {
+    await probe()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
 }
 

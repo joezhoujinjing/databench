@@ -83,6 +83,26 @@ export function defaultCapabilities(): Capabilities {
   }
 }
 
+// The service's declared capability policy (per D1/D2), single-sourced so the
+// HTTP API and the CLI cannot drift. `transforms` is runtime-derived (whether
+// any transform is registered), so callers pass it in.
+export function serviceCapabilities(runtime: { readonly transforms: boolean }): Capabilities {
+  return {
+    api_version: API_VERSION,
+    min_client: MIN_CLIENT,
+    features: {
+      transforms: runtime.transforms,
+      recipes: true,
+      lineage: true,
+      jsonl_ingest: true,
+      export: true,
+      synthesis: false,
+      annotation: false,
+      vocabularies: true,
+    },
+  }
+}
+
 export const IngestSamplesRequestSchema = z.object({
   name: z.string().nullable().default(null),
   message: z.string().nullable().default(null),

@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { ZodError, z } from 'zod'
 
 export const ErrorBodySchema = z.object({
   code: z.string(),
@@ -56,4 +56,36 @@ export class ConflictError extends DomainError {
   constructor(message: string, detail?: unknown) {
     super('conflict', message, detail)
   }
+}
+
+// The single source of the error taxonomy. Both transports classify with this
+// and map the result to their own surface: apps/api → HTTP status, apps/cli →
+// exit code. Mirrors the instanceof ladder both need (HTTPException is
+// HTTP-only and handled separately by the API before classification).
+export type ErrorClass =
+  | 'not_found'
+  | 'conflict'
+  | 'validation_error'
+  | 'bad_request'
+  | 'internal_error'
+
+export function classifyError(error: unknown): ErrorClass {
+  if (error instanceof NotFoundError) {
+    return 'not_found'
+  }
+  if (error instanceof ConflictError) {
+    return 'conflict'
+  }
+  if (error instanceof ValidationError || error instanceof ZodError) {
+    return 'validation_error'
+  }
+  if (error instanceof BadInputError || error instanceof TypeError) {
+    return 'bad_request'
+  }
+  // A plain `Error` (constructor === Error) is treated as caller/input error,
+  // like the API; other Error subclasses fall through to internal.
+  if (error instanceof Error && error.constructor === Error) {
+    return 'bad_request'
+  }
+  return 'internal_error'
 }

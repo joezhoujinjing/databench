@@ -5,8 +5,10 @@ export { getTransform, listTransforms, TRANSFORMS, type TransformRegistry } from
 export {
   type AddJsonlOptions,
   type AddOptions,
+  type CheckResult,
   coerceDataset,
   type DatasetLike,
+  type HealthReport,
   type JsonlExport,
   type LineageNode,
   type MaterializeOptions,
