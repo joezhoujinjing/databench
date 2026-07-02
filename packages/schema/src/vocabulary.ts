@@ -1,6 +1,6 @@
 import { hashObj } from '@databench/hashing'
 import { z } from 'zod'
-import { ValidationError } from './errors.js'
+import { BadInputError, ValidationError } from './errors.js'
 import { JsonObjectSchema, type Sample } from './sample.js'
 
 export const VocabularyStatusSchema = z.enum(['draft', 'curated'])
@@ -150,6 +150,30 @@ export function vocabularyExtractor(vocabulary: Pick<Vocabulary, 'meta'>): Extra
   return spec && typeof spec === 'object' && !Array.isArray(spec)
     ? ExtractorSchema.parse(spec)
     : null
+}
+
+// Default extractors keyed by dimension, so `derive`/`normalize`/`validate` work
+// without an explicit extractor for the common dimensions. Single-sourced here
+// so apps/api and apps/cli resolve extractors identically.
+export const EXTRACTOR_PRESETS: Record<string, Extractor> = {
+  brand: { source: 'assistant_json', raw_key: 'raw_brand', std_key: 'std_brand' },
+  unit: { source: 'assistant_json', raw_key: 'raw_unit', std_key: 'std_unit' },
+}
+
+// Resolve the extractor for applying a vocabulary: explicit override, else the
+// one recorded at derive time (meta.extractor), else a preset matching the
+// dimension. Throws BadInputError when none applies.
+export function resolveExtractor(vocabulary: Vocabulary, override: Extractor | null): Extractor {
+  const extractor =
+    override ?? vocabularyExtractor(vocabulary) ?? EXTRACTOR_PRESETS[vocabulary.dimension]
+
+  if (!extractor) {
+    throw new BadInputError(
+      `no extractor for vocabulary ${JSON.stringify(vocabulary.name ?? vocabulary.dimension)}: it records none and no preset matches its dimension; supply one explicitly`,
+    )
+  }
+
+  return extractor
 }
 
 export function extractLabelPair(sample: Sample, extractor: Extractor | ExtractorFn): LabelPair {

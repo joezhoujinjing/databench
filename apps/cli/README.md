@@ -39,6 +39,18 @@ databench dataset export demo --fmt sft -o out.jsonl
 databench transform list
 databench transform run sample_n --input demo --params '{"n":5}' --ref demo_small
 
+databench recipe materialize ./recipe.json --ref mixed   # reproducible mixture
+
+databench ref list
+databench ref resolve demo          # → { name, version }
+
+databench vocab derive brand --dataset demo --dimension brand
+databench vocab list
+databench vocab show brand
+databench vocab curate brand --file ./brand.json
+databench vocab normalize brand --dataset demo --ref demo_norm
+databench vocab validate brand --dataset demo
+
 databench lineage demo_small
 databench meta capabilities
 databench meta doctor               # probe DB + object store connectivity
@@ -57,6 +69,14 @@ Samples must be **canonical** (each carries an explicit `kind`, e.g.
 does **not** auto-detect kind (only the JSONL path does). It uses the
 lexeme-preserving parse path for hash parity. If the body carries
 `name`/`message` they are used; `--name`/`--message` flags **override** them.
+
+### `vocab` extractors
+
+`derive`/`normalize`/`validate` need an extractor. Resolution order: `--extractor`
+(inline JSON) → the extractor recorded on the vocabulary at derive time → a
+built-in preset matching the dimension (`brand`, `unit`). If none applies, the
+command errors. This mirrors the API's resolution (single-sourced in
+`@databench/schema`).
 
 ### `meta doctor`
 

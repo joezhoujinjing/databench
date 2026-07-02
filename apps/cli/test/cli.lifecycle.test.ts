@@ -54,10 +54,31 @@ const SAMPLES_ARRAY = JSON.stringify([
   },
 ])
 
+// Brand-labeled sft samples (assistant content is a JSON blob the `brand`
+// extractor preset reads), matching the workspace golden vocab fixtures.
+const VOCAB_SAMPLES = JSON.stringify(
+  [
+    ['远东', '远东电缆'],
+    ['远东电缆', '远东电缆'],
+    ['TBEA', '特变电工'],
+    ['怪牌', '怪牌'],
+  ].map(([raw, std]) => ({
+    kind: 'sft',
+    messages: [
+      { role: 'user', content: 'normalize this' },
+      {
+        role: 'assistant',
+        content: JSON.stringify({ raw_brand: raw, std_brand: std, params: {} }),
+      },
+    ],
+  })),
+)
+
 let workspace: Workspace
 let dir: string
 let jsonlPath: string
 let samplesPath: string
+let vocabPath: string
 let stdout: string[]
 let stderr: string[]
 
@@ -68,8 +89,10 @@ beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), 'databench-cli-e2e-'))
   jsonlPath = join(dir, 'in.jsonl')
   samplesPath = join(dir, 'samples.json')
+  vocabPath = join(dir, 'vocab-samples.json')
   await writeFile(jsonlPath, `${JSONL}\n`)
   await writeFile(samplesPath, SAMPLES_ARRAY)
+  await writeFile(vocabPath, VOCAB_SAMPLES)
 })
 
 afterAll(async () => {
@@ -194,5 +217,109 @@ describe('cli lifecycle (real Workspace)', () => {
     stdout.length = 0
     expect(await run(['dataset', 'show', 'no_such_ref', '--compact'])).toBe(EXIT.notFound)
     expect(JSON.parse(stderr.join('')).error.code).toBe('not_found')
+  })
+
+  test('recipe materialize mixes named datasets reproducibly', async () => {
+    await run(['dataset', 'add', jsonlPath, '--name', 'mix_a', '--compact'])
+    await run(['dataset', 'add', '--samples', samplesPath, '--name', 'mix_b', '--compact'])
+    const recipePath = join(dir, 'recipe.json')
+    await writeFile(
+      recipePath,
+      JSON.stringify({
+        name: 'cli-mix',
+        sources: [
+          { dataset: 'mix_a', weight: 1 },
+          { dataset: 'mix_b', weight: 1 },
+        ],
+        target_size: 4,
+        seed: 0,
+      }),
+    )
+
+    stdout.length = 0
+    expect(await run(['recipe', 'materialize', recipePath, '--ref', 'mixed', '--compact'])).toBe(
+      EXIT.ok,
+    )
+    const first = json() as { version: string; num_rows: number }
+    expect(first.num_rows).toBeGreaterThan(0)
+
+    // lineage records the recipe op
+    stdout.length = 0
+    await run(['lineage', 'mixed', '--compact'])
+    expect((json() as { produced_by?: { op: string } }).produced_by?.op).toBe('recipe:cli-mix')
+
+    // re-materializing the same recipe is reproducible (cache hit → same version)
+    stdout.length = 0
+    await run(['recipe', 'materialize', recipePath, '--compact'])
+    expect((json() as { version: string }).version).toBe(first.version)
+  })
+
+  test('ref list and resolve reflect created refs', async () => {
+    await run(['dataset', 'add', jsonlPath, '--name', 'ref_demo', '--compact'])
+
+    stdout.length = 0
+    await run(['ref', 'list', '--compact'])
+    const list = json() as { items: { name: string; version: string }[] }
+    expect(list.items.find((item) => item.name === 'ref_demo')).toBeDefined()
+
+    stdout.length = 0
+    expect(await run(['ref', 'resolve', 'ref_demo', '--compact'])).toBe(EXIT.ok)
+    expect((json() as { name: string }).name).toBe('ref_demo')
+
+    stdout.length = 0
+    expect(await run(['ref', 'resolve', 'no_such_ref_zzz', '--compact'])).toBe(EXIT.notFound)
+  })
+
+  test('vocab derive → list → show → normalize → validate', async () => {
+    await run(['dataset', 'add', '--samples', vocabPath, '--name', 'vocab_raw', '--compact'])
+
+    // derive using the built-in brand preset
+    stdout.length = 0
+    expect(
+      await run([
+        'vocab',
+        'derive',
+        'brand',
+        '--dataset',
+        'vocab_raw',
+        '--dimension',
+        'brand',
+        '--compact',
+      ]),
+    ).toBe(EXIT.ok)
+    expect(json()).toMatchObject({ name: 'brand', dimension: 'brand', status: 'draft' })
+
+    stdout.length = 0
+    await run(['vocab', 'list', '--compact'])
+    expect((json() as { total: number }).total).toBeGreaterThan(0)
+
+    stdout.length = 0
+    await run(['vocab', 'show', 'brand', '--compact'])
+    expect((json() as { name: string }).name).toBe('brand')
+
+    // normalize rewrites the dataset in place (extractor resolved from the vocab)
+    stdout.length = 0
+    expect(
+      await run([
+        'vocab',
+        'normalize',
+        'brand',
+        '--dataset',
+        'vocab_raw',
+        '--ref',
+        'vocab_norm',
+        '--compact',
+      ]),
+    ).toBe(EXIT.ok)
+    expect((json() as { num_rows: number }).num_rows).toBe(4)
+
+    // validate returns a summary + annotated dataset manifest
+    stdout.length = 0
+    expect(await run(['vocab', 'validate', 'brand', '--dataset', 'vocab_raw', '--compact'])).toBe(
+      EXIT.ok,
+    )
+    const validation = json() as { summary: { checked: number }; dataset: { num_rows: number } }
+    expect(validation.summary.checked).toBe(4)
+    expect(validation.dataset.num_rows).toBe(4)
   })
 })
