@@ -11,17 +11,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      # Install pnpm (version from the root packageManager field) BEFORE
+      # setup-node, so setup-node's pnpm store cache can resolve the binary.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
-      - run: corepack enable
+          cache: pnpm
+
       - run: pnpm install --frozen-lockfile
-      - run: docker compose up -d
-      - run: docker compose ps
+
+      # Stateful backends for the golden/e2e tests. --wait blocks until postgres
+      # and minio report healthy (docker-compose healthchecks); store tests
+      # create their own buckets, so minio-init is not required here.
+      - run: docker compose up -d --wait postgres minio
+
+      # The pg driver adapter ignores the connection URL's ?schema param, so the
+      # runtime queries the public schema. Migrate it here (CI's DB starts empty;
+      # locally it happens to be migrated already).
+      - run: pnpm exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://databench:databench@localhost:55432/databench?schema=public
+
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm openapi:check
+
       - if: always()
-        run: docker compose down
+        run: docker compose down -v

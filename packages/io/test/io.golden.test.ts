@@ -2,12 +2,15 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { jsonNumberValue, type Sample, sampleId } from '@databench/schema'
 import { describe, expect, test } from 'vitest'
 import { detectKind, exportRecord, readJsonl, recordToSample } from '../src/index.js'
 
 const PYTHON = '/Users/hanlu/Desktop/databench/databench/.venv/bin/python'
-const DEMO = '/Users/hanlu/Desktop/databench/databench/examples/demo'
+// Demo fixtures are vendored into the repo (byte-identical to the legacy
+// examples/demo) so this test is CI-portable without the Python repo.
+const DEMO = fileURLToPath(new URL('./golden/fixtures/demo', import.meta.url))
 
 async function collectJsonl(path: string) {
   const samples: Sample[] = []
