@@ -10,7 +10,20 @@ export interface PrismaClientOptions {
 
 export function createPrismaClient(options: PrismaClientOptions = {}): PrismaClient {
   const connectionString = options.databaseUrl ?? process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL
-  const adapter = new PrismaPg({ connectionString })
+  // Honor the connection URL's `?schema=` at the driver level. Without this the
+  // pg adapter ignores it and every connection queries `public`, so the
+  // per-package test schemas (databench_test_*) collapse onto one shared schema
+  // and parallel test runs corrupt each other. Absent/`public` → unchanged.
+  const schema = schemaFromUrl(connectionString)
+  const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined)
 
   return new PrismaClient({ adapter })
+}
+
+function schemaFromUrl(connectionString: string): string | undefined {
+  try {
+    return new URL(connectionString).searchParams.get('schema') ?? undefined
+  } catch {
+    return undefined
+  }
 }
