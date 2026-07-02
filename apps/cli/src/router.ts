@@ -3,7 +3,10 @@ import { BadInputError } from '@databench/schema'
 import { datasetCommands } from './commands/dataset.js'
 import { lineageCommands } from './commands/lineage.js'
 import { metaCommands } from './commands/meta.js'
+import { recipeCommands } from './commands/recipe.js'
+import { refCommands } from './commands/ref.js'
 import { transformCommands } from './commands/transform.js'
+import { vocabCommands } from './commands/vocab.js'
 import type { GlobalFlags } from './config.js'
 import { emitResult } from './output.js'
 import { type CommandGroup, STREAMED, type Values } from './types.js'
@@ -11,7 +14,10 @@ import { type CommandGroup, STREAMED, type Values } from './types.js'
 const COMMANDS: Record<string, CommandGroup> = {
   dataset: datasetCommands,
   transform: transformCommands,
+  recipe: recipeCommands,
+  ref: refCommands,
   lineage: lineageCommands,
+  vocab: vocabCommands,
   meta: metaCommands,
 }
 

@@ -43,6 +43,14 @@ export function requirePositional(
   return value
 }
 
+export function requireString(values: Values, key: string, label: string): string {
+  const value = optString(values, key)
+  if (value === undefined) {
+    throw new BadInputError(`${label} is required`)
+  }
+  return value
+}
+
 export function parseJsonFlag(text: string, label: string): unknown {
   try {
     return JSON.parse(text)

@@ -23,6 +23,9 @@ function fakeWorkspace(): Workspace {
     get: vi.fn(async () => ({ manifest, length: 2, toSamples: () => [].values() })),
     lineage: vi.fn(async (ref: string) => ({ version: ref, name: 'demo' })),
     check: vi.fn(async () => ({ database: { ok: true }, store: { ok: false, error: 'boom' } })),
+    listRefs: vi.fn(async () => ({ demo: 'v-demo' })),
+    getRef: vi.fn(async () => null),
+    listVocabularies: vi.fn(async () => []),
     close: vi.fn(async () => {}),
   } as unknown as Workspace
 }
@@ -119,7 +122,10 @@ describe('dispatch / run', () => {
     expect(payload.commands.map((command) => command.name)).toEqual([
       'dataset',
       'transform',
+      'recipe',
+      'ref',
       'lineage',
+      'vocab',
       'meta',
     ])
 
@@ -205,6 +211,49 @@ describe('dispatch / run', () => {
   test('garbage pagination value is rejected (not silently truncated)', async () => {
     const code = await run(['transform', 'list', '--limit', '20x'])
     expect(code).toBe(EXIT.validation)
+  })
+})
+
+describe('C2 commands (recipe / ref / vocab)', () => {
+  test('ref list returns the ref table', async () => {
+    setWorkspaceForTest(fakeWorkspace())
+    const code = await run(['ref', 'list', '--compact'])
+    expect(code).toBe(EXIT.ok)
+    const payload = JSON.parse(stdout.join('')) as { total: number; items: { name: string }[] }
+    expect(payload.items).toEqual([{ name: 'demo', version: 'v-demo' }])
+  })
+
+  test('ref resolve on an unknown ref exits 3 (not found)', async () => {
+    setWorkspaceForTest(fakeWorkspace())
+    const code = await run(['ref', 'resolve', 'nope', '--compact'])
+    expect(code).toBe(EXIT.notFound)
+    expect(JSON.parse(stderr.join('')).error.code).toBe('not_found')
+  })
+
+  test('vocab list works with no vocabularies', async () => {
+    setWorkspaceForTest(fakeWorkspace())
+    const code = await run(['vocab', 'list', '--compact'])
+    expect(code).toBe(EXIT.ok)
+    expect(JSON.parse(stdout.join('')).total).toBe(0)
+  })
+
+  test('vocab derive requires --dataset', async () => {
+    setWorkspaceForTest(fakeWorkspace())
+    const code = await run(['vocab', 'derive', 'brand', '--dimension', 'brand'])
+    expect(code).toBe(EXIT.badInput)
+  })
+
+  test('vocab derive rejects a dimension with no preset and no --extractor', async () => {
+    setWorkspaceForTest(fakeWorkspace())
+    const code = await run(['vocab', 'derive', 'x', '--dataset', 'demo', '--dimension', 'unknown'])
+    expect(code).toBe(EXIT.badInput)
+    expect(JSON.parse(stderr.join('')).error.message).toContain('no extractor preset')
+  })
+
+  test('recipe materialize requires a file positional', async () => {
+    setWorkspaceForTest(fakeWorkspace())
+    const code = await run(['recipe', 'materialize'])
+    expect(code).toBe(EXIT.badInput)
   })
 })
 

@@ -1,27 +1,22 @@
 import {
   BadInputError,
   DatasetResponseSchema,
+  EXTRACTOR_PRESETS,
   type Extractor,
   ExtractorSchema,
   PaginationQuerySchema,
   parseVocabularyInput,
+  resolveExtractor,
   ValidateResponseSchema,
   VocabulariesPageSchema,
-  type Vocabulary,
   VocabularyRequestSchema,
   VocabularyResponseSchema,
-  vocabularyExtractor,
 } from '@databench/schema'
 import { createRoute, type OpenAPIHono } from '@hono/zod-openapi'
 import { z } from 'zod'
 import type { ApiEnv } from '../context.js'
 import { getWorkspace } from '../context.js'
 import { DEFAULT_ERROR_RESPONSES, jsonResponse } from '../openapi.js'
-
-const EXTRACTOR_PRESETS: Record<string, Extractor> = {
-  brand: { source: 'assistant_json', raw_key: 'raw_brand', std_key: 'std_brand' },
-  unit: { source: 'assistant_json', raw_key: 'raw_unit', std_key: 'std_unit' },
-}
 
 const DeriveVocabularyQuerySchema = z.object({
   dataset: z.string(),
@@ -242,17 +237,4 @@ async function readOptionalExtractor(request: Request): Promise<Extractor | null
   }
 
   return parsed === null ? null : ExtractorSchema.parse(parsed)
-}
-
-function resolveExtractor(vocabulary: Vocabulary, override: Extractor | null): Extractor {
-  const extractor =
-    override ?? vocabularyExtractor(vocabulary) ?? EXTRACTOR_PRESETS[vocabulary.dimension]
-
-  if (!extractor) {
-    throw new BadInputError(
-      `no extractor for vocabulary ${JSON.stringify(vocabulary.name ?? vocabulary.dimension)}: it records none and no preset matches its dimension; supply one in the request body`,
-    )
-  }
-
-  return extractor
 }
