@@ -1,11 +1,4 @@
-import {
-  BadInputError,
-  ConflictError,
-  type DomainError,
-  ErrorResponseSchema,
-  NotFoundError,
-  ValidationError,
-} from '@databench/schema'
+import { classifyError, DomainError, type ErrorClass, ErrorResponseSchema } from '@databench/schema'
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
@@ -56,6 +49,15 @@ const HTTP_STATUS_CODE: Partial<Record<number, ErrorCode>> = {
   500: 'internal_error',
 }
 
+// HTTP status per shared taxonomy class (see @databench/schema classifyError).
+const STATUS_FOR: Record<ErrorClass, ContentfulStatusCode> = {
+  not_found: 404,
+  conflict: 409,
+  validation_error: 422,
+  bad_request: 400,
+  internal_error: 500,
+}
+
 export function installErrorHandlers(app: {
   onError: (handler: ErrorHandler<ApiEnv>) => unknown
   notFound: (handler: NotFoundHandler<ApiEnv>) => unknown
@@ -76,39 +78,37 @@ export const errorHandler: ErrorHandler<ApiEnv> = (error, context) => {
     return httpExceptionResponse(error, context)
   }
 
-  if (error instanceof ValidationError) {
+  // ZodError carries structured issues, so shape its detail specifically before
+  // falling back to the shared taxonomy for everything else.
+  if (error instanceof ZodError) {
+    return validationErrorResponse(context, 'payload validation failed', error)
+  }
+
+  const errorClass = classifyError(error)
+  const status = STATUS_FOR[errorClass]
+
+  if (error instanceof DomainError) {
     return errorResponse(context, {
-      status: STATUS_CODES.unprocessableEntity,
-      code: 'validation_error',
+      status,
+      code: error.code as ErrorCode,
       message: error.message,
       detail: error.detail,
     })
   }
 
-  if (error instanceof ZodError) {
-    return validationErrorResponse(context, 'payload validation failed', error)
-  }
-
-  if (error instanceof NotFoundError) {
-    return domainErrorResponse(context, error, STATUS_CODES.notFound)
-  }
-
-  if (error instanceof ConflictError) {
-    return domainErrorResponse(context, error, STATUS_CODES.conflict)
-  }
-
-  if (error instanceof BadInputError || error instanceof TypeError || isPlainError(error)) {
+  if (errorClass === 'internal_error') {
+    // Don't leak internal failure messages over HTTP.
     return errorResponse(context, {
-      status: STATUS_CODES.badRequest,
-      code: 'bad_request',
-      message: error.message,
+      status,
+      code: 'internal_error',
+      message: 'internal server error',
     })
   }
 
   return errorResponse(context, {
-    status: STATUS_CODES.internalError,
-    code: 'internal_error',
-    message: 'internal server error',
+    status,
+    code: errorClass,
+    message: error instanceof Error ? error.message : 'error',
   })
 }
 
@@ -143,21 +143,4 @@ function httpExceptionResponse(error: HTTPException, context: Context<ApiEnv>): 
     code: HTTP_STATUS_CODE[error.status] ?? 'error',
     message: error.message,
   })
-}
-
-function domainErrorResponse(
-  context: Context<ApiEnv>,
-  error: DomainError,
-  status: ContentfulStatusCode,
-): Response {
-  return errorResponse(context, {
-    status,
-    code: error.code as ErrorCode,
-    message: error.message,
-    detail: error.detail,
-  })
-}
-
-function isPlainError(error: unknown): error is Error {
-  return error instanceof Error && error.constructor === Error
 }

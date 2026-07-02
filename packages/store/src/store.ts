@@ -9,6 +9,10 @@ export interface Store {
   vocabularyExists(id: string): Promise<boolean>
   writeVocabulary(vocabulary: Vocabulary): Promise<string>
   readVocabulary(id: string): Promise<Vocabulary>
+  // Optional connectivity probe (e.g. HeadBucket): resolves if the backing store
+  // is reachable and the bucket exists, rejects otherwise. Used by health checks;
+  // implementations without a remote backend may omit it.
+  ping?(): Promise<void>
 }
 
 export type StoreConfig = S3StoreConfig

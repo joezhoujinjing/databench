@@ -1,6 +1,7 @@
 import {
   GetObjectCommand,
   type GetObjectCommandOutput,
+  HeadBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -29,6 +30,12 @@ export class S3Store implements Store {
   constructor(config: S3StoreConfig) {
     this.#bucket = config.bucket
     this.#client = config.client ?? new S3Client(buildS3ClientConfig(config))
+  }
+
+  // Connectivity + bucket-existence probe for health checks. Throws a
+  // distinguishable S3 error (NoSuchBucket / connection refused) when unhealthy.
+  async ping(): Promise<void> {
+    await this.#client.send(new HeadBucketCommand({ Bucket: this.#bucket }))
   }
 
   async exists(version: string): Promise<boolean> {
