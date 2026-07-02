@@ -5,3 +5,8 @@ packages:
 allowBuilds:
   '@prisma/engines': true
   prisma: true
+  # esbuild ships its native binary via an install script (used by tsup); pnpm 11
+  # hard-errors (ERR_PNPM_IGNORED_BUILDS) on unclassified build scripts, so every
+  # dependency with one must be listed here or installs fail on a clean machine/CI.
+  esbuild: true
+  lefthook: true
