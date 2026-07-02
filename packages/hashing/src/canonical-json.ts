@@ -43,7 +43,7 @@ export function canonicalJson(value: unknown): string {
 
 function encodeCanonical(value: unknown): string {
   if (isJsonNumberLexeme(value)) {
-    return value.source
+    return canonicalizeNumberSource(value.source)
   }
 
   if (value === null) {
@@ -79,6 +79,36 @@ function encodeNumber(value: number): string {
   }
 
   return String(value)
+}
+
+// Normalize a captured JSON number lexeme to the canonical form Python's
+// `json.dumps` would emit, so logically-equal numbers hash identically and match
+// the legacy reference. The lexeme exists to keep the int/float distinction
+// (`1` vs `1.0`) that a plain JS number loses; here we additionally collapse
+// redundant float spellings (`2.50`→`2.5`, `1e3`→`1000.0`) that the raw source
+// text would otherwise preserve verbatim (diverging from Python and defeating
+// dedup). Integers are kept verbatim to avoid Number() precision loss on large
+// values (the only non-canonical integer JSON allows is `-0`). Extreme-magnitude
+// floats (e.g. 1e16, 1e-7) may still format differently from Python — accepted.
+function canonicalizeNumberSource(source: string): string {
+  const isFloat = source.includes('.') || source.includes('e') || source.includes('E')
+
+  if (!isFloat) {
+    return source === '-0' ? '0' : source
+  }
+
+  const value = Number(source)
+  if (!Number.isFinite(value)) {
+    return String(value)
+  }
+  if (Object.is(value, -0)) {
+    return '-0.0'
+  }
+
+  const rendered = value.toString()
+  // A float must keep a decimal point / exponent; JS drops the ".0" on
+  // integer-valued floats (`1000.0` → "1000"), Python keeps it.
+  return /[.eE]/.test(rendered) ? rendered : `${rendered}.0`
 }
 
 function encodeObject(value: object): string {

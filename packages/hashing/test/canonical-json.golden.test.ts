@@ -55,6 +55,28 @@ describe('canonicalJson', () => {
     expect(canonicalJson({ reward: jsonNumberLexeme('1.0') })).toBe('{"reward":1.0}')
   })
 
+  test('normalizes float lexemes to the Python-canonical spelling', () => {
+    const cases: Array<[string, string]> = [
+      ['1', '1'],
+      ['-0', '0'],
+      ['1.0', '1.0'],
+      ['2.50', '2.5'],
+      ['100.00', '100.0'],
+      ['0.500', '0.5'],
+      ['1e3', '1000.0'],
+      ['2.5e0', '2.5'],
+      ['-0.0', '-0.0'],
+    ]
+    for (const [source, expected] of cases) {
+      expect(canonicalJson(jsonNumberLexeme(source))).toBe(expected)
+    }
+
+    // Redundant float spellings now hash identically (they diverged before)...
+    expect(hashObj(jsonNumberLexeme('2.50'))).toBe(hashObj(jsonNumberLexeme('2.5')))
+    // ...while the int/float distinction the lexeme exists for is preserved.
+    expect(hashObj(jsonNumberLexeme('1'))).not.toBe(hashObj(jsonNumberLexeme('1.0')))
+  })
+
   test('sorts nested object keys and does not drop undefined properties', () => {
     expect(canonicalJson({ b: 2, a: { d: 4, c: undefined } })).toBe(
       '{"a":{"c":"undefined","d":4},"b":2}',
@@ -113,5 +135,39 @@ print(json.dumps(out, ensure_ascii=False))
     for (const item of canonicalCases) {
       expect(python.find((candidate) => candidate.name === item.name)?.hash).toBe(item.hash)
     }
+  })
+
+  test('float lexeme normalization matches Python json.dumps (normal magnitudes)', () => {
+    // Extreme-magnitude floats (1e-7, 1e16) format differently in Python and are
+    // intentionally excluded — see canonicalizeNumberSource.
+    const sources = [
+      '1',
+      '-0',
+      '1.0',
+      '0.0',
+      '2.50',
+      '100.00',
+      '0.500',
+      '1e3',
+      '2.5e0',
+      '1.25',
+      '-0.0',
+    ]
+
+    const script = `
+import json, sys
+print(json.dumps([json.dumps(json.loads(s)) for s in json.loads(sys.stdin.read())]))
+`
+    const output = spawnSync(PYTHON, ['-c', script], {
+      encoding: 'utf8',
+      input: JSON.stringify(sources),
+    })
+
+    expect(output.status, output.stderr).toBe(0)
+    const python = JSON.parse(output.stdout) as string[]
+
+    sources.forEach((source, index) => {
+      expect(canonicalJson(jsonNumberLexeme(source))).toBe(python[index])
+    })
   })
 })
