@@ -121,6 +121,24 @@ describe('vocabulary', () => {
     })
   })
 
+  test('derive breaks count ties by code point, not host locale', () => {
+    // raw 'X' maps equally (1:1) to canonicals 'B' and 'a'. The winner must be
+    // the code-point-smaller 'B' (0x42 < 0x61) on EVERY machine — localeCompare
+    // would pick 'a' under most locales, making the vocabulary non-reproducible.
+    const vocabulary = deriveVocabulary([sft('X', 'B'), sft('X', 'a')], {
+      dimension: 'brand',
+      extractor: BRAND,
+    })
+    const higher = vocabulary.terms.find((term) => term.canonical === 'B')
+    const lower = vocabulary.terms.find((term) => term.canonical === 'a')
+
+    expect(higher?.aliases).toEqual(['X'])
+    expect(lower?.aliases).toEqual([])
+    expect(higher?.meta.alias_conflicts).toEqual({
+      X: { chosen: 'B', also_seen: ['a'], counts: { B: 1, a: 1 } },
+    })
+  })
+
   test('derive keeps raw values that are canonicals out of other alias lists', () => {
     const vocabulary = deriveVocabulary(
       [sft('X', 'X', '个', '个'), sft('X', 'X', '个', '包'), sft('X', 'X', '只', '包')],

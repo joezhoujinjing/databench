@@ -250,7 +250,7 @@ export function deriveVocabulary(
   const aliasesOf = new Map<string, Map<string, number>>()
   const conflictsOf = new Map<string, Map<string, AliasConflict>>()
 
-  for (const raw of [...seen.keys()].sort()) {
+  for (const raw of [...seen.keys()].sort(compareCodePoints)) {
     const candidates = seen.get(raw)
 
     if (!candidates) {
@@ -260,7 +260,7 @@ export function deriveVocabulary(
     if (canonicalCounts.has(raw)) {
       setConflict(conflictsOf, raw, raw, {
         chosen: raw,
-        also_seen: [...candidates.keys()].sort(),
+        also_seen: [...candidates.keys()].sort(compareCodePoints),
         counts: sortedRecord(candidates),
       })
       continue
@@ -268,7 +268,10 @@ export function deriveVocabulary(
 
     const winner = [...candidates.keys()].sort((left, right) => {
       const countDelta = (candidates.get(right) ?? 0) - (candidates.get(left) ?? 0)
-      return countDelta === 0 ? left.localeCompare(right) : countDelta
+      // Break count ties by Unicode code point (NOT localeCompare, which is
+      // host-locale dependent — the same input would fold onto a different
+      // canonical on different machines and disagree with Python).
+      return countDelta === 0 ? compareCodePoints(left, right) : countDelta
     })[0]
 
     if (!winner) {
@@ -280,13 +283,15 @@ export function deriveVocabulary(
     if (candidates.size > 1) {
       setConflict(conflictsOf, winner, raw, {
         chosen: winner,
-        also_seen: [...candidates.keys()].filter((candidate) => candidate !== winner).sort(),
+        also_seen: [...candidates.keys()]
+          .filter((candidate) => candidate !== winner)
+          .sort(compareCodePoints),
         counts: sortedRecord(candidates),
       })
     }
   }
 
-  const terms: Term[] = [...canonicalCounts.keys()].sort().map((canonical) => {
+  const terms: Term[] = [...canonicalCounts.keys()].sort(compareCodePoints).map((canonical) => {
     const aliases = aliasesOf.get(canonical) ?? new Map()
     const conflicts = conflictsOf.get(canonical)
     const meta: Record<string, unknown> = {
@@ -300,7 +305,7 @@ export function deriveVocabulary(
 
     return TermSchema.parse({
       canonical,
-      aliases: [...aliases.keys()].sort(),
+      aliases: [...aliases.keys()].sort(compareCodePoints),
       meta,
     })
   })
@@ -546,7 +551,7 @@ function setConflict(
 
 function sortedRecord(records: ReadonlyMap<string, number>): Record<string, number> {
   return Object.fromEntries(
-    [...records.entries()].sort(([left], [right]) => left.localeCompare(right)),
+    [...records.entries()].sort(([left], [right]) => compareCodePoints(left, right)),
   )
 }
 
@@ -554,7 +559,7 @@ function sortedConflictRecord(
   records: ReadonlyMap<string, AliasConflict>,
 ): Record<string, AliasConflict> {
   return Object.fromEntries(
-    [...records.entries()].sort(([left], [right]) => left.localeCompare(right)),
+    [...records.entries()].sort(([left], [right]) => compareCodePoints(left, right)),
   )
 }
 
