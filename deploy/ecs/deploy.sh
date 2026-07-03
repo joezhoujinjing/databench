@@ -43,11 +43,6 @@ for key in DATABASE_URL OSS_REGION OSS_BUCKET OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_S
   require_env_value "${key}"
 done
 
-if [[ -f "${LEGACY_STACK}" ]]; then
-  echo "Stopping legacy stack at ${LEGACY_STACK} to release ports 80/443..."
-  docker compose -f "${LEGACY_STACK}" down --remove-orphans
-fi
-
 echo "Loading image ${IMAGE_ARCHIVE}..."
 gzip -dc "${IMAGE_ARCHIVE}" | docker load
 
@@ -58,7 +53,12 @@ EOF
 COMPOSE=(docker compose --env-file "${APP_DIR}/compose.env" -f "${APP_DIR}/docker-compose.yml")
 
 echo "Running database migrations..."
-"${COMPOSE[@]}" run --rm api pnpm exec prisma migrate deploy
+"${COMPOSE[@]}" run --rm api node_modules/.bin/prisma migrate deploy
+
+if [[ -f "${LEGACY_STACK}" ]]; then
+  echo "Stopping legacy stack at ${LEGACY_STACK} to release ports 80/443..."
+  docker compose -f "${LEGACY_STACK}" down --remove-orphans
+fi
 
 echo "Starting databench services..."
 "${COMPOSE[@]}" up -d --remove-orphans

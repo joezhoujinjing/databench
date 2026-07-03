@@ -13,7 +13,7 @@ RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 
 FROM base AS build
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json prisma.config.ts ./
 COPY prisma ./prisma
 COPY apps ./apps
 COPY packages ./packages
