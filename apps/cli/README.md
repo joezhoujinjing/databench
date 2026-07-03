@@ -20,10 +20,13 @@ methods, so they produce byte-identical version hashes and lineage. See
 
 ## Configuration
 
-`Workspace.open()` reads env directly — `DATABASE_URL` and `S3_*` (same defaults
-as `apps/api`). Global flags: `--database-url <url>` (overrides the catalog DB;
-the object store is configured only via `S3_*` env) and `--compact` (single-line
-JSON). Both may appear anywhere in the command line.
+`Workspace.open()` reads env directly — `DATABASE_URL` and `OSS_*` (same
+defaults as `apps/api`). On startup `databench` also loads the monorepo-root
+`.env` if present (`cp .env.example .env` and fill it in), so local dev doesn't
+have to export these; real environment variables take precedence over `.env`.
+Global flags: `--database-url <url>` (overrides the catalog DB; the object store
+is configured only via `OSS_*` env) and `--compact` (single-line JSON). Both may
+appear anywhere in the command line.
 
 ## Usage
 
