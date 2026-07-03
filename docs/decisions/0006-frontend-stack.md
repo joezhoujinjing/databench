@@ -3,6 +3,7 @@
 - **状态:** Accepted
 - **日期:** 2026-06-29
 - **决策人:** owner
+- **实现状态:** 已落地于 `apps/web`;FE-0..FE-5 与 vocabularies 主流程已完成。本文继续作为前端栈 ADR,不是待办清单。
 
 ## 背景
 前端也全新重写(见 ADR-0001 更新)。后端是独立 Hono `/v1` API,前端是**纯 REST 客户端**——数据不在前端服务端取,因此**不需要 SSR/RSC**。它是数据密集的内部工具(虚拟化样本表、lineage DAG、recipe 构建、文件上传)。
@@ -24,9 +25,10 @@
 
 ## 原则
 - **契约优先不变**:只通过 `openapi-typescript`/`openapi-fetch` 消费 `/v1`;**不 import 任何后端包**(与 `apps/api` 仅共享生成的类型)。
-- **旧 `databench-ui` 是功能参考**,不是被搬运的代码;重写时按「前端功能清单」(待做)逐页保功能。
+- **旧 `databench-ui` 是功能参考**,不是被搬运的代码;已完成的前端 inventory 继续作为回归参考。
 - 选 SPA 而非 Next:内部工具、数据在独立 authed REST API 后、无 SEO 需求,SSR 收益小且会多一个 Node 服务——与「API 是唯一 Node 服务」的部署原则冲突。
 
-## 待做
-1. **前端功能清单**:仿后端那套,对旧 `databench-ui`(`~/Desktop/databench/databench-ui/`)逐页/逐交互梳理(Datasets/DatasetDetail/Transforms/Recipe/Lineage/Ingest/Vocabulary*/连接面板/i18n),防重写漏功能。
-2. `apps/web` 文件级结构见 `directory-layout.md`。
+## 维护约束
+1. `apps/web` 文件级结构见 `directory-layout.md`。
+2. API 类型只能来自 `apps/web/src/api/generated/schema.ts` 与前端 runtime wrapper;不要手写 wire 类型或 import 后端包。
+3. 行为回归参考 `docs/migration/frontend-inventory.md`、`_frontend-pages.md`、`_frontend-shell.md`。

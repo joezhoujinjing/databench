@@ -1,26 +1,28 @@
-# Tech stack — current (Python) → target (TypeScript)
+# Tech stack — implemented TypeScript stack and legacy mapping
 
 > Companion to [architecture.md](architecture.md) and
 > [decisions/0001](decisions/0001-rebuild-as-ts-monorepo.md). Package status
-> verified against npm as of 2026-06; see [feasibility/](feasibility/).
+> originally verified against npm as of 2026-06; see [feasibility/](feasibility/).
+> The rewrite is now complete; treat the TypeScript column as the current stack
+> and the Python column as legacy/golden context.
 
 ## Backend — what to replace
 
 | Layer | Current (Python) | Target (TypeScript) | Notes |
 |---|---|---|---|
-| Language / runtime | Python ≥3.10 | **TypeScript / Node ≥20** (Bun optional) | web-standard handlers ⇒ edge-capable |
+| Language / runtime | Python ≥3.10 | **TypeScript / Node 22 LTS** | `.nvmrc` is authoritative |
 | Package mgr / build | `uv` + `hatchling` | **pnpm workspaces + Turborepo + `tsup`** | monorepo tooling |
 | Dataframe engine | **Polars** | **`nodejs-polars`** (primary) | same Rust core; every op maps 1:1 |
-| Analytical SQL / out-of-core | *(implicit Polars; roadmap → Ray Data)* | **`@duckdb/node-api`** (DuckDB Neo) | larger-than-memory + SQL fallback + duckdb-wasm in UI |
+| Analytical SQL / out-of-core | *(implicit Polars; roadmap → Ray Data)* | **none active**; future `@duckdb/node-api` only via new design/ADR | current code is `nodejs-polars` only |
 | Arrow interchange | **PyArrow** | **`apache-arrow`** (JS) | zero-copy IPC; polars emits Arrow |
-| Parquet IO | Polars / PyArrow | **`nodejs-polars`** (or DuckDB `COPY`) | avoid stale `parquetjs` for the core |
+| Parquet IO | Polars / PyArrow | **`nodejs-polars`** | avoid stale `parquetjs` for the core |
 | Content hashing | **blake3** (blake2b fallback) | **`hash-wasm`** (blake3) | `@hashbuf/blake3` alt; canonical-JSON + `hashUnordered` are trivial TS |
 | Schema / validation | **Pydantic v2** | **`zod` v4** | `z.discriminatedUnion('kind', …)` |
 | OpenAPI source | FastAPI `app.openapi()` | **`@hono/zod-openapi`** | spec generated from the same zod schemas — one source of truth |
 | Catalog DB (control plane) | SQLite (stdlib `sqlite3`, WAL) | **Postgres** + **Prisma ORM** (Rust-free TS/WASM client; driver adapter `@prisma/adapter-pg`/`-neon`) | managed in prod (Neon/RDS), Docker locally; ADR-0003 / ADR-0004 |
-| Blob store (data plane) | local Parquet (fs, atomic rename) | **object storage** (S3/R2; **MinIO** locally) behind a `Store` interface | content-addressed write-once; S3 `PUT` is atomic |
+| Blob store (data plane) | local Parquet (fs, atomic rename) | **Aliyun OSS** via native `ali-oss` behind a `Store` interface | content-addressed write-once; tests can inject an in-memory store |
 | Lineage DAG | recursive Python walk | recursive **SQL CTE** (`WITH RECURSIVE`) via Prisma **TypedSQL** / `$queryRaw` | Prisma's query API has no native recursive CTE — escape to raw SQL for this one query |
-| Web framework | **FastAPI** | **Hono** (recommended, ADR-0002) | NestJS / Fastify are alternatives |
+| Web framework | **FastAPI** | **Hono** (locked, ADR-0002) | contract-first routes via `@hono/zod-openapi` |
 | HTTP server | `uvicorn` | Node http via Hono adapter | — |
 | Multipart upload | `python-multipart` | Hono `c.req.parseBody` | built-in |
 | NDJSON streaming | Starlette `StreamingResponse` | Web Streams (Hono) | first-class |
@@ -31,15 +33,16 @@
 
 | Capability | Current plan (Python) | Target (TypeScript) | Verdict |
 |---|---|---|---|
-| M3 vector backend | Lance | **`@lancedb/lancedb`** | TS-native |
+| M3 vector backend | Lance | future **`@lancedb/lancedb`** integration | TS-native candidate; not active in current code |
 | M2 synthesis | distilabel | **Vercel AI SDK / provider SDKs** over `Dataset`/`Workspace` | TS-native (capability, not the framework) |
 | M2 annotation | Argilla | external **Argilla server over REST** | stack-agnostic; integrate via HTTP |
-| Distributed scaling | Ray Data | **DuckDB out-of-core** covers the real need | Ray only as an *optional* `workers/python-*` sidecar if true cluster execution is ever mandated |
+| Distributed scaling | Ray Data | **not active**; future single-node out-of-core/job path should be designed before use | Ray only as an *optional* `workers/python-*` sidecar if true cluster execution is ever mandated |
 
-## Frontend — greenfield rewrite (React + Vite SPA, ADR-0006)
+## Frontend — React + Vite SPA (ADR-0006)
 
-`apps/web` is a **full rewrite**, **not** a port of the existing UI. Pure REST
-client (no SSR). Stack (see [decisions/0006](decisions/0006-frontend-stack.md)):
+`apps/web` is a pure REST client (no SSR) implemented on the stack below. It is
+not allowed to import backend packages; it consumes `apps/api` through generated
+OpenAPI types and runtime API wrappers.
 
 | 层 | 选择 |
 |---|---|
@@ -53,10 +56,9 @@ client (no SSR). Stack (see [decisions/0006](decisions/0006-frontend-stack.md)):
 | i18n | i18next + react-i18next（en/zh） |
 | 测试/规范 | Vitest + Testing Library + Biome |
 
-It consumes the backend only through the generated client (contract-first,
-unchanged). The original `databench-ui` (React 18 + Vite + TS, at
-`~/Desktop/databench/databench-ui/`) is the **feature reference**, not the
-codebase being moved.
+The original `databench-ui` (React 18 + Vite + TS, at
+`~/Desktop/databench/databench-ui/`) remains a read-only feature reference and
+historical comparison source.
 
 ## The only Python that can ever appear
 

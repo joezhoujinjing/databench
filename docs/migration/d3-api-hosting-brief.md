@@ -1,15 +1,15 @@
 # D3 API 托管平台决策简报
 
-> 状态:供 owner 拍板,**不是 ADR**。S22 部署前必须先完成 D3。本文只整理约束和选项,不替 owner 选择平台。
+> 状态:历史简报,**不是当前部署入口**。本文写于 ADR-0008 之前,仍保留作为迁移期平台比较证据;当前部署约束见 `../deployment/README.md`,对象存储以 Aliyun OSS 为准。
 > 当前日期:2026-06-30。云平台限制可能变化,实施前再以官方文档复核一次。
 
 ## 已锁上下文
 
 - databench API 是长驻 Node/Hono 容器,进程内包含 `nodejs-polars`、`@duckdb/node-api` 等原生/N-API 依赖。
-- 状态服务已锁定为 Supabase Postgres + GCS S3-compatible object storage;API 本身应保持 stateless。
+- 当时状态服务假设为 Supabase Postgres + GCS S3-compatible object storage;该对象存储假设已被 ADR-0008 的 Aliyun OSS 取代。API 本身仍应保持 stateless。
 - API 要支持较大内存/CPU、可能较长的 materialize/export 请求、NDJSON streaming。
 - ADR-0005 已排除 Vercel / Cloudflare Workers / 边缘 Serverless / 纯 FaaS。
-- S22 范围:API Dockerfile + API 部署 + web 静态部署 + Supabase/GCS secrets + CI/CD + 生产冒烟。
+- 原 S22 范围:API Dockerfile + API 部署 + web 静态部署 + secrets + CI/CD + 生产冒烟。
 
 ## 必须满足
 
@@ -19,7 +19,7 @@
 | 可配资源 | 至少能按服务配置 CPU/内存,后续可上调以承载 Polars/DuckDB。 |
 | 流式响应 | `/v1/datasets/{ref}/export` 是 NDJSON streaming,平台不能强制把响应整体缓冲为小对象。 |
 | 较长请求 | 当前同步 API 需要容纳较长 ingest/materialize/export;若平台请求上限不足,必须拆成 job/worker。 |
-| Secret 管理 | `DATABASE_URL`、`S3_*`、CORS origins 不进仓库,走平台 secrets/env。 |
+| Secret 管理 | `DATABASE_URL`、`OSS_*`、CORS origins 不进仓库,走平台 secrets/env。 |
 | 静态 web | `apps/web` 是 Vite SPA,可独立放 CDN/静态托管。 |
 
 ## 候选项
@@ -104,4 +104,3 @@
 - env/secrets checklist
 - web 静态构建/部署说明
 - 生产冒烟脚本:health/version/capabilities + 一次小型 ingest→transform→lineage→export lifecycle
-

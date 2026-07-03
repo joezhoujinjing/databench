@@ -3,6 +3,10 @@
 - **Status:** Accepted
 - **Date:** 2026-06-29
 - **Deciders:** owner
+- **Implementation note:** the TypeScript monorepo rewrite has since reached
+  parity. The frontend stack that was TBD here was later locked in ADR-0006, and
+  the agent-facing CLI was later added in ADR-0007. ADR-0008 later confirmed
+  DuckDB is not an active dependency; `nodejs-polars` is the current engine.
 
 ## Context
 
@@ -20,16 +24,17 @@ where TS is genuinely incapable** — a hard capability gap, not preference.
 
 Rebuild the whole stack in TypeScript as a pnpm/Turborepo monorepo — **both**
 the backend (reimplemented as TS packages) **and** the frontend (greenfield
-rewrite, stack TBD; the original `databench-ui` is the feature reference, not the
+rewrite; the original `databench-ui` is the feature reference, not the
 codebase being moved). See [../architecture.md](../architecture.md).
 
 The new monorepo lives at **`~/Desktop/databench-ts/`**; the legacy Python
 backend + original UI remain at `~/Desktop/databench/` as reference and
 golden-test source (`~/Desktop/databench/databench/bench/`).
 
-**Engine:** `nodejs-polars` as the primary dataframe engine, with
-`@duckdb/node-api` (DuckDB Neo) resident as the out-of-core path, the in-browser
-query engine (`duckdb-wasm`, M3), and a drop-in fallback for every op.
+**Engine:** `nodejs-polars` as the primary dataframe engine. This ADR originally
+kept `@duckdb/node-api` (DuckDB Neo) resident as an out-of-core/browser/fallback
+option; ADR-0008 supersedes that implementation assumption. DuckDB is now a
+future option that needs a fresh design update before use.
 
 ## Feasibility verdict: `FEASIBLE-ALL-TS`
 
@@ -51,9 +56,10 @@ Two findings drove the verdict:
    sample | select+concat) → iterate/arrow/parquet`. Low bar to reproduce.
 
 Every M1 capability (schema, hashing, content-addressed versioning, CAS store,
-SQLite catalog + lineage, transforms, recipes, JSONL ingest, Arrow/Parquet, the
-OpenAPI-emitting service) is TS-native. M2 synthesis/annotation is TS-native or
-an external HTTP service. M3 Lance is TS-native (`@lancedb/lancedb`).
+Postgres catalog + lineage, transforms, recipes, JSONL ingest, Arrow/Parquet,
+the OpenAPI-emitting service) is TS-native. M2 synthesis/annotation is TS-native
+or an external HTTP service. M3 vector work remains a future TS-native
+integration candidate (`@lancedb/lancedb`).
 
 ## The one nuance both evaluators agreed on
 
@@ -61,19 +67,20 @@ Python is required **only** if the owner later mandates reusing **distilabel** o
 **Ray Data** *the frameworks specifically* (not the capability they provide).
 That is an **optional sidecar** behind the same `/v1` REST contract, never a core
 dependency. The capabilities themselves — synthetic generation (provider SDKs /
-Vercel AI SDK) and larger-than-memory processing (DuckDB out-of-core) — are
-TS-native.
+Vercel AI SDK) and future larger-than-memory processing through an explicitly
+designed TS engine/job path — are TS-native.
 
 ## Consequences
 
 - **+** One language/toolchain; atomic contract+UI changes; OpenAPI stays the
   single source of truth (zod → OpenAPI → openapi-typescript).
-- **+** Web-standard service can later run at the edge / in workers (aligns with
-  the duckdb-wasm M3 plan).
+- **+** Web-standard service boundaries keep future deployment and exploration
+  options open.
 - **−** Primary risk is `nodejs-polars` maturity / the Arrow boundary vs Python.
-  Bounded because DuckDB can replace every op (swap, not redesign). **Mitigation:
-  spike the engine first with golden tests** (Parquet round-trip, seeded-sampling
-  determinism, JSONPath filtering, version-hash stability) — see architecture.md.
+  Bounded by focused golden tests and a small operation surface. **Mitigation:
+  keep the engine guarded with golden tests** (Parquet round-trip,
+  seeded-sampling determinism, JSONPath filtering, version-hash stability) — see
+  architecture.md.
 
 ## Supersedes
 
