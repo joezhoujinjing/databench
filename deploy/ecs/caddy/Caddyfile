@@ -1,0 +1,8 @@
+{
+	email joezhoujinjing@gmail.com
+}
+
+api.databench.jinjing.me {
+	encode gzip
+	reverse_proxy api:8000
+}

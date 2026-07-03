@@ -1,0 +1,53 @@
+name: databench
+
+services:
+  api:
+    image: ${DATABENCH_API_IMAGE:?set DATABENCH_API_IMAGE in compose.env}
+    container_name: databench-api
+    restart: unless-stopped
+    env_file:
+      - /opt/databench/api.env
+    environment:
+      NODE_ENV: production
+      PORT: "8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - workspace-data:/var/lib/databench
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - databench
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: databench-caddy
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - databench
+
+volumes:
+  workspace-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  databench:
