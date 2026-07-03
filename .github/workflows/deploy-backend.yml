@@ -1,0 +1,89 @@
+name: Deploy Backend
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/api/**
+      - packages/**
+      - prisma/**
+      - deploy/ecs/**
+      - deploy/smoke.sh
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - turbo.json
+      - tsconfig.base.json
+      - .github/workflows/deploy-backend.yml
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: databench-api
+  REMOTE_APP_DIR: /opt/databench
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f apps/api/Dockerfile \
+            -t "${IMAGE_NAME}:${GITHUB_SHA}" \
+            .
+
+      - name: Save image archive
+        run: |
+          docker save "${IMAGE_NAME}:${GITHUB_SHA}" | gzip > "${IMAGE_NAME}-${GITHUB_SHA}.tar.gz"
+
+      - name: Configure SSH
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+          ECS_KNOWN_HOSTS: ${{ secrets.ECS_KNOWN_HOSTS }}
+        run: |
+          test -n "${ECS_HOST}"
+          test -n "${ECS_SSH_KEY}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${ECS_SSH_KEY}" > ~/.ssh/ecs_deploy
+          chmod 600 ~/.ssh/ecs_deploy
+          if [ -n "${ECS_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${ECS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${ECS_HOST}" > ~/.ssh/known_hosts
+          fi
+
+      - name: Upload deploy assets
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+        run: |
+          ECS_USER="${ECS_USER:-root}"
+          ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
+            "mkdir -p '${REMOTE_APP_DIR}/releases' '${REMOTE_APP_DIR}/caddy'"
+          scp -i ~/.ssh/ecs_deploy "${IMAGE_NAME}-${GITHUB_SHA}.tar.gz" \
+            "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/releases/"
+          scp -i ~/.ssh/ecs_deploy deploy/ecs/docker-compose.yml deploy/ecs/deploy.sh deploy/ecs/api.env.example \
+            "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/"
+          scp -i ~/.ssh/ecs_deploy deploy/ecs/caddy/Caddyfile \
+            "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/caddy/Caddyfile"
+          ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
+            "chmod +x '${REMOTE_APP_DIR}/deploy.sh'"
+
+      - name: Deploy on ECS
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+        run: |
+          ECS_USER="${ECS_USER:-root}"
+          ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
+            "'${REMOTE_APP_DIR}/deploy.sh' '${REMOTE_APP_DIR}/releases/${IMAGE_NAME}-${GITHUB_SHA}.tar.gz' '${GITHUB_SHA}'"
+
+      - name: Smoke test
+        run: deploy/smoke.sh https://api.databench.jinjing.me

@@ -1,0 +1,84 @@
+name: Deploy Frontend
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/web/**
+      - apps/api/src/openapi.ts
+      - apps/api/src/routes/**
+      - packages/schema/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - turbo.json
+      - tsconfig.base.json
+      - .github/workflows/deploy-frontend.yml
+
+permissions:
+  contents: read
+
+env:
+  API_BASE_URL: ${{ vars.DATABENCH_API_BASE_URL || 'https://api.databench.jinjing.me' }}
+  ALIYUN_REGION: ${{ vars.ALIYUN_REGION || 'cn-hongkong' }}
+  OSS_ENDPOINT: ${{ vars.WEB_OSS_ENDPOINT || 'oss-cn-hongkong.aliyuncs.com' }}
+  WEB_OSS_BUCKET: ${{ vars.WEB_OSS_BUCKET || 'databench-ui' }}
+  CDN_DOMAIN: ${{ vars.CDN_DOMAIN || 'databench.jinjing.me' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web app
+        run: pnpm --filter @databench/web build
+        env:
+          VITE_DATABENCH_API_BASE_URL: ${{ env.API_BASE_URL }}
+
+      - name: Install Aliyun CLI
+        run: |
+          URL=$(curl -fsSL https://api.github.com/repos/aliyun/aliyun-cli/releases/latest \
+            | jq -r '.assets[] | select(.name | test("linux.*amd64\\.tgz$")) | .browser_download_url' \
+            | head -1)
+          echo "Downloading ${URL}"
+          curl -fsSL -o aliyun-cli.tgz "${URL}"
+          tar -xzf aliyun-cli.tgz
+          sudo mv aliyun /usr/local/bin/aliyun
+          aliyun version
+
+      - name: Configure Aliyun CLI
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+        run: |
+          test -n "${ALIYUN_ACCESS_KEY_ID}"
+          test -n "${ALIYUN_ACCESS_KEY_SECRET}"
+          aliyun configure set --profile ci --mode AK --region "${ALIYUN_REGION}" \
+            --access-key-id "${ALIYUN_ACCESS_KEY_ID}" \
+            --access-key-secret "${ALIYUN_ACCESS_KEY_SECRET}"
+
+      - name: Upload dist to OSS
+        run: |
+          aliyun --profile ci oss sync apps/web/dist/ "oss://${WEB_OSS_BUCKET}/" \
+            --endpoint "${OSS_ENDPOINT}" --delete -f
+          aliyun --profile ci oss set-meta "oss://${WEB_OSS_BUCKET}/index.html" Cache-Control:no-cache \
+            --endpoint "${OSS_ENDPOINT}" -f
+
+      - name: Refresh CDN
+        run: |
+          aliyun cdn RefreshObjectCaches \
+            --ObjectPath "https://${CDN_DOMAIN}/" --ObjectType Directory --profile ci
+          aliyun cdn RefreshObjectCaches \
+            --ObjectPath "https://${CDN_DOMAIN}/index.html" --ObjectType File --profile ci
