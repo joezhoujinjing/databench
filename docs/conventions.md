@@ -1,6 +1,6 @@
 # 编码规范(权威)
 
-> 配套 [`project-structure.md`](project-structure.md)。这些规则进 Biome / tsconfig / CI,**机器能强制的尽量机器强制**,以防迁移漂移。
+> 配套 [`project-structure.md`](project-structure.md)。这些规则进 Biome / tsconfig / CI,**机器能强制的尽量机器强制**,以防维护期漂移。
 
 ## 1. 命名
 
@@ -40,7 +40,7 @@
 
 ## 3. 确定性纪律(直接关系 golden 闸门,**最高优先级**)
 
-迁移最大风险是「算出来的 id/version/cache_key 和 Python 对不上」。以下为硬约定:
+维护期最大风险仍是「算出来的 id/version/cache_key/lineage 与既有数据或 golden 对不上」。以下为硬约定:
 
 - **凡参与哈希的序列化,只能走 `@databench/hashing` 的 `canonicalJson`**;**任何地方都不许用裸 `JSON.stringify` 做哈希输入**(它不排序键、丢 `undefined`、对 `Date`/`BigInt` 行为不对)。Biome 加自定义/约定禁止在 `hashing` 外手写哈希。
 - **blake3 固定**,不实现 blake2b 回退(既有 store 全 blake3)。
@@ -48,7 +48,7 @@
 - 权重退化:`weight || 1.0`(0→1.0),**不要用 `?? 1.0`**(`RECIPE-05`)。
 - 空数据集 version = `hashText("empty")`,不是 `hashUnordered([])`(`DATASET-04`)。
 - `word_len` 复刻 Python `str.split()`:`text.trim().split(/\s+/).filter(Boolean).length`,空文本→0(`OPS-04`)。
-- 采样确定性以 **G5 闸门**为准;若 nodejs-polars 与 Python 不一致,采样统一改走 DuckDB `REPEATABLE(seed)`(决策记进 ADR)。
+- 采样确定性以 **G5 闸门**为准;若 nodejs-polars 与 Python 不一致,先修当前实现或新增明确 ADR 后再引入替代 engine。
 
 每条确定性约定**必须有对应 golden 测试**(见 §6)。
 
@@ -61,7 +61,8 @@
   { "error": { "code": "not_found", "message": "...", "detail": [/* 可选 */] } }
   ```
   映射表:zod/请求校验→422 `validation_error`;`NotFoundError`/缺失→404 `not_found`;`BadInputError`/解析失败→400 `bad_request`;无参 transform 传参/返回类型错→400;**补一个兜底 `Exception`→500 `internal_error` 信封**(Python 当前缺,迁移补上)。
-- `ErrorResponse` 必须**进 OpenAPI**(`@hono/zod-openapi` 注册),修正旧契约缺失(见迁移清单「决策 #3」)。
+- `ErrorResponse` 必须**进 OpenAPI**(`@hono/zod-openapi` 注册),并作为 CLI stderr envelope 的同源类型。
+- `apps/cli` 不引入 HTTP 概念,但用同一错误分类映射退出码:bad input/usage=2,not found=3,conflict=4,validation=5,internal=1。
 
 ## 5. 契约单一来源(zod → OpenAPI → 前端)
 
@@ -74,7 +75,7 @@
 - **Vitest**;单测与源码 colocate 或放 `test/`;命名 `*.test.ts`。
 - **Golden 对拍**放 `packages/<x>/test/golden/`,fixtures 取自现有 Python `bench/`(catalog.db + store/objects);命名 `*.golden.test.ts`。
 - **每个功能的「验收点」(见迁移清单 inventory)→ 一个测试**;**每条 G 闸门 → CI 必过的 golden 测试**(G1 canonicalJson 逐字节、G2 content_dict null、G3 空集 version、G5 采样确定性、G7 三 upsert、G8 cache_key/银行家舍入、G10 错误信封、G11 全生命周期、G12 openapi 稳定)。
-- 阶段验收:该阶段所有功能测试 + 该阶段 G 闸门全绿,才进下一阶段。
+- 维护期验收:改到哪个行为面就跑对应单测/golden/e2e;影响契约或确定性时必须扩大到 `openapi:check` 和相关 parity/golden 测试。
 
 ## 7. 配置 / 环境变量(契约)
 
@@ -82,22 +83,24 @@
 
 | 变量 | 用途 |
 |---|---|
-| `DATABASE_URL` | Supabase Postgres(本地指向 docker pg) |
-| `S3_ENDPOINT` | 对象存储 endpoint(GCS S3 互操作 / 本地 MinIO) |
-| `S3_REGION` `S3_BUCKET` | bucket 与区域 |
-| `S3_ACCESS_KEY_ID` `S3_SECRET_ACCESS_KEY` | GCS HMAC / MinIO 凭据 |
+| `DATABASE_URL` | Postgres 连接串(本地指向 docker pg;生产由平台提供) |
+| `OSS_REGION` `OSS_BUCKET` | Aliyun OSS bucket 与区域 |
+| `OSS_ACCESS_KEY_ID` `OSS_ACCESS_KEY_SECRET` | Aliyun OSS RAM 子账号凭据 |
+| `OSS_ENDPOINT` `OSS_INTERNAL` `OSS_SECURE` | 可选 OSS endpoint / 内网 endpoint / HTTPS 配置 |
 | `DATABENCH_CORS_ORIGINS` | 逗号分隔精确 allowlist(`SVC-02`) |
 | `PORT` | API 端口 |
 
 - **绝不**把密钥写进代码/仓库;本地用 `.env`(gitignore),CI/生产用平台 secret。
 
 ## 8. 依赖纪律(防漂移,CI 校验)
-- 新增跨包依赖必须符合 `project-structure.md` 的分层 DAG;**`apps/api` 不得直连 store/catalog/engine**。
+- 新增跨包依赖必须符合 `project-structure.md` 的分层 DAG;**`apps/api` 与 `apps/cli` 不得直连 store/catalog/engine/ops/io**。
+- `apps/web` 不 import 后端包,只消费生成的 OpenAPI types/client 与前端 runtime wrapper。
+- 新增业务能力先进入核心包/`workspace`,再接 API/CLI/Web 适配器;不要在 app 层复制业务逻辑。
 - 用 `pnpm` 的 workspace 协议 `workspace:*` 引内部包;Turborepo 任务声明 `dependsOn` 反映构建顺序。
 - 引第三方依赖前先看是否已有(避免重复造轮子/多套 JSON/hash 实现)。
 
 ## 9. Git / 协作
 - **Conventional Commits**(`feat:`/`fix:`/`chore:`/`refactor:`/`test:`/`docs:`);scope 用包名,如 `feat(engine): ...`。
-- 分支 `feat/<phase-or-feature>`;**一个迁移阶段(或一组紧耦合功能)一个 PR**,PR 必须带该阶段的 golden 闸门通过。
+- 分支 `feat/<feature>` / `fix/<area>`;一组紧耦合改动一个 PR,PR 必须带相关 test/typecheck/golden/openapi gate 结果。
 - pre-commit(lefthook)跑 Biome;push/PR 触发 GitHub Actions 全量闸门。
 - 改了契约(zod schema)必须同 PR 跑 `openapi:check` 并更新前端生成类型。

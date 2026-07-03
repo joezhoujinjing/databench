@@ -1,6 +1,8 @@
-# databench — Target Architecture (all-TypeScript monorepo)
+# databench — Architecture (all-TypeScript monorepo)
 
-> Status: target design for the greenfield rebuild. Decided 2026-06-29.
+> Status: current architecture after the TypeScript rewrite reached parity.
+> Initial architecture decided 2026-06-29; update this file when app/package
+> boundaries or locked platform choices change.
 > Feasibility verdict: **`FEASIBLE-ALL-TS`** (see [decisions/0001](decisions/0001-rebuild-as-ts-monorepo.md)).
 > Required Python surface for the product as specified: **zero**.
 
@@ -14,15 +16,19 @@ and a hashable **recipe** (mixture) as the bridge to training.
 
 **Deployment:** a hosted, horizontally-scaled service — N stateless Hono API
 replicas over exactly **two stateful services**: **Postgres** (catalog) and
-**object storage** (Parquet data plane). `nodejs-polars`, DuckDB, Arrow and
-Lance are in-process libraries, not infrastructure — DuckDB reads Parquet
-directly from object storage via `httpfs`. Local/CI run the same stack via
-docker-compose (`postgres` + `minio`). No SQLite. See
-[decisions/0003](decisions/0003-storage-postgres-object-store.md).
+**object storage** (Parquet data plane) — **Aliyun OSS** via the native
+`ali-oss` SDK. `nodejs-polars` and Arrow are current in-process libraries, not
+infrastructure. DuckDB and Lance are optional future libraries, not active
+dependencies. If DuckDB is added later, it must be introduced by an explicit
+design/ADR update and can read Parquet from OSS independently of how the app
+writes objects. Locally only `postgres` runs in docker-compose — OSS has no local
+emulator, so tests use an in-memory store. No SQLite. See
+[decisions/0003](decisions/0003-storage-postgres-object-store.md) and
+[decisions/0008](decisions/0008-object-store-aliyun-oss.md).
 
 ## Monorepo layout
 
-**`~/Desktop/databench-ts/` is the monorepo root** (a fresh greenfield repo).
+**`~/Desktop/databench-ts/` is the monorepo root**.
 The legacy Python backend and the original `databench-ui` stay at
 `~/Desktop/databench/` as **reference + golden-test source** (the Python
 `bench/` catalog.db + store live at `~/Desktop/databench/databench/bench/`).
@@ -34,24 +40,27 @@ databench-ts/                      (monorepo root)
 ├─ apps/
 │  ├─ api/            HTTP service → /health, /version, /capabilities, /v1/*
 │  │                  emits openapi.json (the UI's contract). See ADR-0002.
-│  └─ web/            frontend — GREENFIELD REWRITE (stack TBD); still consumes
-│                     the same /v1 contract via openapi-typescript
+│  ├─ web/            React 19 + Vite SPA; consumes /v1 via generated
+│  │                  openapi-typescript/openapi-fetch client. See ADR-0006.
+│  └─ cli/            agent-facing Thick CLI over Workspace. See ADR-0007.
 ├─ packages/
 │  ├─ schema/         zod discriminated union (sft|preference|rl|trajectory),
-│  │                  Message/ToolCall/Rollout/Candidate, Manifest, COLUMNS;
+│  │                  Message/ToolCall/Rollout/Candidate, Manifest, COLUMNS,
+│  │                  Vocabulary, service contracts, error classes;
 │  │                  single source for runtime validation + OpenAPI + TS types
 │  ├─ hashing/        blake3 (hash-wasm), canonical JSON (sorted keys, compact),
 │  │                  hashUnordered (sort row digests, join \n, hash)
 │  ├─ engine/         nodejs-polars adapter: dedup, filter_by_signal, sample_n,
-│  │                  recipe mix, arrow(), parquet IO; DuckDB adapter alongside
+│  │                  recipe mix, arrow(), parquet IO
 │  ├─ store/          content-addressed write-once Parquet store + manifests
-│  │                  on OBJECT STORAGE (S3/R2; MinIO local), behind a Store
+│  │                  on OBJECT STORAGE (Aliyun OSS; in-memory in tests), behind a Store
 │  │                  interface; objects/<version[:2]>/ keying (PUT is atomic)
 │  ├─ catalog/        POSTGRES + Prisma; datasets/runs/refs tables;
 │  │                  lineage DAG via WITH RECURSIVE (TypedSQL/$queryRaw)
 │  ├─ io/             JSONL ingest + per-line kind auto-detection + export
 │  ├─ ops/            transform registry (decorator/object), enrichments
-│  └─ workspace/      ties store+catalog; run / materialize / lineage / export
+│  └─ workspace/      ties store+catalog; ingest / run / materialize / lineage /
+│                     export / vocabulary orchestration
 ├─ tooling/
 │  └─ openapi-export/ boots apps/api, dumps deterministic openapi.json
 │                     (sorted keys, fixed indent) — replaces the Python
@@ -62,12 +71,14 @@ databench-ts/                      (monorepo root)
 └─ docs/              this folder
 ```
 
-The frontend (`apps/web`) is a **greenfield rewrite** (stack TBD — see open
-decisions), **not** a port of `databench-ui`. It still consumes the backend
-purely through the generated client: `gen:client` runs `openapi-typescript`
-against `apps/api`'s `openapi.json` (contract-first, unchanged). The original
-`databench-ui` (at `~/Desktop/databench/databench-ui/`) is the **feature
-reference** for the rewrite.
+`apps/web` consumes the backend purely through the generated client:
+`gen:client` runs `openapi-typescript` against `apps/api`'s `openapi.json`.
+It must not import backend packages. The original `databench-ui` (at
+`~/Desktop/databench/databench-ui/`) remains a read-only feature reference.
+
+`apps/cli` is a second app adapter beside `apps/api`, not a second backend. It
+uses `Workspace.open()` directly and depends only on `@databench/workspace` and
+`@databench/schema`, so API and CLI behavior stay aligned at the core boundary.
 
 ## The engine bet
 
@@ -85,16 +96,11 @@ reference** for the rewrite.
   doing `construct → (dedup | json-extract+cast+filter | sample | select+concat)
   → iterate/arrow/parquet`. No lazy query plan, window, or join anywhere.
 
-**`@duckdb/node-api` (DuckDB Neo) stays resident** for three non-speculative
-jobs — not a fallback we hope never to use:
-
-1. **Out-of-core `materialize`** of large recipes — the all-TS answer to the
-   roadmap's "single-node Polars → Ray Data" scaling line.
-2. **`@duckdb/duckdb-wasm`** lets `apps/web` query Parquet slices **in-browser**
-   for M3 exploration.
-3. A **drop-in replacement for every engine op** (all of them are trivially SQL:
-   `DISTINCT ON`, `json_extract`, `CAST`, `WHERE`, `USING SAMPLE n
-   REPEATABLE(seed)`, `UNION ALL`), which de-risks the one shaky dependency.
+DuckDB is **not currently installed or wired**. ADR-0001 originally kept it as a
+resident out-of-core / SQL / browser-exploration option, but ADR-0008 re-checked
+the implementation and confirmed the active engine is `nodejs-polars` only. Treat
+DuckDB as a future fallback that needs a fresh design update before use, not as a
+current package boundary or dependency requirement.
 
 ## Per-capability stack (all TS-native)
 
@@ -102,13 +108,14 @@ jobs — not a fallback we hope never to use:
 |---|---|
 | Schema / discriminated unions / OpenAPI source | `zod` v4 + `@hono/zod-openapi` |
 | blake3 + order-independent versioning | `hash-wasm` (or `@hashbuf/blake3`) |
-| Content-addressed write-once store | object storage (S3/R2; MinIO local) behind a `Store` interface |
-| Parquet read/write | `nodejs-polars` (or DuckDB `COPY`/`read_parquet`) |
+| Content-addressed write-once store | object storage (Aliyun OSS; in-memory in tests) behind a `Store` interface |
+| Parquet read/write | `nodejs-polars` |
 | Arrow interchange | `apache-arrow` + polars IPC |
 | Catalog + lineage | **Postgres** + **Prisma**, lineage via `WITH RECURSIVE` (TypedSQL/`$queryRaw`) |
 | JSONL ingest + kind detection | pure TS |
 | HTTP service + UI-compatible OpenAPI | `hono` + `@hono/zod-openapi` (ADR-0002) |
-| M3 Lance backend | `@lancedb/lancedb` |
+| Agent-facing CLI | Thick `Workspace` adapter with Node `parseArgs` (ADR-0007) |
+| M3 Lance backend | future `@lancedb/lancedb` integration |
 
 ## Python boundary
 
@@ -119,14 +126,15 @@ Python enters **only** if the owner later mandates reusing a specific Python
 *framework* — **distilabel** (synthetic) or **Ray Data** (distributed cluster
 execution) — rather than the *capability* those provide. The capabilities are
 already TS-native: synthetic generation = provider SDKs / Vercel AI SDK over the
-existing `Dataset`/`Workspace` contract; larger-than-memory processing = DuckDB
-out-of-core. If that day comes, the framework runs as an **optional
+existing `Dataset`/`Workspace` contract; larger-than-memory processing should be
+handled by a documented future engine/job path rather than Python by default. If
+that day comes, the framework runs as an **optional
 `workers/python-*` sidecar behind the same `/v1` REST contract** — TS owns
 versions, manifests, store paths, refs, cache keys, and lineage; Python returns
 only a produced Parquet/JSONL path + status; the UI never talks to Python
 directly. Never an in-process dependency, never in the core path.
 
-## Biggest risk + first action
+## Biggest risk + locked mitigation
 
 **Risk: `nodejs-polars` maturity vs Python Polars** — same Rust core but a
 thinner, less-exercised binding (release cadence lag, sparser docs, NAPI
@@ -134,11 +142,12 @@ prebuilt edge cases, and the weaker Arrow handoff vs Python's `polars →
 pyarrow.Table`). It is *capability-complete* for everything databench does, but
 it is the dependency most likely to surface a sharp edge.
 
-The risk is **bounded, not existential**: DuckDB covers every op one-for-one, so
-a worst case is an engine *swap*, not a redesign.
+The risk is **bounded, not existential**: every current op is small and covered by
+focused golden/parity tests, so a worst case should be a targeted implementation
+fix or a documented engine fallback, not a redesign.
 
-**First action — spike the engine before anything else**, with golden tests
-locking the four things that actually decide "all-TS works":
+The risk was front-loaded in S1 and remains guarded by golden tests. The locked
+regression constraints are:
 
 1. **Parquet round-trip** of the all-`Utf8` canonical layout (write in TS, read
    back, and cross-read against a Python-written file).

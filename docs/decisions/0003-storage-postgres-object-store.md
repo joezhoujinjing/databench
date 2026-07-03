@@ -35,19 +35,19 @@ The system has exactly **two stateful services to operate**:
    + branch-per-preview fits this project); plain Postgres container locally.
 2. **Data plane → object storage.** Content-addressed, write-once Parquet blobs +
    sibling manifests, keyed by content hash (`objects/<hash[:2]>/<hash>.parquet`).
-   S3 / R2 / GCS in deployed envs; **MinIO** (S3-compatible) in local Docker.
-   Behind a `Store` interface (so an `fs` impl remains possible for tests).
+   The original provider/client choice here was superseded by ADR-0008: current
+   implementation uses **Aliyun OSS** via native `ali-oss`, behind the unchanged
+   `Store` interface.
 
 Everything else is **in-process library code in the stateless API**, not infra:
-`nodejs-polars` and **DuckDB** (which reads Parquet directly from object storage
-via `httpfs` — it is *not* a third database to provision), `apache-arrow`,
-`hash-wasm`, `@lancedb/lancedb`.
+current code uses `nodejs-polars`, `apache-arrow`, and `hash-wasm`. DuckDB and
+Lance are optional future libraries, not third services to provision.
 
 ```
 stateless Hono API (N replicas)
    ├── Postgres            ← catalog (the only relational DB)
-   ├── object storage      ← Parquet data plane (S3/R2; MinIO local)
-   └── embedded libs       ← nodejs-polars, DuckDB(→reads S3 directly), Lance
+   ├── object storage      ← Parquet data plane (Aliyun OSS)
+   └── embedded libs       ← nodejs-polars, Arrow, hashing; future DuckDB/Lance if designed
 ```
 
 ## Why this is sufficient (through M3)
@@ -56,10 +56,10 @@ stateless Hono API (N replicas)
   addressing makes it idempotent.
 - **No separate queue service.** If async M2 synthesis needs a job queue, run it
   *in Postgres* (`pg-boss`, or `FOR UPDATE SKIP LOCKED`).
-- **M3 Lance is embedded** (files on object storage), not a server.
-- **Content addressing + object storage is a strong fit:** S3 `PUT` is
-  per-object atomic and keys are content hashes, so write-once is race-free
-  without atomic rename.
+- **Future M3 Lance would be embedded** (files on object storage), not a server.
+- **Content addressing + object storage is a strong fit:** object keys are
+  content hashes, parquet is written before manifest, and retry/self-healing
+  behavior is encapsulated behind `Store`.
 
 ## Consequences
 
@@ -67,9 +67,11 @@ stateless Hono API (N replicas)
 - **+** One database everywhere (local/CI/prod) — no dialect drift, no
   SQLite-vs-PG split.
 - **+** Only two stateful services to run and back up.
-- **−** Local dev now requires Docker (Postgres + MinIO) — accepted by the owner.
-- **−** DuckDB-over-S3 (`httpfs`) and S3 latency need attention for large
-  out-of-core materialize; revisit caching/locality if it bites.
+- **−** Local dev now requires Docker for Postgres plus real OSS credentials for
+  real object-store IO; tests should inject the in-memory store when cloud IO is
+  not the subject under test.
+- **−** If DuckDB is wired up later for out-of-core materialize, OSS locality and
+  read path need a fresh design check.
 
 ## Decision rule for "is X a third service?"
 

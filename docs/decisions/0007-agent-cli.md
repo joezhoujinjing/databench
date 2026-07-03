@@ -19,12 +19,12 @@
 
 ### 接入方式
 
-- **A. Thick(进程内,推荐)**:CLI 直接 `Workspace.open()`,自带 Prisma + S3
-  连接。不依赖 API 是否在跑,不与未决的 D3(API 托管平台)决策耦合,现在即可落地。
+- **A. Thick(进程内,推荐)**:CLI 直接 `Workspace.open()`,自带 Prisma + OSS
+  连接。不依赖 API 是否在跑,不与远程 API 托管平台决策耦合,现在即可落地。
   自包含,适合本地 / CI / 批处理 agent,与旧 Python CLI 语义一致。
 - **B. Thin(HTTP 客户端)**:CLI 调用已在跑的 `apps/api`,复用已生成的
   `openapi-fetch` client。适合远程 / 沙箱 agent(只要一个 URL),但依赖 API 常驻,
-  与 D3 决策耦合。
+  与远程 API 托管平台决策耦合。
 - **C. Hybrid**:默认 Thin,`--local` 走 Thick。覆盖两类 agent,但实现量最大。
 
 ### 参数解析
@@ -35,8 +35,8 @@
 
 ## Decision
 
-- **接入方式:A(Thick)。** 直接架在能力真源上,与 D3 解耦,可立即落地;等 D3
-  定了、API 有稳定托管,再把 B 作为 `--remote` 选项补上不迟。
+- **接入方式:A(Thick)。** 直接架在能力真源上,与 API 托管平台解耦;等 API
+  有稳定远程托管,再把 B 作为 `--remote` 选项补上不迟。
 - **参数解析:零依赖 `parseArgs`。** 不新增运行时依赖。
 - **默认输出:JSON(一个明确例外)。** 成功结果 → stdout;错误信封 → stderr(复用
   API 的 `ErrorResponseSchema`,agent 在 CLI 与 HTTP 两条路上拿到同一种错误信封)。

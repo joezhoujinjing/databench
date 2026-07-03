@@ -1,6 +1,6 @@
 # 具体目录布局(文件级,权威)
 
-> [`project-structure.md`](project-structure.md) 定「有哪些包 + 依赖方向规则」;本文定「每个包/应用内部**每个文件**放什么」,每个文件标注承载的功能ID(对照 [`migration/feature-inventory.md`](migration/feature-inventory.md))。迁移时按文件建,不要临时发挥。
+> [`project-structure.md`](project-structure.md) 定「有哪些包 + 依赖方向规则」;本文定「每个包/应用内部**每个文件**放什么」,每个文件标注承载的功能ID或适配器职责。新增文件时先找这里的落点;如果确实需要新目录,同步更新本文,避免结构漂移。
 
 ---
 
@@ -13,7 +13,7 @@ apps/api/
 ├─ src/
 │  ├─ index.ts                 # 服务入口:loadConfig() → createApp() → @hono/node-server 监听 PORT
 │  ├─ app.ts                   # createApp(): new OpenAPIHono();装中间件;挂 meta + /v1 路由;返回 app   [SVC-01]
-│  ├─ config.ts                # zod 校验环境变量(DATABASE_URL/S3_*/CORS/PORT),缺失即启动失败       [SVC-04(env)]
+│  ├─ config.ts                # zod 校验环境变量(DATABASE_URL/OSS_*/CORS/PORT),缺失即启动失败       [SVC-04(env)]
 │  ├─ context.ts               # Hono Variables 类型 + 取 workspace 的 helper                          [SVC-03]
 │  ├─ openapi.ts               # OpenAPI doc 元信息(title/version/description)、组件注册
 │  ├─ middleware/
@@ -33,8 +33,9 @@ apps/api/
 ├─ test/
 │  ├─ lifecycle.test.ts        # 全生命周期端到端(对照 test_service.py:test_full_lifecycle)            [闸门 G11]
 │  ├─ errors.test.ts           # 错误信封 + 分页上限                                                    [闸门 G10]
-│  └─ cors.test.ts             # CORS 本地/精确 origin + PNA                                            [SVC-02]
-├─ Dockerfile                  # 长驻容器(含 N-API 原生插件),部署用                                   [ADR-0005]
+│  ├─ app-support.test.ts      # app factory/meta/capabilities/CORS/PNA/workspace 注入                 [SVC-01..05]
+│  ├─ lexeme-ingest.golden.test.ts # 数值词素保留的 ingest parity                                      [确定性]
+│  └─ parity.golden.test.ts    # 新旧 HTTP lifecycle 端到端 parity                                      [G-parity]
 ├─ package.json                # name @databench/api;deps: @databench/workspace、@databench/schema、hono、@hono/zod-openapi、@hono/node-server
 └─ tsconfig.json
 ```
@@ -43,7 +44,7 @@ apps/api/
 
 ---
 
-## `apps/web`(前端,**全新重写** — React+Vite SPA + shadcn/ui,见 ADR-0006)
+## `apps/web`(React+Vite SPA,见 ADR-0006)
 
 纯 REST 客户端;只通过 `openapi-fetch` 消费 `/v1`,**不 import 任何后端包**。旧 `databench-ui`(`~/Desktop/databench/databench-ui/`)作功能参考。
 
@@ -57,21 +58,32 @@ apps/web/
 ├─ public/
 └─ src/
    ├─ main.tsx                 # 入口:RouterProvider + QueryClientProvider + i18n + theme
+   ├─ router.tsx               # TanStack Router routeTree 装配
    ├─ routes/                  # TanStack Router 文件式路由
    │  ├─ __root.tsx            # 根布局:导航 + 连接面板(对照旧 ConnectionPanel)
    │  ├─ index.tsx
    │  ├─ datasets.index.tsx    # DatasetsPage
    │  ├─ datasets.$ref.tsx     # DatasetDetailPage(含虚拟样本表)
    │  ├─ transforms.tsx        # TransformsPage
-   │  ├─ recipes.tsx           # RecipePage
+   │  ├─ recipes.tsx           # RecipesPage
    │  ├─ lineage.$ref.tsx      # LineagePage(React Flow)
+   │  ├─ lineage.index.tsx     # 旧 query 深链兼容/重定向
    │  ├─ ingest.tsx            # IngestPage(文件上传)
+   │  ├─ not-found.tsx         # 404 页面
    │  └─ vocabularies.*.tsx    # 词表页(list/derive/new/detail)
    ├─ api/
    │  ├─ generated/schema.ts   # openapi-typescript 产物(gen:client)
    │  ├─ client.ts             # openapi-fetch 客户端(baseURL + Bearer header)
    │  ├─ config.ts             # 连接配置(API base)
-   │  └─ hooks.ts              # 每端点的 TanStack Query hooks
+   │  ├─ hooks.ts              # shared query helpers
+   │  ├─ datasets.ts           # datasets API helpers/hooks
+   │  ├─ transforms.ts         # transforms API helpers/hooks
+   │  ├─ recipes.ts            # recipes API helpers/hooks
+   │  ├─ refs.ts               # refs API helpers/hooks
+   │  ├─ lineage.ts            # lineage API helpers/hooks
+   │  ├─ vocabularies.ts       # vocabulary API helpers/hooks
+   │  ├─ errors.ts             # runtime ApiError + envelope/legacy parsing
+   │  └─ types.ts              # generated type aliases, no hand-written wire types
    ├─ components/
    │  ├─ ui/                   # shadcn/ui 生成的基础组件(button/dialog/table/...)
    │  ├─ samples/              # VirtualizedSamples、SampleView(TanStack Virtual)
@@ -80,10 +92,47 @@ apps/web/
    ├─ lib/                     # cn() 等工具、格式化
    ├─ i18n/                    # i18next 初始化 + locales/{en,zh}.json
    └─ styles.css               # Tailwind 入口
-test/                          # Vitest + Testing Library
 ```
 
-> 待做:先做一份**前端功能清单**(逐页/逐交互梳理旧 `databench-ui`),再按清单逐页重写——防漏功能,与后端那套迁移法对齐。
+前端测试 colocate 在 `src/**/*.test.ts(x)`。新增 API 类型只能来自 `api/generated/schema.ts`;确需前端 runtime-only 类型时放 `api/types.ts` 或对应模块,不要 import 后端包。
+
+---
+
+## `apps/cli`(agent-facing CLI,见 ADR-0007)
+
+CLI 是与 `apps/api` 平级的第二适配器,不是第二套后端。它只依赖 `@databench/workspace` + `@databench/schema`,直接 `Workspace.open()`,输出 JSON/NDJSON,错误走同一 envelope + 退出码映射。
+
+```
+apps/cli/
+├─ src/
+│  ├─ index.ts                 # public run() 入口,供测试/嵌入调用
+│  ├─ main.ts                  # bin 入口:读取 argv/env → run()
+│  ├─ args.ts                  # node:util parseArgs 薄封装
+│  ├─ router.ts                # noun/verb 路由、help contract、scoped help
+│  ├─ runtime.ts               # Workspace lifecycle + command context
+│  ├─ config.ts                # DATABASE_URL/compact 等 CLI 配置解析
+│  ├─ output.ts                # JSON/NDJSON 输出、STREAMED 哨兵处理
+│  ├─ exit.ts                  # schema classifyError → CLI exit code
+│  ├─ version.ts               # CLI/package version 读取
+│  ├─ types.ts                 # CLI-only command/runtime types
+│  └─ commands/
+│     ├─ dataset.ts            # add/show/samples/export
+│     ├─ transform.ts          # list/run
+│     ├─ recipe.ts             # materialize
+│     ├─ ref.ts                # list/resolve
+│     ├─ lineage.ts            # lineage
+│     ├─ vocab.ts              # list/show/derive/curate/normalize/validate
+│     └─ meta.ts               # version/capabilities/doctor
+├─ test/
+│  ├─ router.test.ts           # parse/help/error/output contract
+│  ├─ cli.lifecycle.test.ts    # real Workspace e2e over memory store + test DB
+│  └─ memory-store.ts          # CLI e2e test store helper
+├─ README.md                   # user/agent command contract
+├─ package.json                # name @databench/cli;bin databench
+└─ tsconfig.json
+```
+
+新增 CLI 命令必须镜像对应 API/Workspace 解析路径。需要新健康探针或业务能力时,先加在 `Workspace`/核心包,CLI 只调用,不得越过 workspace 直连 store/catalog/engine。
 
 ---
 
@@ -109,6 +158,7 @@ src/
 ├─ content.ts              # toContent() 确定性序列化器(**保留 null**)+ sampleId()                    [CORE-05/06/07]
 ├─ manifest.ts             # Manifest schema                                                           [DATASET-02]
 ├─ recipe.ts               # Recipe / RecipeSource schema                                              [RECIPE-01/02]
+├─ vocabulary.ts           # Vocabulary/Term/Extractor schema + normalize/validate/derive helpers       [CONTRACT-03..08]
 ├─ contracts.ts            # Page/SamplesPage/TransformsPage/RefsPage、IngestSamplesRequest、TransformRunRequest、TransformInfo、RefInfo、MaterializeRequest、ErrorResponse [CONTRACT-01]
 ├─ constants.ts            # SCHEMA_VERSION、KIND、**COLUMNS**(单一来源)、MAX_PAGE_LIMIT=500、DEFAULT_PAGE_LIMIT=20、API_VERSION、MIN_CLIENT [CORE-10,SVC-04]
 └─ errors.ts               # 领域错误类:NotFoundError/BadInputError/ValidationError/ConflictError      [ERR 映射源]
@@ -124,7 +174,7 @@ src/
 ├─ dataset.ts              # Dataset 类:_build/fromSamples/fromFrame/toSamples/head/version/name/toPolars(clone)/toArrow [DATASET-04..09]
 ├─ row-digest.ts           # payload \x00 source \x00 meta \x00 signals;source||""                     [DATASET-03]
 ├─ parquet.ts              # toParquetBytes(ds) / fromParquet(bytes, manifest)(nodejs-polars);供 store 调 [DATASET-01 落盘]
-├─ frame.ts                # nodejs-polars 包装 + DuckDB 适配选择(引擎下注/兜底)
+├─ frame.ts                # nodejs-polars frame 包装 + schema 固定                                      [DATASET-01]
 ├─ transform.ts            # Transform 类型 / buildParams / defineTransform(显式命名)                  [XFORM-01..03]
 ├─ rounding.ts             # bankersRound(half-to-even)                                                [RECIPE-05]
 └─ loads.ts                # _loads(空容忍 JSON)                                                       [DATASET-10]
@@ -166,10 +216,9 @@ test/
 ```
 src/
 ├─ index.ts                # Store 接口 + createStore(config)
-├─ store.ts                # Store 接口:write(ds)/read(version)/exists(version)
+├─ store.ts                # Store 接口:dataset + vocabulary read/write/exists + 可选 ping()
 ├─ keys.ts                 # objects/<version[:2]>/<version>.parquet|.manifest.json                     [STORE-02]
-├─ s3-store.ts             # @aws-sdk/client-s3 实现 → GCS(生产)/ MinIO(本地);PUT 原子、双对象 exists [STORE-01/03/04/05]
-└─ fs-store.ts             # 可选本地 fs 实现(测试用)
+└─ oss-store.ts            # ali-oss 实现 → Aliyun OSS;惰性 client;双对象 exists;bucket probe       [STORE-01/03/04/05]
 test/
 └─ store.golden.test.ts    # 与既有 bench/store 布局/幂等对拍                                            [闸门 G6]
 ```
@@ -181,8 +230,7 @@ test/
 src/
 ├─ index.ts                # Catalog 类导出
 ├─ client.ts               # Prisma client 单例 + driver adapter(@prisma/adapter-pg)接线
-├─ catalog.ts              # registerDataset/getDataset/recordRun/findRun/runsProducing/setRef/getRef/listRefs/resolve [CATALOG-02..09,11]
-└─ lineage.ts              # 递归 lineage:WITH RECURSIVE 经 $queryRaw(Prisma 无原生递归 CTE)            [CATALOG-06 支撑 WS-08]
+└─ catalog.ts              # dataset/run/ref/vocabulary metadata + resolve/runsProducing/list*           [CATALOG-02..12]
 test/
 └─ catalog.golden.test.ts  # 三种 upsert 各自语义 + resolve 三态                                        [闸门 G7]
 ```
@@ -194,6 +242,7 @@ test/
 src/
 ├─ index.ts                # Workspace 类导出
 ├─ workspace.ts            # open/addSamples/addJsonl/add/get/run/materialize/lineage/export/_persist/_coerce [WS-01..13]
+├─ transforms.ts           # Workspace 侧 transform registry adapter(getTransform/listTransforms)
 ├─ mix.ts                  # mix(配方混合)+ _sourceCount                                                [RECIPE-04/05]
 ├─ fingerprint.ts          # Recipe.fingerprint                                                          [RECIPE-03]
 └─ cache-key.ts            # run/materialize 的 cache_key 构造(hashObj,键集逐字一致)                   [WS-05/06]
@@ -201,7 +250,7 @@ test/
 ├─ run.golden.test.ts          # 缓存命中不新增 run、version 同                                          [闸门 G8]
 └─ materialize.golden.test.ts  # 可复现 + 银行家舍入 + 0 权重退化 + lineage 结构                          [闸门 G8]
 ```
-> `lineage()` 解析 ref→version 后调 `catalog.lineage`,并把输出整形成与 Python `_lineage` **逐字段一致**(version/name/num_rows/produced_by/inputs/cycle)。
+> `lineage()` 解析 ref→version 后读取 catalog 的 run metadata,并把输出整形成与 Python `_lineage` **逐字段一致**(version/name/num_rows/produced_by/inputs/cycle)。
 
 ## `tooling/openapi-export`  [CONTRACT-02]
 
@@ -215,11 +264,11 @@ src/
 ## 根目录与基础设施
 
 ```
-databench/
+databench-ts/
 ├─ prisma/
 │  ├─ schema.prisma         # datasets/runs/refs model(@@map snake_case 表/列)                          [CATALOG-01]
 │  └─ migrations/
-├─ docker-compose.yml       # 本地:postgres + minio                                                    [ADR-0005]
+├─ docker-compose.yml       # 本地:postgres;OSS 无本地 emulator                                          [ADR-0005/0008]
 ├─ pnpm-workspace.yaml      # apps/* packages/* tooling/*
 ├─ turbo.json               # 管线:build/lint/typecheck/test/openapi:check + 依赖图缓存
 ├─ biome.json               # lint + format 单一配置                                                    [ADR-0004]
@@ -239,5 +288,5 @@ databench/
 2. **Parquet 编解码 → 放 `packages/engine`**(engine 拥有 frame);`store` 只管对象 IO,调 engine 的 `toParquetBytes`/`fromParquet`。
 3. **`COLUMNS` 常量 → 单一放 `packages/schema/constants.ts`**;engine/store 引用,避免两份漂移。
 4. **领域错误类 → `packages/schema/errors.ts`**;`catalog` 不抛领域错误(返回 `null`/数据,保持只依赖 Prisma),NotFound 由 `store` 抛、`apps/api` 映射。
-5. **递归 lineage 的 `WITH RECURSIVE` → `packages/catalog/lineage.ts`**(`$queryRaw`);`workspace` 负责把结果整形成与 Python 一致的 DAG 输出结构。
+5. **lineage DAG 整形 → `packages/workspace/workspace.ts`**;catalog 暴露 run metadata,`workspace` 负责递归组装成与 Python 一致的 DAG 输出结构。
 6. **分页/meta 常量(MAX_PAGE_LIMIT 等)→ `packages/schema/constants.ts`** 单一来源,`apps/api` 与前端共用同值。

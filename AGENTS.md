@@ -1,82 +1,126 @@
-# databench-ts — Agent 工作指南
+# databench-ts — Agent Guide
 
-> 给所有 AI 工具(Claude Code / Codex / Cursor …)的操作总纲。**动手前先读相关 docs,别重新决定已经定了的事。** 本文是防漂移闸,细节都在 `docs/`。
+This file is the durable operating guide for coding agents in this repository.
+Keep it practical, current, and focused on rules that should apply to future
+work. Historical migration notes belong in `docs/migration/`; architecture
+changes belong in ADRs or the relevant docs.
 
-## 这是什么 / 现状
-**databench** = LLM post-training 数据基础设施(版本化数据集、自动血缘、可复现混合)。本仓库是它的 **全 TS monorepo 全新重写**(后端 + 前端都重写)。
+## Project Overview
 
-**现状:S0.1-S21 已完成,M5 parity & 切换收尾完成;D1 已由 owner 改为实现 vocabularies,S19 已补齐。** 后端、前端主流程、OpenAPI、S20 新旧端到端 parity 均已落地并过闸门;词表域已按最新旧后端 + 旧 UI 语义迁入。下一步是 **D3 API 托管平台决策**,拍板前不得进入 S22 部署。旧实现在 `~/Desktop/databench/`(Python 后端 + 旧 UI),**只读参考 + golden 源,默认保留,严禁修改**。
+databench-ts is an all-TypeScript monorepo for LLM post-training data
+infrastructure: versioned datasets, content-addressed storage, lineage,
+reproducible recipes, transforms, exports, and vocabulary workflows.
 
-## 执行入口
-**实现 agent 先读 [`docs/HANDOFF.md`](docs/HANDOFF.md)**(交接:现状/红线/决策门默认/环境 gotcha/DoD/检查点),然后以 [`docs/migration/STATUS.md`](docs/migration/STATUS.md) 的当前进度为准,继续按 [`docs/migration/PLAN.md`](docs/migration/PLAN.md) 推进(M0..M6 / S0..S22 + 决策门)——一个 Step 一个 PR,过闸门再进下一步。不要重跑或重写已完成 Step,除非是修复当前 gate 暴露的问题。
+The product has three user-facing surfaces over one shared core:
 
-## 先读这些(docs/ 是唯一真源)
-- `docs/architecture.md` — 系统形态、引擎下注、部署
-- `docs/project-structure.md` — 有哪些包 + **依赖方向规则**
-- `docs/directory-layout.md` — **文件级**布局(含 Hono `apps/api`、`apps/web`)
-- `docs/conventions.md` — 命名 / ESM / **确定性纪律** / 错误映射 / 测试 / env
-- `docs/tech-stack.md` — Python→TS 逐层映射
-- `docs/migration/feature-inventory.md` — **后端**迁移主计划(101 功能、13 阶段、golden 闸门)
-- `docs/migration/frontend-inventory.md` — **前端**重写主计划(FE-0..FE-5)
-- `docs/decisions/*.md` — ADR(已锁决策的依据)
+- `apps/api`: Hono HTTP API for `/health`, `/version`, `/capabilities`, and `/v1/*`.
+- `apps/web`: React/Vite SPA that consumes the generated OpenAPI client only.
+- `apps/cli`: agent-facing Thick CLI that opens `Workspace` directly.
 
-## 已锁决策(不经新/改 ADR 不得变更)
-| 维度 | 选择 |
-|---|---|
-| monorepo | pnpm workspaces + Turborepo;包名 `@databench/*` |
-| 运行时 / 测试 | Node 22 LTS + Vitest |
-| Lint+Format | Biome |
-| 语言/模块 | TypeScript,纯 ESM;构建 tsup |
-| HTTP | Hono + `@hono/zod-openapi`(ADR-0002) |
-| 校验/契约 | zod(单一来源)→ OpenAPI → openapi-typescript |
-| ORM | **Prisma**(Rust-free;递归 lineage 用 TypedSQL/`$queryRaw`) |
-| 数据库 | **Supabase** Postgres(catalog 控制面) |
-| 对象存储 | **GCS**(S3 兼容 `@aws-sdk/client-s3`;本地 MinIO)= 数据面 |
-| 引擎 | **nodejs-polars** 主力 + **DuckDB**(out-of-core / 兜底) |
-| 前端 | React 19 + Vite SPA + shadcn/ui + Tailwind + TanStack Router/Query/Virtual + openapi-fetch(ADR-0006) |
+## Repository Layout
 
-**需要的 Python:零**(除非将来点名复用 distilabel/Ray 框架本身,见 ADR-0001)。
-
-## 仓库布局(简表;完整见 project-structure.md)
+```text
+apps/{api,web,cli}
+packages/{hashing,schema,engine,io,ops,store,catalog,workspace}
+tooling/openapi-export
+prisma
+docs
 ```
-apps/{api,web}  packages/{hashing,schema,engine,io,ops,store,catalog,workspace}
-tooling/openapi-export  prisma/  docs/
-```
-两个有状态服务:**Postgres + 对象存储**;nodejs-polars/DuckDB/Lance 是进程内库,不是要运维的服务。
 
-## 硬规则(防漂移,CI 应校验)
-1. **依赖 DAG(无环、只向下)**:`hashing ← schema ← {engine, io, catalog} ← {ops, store} ← workspace ← apps/api`。
-   - **`apps/api` 只经 `workspace` + `schema` 触达数据**,禁止直连 store/catalog/engine/ops/io。
-   - `catalog` 只依赖 Prisma;`hashing`/`schema` 保持纯(不碰 polars/Prisma/S3)。
-   - **禁止深 import**(只能 import 包的 `index`);用 package.json `exports` 封死。
-2. **确定性纪律(后端对拍命门)**:参与哈希的序列化**只走** `@databench/hashing` 的 `canonicalJson` —— **任何地方禁用裸 `JSON.stringify` 做哈希输入**;blake3 固定;内容序列化**保留 null**(不丢 undefined);recipe 计数用 `bankersRound`(非 `Math.round`);权重 `weight || 1.0`;空集 version = `hashText("empty")`。每条都对应一个 golden 闸门。
-3. **契约优先**:wire 类型只在 `@databench/schema`(zod)定义一次 → `@hono/zod-openapi` 出 `openapi.json` → `openapi-typescript` 生成前端 client。**不手写 API 类型**(除前端 `ApiError`)。改契约 = 同 PR 跑 `openapi:check` + 重生成。
-4. **错误**:域层抛**类型化领域错误**(不抛裸串、不抛 HTTP 概念);**只有 `apps/api`** 映射成统一信封 `{error:{code,message,detail?}}`。
-5. **存储**:**样本数据绝不进 Postgres** —— Parquet 在对象存储;PG 只存 catalog 元数据。
-6. **Golden 对拍**:每个迁移阶段对拍旧 Python `~/Desktop/databench/databench/bench/`(catalog.db + store)后再进下一阶段。
+Key package roles:
 
-## 工作方式
-- **逐阶段**迁移/重写(后端阶段 0..13 见 feature-inventory;前端 FE-0..5 见 frontend-inventory);**一个阶段≈一个 PR**,过该阶段 golden/FG 闸门才合并。
-- **Conventional Commits**,scope = 包名(如 `feat(engine): …`);pre-commit 跑 Biome;CI 跑 lint/typecheck/vitest/golden/`openapi:check`。
-- 在仓库根目录操作;Node 22(`.nvmrc`)。
+- `@databench/schema`: zod schemas, wire contracts, constants, vocabulary models, and typed domain errors.
+- `@databench/workspace`: orchestration boundary for ingest, transforms, recipes, refs, lineage, export, and vocabularies.
+- `@databench/store`: object-storage data plane for Parquet and vocabulary blobs.
+- `@databench/catalog`: Prisma/Postgres control plane for metadata, refs, runs, and lineage rows.
+- `@databench/engine`, `@databench/io`, `@databench/ops`, `@databench/hashing`: deterministic data and transform primitives.
 
-## 常用命令
-```
-docker compose up -d        # 本地 postgres + minio
+## Setup And Commands
+
+Run commands from the repository root. Use Node 22 from `.nvmrc`.
+
+```bash
+docker compose up -d
 pnpm install
-pnpm dev                    # turbo 拉起 apps/api + apps/web
-pnpm test                   # vitest(含 golden)
-pnpm openapi:check          # 契约确定性校验
+pnpm dev
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm openapi:check
 pnpm --filter @databench/<pkg> <script>
+pnpm --filter @databench/cli dev -- <args>
 ```
 
-## 不要做
-- 不要重议已锁决策(见 ADR);要变就改 ADR。
-- 不要把样本塞进 PG;不要用 `JSON.stringify` 做哈希;不要深 import;不要让 `apps/api` 直连 store/catalog/engine。
-- **不要移除或重新禁用 vocabularies(`CONTRACT-03..08`)**,除非 owner 再次拍板并更新 ADR/计划——当前已实现,后端 `capabilities.vocabularies:true`,前端入口按能力位展示。
-- 不要擅自换框架/库。
-- 不要修改旧参考仓库 `~/Desktop/databench/`。
+Use narrower package-level checks while iterating, then run the broader gates
+when a change crosses package, API, schema, CLI, or deterministic behavior
+boundaries.
 
-## 仍待 owner 决策(遇到时**标出来、别假设**)
-- **API 托管平台**(长驻容器 + 原生插件;GCP 候选 Cloud Run)。
-- **export `fmt`/TRL**:当前采用照搬等价默认;若要实现真正 TRL,必须 owner 拍板并更新 ADR/计划。
+## Architecture Rules
+
+- Keep the dependency direction one-way:
+  `hashing <- schema <- {engine,io,catalog} <- {ops,store} <- workspace <- {apps/api,apps/cli}`.
+- `apps/api` and `apps/cli` are adapters. They may depend on `@databench/workspace` and `@databench/schema`; they must not directly import `store`, `catalog`, `engine`, `ops`, or `io`.
+- `apps/web` must not import backend packages. It consumes generated OpenAPI types and frontend runtime wrappers under `apps/web/src/api`.
+- New business capabilities should land in core packages and `workspace` first, then be exposed through API, CLI, and Web as needed.
+- Do not deep import from internal files of another package. Use each package's public `index` export.
+- If a task intentionally changes these boundaries, update the relevant docs or ADR and add tests that protect the new boundary.
+
+## API And Schema Rules
+
+- Wire contracts live in `@databench/schema` as zod schemas. Do not maintain duplicate request/response types in API, CLI, or Web.
+- `apps/api` uses `@hono/zod-openapi`; contract changes must update `openapi.json` through the repo tooling.
+- `apps/web` types come from `openapi-typescript`. Runtime-only frontend types are allowed only when they are not API wire contracts.
+- API errors use the envelope `{ error: { code, message, detail? } }`.
+- CLI errors use the same schema/error classification and map to documented exit codes.
+- Capability flags must reflect real implemented behavior across API, Web, and CLI.
+
+## Data And Determinism Rules
+
+- Sample data never goes into Postgres. Parquet and vocabulary blobs live in object storage; Postgres stores catalog metadata only.
+- Hash-bound serialization must go through `@databench/hashing` `canonicalJson`; do not use raw `JSON.stringify` as hash input.
+- Keep BLAKE3 fixed for content hashes.
+- Preserve `null` in hash-bound content. Do not accidentally drop fields by converting to `undefined`.
+- Recipe counts use `bankersRound`; do not replace it with `Math.round`.
+- Recipe weight fallback intentionally follows `weight || 1.0`.
+- Empty dataset version is `hashText("empty")`.
+- Any change affecting `id`, `version`, `cache_key`, lineage, export rows, or sampling requires focused golden/parity coverage.
+
+## Frontend Rules
+
+- Keep `apps/web` a SPA and a pure REST client.
+- Server state belongs in TanStack Query; avoid copying server data into broad client state.
+- Keep API calls in `apps/web/src/api`, not inside React components.
+- Keep generated API types generated. Do not hand-edit `apps/web/src/api/generated/schema.ts`.
+- UI should remain dense, operational, and suited for repeated data work.
+- i18n defaults and existing locale behavior are part of the user experience; update locale tests when changing copy keys.
+
+## CLI Rules
+
+- `apps/cli` is a Thick local adapter over `Workspace`, not an HTTP client and not a second backend.
+- Commands should mirror API/workspace parsing paths so CLI and API produce the same versions, lineage, and errors.
+- Output is JSON by default. The documented exception is raw NDJSON streaming for dataset export without an output file.
+- `help --json` is a machine-readable command contract; update it with command surface changes.
+- Add new probes or business operations to `Workspace` or core packages first; CLI should call them.
+
+## Testing And Done Criteria
+
+Before handing off changes, run the narrowest useful verification and report it.
+
+- Schema/API contract changes: `pnpm openapi:check` plus relevant API and Web checks.
+- Core deterministic changes: relevant package tests plus golden/parity tests.
+- Workspace changes: `pnpm --filter @databench/workspace test` and affected adapters.
+- API changes: `pnpm --filter @databench/api test`.
+- Web changes: `pnpm --filter @databench/web test`, `typecheck`, and `build` when UI/runtime behavior changes.
+- CLI changes: `pnpm --filter @databench/cli test`.
+- Cross-package changes: `pnpm lint`, `pnpm typecheck`, and `pnpm test` when practical.
+
+If verification cannot be run, say exactly why.
+
+## Safety Rules
+
+- Check `git status --short` before editing and preserve unrelated user changes.
+- Never revert or overwrite changes you did not make unless explicitly asked.
+- Do not commit, push, create branches, or open PRs unless explicitly requested.
+- Do not introduce dependencies without a clear reason and a package manifest update.
+- Do not write secrets to the repository. Use `.env` locally and platform secrets in deployed environments.
+- Treat `~/Desktop/databench/` as read-only legacy reference/golden material when it is needed.

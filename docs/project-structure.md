@@ -1,34 +1,34 @@
 # 项目结构与包边界(权威)
 
-> 迁移前钉死的目录与依赖规则。**任何代码都必须落在这里规定的位置、遵守这里的依赖方向**,以防迁移过程中结构漂移。
+> 当前代码结构与依赖规则。**任何代码都必须落在这里规定的位置、遵守这里的依赖方向**,以防维护期结构漂移。
 >
 > - 本文 = 「有哪些包 + 依赖方向规则 + 单包模板」。
-> - **每个文件放什么** → 见 [`directory-layout.md`](directory-layout.md)(文件级,含 Hono `apps/api` 的完整内部结构)。
+> - **每个文件放什么** → 见 [`directory-layout.md`](directory-layout.md)(文件级,含 `apps/api` / `apps/web` / `apps/cli` 的内部结构)。
 > - 命名/编码/测试/配置 → [`conventions.md`](conventions.md);工具链/基础设施 → ADR [0004](decisions/0004-toolchain-and-conventions.md)/[0005](decisions/0005-infrastructure-and-deployment.md)。
 
 ## 顶层目录
 
-> **根目录 = `~/Desktop/databench-ts/`**(全新仓库)。旧 Python 后端 + 旧 `databench-ui` 留在 `~/Desktop/databench/` 作参考与 golden 源(golden 在 `~/Desktop/databench/databench/bench/`)。
+> **根目录 = `~/Desktop/databench-ts/`**。旧 Python 后端 + 旧 `databench-ui` 留在 `~/Desktop/databench/` 作只读参考与 golden 源(golden 在 `~/Desktop/databench/databench/bench/`)。
 
 ```
 databench-ts/                   ← monorepo 根(pnpm + Turborepo)
 ├─ apps/
 │  ├─ api/              @databench/api    Hono 服务:/health /version /capabilities /v1/*
-│  └─ web/              前端(**全新重写**,栈待定;仍按同一 /v1 契约消费,旧 UI 作功能参考)
+│  ├─ web/              @databench/web    React/Vite SPA,只消费生成的 OpenAPI client
+│  └─ cli/              @databench/cli    agent-facing Thick CLI,直接调用 Workspace
 ├─ packages/
 │  ├─ hashing/          @databench/hashing    blake3 + canonicalJson + hash*（地基）
 │  ├─ schema/           @databench/schema     zod 样本判别联合 + Manifest + 服务契约 + Vocabulary + 常量
-│  ├─ engine/           @databench/engine     Dataset 核心 + transform 抽象（nodejs-polars/DuckDB）
+│  ├─ engine/           @databench/engine     Dataset 核心 + transform 抽象（nodejs-polars）
 │  ├─ io/               @databench/io         JSONL 摄取 + kind 检测 + 导出整形
 │  ├─ ops/              @databench/ops        内置 transforms（dedup/filter/sample/enrich）
-│  ├─ store/            @databench/store      内容寻址 Parquet + Vocabulary JSON 存储（S3 接口 / GCS·MinIO）
+│  ├─ store/            @databench/store      内容寻址 Parquet + Vocabulary JSON 存储（Aliyun OSS）
 │  ├─ catalog/          @databench/catalog    Postgres 控制面（Prisma，含 vocab refs）
 │  └─ workspace/        @databench/workspace  编排：run/materialize/lineage/export + recipe + vocabulary
 ├─ tooling/
 │  ├─ openapi-export/   启动 api 导出确定性 openapi.json（替代 scripts/export_openapi.py）
-│  └─ tsconfig/         共享 tsconfig 基线（可选独立包）
 ├─ prisma/              Prisma schema + migrations（catalog 用）
-├─ docker-compose.yml   本地：postgres + minio
+├─ docker-compose.yml   本地：postgres（OSS 无本地 emulator）
 ├─ turbo.json · biome.json · tsconfig.base.json · pnpm-workspace.yaml · .nvmrc
 └─ docs/
 ```
@@ -51,6 +51,8 @@ packages/<name>/
 └─ README.md            ← 该包职责一句话 + 公共 API 摘要
 ```
 
+`apps/*` 也遵守同样的 public-boundary 原则:应用内部可按自身框架组织文件,但跨包依赖必须符合下方 DAG。CLI/API 这类适配器不能把业务逻辑写在 app 层。
+
 ## 依赖方向（DAG，**只能向下,禁止成环**)
 
 分层,import 只允许指向更低层;**同层不互相依赖**,跨层不得跳过 `workspace` 边界:
@@ -64,17 +66,19 @@ L2  engine            → schema, hashing
 L3  ops               → engine, schema
     store             → engine, schema
 L4  workspace         → engine, io, ops, store, catalog, schema, hashing
-L5  apps/api          → workspace, schema           （只经 workspace 触达数据,不直连 store/catalog/engine）
+L5  apps/api          → workspace, schema           （HTTP adapter,只经 workspace 触达数据）
+    apps/cli          → workspace, schema           （CLI adapter,只经 workspace 触达数据）
 L6  tooling/openapi-export → apps/api
     apps/web          → （仅消费生成的 OpenAPI client,不 import 任何后端包）
 ```
 
 **硬规则(CI 应校验,见 conventions「依赖纪律」):**
-1. **`apps/api` 不得直接 import `store`/`catalog`/`engine`/`ops`/`io`** —— 一切经 `@databench/workspace`。API 层只做:校验(zod)→ 调 workspace → 整形响应 → 错误映射。
+1. **`apps/api` 与 `apps/cli` 不得直接 import `store`/`catalog`/`engine`/`ops`/`io`** —— 一切经 `@databench/workspace`。app adapter 只做:校验/解析 → 调 workspace → 整形响应/输出 → 错误映射。
 2. **`catalog` 不依赖任何域包**(它只认 version 串、json、时间戳);Prisma 只活在这里。
-3. **`hashing`/`schema` 不依赖 nodejs-polars/Prisma/S3** —— 保持纯,便于 golden 对拍与跨环境复用。
-4. **禁止深 import**(`@databench/x/src/foo`):只能 import 包的 `index.ts`。用 package.json 的 `exports` 字段封死。
-5. **无环**:Turborepo/Biome 跑依赖检查;新增跨包依赖必须仍是 DAG。
+3. **`hashing`/`schema` 不依赖 nodejs-polars/Prisma/对象存储 SDK** —— 保持纯,便于 golden 对拍与跨环境复用。
+4. **`apps/web` 不 import 后端包**:只使用生成的 `apps/web/src/api/generated/schema.ts` 与前端 runtime wrapper。
+5. **禁止深 import**(`@databench/x/src/foo`):只能 import 包的 `index.ts`。用 package.json 的 `exports` 字段封死。
+6. **无环**:Turborepo/Biome 跑依赖检查;新增跨包依赖必须仍是 DAG。
 
 ## 功能ID → 落点(与迁移清单一致)
 
@@ -89,9 +93,10 @@ L6  tooling/openapi-export → apps/api
 | `catalog` | `CATALOG-01..12` + vocabulary/vocab_ref 控制面 |
 | `workspace` | `WS-01..13`、`RECIPE-03..05(mix/fingerprint)`、Vocabulary derive/save/get/list/normalize/validate |
 | `apps/api` | `API-01..14`、`SVC-01..05`、`ERR-01..06`、`CONTRACT-03..08` routes |
+| `apps/cli` | ADR-0007 CLI adapter:dataset/transform/recipe/ref/lineage/vocab/meta commands |
 | `tooling/openapi-export` | `CONTRACT-02` |
 
 ## 数据/配置目录约定
 - **Prisma**:schema 与 migrations 在根 `prisma/`;`packages/catalog` import 生成的 client。
 - **golden fixtures**:现有 Python `bench/`(catalog.db + store/objects)作为对拍金标,复制进各包 `test/golden/fixtures/` 或在 CI 里挂载只读。
-- **本地基础设施**:根 `docker-compose.yml` 起 `postgres` + `minio`;`.env.example` 给全量变量(见 conventions「配置」)。
+- **本地基础设施**:根 `docker-compose.yml` 只起 `postgres`;真实对象存储 IO 走 `OSS_*`,测试优先注入内存 store。`.env.example` 给全量变量(见 conventions「配置」)。
