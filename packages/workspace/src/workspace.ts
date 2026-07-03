@@ -632,13 +632,17 @@ function defaultStoreConfig(config: StoreConfig | undefined): StoreConfig {
     return config
   }
 
+  // Aliyun OSS, configured entirely via env. `region` keeps a default so the
+  // (lazy) client can be built; credentials are required for real use — when
+  // unset, store operations fail cleanly (see OssStore) rather than here.
   return {
-    bucket: process.env.S3_BUCKET ?? 'databench',
-    region: process.env.S3_REGION ?? 'us-east-1',
-    endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
-    accessKeyId: process.env.S3_ACCESS_KEY_ID ?? 'databench',
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? 'databench-secret',
-    forcePathStyle: true,
+    bucket: process.env.OSS_BUCKET ?? 'databench',
+    region: process.env.OSS_REGION ?? 'oss-cn-hangzhou',
+    accessKeyId: process.env.OSS_ACCESS_KEY_ID ?? '',
+    accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET ?? '',
+    ...(process.env.OSS_ENDPOINT ? { endpoint: process.env.OSS_ENDPOINT } : {}),
+    ...(process.env.OSS_INTERNAL ? { internal: process.env.OSS_INTERNAL === 'true' } : {}),
+    ...(process.env.OSS_SECURE ? { secure: process.env.OSS_SECURE !== 'false' } : {}),
   }
 }
 

@@ -20,8 +20,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1075.0",
     "@databench/engine": "workspace:*",
-    "@databench/schema": "workspace:*"
+    "@databench/schema": "workspace:*",
+    "ali-oss": "^6.23.0"
   }
 }
