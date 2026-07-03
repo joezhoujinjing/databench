@@ -24,7 +24,7 @@ import {
   vocabularyExtractor,
   withVocabularyId,
 } from '@databench/schema'
-import { createStore, type Store, type StoreConfig } from '@databench/store'
+import { createStore, ossConfigFromEnv, type Store, type StoreConfig } from '@databench/store'
 import { recipeCacheKey, transformCacheKey } from './cache-key.js'
 import { recipeFingerprint } from './fingerprint.js'
 import { mix } from './mix.js'
@@ -628,22 +628,11 @@ function isPolarsDataFrame(value: unknown): value is PolarsDataFrame {
 }
 
 function defaultStoreConfig(config: StoreConfig | undefined): StoreConfig {
-  if (config) {
-    return config
-  }
-
-  // Aliyun OSS, configured entirely via env. `region` keeps a default so the
-  // (lazy) client can be built; credentials are required for real use — when
-  // unset, store operations fail cleanly (see OssStore) rather than here.
-  return {
-    bucket: process.env.OSS_BUCKET ?? 'databench',
-    region: process.env.OSS_REGION ?? 'oss-cn-hangzhou',
-    accessKeyId: process.env.OSS_ACCESS_KEY_ID ?? '',
-    accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET ?? '',
-    ...(process.env.OSS_ENDPOINT ? { endpoint: process.env.OSS_ENDPOINT } : {}),
-    ...(process.env.OSS_INTERNAL ? { internal: process.env.OSS_INTERNAL === 'true' } : {}),
-    ...(process.env.OSS_SECURE ? { secure: process.env.OSS_SECURE !== 'false' } : {}),
-  }
+  // Aliyun OSS, configured entirely via env through the single mapping shared
+  // with apps/api (`ossConfigFromEnv`), so the two adapters can't drift.
+  // Credentials are required for real use — when unset, store operations fail
+  // cleanly (see OssStore) rather than here.
+  return config ?? ossConfigFromEnv()
 }
 
 function catalogOptions(databaseUrl: string | undefined): { databaseUrl?: string } {

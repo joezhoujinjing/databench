@@ -26,7 +26,7 @@ export interface OssClient {
   get(name: string): Promise<OssGetResult>
   head(name: string): Promise<unknown>
   delete(name: string): Promise<unknown>
-  getBucketInfo(): Promise<unknown>
+  getBucketInfo(name?: string): Promise<unknown>
 }
 
 type OssConstructor = new (options: OssClientOptions) => OssClient
@@ -46,6 +46,23 @@ export interface OssStoreConfig {
   readonly internal?: boolean
   // Injectable client, mainly for tests.
   readonly client?: OssClient
+}
+
+// Single source of the OSS env → config mapping, shared by workspace and (via a
+// re-export) apps/api so the two adapters can't drift. Defaults to HTTPS
+// (opt out with OSS_SECURE=false) and the public endpoint (OSS_INTERNAL=true for
+// the VPC endpoint). Credentials are required for real use; empty defaults let
+// an unconfigured Workspace.open() build lazily and fail cleanly on first use.
+export function ossConfigFromEnv(env: NodeJS.ProcessEnv = process.env): OssStoreConfig {
+  return {
+    bucket: env.OSS_BUCKET ?? 'databench',
+    region: env.OSS_REGION ?? 'oss-cn-hangzhou',
+    accessKeyId: env.OSS_ACCESS_KEY_ID ?? '',
+    accessKeySecret: env.OSS_ACCESS_KEY_SECRET ?? '',
+    secure: env.OSS_SECURE !== 'false',
+    internal: env.OSS_INTERNAL === 'true',
+    ...(env.OSS_ENDPOINT ? { endpoint: env.OSS_ENDPOINT } : {}),
+  }
 }
 
 export class OssStore implements Store {
@@ -68,8 +85,10 @@ export class OssStore implements Store {
 
   // Connectivity + bucket-existence probe for health checks. Throws a
   // distinguishable OSS error (NoSuchBucket / auth / network) when unhealthy.
+  // Pass the bucket explicitly — ali-oss's getBucketInfo runs a bucket-name check
+  // before its own default-bucket fallback.
   async ping(): Promise<void> {
-    await this.#oss().getBucketInfo()
+    await this.#oss().getBucketInfo(this.#config.bucket)
   }
 
   async exists(version: string): Promise<boolean> {
