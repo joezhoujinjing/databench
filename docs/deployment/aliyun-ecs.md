@@ -1,5 +1,7 @@
 # Aliyun ECS Deployment Runbook
 
+Chinese version: [aliyun-ecs.zh-CN.md](aliyun-ecs.zh-CN.md).
+
 This document is the durable production deployment runbook for `databench-ts`.
 It covers the current Alibaba Cloud resources, GitHub Actions flows, ECS runtime
 files, frontend OSS/CDN publishing, DNS requirements, and the common failure
