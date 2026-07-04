@@ -35,6 +35,14 @@ Design and decision records for the all-TypeScript monorepo rebuild.
 - **[0006 — Frontend stack](decisions/0006-frontend-stack.md)**
   — React + Vite SPA, shadcn/ui + Tailwind, TanStack Router/Query/Virtual. *Accepted.*
 
+## Deployment
+
+- **[阿里云 ECS 部署手册](deployment/aliyun-ecs.zh-CN.md)** — 中文生产部署
+  runbook，覆盖 GitHub Actions、ECS、RDS、OSS/CDN、GoDaddy DNS、首发检查、
+  日常部署、回滚和排障。
+- **[Aliyun ECS Deployment Runbook](deployment/aliyun-ecs.md)** — English
+  deployment runbook for the same production setup.
+
 ## Migration (Python → TS)
 
 - **[HANDOFF.md](HANDOFF.md)** — **implementation handoff** for the agent that
