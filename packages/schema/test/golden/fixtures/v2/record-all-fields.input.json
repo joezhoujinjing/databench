@@ -1,0 +1,268 @@
+{
+  "schema_version": "2.0.0",
+  "id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "system_instruction": "Answer accurately and use tools when needed.",
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "What is the status of order 42?",
+          "thought": false,
+          "thought_signature": null,
+          "part_metadata": { "demo.span": 1 }
+        },
+        {
+          "type": "file_data",
+          "file_data": {
+            "uri": "s3://datasets/media/order-42.png",
+            "media_type": "image/png",
+            "digest": {
+              "algorithm": "blake3",
+              "value": "1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            "size_bytes": 2048
+          },
+          "thought": false,
+          "thought_signature": null,
+          "part_metadata": {}
+        }
+      ],
+      "loss_weight": 0
+    }
+  ],
+  "candidates": [
+    {
+      "id": "cand_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "contents": [
+        {
+          "role": "ai",
+          "parts": [
+            {
+              "type": "function_call",
+              "function_call": {
+                "id": "call-order-42",
+                "name": "lookup_order",
+                "args": { "order_id": "42" }
+              },
+              "thought": true,
+              "thought_signature": "thought-signature-1",
+              "part_metadata": {}
+            }
+          ],
+          "loss_weight": 1
+        },
+        {
+          "role": "user",
+          "parts": [
+            {
+              "type": "function_response",
+              "function_response": {
+                "call_id": "call-order-42",
+                "response": { "status": "shipped", "tracking": null }
+              },
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": {}
+            }
+          ],
+          "loss_weight": 0
+        },
+        {
+          "role": "ai",
+          "parts": [
+            {
+              "type": "text",
+              "text": "Order 42 has shipped.",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": { "demo.final": true }
+            }
+          ],
+          "loss_weight": null
+        }
+      ],
+      "finish_reason": "stop",
+      "rank": 0,
+      "selected": true,
+      "signals": [
+        {
+          "id": "sig_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "name": "quality",
+          "kind": "rating",
+          "value": {
+            "type": "number",
+            "value": 0.8,
+            "scale_min": 0,
+            "scale_max": 1,
+            "higher_is_better": true
+          },
+          "source": { "type": "human", "id": "reviewer-17", "version": "rubric-v1" },
+          "rationale": "Correct but terse.",
+          "created_at": "2026-07-23T08:00:00.000Z",
+          "supersedes": null
+        },
+        {
+          "id": "sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "name": "quality",
+          "kind": "rating",
+          "value": {
+            "type": "number",
+            "value": 0.9,
+            "scale_min": 0,
+            "scale_max": 1,
+            "higher_is_better": true
+          },
+          "source": { "type": "human", "id": "reviewer-17", "version": "rubric-v1" },
+          "rationale": "Correction after checking the trace.",
+          "created_at": "2026-07-23T08:01:00.000Z",
+          "supersedes": "sig_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        {
+          "id": "sig_ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "name": "verified",
+          "kind": "verdict",
+          "value": { "type": "boolean", "value": true },
+          "source": { "type": "verifier", "id": "order-status", "version": "1.0.0" },
+          "rationale": null,
+          "created_at": null,
+          "supersedes": null
+        },
+        {
+          "id": "sig_1111111111111111111111111111111111111111111111111111111111111111",
+          "name": "safety_label",
+          "kind": "safety",
+          "value": { "type": "category", "value": "safe" },
+          "source": { "type": "heuristic", "id": "safety-rules", "version": null },
+          "rationale": null,
+          "created_at": null,
+          "supersedes": null
+        },
+        {
+          "id": "sig_2222222222222222222222222222222222222222222222222222222222222222",
+          "name": "imported_evidence",
+          "kind": "other",
+          "value": { "type": "json", "value": { "source_score": 7, "notes": [null, true] } },
+          "source": { "type": "imported", "id": "legacy-eval", "version": "2" },
+          "rationale": null,
+          "created_at": null,
+          "supersedes": null
+        }
+      ],
+      "generator": {
+        "provider": "openai",
+        "model": "example-model",
+        "revision": "2026-07-01",
+        "parameters": { "temperature": 0, "top_p": 1 }
+      },
+      "token_count": 23,
+      "avg_logprobs": -0.15
+    },
+    {
+      "id": "cand_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "contents": [
+        {
+          "role": "ai",
+          "parts": [
+            {
+              "type": "text",
+              "text": "I cannot check that order.",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": {}
+            }
+          ],
+          "loss_weight": 1
+        }
+      ],
+      "finish_reason": null,
+      "rank": 1,
+      "selected": false,
+      "signals": [],
+      "generator": null,
+      "token_count": null,
+      "avg_logprobs": null
+    }
+  ],
+  "preference_relations": [
+    {
+      "id": "pref_3333333333333333333333333333333333333333333333333333333333333333",
+      "left_candidate_id": "cand_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "right_candidate_id": "cand_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "outcome": "tie",
+      "status": "observation",
+      "criterion": "overall",
+      "source": { "type": "human", "id": "reviewer-18", "version": "rubric-v1" },
+      "rationale": "Initial uncertain annotation.",
+      "created_at": "2026-07-23T08:02:00.000Z",
+      "supersedes": null
+    },
+    {
+      "id": "pref_4444444444444444444444444444444444444444444444444444444444444444",
+      "left_candidate_id": "cand_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "right_candidate_id": "cand_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "outcome": "left",
+      "status": "adjudicated",
+      "criterion": "overall",
+      "source": { "type": "ai", "id": "judge-run-7", "version": "1.0.0" },
+      "rationale": "The left candidate used the declared tool.",
+      "created_at": "2026-07-23T08:03:00.000Z",
+      "supersedes": null
+    },
+    {
+      "id": "pref_5555555555555555555555555555555555555555555555555555555555555555",
+      "left_candidate_id": "cand_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "right_candidate_id": "cand_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "outcome": "left",
+      "status": "adjudicated",
+      "criterion": "overall",
+      "source": { "type": "ai", "id": "judge-run-8", "version": "1.0.1" },
+      "rationale": "Adjudication confirmed after correction.",
+      "created_at": "2026-07-23T08:04:00.000Z",
+      "supersedes": "pref_4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ],
+  "tools": [
+    {
+      "name": "lookup_order",
+      "description": "Look up an order by ID.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": { "order_id": { "type": "string", "minLength": 1 } },
+        "required": ["order_id"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "verification": {
+    "verifier": "order-status",
+    "verifier_version": "1.0.0",
+    "ground_truth": { "status": "shipped" },
+    "constraint": null,
+    "config": { "case_sensitive": false }
+  },
+  "source": {
+    "name": "support-orders",
+    "kind": "internal-jsonl",
+    "url": "https://data.example.com/orders/42",
+    "license": "LicenseRef-Internal",
+    "original_id": "order-42"
+  },
+  "lang": "en-US",
+  "lineage": {
+    "parent_refs": [
+      {
+        "id": "rec_6666666666666666666666666666666666666666666666666666666666666666",
+        "record_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    ],
+    "recipe": "support-cleanup",
+    "recipe_revision": "3",
+    "run_id": "run_8888888888888888888888888888888888888888888888888888888888888888",
+    "steps": [{ "name": "normalize-order", "version": "1.0.0", "params": { "preserve_ids": true } }]
+  },
+  "tags": ["demo", "tool-use"],
+  "extra": { "demo.audit": { "reviewed": true } }
+}

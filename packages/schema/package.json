@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@databench/hashing": "workspace:*",
+    "ajv": "8.20.0",
+    "safe-regex2": "5.1.1",
     "zod": "^4.0.0"
   }
 }

@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V2
-last_completed_step: V1
+current_step: V3
+last_completed_step: V2
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V2 — Canonical Record 2.0.0 与 Tool Schema
+- **下一步:** V3 — Identity、Claim 与 Opaque Revision
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -22,7 +22,7 @@ capability_enabled: false
 |---|---|---|---|---|---|
 | V0 | 状态、fixtures 与防误报门 | ✅ | 当前分支 | GV0 | ADR/技术方案/计划均已接受；fixture index和 CI check已建立 |
 | V1 | RFC 8785、raw JSON与 Hashing API | ✅ | 当前分支 | GV1 | RFC/JCS、具名 domains、raw parser 与 fixtures已过闸门 |
-| V2 | Canonical Record与 Ajv | ⬜ | | GV2 | |
+| V2 | Canonical Record与 Ajv | ✅ | 当前分支 | GV2 | strict/compatible schema、Ajv与真实 OpenAPI生成已过闸门 |
 | V3 | Identity、Claim与 Opaque Revision | ⬜ | | GV3 | |
 | V4 | Immutable `V2Dataset` | ⬜ | | GV4 | |
 | V5 | `record-json-v1`确定性 Parquet | ⬜ | | GV5 | |
@@ -63,3 +63,15 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - `pnpm v2:status:check`、`git diff --check`、`pnpm lint`（258 files）、`pnpm build`
   （12 tasks）、`pnpm typecheck`（21 tasks）、`pnpm test`（21 tasks）、
   `pnpm openapi:check`（11 tasks）全部通过。
+
+## V2 Gate 记录
+
+- ADR 0009 的 strict schemas、完整 normalizer、compatible reader/`UnknownPart` 与全部
+  cross-field invariants已落地；3 组 V2 fixtures均标记为 verified；
+- Tool Draft 2020-12 validator覆盖递归 local `$ref`/`$dynamicRef`、external/unresolved ref、
+  schema/instance预算、安全正则与有界编译缓存；
+- review 后补齐已知 Part compatible校验、RFC 3339 纳秒保真、完整日历校验、BCP-47
+  grandfathered/private-use tag、signed URI和开放 JSON credential边界；
+- schema 126 tests、API真实 `OpenAPIHono` component生成测试通过；
+- `pnpm v2:status:check`、`git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、
+  `pnpm test` 与 `pnpm openapi:check` 全部通过。

@@ -52,7 +52,7 @@
       "path": "packages/schema/test/golden/fixtures/v2/record-all-fields.input.json",
       "assertion": "Every v2.0 field and Part variant round-trips through the strict writer",
       "source": "ADR-0009",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "record-cross-field-invalid",
@@ -62,7 +62,7 @@
       "path": "packages/schema/test/golden/fixtures/v2/record-cross-field-invalid.input.json",
       "assertion": "Call, candidate, signal, preference, supersession and verification invariants reject invalid records",
       "source": "ADR-0009-invariants",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "tool-schema-local-ref-budget",
@@ -72,7 +72,7 @@
       "path": "packages/schema/test/golden/fixtures/v2/tool-schema-local-ref-budget.input.json",
       "assertion": "Draft 2020-12 local recursive refs work while external refs and budget overflow fail",
       "source": "TECHNICAL-DESIGN-7.4",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "entity-id-four-prefixes",

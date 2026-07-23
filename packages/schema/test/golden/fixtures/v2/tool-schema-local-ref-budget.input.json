@@ -1,0 +1,33 @@
+{
+  "valid_recursive": {
+    "type": "object",
+    "$defs": {
+      "node": {
+        "type": "object",
+        "properties": {
+          "value": { "type": "string" },
+          "next": { "anyOf": [{ "$ref": "#/$defs/node" }, { "type": "null" }] }
+        },
+        "required": ["value", "next"],
+        "additionalProperties": false
+      }
+    },
+    "properties": { "root": { "$ref": "#/$defs/node" } },
+    "required": ["root"],
+    "additionalProperties": false
+  },
+  "valid_instance": {
+    "root": { "value": "a", "next": { "value": "b", "next": null } }
+  },
+  "invalid_instance": {
+    "root": { "value": 1, "next": null }
+  },
+  "invalid_schemas": [
+    {
+      "name": "external-ref",
+      "schema": { "type": "object", "$ref": "https://example.com/schema" }
+    },
+    { "name": "unresolved-ref", "schema": { "type": "object", "$ref": "#/$defs/missing" } },
+    { "name": "non-object-root", "schema": { "type": "array", "items": { "type": "string" } } }
+  ]
+}
