@@ -205,6 +205,7 @@ Important files:
 
 ```env
 DATABASE_URL=postgresql://databench_app:<url-encoded-password>@pgm-j6cgqlq44ku1k52n.pg.cnhk.rds.aliyuncs.com:5432/databench?schema=public
+DATABENCH_OBJECT_STORE=oss
 OSS_REGION=oss-cn-hongkong
 OSS_BUCKET=databench-data
 OSS_ACCESS_KEY_ID=<databench-api-runtime access key id>
@@ -221,6 +222,10 @@ If the database password contains reserved URL characters, encode them inside
 The deploy script validates required variables before loading the image or
 starting services. It rejects missing values and obvious placeholders such as
 `REPLACE_ME`.
+
+`deploy/ecs/docker-compose.yml` also pins `DATABENCH_OBJECT_STORE=oss` for the
+API service. This keeps production on Aliyun OSS even though local development
+can select `DATABENCH_OBJECT_STORE=s3` for MinIO.
 
 ## Backend Docker Image
 

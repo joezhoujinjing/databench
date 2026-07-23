@@ -24,7 +24,7 @@ import {
   vocabularyExtractor,
   withVocabularyId,
 } from '@databench/schema'
-import { createStore, ossConfigFromEnv, type Store, type StoreConfig } from '@databench/store'
+import { createStore, type Store, type StoreConfig, storeConfigFromEnv } from '@databench/store'
 import { recipeCacheKey, transformCacheKey } from './cache-key.js'
 import { recipeFingerprint } from './fingerprint.js'
 import { mix } from './mix.js'
@@ -628,11 +628,11 @@ function isPolarsDataFrame(value: unknown): value is PolarsDataFrame {
 }
 
 function defaultStoreConfig(config: StoreConfig | undefined): StoreConfig {
-  // Aliyun OSS, configured entirely via env through the single mapping shared
-  // with apps/api (`ossConfigFromEnv`), so the two adapters can't drift.
+  // Object storage is configured entirely via env through the single mapping
+  // shared with apps/api (`storeConfigFromEnv`), so the two adapters can't drift.
   // Credentials are required for real use — when unset, store operations fail
-  // cleanly (see OssStore) rather than here.
-  return config ?? ossConfigFromEnv()
+  // cleanly in the selected store rather than here.
+  return config ?? storeConfigFromEnv()
 }
 
 function catalogOptions(databaseUrl: string | undefined): { databaseUrl?: string } {

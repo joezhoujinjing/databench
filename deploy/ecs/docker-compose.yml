@@ -8,6 +8,7 @@ services:
     env_file:
       - /opt/databench/api.env
     environment:
+      DATABENCH_OBJECT_STORE: oss
       NODE_ENV: production
       PORT: "8000"
     ports:
