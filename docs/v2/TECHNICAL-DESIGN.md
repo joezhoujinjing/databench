@@ -69,7 +69,7 @@ Owner 接受本文即接受 T1-T20。后文给出每项的具体结构和时序�
 | T1 | v1/v2 演进方式 | 加法式隔离；不原地重写 v1 |
 | T2 | package 组织 | 复用现有 package DAG，在各包增加 `src/v2/` |
 | T3 | runtime dataset | 独立 eager `V2Dataset`，默认最多 100k records / 512 MiB canonical bytes |
-| T4 | 首个物理 layout | `record-json-v1` 三列 lossless Parquet |
+| T4 | 首个物理 layout | `record-json-v1` 三列 lossless Parquet；`hyparquet-writer` + ZSTD WASM |
 | T5 | logical identity namespace | workspace-local immutable UUID |
 | T6 | ID 审计语义 | ID 分配后 opaque；machine creation 使用 immutable identity claim |
 | T7 | control plane | 新增独立 v2 Prisma tables，不复用 v1 datasets/runs/refs |
@@ -685,8 +685,9 @@ function admitV2TransformWorkingSet(
 `DatasetIdentityEnvelopeV2`，绝不能接收包含 `dataset_version` 自身或 `num_records` 的 snapshot
 metadata。`V2Dataset` 是 logical set，不携带 layout；`record-json-v1` 只属于 codec、prepared
 artifact、manifest 与 catalog layout，使同一 logical version 可以并存多个物理 layout。
-Polars frame materialization是 `record-json-v1` codec私有能力，不从 `V2Dataset` 公共 API导出；
-它必须先取得 working-set admission，避免 record objects + JCS strings + frame无界复制。
+`record-json-v1` codec直接消费稳定排序的 row iterable并按 row group有界转置，不物化第二份完整
+Polars frame，也不从 `V2Dataset` 公共 API导出物理 writer能力；写入前仍须取得 working-set
+admission，frame estimate在该 codec中表示一个 row-group window及其列转置/压缩工作集。
 
 `fromRecords`只接受 raw canonical record；每条 unknown都必须经过唯一
 `createRecordRevisionV2`，不能信任 caller提供的 digest/JSON，也没有 revision fast path。它在逐条
@@ -712,39 +713,55 @@ integer，每次加法先检查溢出；exact budget允许，超预算由 `admit
 
 ### 9.2 `record-json-v1`
 
-Parquet schema 固定为:
+Parquet schema固定为以下显式 schema；empty dataset也必须提供同一 schema，禁止从首批 rows推断：
 
-| Column | Physical type | Null | 内容 |
-|---|---|---|---|
-| `record_id` | UTF-8 string | no | `rec_` + 64 hex |
-| `record_digest` | UTF-8 string | no | full record digest |
-| `record_json` | UTF-8 string | no | strict record RFC 8785 bytes 对应字符串 |
+| Column | Physical type | Annotation | Repetition | 内容 |
+|---|---|---|---|---|
+| `record_id` | `BYTE_ARRAY` | `UTF8` | `REQUIRED` | `rec_` + 64 hex |
+| `record_digest` | `BYTE_ARRAY` | `UTF8` | `REQUIRED` | full record digest |
+| `record_json` | `BYTE_ARRAY` | `UTF8` | `REQUIRED` | strict record RFC 8785 bytes 对应字符串 |
 
 Writer contract:
 
 - rows 按 `(record_digest, record_id)` ASCII 升序；第二字段只处理理论 hash tie，不参与
   dataset version;
 - column 顺序严格如上;
-- compression 固定 Zstandard level 3;
-- statistics 关闭，避免不同 writer version 的 metadata drift;
-- row group target 固定 65,536 rows;
-- data page size target 固定 1 MiB，`maintainOrder=true`;
-- 不写动态 timestamp、hostname、run ID 或 application metadata;
-- nodejs-polars 与底层 writer version 由 lockfile 固定;
+- writer固定为 `hyparquet-writer@0.16.1`，ZSTD compressor固定为
+  `@bokuweb/zstd-wasm@0.0.27`，两者均由 lockfile精确锁定;
+- compression codec固定 `ZSTD`，每个 page显式调用 `compress(bytes, 3)`，即 level 3;
+- 三列 encoding都固定 `PLAIN`，禁止 dictionary或自适应 encoding;
+- `statistics:false`，每列 `columnIndex:false`、`offsetIndex:false`;
+- row group target精确固定 65,536 rows，最后一组仅允许为剩余行数;
+- uncompressed data page size target精确固定 `1_048_576` bytes;
+- `kvMetadata: []`，不写 timestamp、hostname、run ID 或 application metadata；footer
+  `created_by` 固定为 `hyparquet`;
 - 任一设置或依赖升级导致 bytes 变化时发布新 layout version。
 
-当前 nodejs-polars 的 eager `writeParquet` 不能控制全部参数，首期 codec 必须对已经稳定排序的
-frame 使用 lazy `sinkParquet`，固定 `dataPagesizeLimit: 1024 * 1024`、顶层
-`maintainOrder:true`，并同时固定 `sinkOptions: {maintainOrder:true, syncOnClose:'all', mkdir:true}`
-及前述 compression/statistics/row-group参数。它先完成 store-owned temp file，再第二遍流式读取文件
-计算 digest/size；不是在 writer 内假设可同时 hash。发布前必须在全部支持的 OS/arch 上用固定
-artifact bytes fixture证明 footer/dictionary/page 行为一致。如果 nodejs-polars 仍无法控制的
-writer metadata 导致 bytes 漂移，该 layout 不得发布；实现必须统一选定可确定性 TS writer并
-重新验证，而不是允许同 layout 多个 artifact digests。
+V5 pre-spike已经否决 `nodejs-polars@0.25.1`：其 N-API把 `rowGroupSize`绑定为 `i16`，无法表示
+65,536；其输出 schema还会把本 layout三列写为 `OPTIONAL`，且公开 API不能强制 physical
+`REQUIRED`。省略 row-group参数、依赖 chunk推断或改成 32,767都会改变/放宽 layout contract，
+因此不得作为绕法。`nodejs-polars`仍可用于其他 engine计算，但不再参与 `record-json-v1` bytes。
+
+首期 codec使用 `hyparquet-writer` 的 row writer消费已经稳定排序的 sync/async iterable；显式
+columns/schema即使 empty也不走类型或 nullability推断。Store以 `O_CREAT|O_EXCL|O_NOFOLLOW`
+创建并独占受控 temp `FileHandle`，codec的 handle API只向该稳定文件实例顺序写入，最多缓冲一个
+65,536-row group及其列转置；writer `finish`与 file sync成功后，codec仍通过同一 handle第二遍
+流式读取，每个 chunk调用 `createArtifactHasher().update(chunk)`并 checked-add size，最终返回
+`{artifactDigest, artifactSizeBytes}`。禁止 `readFile`、整份 `Uint8Array`或在 writer内部假设已经
+同时得到最终 digest。path API仅是 handle API的便利包装；V6的 `PreparedArtifactV2`必须持有同一
+handle直至 commit/discard，上传时再次累计 digest/size，不能在 prepare/hash/upload之间按 path
+重开文件。cold read同样使用下载时取得的同一 handle完成 hash与 decode。
+
+`record-json-v1` v2.0明确支持的 artifact平台集合仅为 `linux-x64-gnu` 与 `darwin-arm64`；CI分别
+使用这两个 ABI 的 required job，并逐字节比较同一份 committed Parquet fixture。其他
+OS/arch即使依赖可安装，也不视为 layout支持平台，加入前必须先通过相同 fixture gate。
 
 确定性 artifact matrix至少覆盖 empty、单行 Unicode、高/低 cardinality、超长 record JSON、
-65,535/65,536/65,537 row-group边界及全部支持的 OS/arch；同时断言 row order与 raw bytes。任一
-matrix失败都阻断 `record-json-v1` 发布并回到技术方案明确 writer，不能由实现 agent临时换库。
+65,535/65,536/65,537 row-group边界，并在 `linux-x64-gnu` 与 `darwin-arm64`同时断言 row order与
+raw bytes。这里的 low cardinality特指除 identity外的 payload vocabulary高度重复，用来覆盖
+ZSTD对重复内容的稳定行为；合法 artifact的 `record_id`唯一，且 `record_digest`/完整
+`record_json`也随 identity变化，不把它们误称为低基数物理列。任一 matrix失败都阻断
+`record-json-v1` 发布并回到技术方案修订 writer，不能由实现 agent临时换库或维护平台特有 bytes。
 
 ### 9.3 Encode/Decode invariants
 
@@ -760,6 +777,18 @@ matrix失败都阻断 `record-json-v1` 发布并回到技术方案明确 writer�
 
 读取后执行相同校验。Manifest、Parquet columns、record rows 任一不一致都抛 integrity
 error，不尝试“修好后继续”。
+
+任何第三方 Parquet/Compact Thrift解析或 ZSTD分配之前必须完成物理预检：artifact与 footer bytes
+有硬上限；footer使用无分配 Compact Thrift scanner按 expected row-group数限制深度、field、
+struct、单 list及累计元素；column chunks从byte 4起严格连续、无重叠/空洞并恰好结束于 footer；
+每个 page header最多4 KiB、10 fields/2 structs且精确为
+`DATA_PAGE_V2 + PLAIN + zero levels`。预检累计三列 page rows与 uncompressed bytes：`record_id`
+固定每行72 bytes（4-byte length + 68 UTF-8 bytes），`record_digest`固定每行68 bytes，
+`record_json`不超过 `max_canonical_bytes + 4 * num_records`。每页 compressed bytes不得超过该
+uncompressed size的 `ZSTD_compressBound`，frame-declared output必须在
+`min(max_record_bytes,max_canonical_bytes)`与 page-layout预算内；这些检查通过后才允许依赖分配
+row arrays或 WASM memory。短读、footer/page结构异常与 snapshot变化统一为 typed integrity，
+显式调用方资源上限仍使用 `ResourceLimitError`。
 
 ## 10. Manifest 与 Object Store
 
@@ -2251,7 +2280,8 @@ Audit 是显式只读操作，不自动修复。Integrity error 必须高优先�
 ### 20.2 存储 tests
 
 - 独立 Node 进程多次写相同 dataset，artifact digest相同；artifact matrix覆盖 empty、Unicode、
-  cardinality、超长行和 65,535/65,536/65,537边界，并跨支持 OS/arch固定 bytes;
+  payload-vocabulary cardinality、超长行和 65,535/65,536/65,537边界，并跨
+  `linux-x64-gnu`/`darwin-arm64`固定 bytes;
 - 真实 MinIO 双 writer conditional create;
 - OSS gated integration test;
 - crash between artifact/manifest/catalog/ref以及 artifact/manifest conditional create返回 ambiguous;

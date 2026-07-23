@@ -46,3 +46,48 @@ jobs:
 
       - if: always()
         run: docker compose down -v
+
+  v2-parquet-determinism:
+    name: V2 Parquet determinism (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64-gnu
+            runner: ubuntu-latest
+          - platform: darwin-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @databench/engine... build
+
+      - run: >-
+          pnpm --filter @databench/engine test:parquet-determinism
+          --maxWorkers=1
+          --minWorkers=1
+          --no-file-parallelism
+        env:
+          DATABENCH_V2_PARQUET_EXPECTED_PLATFORM: ${{ matrix.platform }}
+
+  v2-parquet-determinism-gate:
+    name: v2-parquet-determinism-gate
+    if: always()
+    needs:
+      - v2-parquet-determinism
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every V2 Parquet determinism matrix job
+        env:
+          MATRIX_RESULT: ${{ needs.v2-parquet-determinism.result }}
+        run: test "$MATRIX_RESULT" = "success"

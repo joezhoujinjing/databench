@@ -1,0 +1,144 @@
+{
+  "fixture_version": 1,
+  "layout_version": "record-json-v1",
+  "writer": "hyparquet-writer@0.16.1",
+  "compressor": "@bokuweb/zstd-wasm@0.0.27",
+  "compression": {
+    "codec": "ZSTD",
+    "level": 3
+  },
+  "encoding": "PLAIN",
+  "row_group_size": 65536,
+  "data_page_size": 1048576,
+  "supported_platforms": ["linux-x64-gnu", "darwin-arm64"],
+  "cases": [
+    {
+      "id": "empty",
+      "rows": 0,
+      "raw_fixture": "parquet-determinism-matrix/empty.parquet",
+      "dataset_identity": {
+        "identity_profile": "databench-v2-jcs-1",
+        "record_schema_version": "2.0.0",
+        "dataset_version": "da99cf8da850355f9bae66e9c38a2c61f62e7d59d7aa43a4ff6151bcdae8fefd",
+        "num_records": 0
+      },
+      "artifact_digest": "5757ef2b760de5cc6d0ef1ad7f05e110d76d6fa5286cc59b41bf1d55dfe5edf0",
+      "artifact_size_bytes": 105,
+      "row_groups": [],
+      "first_record_id": null,
+      "last_record_id": null
+    },
+    {
+      "id": "unicode-single",
+      "rows": 1,
+      "raw_fixture": "parquet-determinism-matrix/unicode-single.parquet",
+      "dataset_identity": {
+        "identity_profile": "databench-v2-jcs-1",
+        "record_schema_version": "2.0.0",
+        "dataset_version": "91147739af9930db8f555a6f4712a0d50031e20429964de24b169bf5b6a8fd04",
+        "num_records": 1
+      },
+      "artifact_digest": "bc5844bc11957d733ecefa8c8ce1105d6bd63bac5644c2c326b4c5203354fba1",
+      "artifact_size_bytes": 786,
+      "row_groups": [1],
+      "first_record_id": "rec_0200000000000000000000000000000000000000000000000000000000000000",
+      "last_record_id": "rec_0200000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "low-cardinality-payload",
+      "rows": 256,
+      "raw_fixture": "parquet-determinism-matrix/low-cardinality-payload.parquet",
+      "dataset_identity": {
+        "identity_profile": "databench-v2-jcs-1",
+        "record_schema_version": "2.0.0",
+        "dataset_version": "3aea42f6cdb5839fbafab75aba99cb905707ef36b4fec77f60e543a684490069",
+        "num_records": 256
+      },
+      "artifact_digest": "6b6b97700482000a949017ea792619aff131e4fa0a646659e1d246d9316ad3f3",
+      "artifact_size_bytes": 10749,
+      "row_groups": [256],
+      "first_record_id": "rec_03000000000000000000000000000000000000000000000000000000000000f2",
+      "last_record_id": "rec_03000000000000000000000000000000000000000000000000000000000000f0"
+    },
+    {
+      "id": "high-cardinality-payload",
+      "rows": 256,
+      "raw_fixture": "parquet-determinism-matrix/high-cardinality-payload.parquet",
+      "dataset_identity": {
+        "identity_profile": "databench-v2-jcs-1",
+        "record_schema_version": "2.0.0",
+        "dataset_version": "cffca083d122cfb90fae4023209e13a00f883f5befac224d1065a171b8ff7be4",
+        "num_records": 256
+      },
+      "artifact_digest": "229a95840e2d1a1ce9831b64bc425bc96e2c8b073f3c6caecfcfe9d01ea810b3",
+      "artifact_size_bytes": 12817,
+      "row_groups": [256],
+      "first_record_id": "rec_04000000000000000000000000000000000000000000000000000000000000a0",
+      "last_record_id": "rec_0400000000000000000000000000000000000000000000000000000000000045"
+    },
+    {
+      "id": "long-record-json",
+      "rows": 1,
+      "raw_fixture": "parquet-determinism-matrix/long-record-json.parquet",
+      "dataset_identity": {
+        "identity_profile": "databench-v2-jcs-1",
+        "record_schema_version": "2.0.0",
+        "dataset_version": "640b6eeb9fbf66990091062b5fd254563cda89a015c35a8bbb0049fed942cf90",
+        "num_records": 1
+      },
+      "artifact_digest": "49af96b50e16a83141a0fe1fae8229bac01772c59228973f76dfd50945f83d3d",
+      "artifact_size_bytes": 670,
+      "row_groups": [1],
+      "first_record_id": "rec_0500000000000000000000000000000000000000000000000000000000000000",
+      "last_record_id": "rec_0500000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "rows-65535",
+      "rows": 65535,
+      "raw_fixture": "parquet-determinism-matrix/rows-65535.parquet",
+      "dataset_identity": {
+        "identity_profile": "databench-v2-jcs-1",
+        "record_schema_version": "2.0.0",
+        "dataset_version": "78e544257af9c6df10bcdcdd501ed1cd29d13f15d770385cd3f7cfeccf857f87",
+        "num_records": 65535
+      },
+      "artifact_digest": "adcd3e2fc9239ce5ec31300fc89500f7c82ca31515c2019496a98dee0cf35ad4",
+      "artifact_size_bytes": 2935283,
+      "row_groups": [65535],
+      "first_record_id": "rec_0600000000000000000000000000000000000000000000000000000000005d2d",
+      "last_record_id": "rec_0600000000000000000000000000000000000000000000000000000000007054"
+    },
+    {
+      "id": "rows-65536",
+      "rows": 65536,
+      "raw_fixture": "parquet-determinism-matrix/rows-65536.parquet",
+      "dataset_identity": {
+        "identity_profile": "databench-v2-jcs-1",
+        "record_schema_version": "2.0.0",
+        "dataset_version": "51595c9abbce5e4892fe66d1e99120d3f0ddc5de017bd58250e8b8b2df52d80c",
+        "num_records": 65536
+      },
+      "artifact_digest": "9dbdf1ea4f7a4d14b8d0a85852d858aa08f3a1ffb7fc0878b196e39801494033",
+      "artifact_size_bytes": 2935975,
+      "row_groups": [65536],
+      "first_record_id": "rec_0700000000000000000000000000000000000000000000000000000000007759",
+      "last_record_id": "rec_0700000000000000000000000000000000000000000000000000000000003af5"
+    },
+    {
+      "id": "rows-65537",
+      "rows": 65537,
+      "raw_fixture": "parquet-determinism-matrix/rows-65537.parquet",
+      "dataset_identity": {
+        "identity_profile": "databench-v2-jcs-1",
+        "record_schema_version": "2.0.0",
+        "dataset_version": "f2f708b0ab044aa11967dfa91a015e89a0a73978a94ee5c4afd58bd45413b66c",
+        "num_records": 65537
+      },
+      "artifact_digest": "12204c62f5e72424d0c85680d882b53a83974de65f7e025f9a7c4011c0c54e8f",
+      "artifact_size_bytes": 2935723,
+      "row_groups": [65536, 1],
+      "first_record_id": "rec_080000000000000000000000000000000000000000000000000000000000dce9",
+      "last_record_id": "rec_0800000000000000000000000000000000000000000000000000000000004252"
+    }
+  ]
+}

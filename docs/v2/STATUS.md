@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V5
-last_completed_step: V4
+current_step: V6
+last_completed_step: V5
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V5 — `record-json-v1`确定性 Parquet
+- **下一步:** V6 — Manifest 与 File-backed Store
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -25,7 +25,7 @@ capability_enabled: false
 | V2 | Canonical Record与 Ajv | ✅ | 当前分支 | GV2 | strict/compatible schema、Ajv与真实 OpenAPI生成已过闸门 |
 | V3 | Identity、Claim与 Opaque Revision | ✅ | 当前分支 | GV3 | 7类 strict identity、随机物化、opaque revision与 fixed vectors已过闸门 |
 | V4 | Immutable `V2Dataset` | ✅ | 当前分支 | GV4 | eager set、资源准入、working-set估算与错误映射已过闸门 |
-| V5 | `record-json-v1`确定性 Parquet | ⬜ | | GV5 | |
+| V5 | `record-json-v1`确定性 Parquet | ✅ | 当前分支 | GV5 | REQUIRED schema、固定 writer与双 ABI raw-byte matrix已通过 |
 | V6 | Manifest与 file-backed Store | ⬜ | | GV6 | |
 | V7 | Prisma与 v2 Catalog | ⬜ | | GV7 | |
 | V8 | Canonical JSONL与共享投影 | ⬜ | | GV8 | |
@@ -104,3 +104,25 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - `pnpm v2:status:check`、`git diff --check`、`pnpm lint`（294 files）、`pnpm build`
   （12 tasks）、`pnpm typecheck`（21 tasks）、`pnpm test`（21 tasks）与
   `pnpm openapi:check`（11 tasks）全部通过。
+
+## V5 Gate 记录
+
+- `nodejs-polars@0.25.1`因 native `rowGroupSize`为 `i16`且无法写出三列 physical
+  `REQUIRED` schema被否决；owner接受替换为精确锁定的 `hyparquet-writer@0.16.1`、
+  `@bokuweb/zstd-wasm@0.0.27`与 `hyparquet@1.26.1`，`nodejs-polars`继续保留给 v1/计算引擎；
+- `record-json-v1`三列固定为 `BYTE_ARRAY + UTF8 + REQUIRED`，PLAIN、ZSTD level 3、
+  65,536 rows/row group、1 MiB page、无 statistics/index/dictionary/动态 metadata；writer写完
+  fsync后使用同一 file handle第二遍增量 BLAKE3/size，decoder按 row group有界读取并重建全部
+  revision/dataset identity，不信任物理 digest列；
+- decoder review后补齐 AbortSignal贯穿、fatal UTF-8 typed integrity、footer count分类、
+  canonical/physical byte准入、单 inode/file snapshot校验，以及 exact schema/footer/encoding检查；
+  最终安全 review再加入无分配 Compact Thrift footer/page预检、严格连续 chunk ranges、三列逐页
+  rows/解压累计预算、ZSTD input/output双边界与 handle-based codec API，阻断声明型 OOM及 path ABA；
+- 8组 committed raw Parquet golden覆盖 empty、Unicode、低/高 payload vocabulary、1.1 MiB
+  record JSON与65,535/65,536/65,537边界；独立 Node worker双写、decode和逐字节比较均通过；
+- `darwin-arm64`原生 matrix 8/8通过（68.54s），隔离 Docker `linux-x64-gnu` matrix 8/8通过
+  （198.20s，amd64仿真）；CI使用 `ubuntu-latest`与 `macos-15` required matrix并显式核验 ABI，
+  非支持/错配平台直接失败而非 skip；
+- Engine普通 suite 52 tests、专用 matrix 8 tests通过；`pnpm v2:status:check`登记25组 fixture，
+  `git diff --check`、`pnpm lint`（305 files）、`pnpm build`（12 tasks）、`pnpm typecheck`
+  （21 tasks）、`pnpm test`（21 tasks）与`pnpm openapi:check`（11 tasks）全部通过。

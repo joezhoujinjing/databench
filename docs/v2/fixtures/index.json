@@ -142,7 +142,7 @@
       "path": "packages/engine/test/golden/fixtures/v2/parquet-determinism-matrix.expected.json",
       "assertion": "Empty, Unicode, cardinality, long-row and row-group boundaries have fixed raw bytes",
       "source": "TECHNICAL-DESIGN-9.2",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "store-conditional-commit-states",

@@ -248,20 +248,29 @@ unsafe integer、NaN/Infinity、duplicate keys、readonly nested values和增量
 
 ### V5 — `record-json-v1` 确定性 Parquet
 
+V5 pre-spike已确认 `nodejs-polars@0.25.1` 不可用于该 layout：native `rowGroupSize`是 `i16`，
+无法表示固定的 65,536，且三列 physical schema为 `OPTIONAL`、无 API强制为 `REQUIRED`。正式
+writer因此固定切换为 `hyparquet-writer@0.16.1` + `@bokuweb/zstd-wasm@0.0.27`；
+`nodejs-polars`仍可用于其他 engine计算，但不参与 `record-json-v1` artifact bytes。
+
 交付：
 
-- 三列 non-null UTF-8 schema：`record_id`,`record_digest`,`record_json`；
-- lazy `sinkParquet`固定 compression/statistics/row group/data page/双层 maintain order等参数；
-- store-owned temp path writer与第二遍流式 digest/size；
+- 三列 physical `BYTE_ARRAY` + `UTF8` + `REQUIRED` schema：
+  `record_id`,`record_digest`,`record_json`，empty也显式使用该 schema；
+- `hyparquet-writer` row streaming固定 `PLAIN`、ZSTD level 3、statistics/columnIndex/offsetIndex关闭、
+  65,536 row group、1 MiB page、`kvMetadata: []`与 `created_by: 'hyparquet'`；
+- rows按稳定顺序流向 store-owned temp path，完成/关闭后第二遍流式 BLAKE3与 checked size；
 - decoder验证 columns、row、record digest、dataset version；
-- 跨独立进程及支持 OS/arch的 artifact fixture matrix。
+- 跨独立进程及 `linux-x64-gnu`、`darwin-arm64`的同一份 raw artifact fixture matrix。
 
 Matrix至少覆盖 empty、Unicode、高/低 cardinality、超长 JSON、
-65,535/65,536/65,537 row-group边界。
+65,535/65,536/65,537 row-group边界；low cardinality固定指除 identity外高度重复的 payload
+vocabulary，不声称唯一的 ID/digest/完整 JSON物理列为低基数。
 
-> **GV5:** 所有 matrix raw bytes和 artifact digest稳定；row order固定；任一 nodejs-polars
-> 不可控 metadata造成漂移时立即停止，不得进入 V6。此时回到技术方案明确替代 writer，
-> 不能临时放宽 layout invariant。
+> **GV5:** 所有 matrix raw bytes和 artifact digest在两个支持 ABI间稳定；physical schema、encoding、
+> compression、row group/page、footer与 row order全部固定。任一 selected-writer/WASM metadata或
+> bytes漂移时立即停止，不得进入 V6；回到技术方案修订 writer/layout，不临时放宽 invariant，
+> 不维护平台特有 expected。
 
 ### V6 — Manifest 与 File-backed Store
 
@@ -486,7 +495,8 @@ databench v2 lineage show
 - capability enable作为独立 owner动作准备，但默认仍为 false。
 
 > **GV-final:** `pnpm lint && pnpm typecheck && pnpm test && pnpm openapi:check`全绿；真实
-> Postgres + MinIO lifecycle、并发、恢复和浏览器 E2E通过；支持 OS/arch artifact matrix通过；
+> Postgres + MinIO lifecycle、并发、恢复和浏览器 E2E通过；
+> `linux-x64-gnu`/`darwin-arm64` artifact matrix通过；
 > v1 objects/tables/refs/routes/goldens无变化；技术方案和实现一致。
 
 GV-final通过不自动打开 capability。Owner必须另行确认 enable；把默认入口切到 v2、停用 v1
@@ -534,7 +544,7 @@ Step可以因 gate失败暂停；不能为了赶进度降低确定性、完整�
 |---|---|---|
 | RFC 8785/JCS跨实现不一致 | V1 | 以规范 vectors为准，停止实现，不改 expected掩盖 |
 | Ajv/schema资源消耗不可控 | V2 | 收紧已公开 budgets，不绕过 Tool validation |
-| nodejs-polars artifact bytes不稳定 | V5 | 返回技术方案选定确定性 writer；不放宽 layout identity |
+| Parquet writer不满足 fixed physical schema/bytes | V5 | `nodejs-polars@0.25.1` 已因 i16 row group与 OPTIONAL schema被替换；selected writer仍失败则停止并修订技术方案，不放宽 layout identity |
 | OSS conditional create结果语义不一致 | V6 | 修 provider adapter与 gated test；不 fallback普通 PUT |
 | Catalog lineage recursive query过重 | V7/V12 | 使用已定 depth/node/cursor边界，不删除 exact lineage |
 | eager transform超过 heap | V4/V10 | admission拒绝并返回 capacity error；不偷偷改 shards |
@@ -548,7 +558,7 @@ Step可以因 gate失败暂停；不能为了赶进度降低确定性、完整�
 
 - ADR 0009/0011与技术方案的全部不变量都有实现和固定测试；
 - identity/record/dataset/artifact/cache/fidelity domains可跨进程复现；
-- `record-json-v1`有跨 OS/arch稳定 artifact matrix；
+- `record-json-v1`有跨 `linux-x64-gnu`/`darwin-arm64`稳定 artifact matrix；
 - object commit、catalog registration、run、ref并发与 crash recovery通过；
 - record revision lookup与 exact parent lineage可定位、可检环；
 - runtime cache/admission在上限、取消与并发下不泄露资源或数据；
