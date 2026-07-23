@@ -224,7 +224,11 @@ export class V2TempStore {
         continue
       }
       const path = join(this.#root, entry.name)
-      const stats = await lstat(path, { bigint: true })
+      const stats = await lstat(path, { bigint: true }).catch((error: unknown) => {
+        if (isErrno(error, 'ENOENT')) return null
+        throw error
+      })
+      if (stats === null) continue
       if (!stats.isFile() || stats.isSymbolicLink()) continue
       const ageMs = now - Number(stats.mtimeMs)
       if (ageMs >= this.#staleAgeMs) {
