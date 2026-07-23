@@ -10,7 +10,7 @@
 - 后端核心、Hono API、确定性 `openapi.json`、React/Vite 前端主流程、S20 新旧端到端 parity 均已落地并过闸门。词表域已按最新旧后端 + 旧 UI 语义迁入,入口由 `features.vocabularies:true` 开启。
 - 下一步是 **D3 API 托管平台决策**;owner 拍板前不得进入 S22 部署/平台选择。旧实现 `~/Desktop/databench/`:Python 后端(`databench/`)+ 旧前端(`databench-ui/`)。**只读参考 + golden 源,默认保留,严禁修改。**
 - v2 设计 ADR 0009、ADR 0011 与 `docs/v2/TECHNICAL-DESIGN.md` 已接受；
-  `docs/v2/PLAN.md` 已按技术方案重写并待 owner 评审。实施计划接受前不得开始 v2 实现。
+  `docs/v2/PLAN.md` 已接受；当前从 V0 开始，一个 Step一个 PR并过对应 GV gate。
 - Processing ADR 0010 已接受；`docs/processing/TECHNICAL_DESIGN.md` 已完成第二轮必须项
   修订。该新增 scope 独立按 TD→P1..P6 闸门推进；v1 只产出 sealed staging artifacts，
   无 canonical finalizer。
@@ -27,6 +27,10 @@
 若任务属于 Processing，再额外先读 `docs/decisions/0010-python-processing-service-grpc.md`
 和 `docs/processing/TECHNICAL_DESIGN.md`，不得从 P1 跳到后续切片。
 
+若任务属于 v2，再额外按顺序读 ADR 0009、ADR 0011、`docs/v2/TECHNICAL-DESIGN.md`、
+`docs/v2/PLAN.md` 与 `docs/v2/STATUS.md`（STATUS 在 V0建立）。只按 V0..V17推进，不套用
+v1 Python parity expected values。
+
 ## 3. 执行方式(硬性)
 - **严格按 `STATUS.md` 的当前进度继续执行 `PLAN.md`;一个 Step ≈ 一个 PR;过该 Step 的闸门(`G*`/`FG*`)才进下一步。** 不要重做已完成 Step,除非当前 gate 暴露回归。
 - 每步对拍 **golden**(`~/Desktop/databench/databench/bench/` 的 catalog.db + store);M5 端到端新旧 parity 已由 S20 覆盖。
@@ -34,6 +38,8 @@
 - 落代码前对照 `directory-layout.md` 的文件落点 + `conventions.md`。
 - Processing 新增 scope 按其技术方案 P1..P6 独立 PR/gate 推进，不改写已完成 migration
   Step，也不因本机实验绕过 Proto/Workspace 边界。
+- v2实施计划接受后按 V0..V17独立维护 `docs/v2/STATUS.md`；一个 Step一个 PR并过对应
+  `GV*` gate，不改写已完成 migration Step。
 
 ## 4. 绝对红线(违反 = 返工,细节见 AGENTS.md「硬规则」)
 1. **依赖 DAG**:`hashing←schema←{engine,io,catalog}←{ops,store}←workspace←apps/api`;**apps/api 只经 workspace+schema**;catalog 只依赖 Prisma;hashing/schema 保持纯;禁深 import。
@@ -52,7 +58,7 @@
 | 门 | 默认 | 行动 |
 |---|---|---|
 | **D1 vocabularies** | **已实现** | 后端 `capabilities.vocabularies:true`;前端 FE-5 词表列表/派生/新建/详情已接入;后续不得无决策移除或重新 gated false。 |
-| **D2 export TRL/fmt** | **照搬等价** | 不实现 TRL 分支,`fmt` 忽略(与旧后端一致)。 |
+| **D2 v1 export TRL/fmt** | **照搬等价** | v1不实现 TRL分支、`fmt`忽略；v2 converters按 ADR 0009与已接受技术方案实施。 |
 | **D3 API 托管平台** | **未定** | **M6 部署前必须暂停,向 owner 请示**(长驻容器;GCP 候选 Cloud Run)。 |
 
 ## 6. 环境 / 运行(关键 gotcha)
@@ -107,7 +113,7 @@ GOAL:在 ~/Desktop/databench-ts 完成 databench 的完整 TS-monorepo 重写(�
   - 当前 S0.1-S21 已完成;S19 vocabularies 已按 owner 新 D1 决策实现;S20 G-parity 已通过。
   - M6/S22 前必须先停下来询问 D3 API 托管平台,不要擅自决定 Cloud Run/GKE/Fly/Railway/ECS。
   - v2 ADR 0009/0011 与 docs/v2/TECHNICAL-DESIGN.md 已接受;
-    docs/v2/PLAN.md 已重写并待 owner 评审。实施计划接受前不得开始 v2 实现。
+    docs/v2/PLAN.md 已接受；从 V0开始，一个 Step一个 PR并过对应 GV gate。
   - 遵守红线:依赖 DAG(apps/api 只经 workspace)、确定性纪律(哈希只经 hashing 包;
     v1 canonicalJson/v2 JCS profile;blake3/保留 null/bankersRound/weight||1.0)、
     契约优先(zod→openapi→openapi-typescript,不手写 API 类型)、样本不进 PG。

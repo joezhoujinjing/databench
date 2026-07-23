@@ -7,7 +7,8 @@
 
 **现状:S0.1-S21 已完成,M5 parity & 切换收尾完成;D1 已由 owner 改为实现 vocabularies,S19 已补齐。** 后端、前端主流程、OpenAPI、S20 新旧端到端 parity 均已落地并过闸门;词表域已按最新旧后端 + 旧 UI 语义迁入。下一步是 **D3 API 托管平台决策**,拍板前不得进入 S22 部署。旧实现在 `~/Desktop/databench/`(Python 后端 + 旧 UI),**只读参考 + golden 源,默认保留,严禁修改**。
 
-**v2 设计状态:ADR 0009 与 ADR 0011 已接受；`docs/v2/TECHNICAL-DESIGN.md` 正在评审，`docs/v2/PLAN.md` 暂缓并须在技术方案接受后重写。两份文档均接受前不得开始 v2 实现。**
+**v2 设计状态:ADR 0009、ADR 0011 与 `docs/v2/TECHNICAL-DESIGN.md` 已接受；
+`docs/v2/PLAN.md` 已接受。当前从 V0 开始，一个 Step 一个 PR，过对应 GV gate后再进入下一步。**
 
 **Processing 设计状态:ADR 0010 已接受；`docs/processing/TECHNICAL_DESIGN.md` 是施工
 真源，已完成第二轮必须项修订。实现严格按 TD→P1..P6 独立闸门推进；v1 只产出 sealed
@@ -15,6 +16,10 @@ staging artifacts，不得发布 Dataset/ref/run/lineage。**
 
 ## 执行入口
 **实现 agent 先读 [`docs/HANDOFF.md`](docs/HANDOFF.md)**(交接:现状/红线/决策门默认/环境 gotcha/DoD/检查点),然后以 [`docs/migration/STATUS.md`](docs/migration/STATUS.md) 的当前进度为准,继续按 [`docs/migration/PLAN.md`](docs/migration/PLAN.md) 推进(M0..M6 / S0..S22 + 决策门)——一个 Step 一个 PR,过闸门再进下一步。不要重跑或重写已完成 Step,除非是修复当前 gate 暴露的问题。
+
+若任务属于 v2，额外先读 ADR 0009/0011、`docs/v2/TECHNICAL-DESIGN.md` 与
+`docs/v2/PLAN.md`；按其中 V0..V17推进并维护
+`docs/v2/STATUS.md`，不复用 v1 Python parity作为 v2 expected value。
 
 ## 先读这些(docs/ 是唯一真源)
 - `docs/architecture.md` — 系统形态、引擎下注、部署
@@ -68,13 +73,16 @@ proto/  workers/processing-python  tooling/{openapi-export,proto}  prisma/  docs
 3. **契约优先**:wire 类型只在 `@databench/schema`(zod)定义一次 → `@hono/zod-openapi` 出 `openapi.json` → `openapi-typescript` 生成前端 client。**不手写 API 类型**(除前端 `ApiError`)。改契约 = 同 PR 跑 `openapi:check` + 重生成。
 4. **错误**:域层抛**类型化领域错误**(不抛裸串、不抛 HTTP 概念);**只有 `apps/api`** 映射成统一信封 `{error:{code,message,detail?}}`。
 5. **存储**:**样本数据绝不进 Postgres** —— Parquet 在对象存储;PG 只存 catalog 元数据。
-6. **Golden 对拍**:每个迁移阶段对拍旧 Python `~/Desktop/databench/databench/bench/`(catalog.db + store)后再进下一阶段。
+6. **Golden 对拍**:v1迁移阶段继续对拍旧 Python
+   `~/Desktop/databench/databench/bench/`；v2使用 ADR 0009/0011 fixed vectors、RFC 8785
+   与独立实现，不与旧 Python对拍。
 7. **Processing 边界**:`apps/api` 不得 import gRPC/generated/Catalog/Store；Workspace 是
    唯一 gRPC client owner。Apple Silicon P1/P2 必须使用原生 arm64 `uv` + Python 3.11，
    禁止 `/usr/local` Rosetta 工具；Python 无 PG/长期对象存储凭据，只拿受限 signed URL。
 
 ## 工作方式
 - **逐阶段**迁移/重写(后端阶段 0..13 见 feature-inventory;前端 FE-0..5 见 frontend-inventory);**一个阶段≈一个 PR**,过该阶段 golden/FG 闸门才合并。
+- v2在实施计划接受后严格按 V0..V17一个 Step一个 PR推进；未过当前 GV gate不得进入下一步。
 - **Conventional Commits**,scope = 包名(如 `feat(engine): …`);pre-commit 跑 Biome;CI 跑 lint/typecheck/vitest/golden/`openapi:check`。
 - 在仓库根目录操作;Node 22(`.nvmrc`)。
 
@@ -99,4 +107,4 @@ pnpm --filter @databench/<pkg> <script>
 
 ## 仍待 owner 决策(遇到时**标出来、别假设**)
 - **API 托管平台**(长驻容器 + 原生插件;GCP 候选 Cloud Run)。
-- **export `fmt`/TRL**:当前采用照搬等价默认;若要实现真正 TRL,必须 owner 拍板并更新 ADR/计划。
+- **v1 export `fmt`/TRL**:当前采用照搬等价默认；v2 converters已由 ADR 0009与技术方案单独锁定。

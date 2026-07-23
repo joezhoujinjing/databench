@@ -1,12 +1,12 @@
 # Databench v2 技术方案
 
-- **状态:** 已接受——owner 于 2026-07-23 确认；实施计划接受前不得开始 v2 实现
+- **状态:** 已接受——owner 于 2026-07-23 确认；实施计划已接受，按 V0-V17 实施
 - **日期:** 2026-07-23
 - **决策者:** owner
 - **接受记录:** owner 于 2026-07-23 接受 review 修订后的全文与 Q1-Q14
 - **规范依赖:** [ADR 0009](../decisions/0009-canonical-post-training-record-v2.md)、
   [ADR 0011](../decisions/0011-identity-hashing-versioning-v2.md)
-- **下游文档:** [v2 实施计划](PLAN.md)；已按本文重写，仍待 owner 接受
+- **下游文档:** [v2 实施计划](PLAN.md)；已接受，按 V0-V17 逐步实施
 - **适用范围:** v2.0 logical schema、identity、data plane、control plane、Workspace、
   `/v2` API、CLI 与 Web 完整纵向链路
 
@@ -2224,4 +2224,4 @@ read/prepare semaphore在取消/超限时释放资源。
   发明核心架构;
 - Web route、generated contract、exact-version cache、Record renderer、fidelity confirmation、
   a11y/i18n 与 browser E2E 已形成可执行边界，不再把前端留给实现阶段临时设计;
-- 下游 `PLAN.md` 被标记为需要根据本方案修订，且在方案接受前不进入代码实现。
+- 下游 `PLAN.md` 已根据本方案重写并接受，实施从 V0开始且不得越过 GV gate。

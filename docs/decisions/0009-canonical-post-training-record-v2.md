@@ -1,6 +1,6 @@
 # ADR 0009 — 后训练数据统一 Canonical Record v2
 
-- **状态:** 已接受——v2 身份/版本 ADR 0011 与技术方案已接受；实施计划接受前不得开始实现
+- **状态:** 已接受——v2 身份/版本 ADR 0011、技术方案与实施计划均已接受
 - **日期:** 2026-07-23
 - **决策者:** owner
 - **修订:** [ADR 0011](0011-identity-hashing-versioning-v2.md) 固定 logical ID、digest、

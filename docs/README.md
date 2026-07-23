@@ -52,11 +52,10 @@ Design and decision records for the all-TypeScript monorepo rebuild.
 
 - **[v2 technical design](v2/TECHNICAL-DESIGN.md)**
   — v2 package/runtime、Parquet/manifest/catalog、Workspace/API，以及完整 Web vertical
-  slice、exact-version cache、Unified Record renderer 与 fidelity workflow。*Proposed;
-  review before revising the implementation plan.*
+  slice、exact-version cache、Unified Record renderer 与 fidelity workflow。*Accepted.*
 - **[v2 implementation plan](v2/PLAN.md)**
   — additive v2 delivery sequence, package placement, physical layout, catalog/API rollout,
-  and gates V0-V15. *Review paused; must be revised after technical-design acceptance.*
+  and gates V0-V17. *Accepted; implementation starts at V0.*
 - **[Canonical Record v2 扩展设计参考](v2/canonical-record-extended-profile.md)**
   — v2.0 最小 schema 暂不采用的候选字段、Part variants、适用边界与未来纳入条件。
   *Non-normative reference.*
