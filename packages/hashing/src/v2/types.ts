@@ -74,23 +74,48 @@ export type RecordSeedV1 =
 
 export type IdentityClaimMaterialV1 = RecordSeedV1 | CandidateSeedV1 | EventSeedV1
 
-export interface IdentityClaimHashInputV1 {
+interface IdentityClaimHashInputBaseV1<
+  EntityKind extends V2EntityKind,
+  CreationProfile extends V2CreationProfile,
+  ClaimMaterial extends IdentityClaimMaterialV1,
+> {
   readonly claim_profile: typeof V2_IDENTITY_CLAIM_PROFILE
   readonly identity_profile: typeof V2_IDENTITY_PROFILE
   readonly namespace: string
-  readonly entity_kind: V2EntityKind
-  readonly creation_profile: V2CreationProfile
-  readonly claim_material: IdentityClaimMaterialV1
+  readonly entity_kind: EntityKind
+  readonly creation_profile: CreationProfile
+  readonly claim_material: ClaimMaterial
 }
 
-export interface IdentityRequestHashInputV1 {
+export type IdentityClaimHashInputV1 =
+  | IdentityClaimHashInputBaseV1<'record', 'source-root-v1', SourceRootSeedV1>
+  | IdentityClaimHashInputBaseV1<'record', 'artifact-row-v1', ArtifactRowSeedV1>
+  | IdentityClaimHashInputBaseV1<'record', 'direct-root-v1', DirectRootSeedV1>
+  | IdentityClaimHashInputBaseV1<'record', 'derived-record-v1', DerivedRecordSeedV1>
+  | IdentityClaimHashInputBaseV1<'candidate', 'candidate-v1', CandidateSeedV1>
+  | IdentityClaimHashInputBaseV1<'signal', 'signal-event-v1', EventSeedV1>
+  | IdentityClaimHashInputBaseV1<'preference', 'preference-event-v1', EventSeedV1>
+
+interface IdentityRequestHashInputBaseV1<
+  EntityKind extends V2EntityKind,
+  CreationProfile extends V2CreationProfile,
+> {
   readonly request_profile: typeof V2_IDENTITY_REQUEST_PROFILE
   readonly identity_profile: typeof V2_IDENTITY_PROFILE
   readonly namespace: string
-  readonly entity_kind: V2EntityKind
-  readonly creation_profile: V2CreationProfile
+  readonly entity_kind: EntityKind
+  readonly creation_profile: CreationProfile
   readonly normalized_request: CanonicalJsonValue
 }
+
+export type IdentityRequestHashInputV1 =
+  | IdentityRequestHashInputBaseV1<'record', 'source-root-v1'>
+  | IdentityRequestHashInputBaseV1<'record', 'artifact-row-v1'>
+  | IdentityRequestHashInputBaseV1<'record', 'direct-root-v1'>
+  | IdentityRequestHashInputBaseV1<'record', 'derived-record-v1'>
+  | IdentityRequestHashInputBaseV1<'candidate', 'candidate-v1'>
+  | IdentityRequestHashInputBaseV1<'signal', 'signal-event-v1'>
+  | IdentityRequestHashInputBaseV1<'preference', 'preference-event-v1'>
 
 export interface DatasetIdentityEnvelopeV2 {
   readonly identity_profile: typeof V2_IDENTITY_PROFILE

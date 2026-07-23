@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V3
-last_completed_step: V2
+current_step: V4
+last_completed_step: V3
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V3 — Identity、Claim 与 Opaque Revision
+- **下一步:** V4 — Immutable `V2Dataset`
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -23,7 +23,7 @@ capability_enabled: false
 | V0 | 状态、fixtures 与防误报门 | ✅ | 当前分支 | GV0 | ADR/技术方案/计划均已接受；fixture index和 CI check已建立 |
 | V1 | RFC 8785、raw JSON与 Hashing API | ✅ | 当前分支 | GV1 | RFC/JCS、具名 domains、raw parser 与 fixtures已过闸门 |
 | V2 | Canonical Record与 Ajv | ✅ | 当前分支 | GV2 | strict/compatible schema、Ajv与真实 OpenAPI生成已过闸门 |
-| V3 | Identity、Claim与 Opaque Revision | ⬜ | | GV3 | |
+| V3 | Identity、Claim与 Opaque Revision | ✅ | 当前分支 | GV3 | 7类 strict identity、随机物化、opaque revision与 fixed vectors已过闸门 |
 | V4 | Immutable `V2Dataset` | ⬜ | | GV4 | |
 | V5 | `record-json-v1`确定性 Parquet | ⬜ | | GV5 | |
 | V6 | Manifest与 file-backed Store | ⬜ | | GV6 | |
@@ -75,3 +75,15 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - schema 126 tests、API真实 `OpenAPIHono` component生成测试通过；
 - `pnpm v2:status:check`、`git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、
   `pnpm test` 与 `pnpm openapi:check` 全部通过。
+
+## V3 Gate 记录
+
+- 7类 strict creation request、allocation draft/RNG单次物化、profile防歧义、digest-only claim
+  proposal与 derived revision例外已落地；Catalog/Workspace边界按依赖DAG重新固定；
+- `RecordRevisionV2` 使用内部 class private brand，factory执行 defensive clone → strict parse →
+  recursive freeze → JCS → digest；compile-time tests拒绝伪造、spread伪造与 snapshot metadata；
+- 5组V3 fixtures全部标记为 verified；7类 ID及 claim/request共21个摘要、random direct摘要、
+  全字段 record digest/canonical bytes与空 dataset version均经独立 Python `blake3`复算一致；
+- hashing 33 tests、schema 139 tests通过；`pnpm v2:status:check`、`git diff --check`、
+  `pnpm lint`（288 files）、`pnpm build`（12 tasks）、`pnpm typecheck`（21 tasks）、
+  `pnpm test`（21 tasks）与 `pnpm openapi:check`（11 tasks）全部通过。

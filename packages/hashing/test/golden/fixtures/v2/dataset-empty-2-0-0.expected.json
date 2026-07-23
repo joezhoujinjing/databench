@@ -1,0 +1,10 @@
+{
+  "input": {
+    "identity_profile": "databench-v2-jcs-1",
+    "record_schema_version": "2.0.0",
+    "record_digests": []
+  },
+  "canonical": "{\"identity_profile\":\"databench-v2-jcs-1\",\"record_digests\":[],\"record_schema_version\":\"2.0.0\"}",
+  "expected_version": "da99cf8da850355f9bae66e9c38a2c61f62e7d59d7aa43a4ff6151bcdae8fefd",
+  "independent_reference": "Python blake3 over RFC 8785-compatible ASCII preimage"
+}

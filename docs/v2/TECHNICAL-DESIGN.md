@@ -330,19 +330,25 @@ function writeCompatibleRecordV2(record: CompatiblePostTrainingRecordV2): string
 `record_digest` 不写回 record，runtime 使用包装类型:
 
 ```ts
-declare const recordRevisionBrand: unique symbol // package-private，不导出
+class RecordRevisionV2Value { // package-private，不导出
+  readonly #brand = true
 
-interface RecordRevisionV2 {
-  readonly [recordRevisionBrand]: true
-  readonly record: DeepReadonly<PostTrainingRecordV2>
-  readonly record_json: string
-  readonly record_digest: string
+  constructor(
+    readonly record: DeepReadonly<PostTrainingRecordV2>,
+    readonly record_json: string,
+    readonly record_digest: string,
+  ) {}
 }
+
+export type RecordRevisionV2 = RecordRevisionV2Value
+export function createRecordRevisionV2(input: unknown): RecordRevisionV2
 ```
 
-`RecordRevisionV2` 是 opaque branded type，brand symbol不从 package导出，外部不能用 object
-literal伪造。唯一构造入口是私有 factory，必须在同一处完成 defensive deep clone → strict parse → recursive
-freeze → JCS → digest，避免 record、JSON 与 digest 来自三个不同调用点。`V2Dataset` 的
+`RecordRevisionV2` 是 opaque branded type，使用不导出的内部 class private brand，外部不能用
+object literal或从合法 revision spread后覆盖字段来伪造。唯一构造入口是 package公开的
+`createRecordRevisionV2` factory，供依赖 Schema的 Engine调用；实现 class与构造器不导出。Factory
+必须在同一处完成 defensive deep clone → strict parse → recursive freeze → JCS → digest，避免
+record、JSON 与 digest 来自三个不同调用点。`V2Dataset` 的
 `records/get` 只能返回 deep-frozen revision 或新的 defensive clone，任何调用方都不能通过
 修改 nested candidate/signal/extra 让 `record` 与 `record_json/digest` 漂移；测试需覆盖
 原输入对象和返回对象的深层修改尝试。
@@ -393,8 +399,8 @@ interface V2IdentityAllocator {
 Machine creation 流程:
 
 1. strict-validate identity request;
-2. 若相应 direct/event request 没有稳定 key，先生成固定为 64 lowercase hex 的 256-bit
-   CSPRNG seed，并把它作为本次 immutable seed；
+2. 若相应 direct/event request或 candidate generation run没有稳定 key，先生成固定为 64
+   lowercase hex的 256-bit CSPRNG seed/token，并把它作为本次 immutable seed；
 3. 规范化 exact strict seed + 初始语义 payload；namespace必须是 canonical lowercase UUID，
    artifact digest为 raw bytes BLAKE3 64-hex，row/output index为非负 safe integer；
 4. 用 §6 的具名 ADR entity公式派生 proposed entity ID；
@@ -402,10 +408,21 @@ Machine creation 流程:
    的 `claim_key_digest`，PG 不保存原 claim material；
 6. 在一个 catalog transaction 中 compare/insert claim全部 immutable fields；
 7. 相同 claim + 相同 request digest + entity ID返回已有 ID；
-8. 相同 claim + 不同 request digest/entity ID抛 `IdentityConflictError`。
+8. 非 `derived-record-v1` 的相同 claim + 不同 request digest/entity ID抛
+   `IdentityConflictError`；
+9. `derived-record-v1` 的相同 claim/profile/entity ID复用 logical ID，允许不同 request digest
+   进入后续 revision流程；若 entity ID不一致仍抛 `IdentityConflictError`。
 
 Logical ID 创建后作为 opaque identity。后续 source/provenance 修正不要求当前 record 可以
-反推原 seed；immutable claim 承担 machine creation 审计。
+反推原 seed；immutable claim 承担 machine creation首次分配审计。Derived claim保存首次
+`request_digest`且后续不得覆盖；它不是 revision幂等键。
+
+外部 allocation draft与最终 hash request是两个边界。`IdentityAllocationDraftV1`只允许 direct的
+`idempotency_key_or_random_seed`、candidate的 `generation_run_id`、event的
+`producer_event_key`显式为 `null`；字段不能省略，空字符串不是“缺失”。Schema的 materializer接收
+注入式 `randomBytes32()`，先 defensive clone并 strict-validate draft，再且仅调用一次 RNG，把结果
+物化进完整 request，最后 strict parse与 recursive freeze。后续 catalog transaction retry必须复用
+同一 frozen request，不得重新随机；Schema包自身不读取环境 RNG。
 
 每个 `*IdentityRequestV1` 都是 strict discriminated union member：顶层固定包含
 `creation_profile`、相应的 strict seed 和将要创建的完整初始语义实体（去掉 server-assigned
@@ -452,8 +469,10 @@ interface IdentityRequestDigestV1 {
   `databench.identity-claim-key.databench-v2-jcs-1.v1\0`;
 - `request_digest = hashV2IdentityRequest(...)`，domain 为
   `databench.identity-request.databench-v2-jcs-1.v1\0`;
-- producer event key、client idempotency key 与 random seed 的字段上限由各自 strict seed schema
-  固定；原始 claim material 只能存在于当前请求内，不能写 PG、log、metric 或 error detail;
+- producer event key、client idempotency key、generation run ID、op与 op version统一限制为
+  1024 UTF-8 bytes；按编码后的字节数而不是 JavaScript UTF-16 code unit计量。256-bit random
+  seed/token仍固定为 64 lowercase hex；原始 claim material只能存在于当前请求内，不能写
+  PG、log、metric 或 error detail;
 - `normalized_request` 必须通过对应 creation profile 的 exact strict schema，排除
   server-assigned entity IDs 与 catalog lifecycle time，但保留所有初始语义字段和 seed 输入;
 - 两个 digest 都是 64 位小写 hex；任何 envelope/domain 调整必须发布新 claim/request profile，
@@ -471,8 +490,9 @@ Claim key 的生成规则也固定，不留给 adapter 临时选择:
 | `signal/preference-event-v1` | 完整 `EventSeedV1`，其中 producer 属于 ADR seed |
 
 Claim scope 不能比 entity seed 更宽：除 `EventSeedV1` 本身已有 producer 外，不额外混入调用方
-producer/adapter name，否则两个 claims 可能派生同一 entity ID 再撞唯一约束。相同 strict seed
-claim 的不同 normalized request 必须冲突。
+producer/adapter name，否则两个 claims 可能派生同一 entity ID 再撞唯一约束。非
+`derived-record-v1` 的相同 strict seed claim若带来不同 normalized request必须冲突；derived
+claim按首次 ID分配审计规则复用 logical ID。
 
 ### 8.3 Seed 形状
 
@@ -561,17 +581,37 @@ interface PreferenceIdentityRequestV1 {
 
 Seed schema 使用 strict Zod。Derived record 刻意使用 parent logical IDs 而不是 parent
 digests，使同一 transform 对 parent 后续 revisions 产生同一 derived logical record 的新
-revision；精确 parent digests 仍进入 `Lineage.parent_refs` 和 record digest。
+revision；精确 parent digests 仍进入 `Lineage.parent_refs` 和 record digest。每次 derived
+request仍须完整 strict validation并计算当前 `request_digest`，但已有相同 claim/profile/entity ID
+时不与首次摘要做冲突比较，也不覆盖首次摘要；新的 record digest注册为该 logical ID的新
+revision。同一 exact transform inputs/cache key产生不同 output仍由 §13 的 determinism gate拒绝。
 
 Request schema同时验证 seed与 initial entity的 cross-field一致性：source tuple、record/candidate
 owner ID、lineage parent IDs、event owner/producer及 generation run不得各写一份不同值；任何
 不一致在计算 proposed ID前拒绝。初始实体包含全部 canonical字段和显式 null/empty值，不接受
 partial patch。
 
+`EventSeedV1.producer` 固定等于 `initial_signal.source.id` 或
+`initial_preference.source.id`；`source.type/version`仍保留在完整 request并参与
+`request_digest`，但不进入 entity seed。`CandidateSeedV1.generation_run_id`只存在 seed中，不向
+`CandidateV2`重复增加字段；完整 `generator` payload仍参与 `request_digest`。
+
+Candidate/Signal/Preference request在 Schema内先验证可局部判断的不变量，包括 role/局部 trajectory、
+signal chain、匿名 human source、credential隔离与 preference pair。必须读取 owner record revision
+才能判断的 declared tool/args、shared call response、跨 candidate signal ID、supersession target与
+candidate membership，由 Workspace allocator在写 claim前完成；纯 `prepareIdentityClaimV2`只生成
+无状态 proposal，不代表 owner-context admission已通过，禁止先落 immutable claim再做该校验。
+
 Seed profile 组合固定为：root record 使用 `source-root-v1 | artifact-row-v1 | direct-root-v1`，
 派生 record 使用 `derived-record-v1`，candidate 使用 `candidate-v1`，signal/preference 使用
 各自的 `signal-event-v1 | preference-event-v1` request profile和共同的 `EventSeedV1`。不匹配的
 entity kind/profile 在进入 hashing 前由 strict schema 拒绝。
+
+Root profile选择不留给调用方自由切换：`source.original_id`非空时只能使用
+`source-root-v1`；文件/原始 artifact adapter在没有 original ID时使用 `artifact-row-v1`；人工或
+API直接创建且没有稳定 original ID时使用 `direct-root-v1`。因此 artifact/direct request若携带
+非空 `source.original_id`必须拒绝。Canonical import已携带合法 v2 ID，保留该 ID且不走 root
+allocator。各 adapter必须固定自己的 profile，不能对同一输入按重试路径临时切换。
 
 `CandidateSeedV1.generation_run_id` 的来源固定：内部 transform使用 `run_<cache_key>`；provider
 import使用非空稳定 provider run ID；没有稳定 run时生成并 claim 64 lowercase hex的 256-bit
@@ -975,14 +1015,47 @@ v2.0 eager runtime 本身也不接受超过该边界的 snapshot。
 
 Prisma 不能表达的数据库不变量由 migration raw SQL `CHECK` 固定：所有 digest/version 为 64 位
 lowercase hex，实体 ID为对应 prefix + 64 hex，count/size/position非负，ref匹配小写 regex且
-不等于 64-hex，`run_id = 'run_' || cache_key`。维护脚本也必须经过这些约束，不能只依赖 Zod。
+不等于 64-hex，`run_id = 'run_' || cache_key`。Identity claim另以 CHECK固定 claim/request
+profile字面量、entity kind与 creation profile组合、entity kind与 ID prefix组合。维护脚本也必须
+经过这些约束，不能只依赖 Zod。
 
 ### 11.2 Catalog API
 
 ```ts
+type CatalogCreationProfileV2 =
+  | 'source-root-v1'
+  | 'artifact-row-v1'
+  | 'direct-root-v1'
+  | 'derived-record-v1'
+  | 'candidate-v1'
+  | 'signal-event-v1'
+  | 'preference-event-v1'
+
+interface CatalogIdentityClaimInputV2 {
+  namespaceId: string
+  entityKind: 'record' | 'candidate' | 'signal' | 'preference'
+  claimKeyDigest: string
+  claimProfile: 'databench-identity-claim-v1'
+  requestProfile: 'databench-identity-request-v1'
+  creationProfile: CatalogCreationProfileV2
+  entityId: string
+  requestDigest: string
+}
+
+interface CatalogIdentityClaimRowV2 extends CatalogIdentityClaimInputV2 {
+  createdAt: Date
+}
+
+type CatalogIdentityClaimResultV2 =
+  | { status: 'created'; row: CatalogIdentityClaimRowV2 }
+  | { status: 'existing_claim'; row: CatalogIdentityClaimRowV2 }
+  | { status: 'existing_entity'; row: CatalogIdentityClaimRowV2 }
+
 interface V2Catalog {
   getOrCreateNamespace(scope: 'default'): Promise<string>
-  claimIdentity(request: IdentityClaimRequestV2): Promise<string>
+  insertOrReadIdentityClaim(
+    input: CatalogIdentityClaimInputV2,
+  ): Promise<CatalogIdentityClaimResultV2>
 
   registerCommittedLayout(input: RegisterLayoutV2): Promise<void>
   registerTransformResult(input: RegisterTransformResultV2): Promise<void>
@@ -1007,14 +1080,31 @@ interface V2Catalog {
 }
 ```
 
-这里的 `CatalogRunRowV2/CatalogRefRowV2` 是 Catalog-local primitive metadata形状，不从 Schema
-import；Workspace负责把它们映射成 §15 wire DTO。Opaque cursor的签名/验证也在 Workspace，
-Catalog只接收已验证的 seek key与 limit。
+这里的 `CatalogIdentityClaim*V2/CatalogRunRowV2/CatalogRefRowV2` 都是 Catalog-local primitive
+metadata形状，不从 Schema或 Hashing import；`CatalogCreationProfileV2` 的7个字面量也在 Catalog
+本地展开，不能引用域包 alias。Claim input严格只含上述8个 digest/profile/ID字段，禁止 seed、
+`claim_material`、`normalized_request`、idempotency key或 producer event key进入 Catalog、Prisma、
+SQL log、metric或 error detail。Workspace负责把 `PreparedIdentityClaimV2`映射为 Catalog input，
+并把返回 row映射后通过 Schema的 strict prepared-claim parser再比较；Workspace才抛 typed domain
+error。已存 row strict parse失败必须转为 `IdentityClaimIntegrityErrorV2`（HTTP 500
+`integrity_error`），不能作为 caller validation映射成 422；incoming claim解析失败仍是
+`ValidationError`/Zod validation。Opaque cursor的签名/验证也在 Workspace，Catalog只接收已验证的
+seek key与 limit。
 
 Namespace 初始化和 identity claim 都禁止 `SELECT → INSERT` 竞态。`scope='default'` 使用
-`INSERT ... ON CONFLICT DO NOTHING` 后 SELECT；claim 使用复合唯一键同样插入后读取，并逐字段
-比较 `claim_profile/request_profile/creation_profile/entity_id/request_digest`。`entity_id` 唯一冲突单独映射为
-`IdentityConflictError`；禁止通过 upsert-update 改写既有 claim。
+`INSERT ... ON CONFLICT DO NOTHING` 后 SELECT；claim插入也必须使用**不指定 conflict target**的
+`ON CONFLICT DO NOTHING`，使 claim key复合唯一约束与 `(namespace_id, entity_id)`唯一约束都进入
+同一 read-after-conflict分支，然后只返回 `created | existing_claim | existing_entity` primitive
+结果，不在 Catalog内比较或抛领域错误。若
+insert未返回，先按 `(namespace_id, entity_kind, claim_key_digest)`读取，再按
+`(namespace_id, entity_id)`读取；两处都不存在视为数据库一致性错误。Workspace对非 derived claim
+逐字段比较 profiles、creation profile、entity ID与 request digest；derived已有 claim只比较
+profiles、creation profile与 entity ID。首次 `request_digest`永不更新，entity ID唯一冲突由
+Workspace映射为 `IdentityConflictError`；禁止通过 upsert-update改写既有 claim。
+
+Schema的普通 claim comparator对所有 profile都严格比较 `request_digest`；只有 V10内部
+derived-revision流程可以调用单独的 derived comparator启用上述复用规则，避免普通 creation路径
+误把任意 payload变化当作合法 revision。
 
 ### 11.3 Registration transaction
 
@@ -1268,6 +1358,9 @@ operation必须把 seed物化为 strict param后取得 deterministic RNG。写�
 5. 双 miss竞态注册同 metadata/output为幂等成功，不同 output为 determinism conflict；失败 worker
    绝不能移动 ref；
 6. `registerTransformResult` 再次验证 `run_id === 'run_' + cache_key`，cache hit不得新建 run。
+
+Derived claim复用 logical ID不替代上述 determinism gate：新的 exact input dataset versions会形成
+新的 cache key并可注册同 ID的新 revision；同一 cache key出现不同 output仍必须冲突。
 
 ### 13.2 Identity mode
 
@@ -1781,7 +1874,7 @@ Domain errors 不含 HTTP 概念，API 统一映射:
 | `ResourceLimitError` | 413 | `resource_limit` | eager record/count/canonical bytes 超过实例上限 |
 | `CapacityExceededError` | 503 | `capacity_exceeded` | 当前 temp/heap/load并发无法安全接纳 |
 | `NotFoundError` | 404 | `not_found` | ref/version/record/transform 不存在 |
-| `IdentityConflictError` | 409 | `identity_conflict` | 相同 claim 不同 request |
+| `IdentityConflictError` | 409 | `identity_conflict` | 非 derived相同 claim不同 request，或任意 claim的 entity/profile不一致 |
 | `DeterminismConflictError` | 409 | `determinism_conflict` | 同 cache key 不同 output |
 | `LayoutConflictError` | 409 | `layout_conflict` | 同 dataset/layout 不同 artifact |
 | `RefConflictError` | 409 | `ref_conflict` | CAS expected version 不匹配 |

@@ -1,0 +1,87 @@
+{
+  "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+  "seeds": {
+    "source_root": {
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "source": {
+        "name": "support-orders",
+        "kind": "internal-jsonl",
+        "original_id": "order-42"
+      }
+    },
+    "artifact_row": {
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "source_artifact_digest": "8888888888888888888888888888888888888888888888888888888888888888",
+      "row_index": 42
+    },
+    "direct_root": {
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "idempotency_key_or_random_seed": "request-42"
+    },
+    "derived_record": {
+      "op": "rewrite",
+      "op_version": "1.0.0",
+      "params": { "style": "concise", "temperature": 0 },
+      "parent_ids": ["rec_6666666666666666666666666666666666666666666666666666666666666666"],
+      "output_index": 0
+    },
+    "candidate": {
+      "record_id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "generation_run_id": "run_9999999999999999999999999999999999999999999999999999999999999999",
+      "output_index": 0
+    },
+    "signal": {
+      "owner_id": "cand_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "producer": "reviewer-17",
+      "producer_event_key": "review-event-42"
+    },
+    "preference": {
+      "owner_id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "producer": "reviewer-18",
+      "producer_event_key": "preference-event-42"
+    }
+  },
+  "expected": {
+    "source_root": {
+      "entity_id": "rec_e226ce097de0099296ca1e07861fadb690b4a8f971380259425fac63f7231da0",
+      "claim_key_digest": "dd496ec042af34f9caa79976cad59c8ba7c305c8592851321b01312225d36c10",
+      "request_digest": "2db6917c46f21116c087e8093dd5a02409251eb3b73daeb8b505ec3d121348bc"
+    },
+    "artifact_row": {
+      "entity_id": "rec_0e322ba3d9070faa58de0dfb96434efa887bddce975bae96ee528bea7bef7316",
+      "claim_key_digest": "37468d345d66af39ab1d34952677be162abcb87839552bc5c9a10ee317414d48",
+      "request_digest": "a9d487a3189ea7657825136a283b56d285e3a3f9155afe3d7824cf8e0b107f8a"
+    },
+    "direct_root": {
+      "entity_id": "rec_93481bf82f102d1af94271bd2cd18b76e88a6a607e7eb356e527115bfc252da7",
+      "claim_key_digest": "4c39882baa71b3e2dfbc2dc8fe07b1798e8f7b43903ad599cc445bfd0f0fa1fc",
+      "request_digest": "1c3b32bad9cd4be3d22237252268057d97a755a7af8d7113645741f01a1bcfd2"
+    },
+    "derived_record": {
+      "entity_id": "rec_ba70896f9bf767b49db5a6d9bc91fe781a5605b7a1c40843be30dedb7bcce847",
+      "claim_key_digest": "262753a5160009688d45eceb55b0d0d311f98c4b3e2ac86d6d6c7cabd9444384",
+      "request_digest": "ad17d35c207c96e16e2c5da7607571f2117d7f67c86ccd9bbff84ce6eb0d6e41"
+    },
+    "candidate": {
+      "entity_id": "cand_2c54466276910019fe869db78419c518de8d363ca8bec06783e1ab219a0814a1",
+      "claim_key_digest": "cab66bbedbc21568a1078344a43e441bd1d32555150be02d5f250e8c9ba5940b",
+      "request_digest": "26a0849d5e5fbae32763b31e7068db57ef8a4bd5ff822ca3ba574ef1c36ebc62"
+    },
+    "signal": {
+      "entity_id": "sig_734759704fc18087ce5c7cdcaac4f97f722a8c390a754eab05a209e1295a60ce",
+      "claim_key_digest": "637e459f9a67c2d4a2f3c3527db0520df0d278d642cd23018e0f693f7818879c",
+      "request_digest": "764cb49b0f6634ee70f1862efd2ee16362285bc3a39c340504cbff4ed592c90d"
+    },
+    "preference": {
+      "entity_id": "pref_5540a6f4af5bf7240c2030ef5822063d5c316c563ddc15933ec3d1b5272bcb51",
+      "claim_key_digest": "dc9f1fd3c58907f6ef2dc844554c9239eea895f7f19b815a35d1a2916a24cc18",
+      "request_digest": "703f74231e3b3de0d6b21aad96fcf4a21150eb1f9637798e80ab32425db11585"
+    }
+  },
+  "random_direct_expected": {
+    "entity_id": "rec_c531ce1bb98fbadf1db2942a6d29662e722872db039ec2cf21ed98d358bb9107",
+    "claim_key_digest": "ded3562d9b909c43a6742a81272d6f181031ecc4e6228f518013e40d90e58b86",
+    "request_digest": "5bd6bd6f88170a159cfbca35c7063b1420d58ebe7dbdbeb30c2ee8a7bd1215fa"
+  },
+  "independent_reference": "Python blake3 over RFC 8785-compatible ASCII preimages"
+}

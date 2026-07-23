@@ -3,6 +3,8 @@ export {
   type CandidateV2,
   GeneratorInfoSchema as GeneratorInfoV2Schema,
   type GeneratorInfoV2,
+  type InitialCandidateV2,
+  InitialCandidateV2Schema,
 } from './candidate.js'
 export {
   Bcp47LanguageTagSchema as Bcp47LanguageTagV2Schema,
@@ -21,6 +23,7 @@ export {
   ContentSchema as ContentV2Schema,
   type ContentV2,
 } from './content.js'
+export * from './identity.js'
 export {
   JsonObjectSchema as JsonObjectV2Schema,
   type JsonObjectV2,
@@ -47,6 +50,8 @@ export {
   type UnknownPartV2,
 } from './part.js'
 export {
+  type InitialPreferenceRelationV2,
+  InitialPreferenceRelationV2Schema,
   PreferenceOutcomeSchema as PreferenceOutcomeV2Schema,
   PreferenceRelationSchema as PreferenceRelationV2Schema,
   type PreferenceRelationV2,
@@ -79,12 +84,20 @@ export {
   writeCompatibleRecordV2,
 } from './reader.js'
 export {
+  type InitialPostTrainingRecordV2,
+  InitialPostTrainingRecordV2Schema,
   normalizeCanonicalRecordV2,
   type PostTrainingRecordV2,
   PostTrainingRecordV2Schema,
   parseCanonicalRecordV2,
 } from './record.js'
 export {
+  createRecordRevisionV2,
+  type RecordRevisionV2,
+} from './revision.js'
+export {
+  type InitialSignalV2,
+  InitialSignalV2Schema,
   SignalKindSchema as SignalKindV2Schema,
   SignalSchema as SignalV2Schema,
   SignalSourceSchema as SignalSourceV2Schema,

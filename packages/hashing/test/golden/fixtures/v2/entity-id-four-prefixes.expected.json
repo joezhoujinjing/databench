@@ -1,0 +1,53 @@
+{
+  "inputs": {
+    "source_root": {
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "source": {
+        "name": "support-orders",
+        "kind": "internal-jsonl",
+        "original_id": "order-42"
+      }
+    },
+    "artifact_row": {
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "source_artifact_digest": "8888888888888888888888888888888888888888888888888888888888888888",
+      "row_index": 42
+    },
+    "direct_root": {
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "idempotency_key_or_random_seed": "request-42"
+    },
+    "derived_record": {
+      "op": "rewrite",
+      "op_version": "1.0.0",
+      "params": { "style": "concise", "temperature": 0 },
+      "parent_ids": ["rec_6666666666666666666666666666666666666666666666666666666666666666"],
+      "output_index": 0
+    },
+    "candidate": {
+      "record_id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "generation_run_id": "run_9999999999999999999999999999999999999999999999999999999999999999",
+      "output_index": 0
+    },
+    "signal": {
+      "owner_id": "cand_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "producer": "reviewer-17",
+      "producer_event_key": "review-event-42"
+    },
+    "preference": {
+      "owner_id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "producer": "reviewer-18",
+      "producer_event_key": "preference-event-42"
+    }
+  },
+  "expected": {
+    "source_root": "rec_e226ce097de0099296ca1e07861fadb690b4a8f971380259425fac63f7231da0",
+    "artifact_row": "rec_0e322ba3d9070faa58de0dfb96434efa887bddce975bae96ee528bea7bef7316",
+    "direct_root": "rec_93481bf82f102d1af94271bd2cd18b76e88a6a607e7eb356e527115bfc252da7",
+    "derived_record": "rec_ba70896f9bf767b49db5a6d9bc91fe781a5605b7a1c40843be30dedb7bcce847",
+    "candidate": "cand_2c54466276910019fe869db78419c518de8d363ca8bec06783e1ab219a0814a1",
+    "signal": "sig_734759704fc18087ce5c7cdcaac4f97f722a8c390a754eab05a209e1295a60ce",
+    "preference": "pref_5540a6f4af5bf7240c2030ef5822063d5c316c563ddc15933ec3d1b5272bcb51"
+  },
+  "independent_reference": "Python blake3 over RFC 8785-compatible ASCII preimages"
+}

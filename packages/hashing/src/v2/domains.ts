@@ -73,7 +73,12 @@ export function hashV2Record(record: unknown): string {
   return hashDomain(DOMAIN.record, record)
 }
 
-export function hashV2DatasetIdentity(identity: DatasetIdentityEnvelopeV2): string {
+type NoExtraKeys<Expected, Actual extends Expected> = Actual &
+  Record<Exclude<keyof Actual, keyof Expected>, never>
+
+export function hashV2DatasetIdentity<const Identity extends DatasetIdentityEnvelopeV2>(
+  identity: NoExtraKeys<DatasetIdentityEnvelopeV2, Identity>,
+): string {
   return hashDomain(DOMAIN.dataset, {
     identity_profile: identity.identity_profile,
     record_schema_version: identity.record_schema_version,

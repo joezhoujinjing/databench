@@ -1,0 +1,7 @@
+{
+  "input_fixture": "../../../../schema/test/golden/fixtures/v2/record-all-fields.input.json",
+  "canonical_utf8_length": 6273,
+  "canonical_json_blake3": "8961200cfd45a9d403ef2d287599463d0450d32b301d4c3b96a349bb9937c6b4",
+  "record_digest": "08f16a75b5cd9da101e987fa2359ebb914b1f9b2f288f341d491a0ab4868405a",
+  "independent_reference": "Python blake3 over RFC 8785-compatible ASCII preimage"
+}

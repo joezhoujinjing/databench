@@ -22,6 +22,7 @@ import {
   hashV2TransformCache,
   type IdentityClaimHashInputV1,
   type IdentityRequestHashInputV1,
+  type RecordSeedV1,
   type SourceRootSeedV1,
   type TransformCacheIdentityV1,
 } from '../src/index.js'
@@ -168,6 +169,115 @@ describe('v2 named hash domains', () => {
     expect(hashV2DatasetIdentity(widenedSnapshot)).toBe(hashV2DatasetIdentity(identity))
   })
 })
+
+interface EntityIdFixture {
+  inputs: {
+    source_root: RecordSeedV1
+    artifact_row: RecordSeedV1
+    direct_root: RecordSeedV1
+    derived_record: RecordSeedV1
+    candidate: CandidateSeedV1
+    signal: EventSeedV1
+    preference: EventSeedV1
+  }
+  expected: Record<string, string>
+}
+
+describe('v2 identity and version fixed vectors', () => {
+  test('matches all record seed profiles and four public entity prefixes', () => {
+    const fixture = readJson<EntityIdFixture>('entity-id-four-prefixes.expected.json')
+    expect({
+      source_root: deriveV2RecordId(fixture.inputs.source_root),
+      artifact_row: deriveV2RecordId(fixture.inputs.artifact_row),
+      direct_root: deriveV2RecordId(fixture.inputs.direct_root),
+      derived_record: deriveV2RecordId(fixture.inputs.derived_record),
+      candidate: deriveV2CandidateId(fixture.inputs.candidate),
+      signal: deriveV2SignalId(fixture.inputs.signal),
+      preference: deriveV2PreferenceId(fixture.inputs.preference),
+    }).toEqual(fixture.expected)
+  })
+
+  test('locks the all-fields record canonical bytes and domain digest', () => {
+    const record = JSON.parse(
+      readFileSync(
+        fileURLToPath(
+          new URL(
+            '../../schema/test/golden/fixtures/v2/record-all-fields.input.json',
+            import.meta.url,
+          ),
+        ),
+        'utf8',
+      ),
+    ) as Record<string, CanonicalJsonValue>
+    const expected = readJson<{
+      canonical_utf8_length: number
+      canonical_json_blake3: string
+      record_digest: string
+    }>('record-digest-all-fields.expected.json')
+    const canonical = canonicalJsonV2(record)
+
+    expect(new TextEncoder().encode(canonical).byteLength).toBe(expected.canonical_utf8_length)
+    expect(hashArtifactBytes(new TextEncoder().encode(canonical))).toBe(
+      expected.canonical_json_blake3,
+    )
+    expect(hashV2Record(record)).toBe(expected.record_digest)
+
+    for (const key of Object.keys(record)) {
+      const changed = structuredClone(record)
+      changed[key] = changedValue(changed[key])
+      expect(hashV2Record(changed), key).not.toBe(expected.record_digest)
+    }
+  })
+
+  test('locks the v2.0 empty dataset version and canonical envelope', () => {
+    const fixture = readJson<{
+      input: DatasetIdentityEnvelopeV2
+      canonical: string
+      expected_version: string
+    }>('dataset-empty-2-0-0.expected.json')
+    expect(canonicalJsonV2(fixture.input)).toBe(fixture.canonical)
+    expect(hashV2DatasetIdentity(fixture.input)).toBe(fixture.expected_version)
+  })
+
+  test('keeps transform input order and every cache identity field significant', () => {
+    const base = {
+      identity_profile: 'databench-v2-jcs-1',
+      op: 'mix',
+      op_version: '1.0.0',
+      input_dataset_versions: ['1'.repeat(64), '2'.repeat(64)],
+      params: { weight: 1 },
+    } as const satisfies TransformCacheIdentityV1
+    const digest = hashV2TransformCache(base)
+    const variants: TransformCacheIdentityV1[] = [
+      { ...base, op: 'filter' },
+      { ...base, op_version: '1.0.1' },
+      { ...base, input_dataset_versions: [...base.input_dataset_versions].reverse() },
+      { ...base, params: { weight: 2 } },
+    ]
+    for (const variant of variants) {
+      expect(hashV2TransformCache(variant)).not.toBe(digest)
+    }
+  })
+})
+
+function changedValue(value: CanonicalJsonValue | undefined): CanonicalJsonValue {
+  if (value === null) {
+    return 'changed'
+  }
+  if (Array.isArray(value)) {
+    return [...value, null]
+  }
+  if (typeof value === 'object') {
+    return { ...value, changed: true }
+  }
+  if (typeof value === 'string') {
+    return `${value}-changed`
+  }
+  if (typeof value === 'number') {
+    return value + 1
+  }
+  return !value
+}
 
 describe('incremental artifact BLAKE3', () => {
   test('matches one-shot bytes while isolated hashers are interleaved', () => {

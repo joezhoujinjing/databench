@@ -221,13 +221,15 @@ unsafe integer、NaN/Infinity、duplicate keys、readonly nested values和增量
 - root/derived/candidate/event strict seed与 creation request union；
 - workspace-local UUID namespace schema；
 - claim/request hash envelopes与随机 seed时序；
-- private branded `RecordRevisionV2` factory：deep clone → strict parse → deep freeze → JCS → digest；
+- internal-class private branded `RecordRevisionV2` + 唯一公开 factory：deep clone → strict parse →
+  deep freeze → JCS → digest；
 - record digest、dataset version、empty version与 cache key fixed vectors；
 - generation run ID和 output index规则；
 - compile-time/type tests防止 snapshot metadata误入 dataset hash。
 
-> **GV3:** ADR 0011全部 vectors直接断言 bytes/hex；同 claim+同 request返回同 ID，同 claim+
-> 不同 request冲突；输入/返回 nested mutation不能改变 revision；empty version固定为
+> **GV3:** ADR 0011全部 vectors直接断言 bytes/hex；同 claim+同 request返回同 ID，非 derived
+> 同 claim+不同 request冲突，derived复用 logical ID并产生新 revision；输入/返回 nested
+> mutation不能改变 revision；empty version固定为
 > `da99cf8da850355f9bae66e9c38a2c61f62e7d59d7aa43a4ff6151bcdae8fefd`。
 
 ### V4 — Immutable `V2Dataset`

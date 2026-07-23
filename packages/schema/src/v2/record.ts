@@ -1,6 +1,6 @@
 import { canonicalJsonV2, compareJcsUtf16 } from '@databench/hashing'
 import { z } from 'zod'
-import { CandidateSchema, type CandidateV2 } from './candidate.js'
+import { CandidateSchema } from './candidate.js'
 import {
   addIssue,
   Bcp47LanguageTagSchema,
@@ -16,7 +16,6 @@ import { JsonObjectSchema } from './json-value.js'
 import type { FunctionCallPartSchema } from './part.js'
 import { PreferenceRelationSchema, type PreferenceRelationV2 } from './preference.js'
 import { LineageSchema, SourceInfoSchema } from './provenance.js'
-import type { SignalSourceV2, SignalV2 } from './signal.js'
 import { ToolSchema, type ToolV2 } from './tool.js'
 import {
   type CompiledToolInputSchemaV2,
@@ -26,9 +25,8 @@ import {
 import { VerificationSchema } from './verification.js'
 
 type FunctionCallPartV2 = z.infer<typeof FunctionCallPartSchema>
-const PostTrainingRecordV2BaseSchema = z.strictObject({
+const PostTrainingRecordV2PayloadShape = {
   schema_version: z.literal('2.0.0'),
-  id: RecordIdSchema,
   system_instruction: z.string().min(1).nullable(),
   contents: z.array(ContentSchema),
   candidates: z.array(CandidateSchema),
@@ -40,12 +38,24 @@ const PostTrainingRecordV2BaseSchema = z.strictObject({
   lineage: LineageSchema.nullable(),
   tags: z.array(NonEmptyStringSchema),
   extra: JsonObjectSchema,
+} as const
+
+const PostTrainingRecordV2PayloadSchema = z.strictObject(PostTrainingRecordV2PayloadShape)
+type PostTrainingRecordV2Payload = z.infer<typeof PostTrainingRecordV2PayloadSchema>
+
+const PostTrainingRecordV2BaseSchema = PostTrainingRecordV2PayloadSchema.extend({
+  id: RecordIdSchema,
 })
 
 export const PostTrainingRecordV2Schema = PostTrainingRecordV2BaseSchema.superRefine(
   validateRecord,
 ).meta({ id: 'PostTrainingRecordV2' })
 export type PostTrainingRecordV2 = z.infer<typeof PostTrainingRecordV2Schema>
+
+export const InitialPostTrainingRecordV2Schema = PostTrainingRecordV2PayloadSchema.superRefine(
+  validateRecord,
+).meta({ id: 'InitialPostTrainingRecordV2' })
+export type InitialPostTrainingRecordV2 = z.infer<typeof InitialPostTrainingRecordV2Schema>
 
 export function parseCanonicalRecordV2(input: unknown): PostTrainingRecordV2 {
   canonicalJsonV2(input)
@@ -66,7 +76,7 @@ export function normalizeCanonicalRecordV2(input: unknown): PostTrainingRecordV2
 }
 
 function validateRecord(
-  record: z.infer<typeof PostTrainingRecordV2BaseSchema>,
+  record: PostTrainingRecordV2Payload & { readonly id?: string },
   context: z.RefinementCtx,
 ) {
   validateAlternatingContents(record.contents, context, ['contents'])
@@ -103,7 +113,6 @@ function validateRecord(
   const sharedState = validateTrajectory(record.contents, context, ['contents'], toolValidators)
 
   record.candidates.forEach((candidate, candidateIndex) => {
-    validateCandidate(candidate, candidateIndex, context)
     validateTrajectory(
       candidate.contents,
       context,
@@ -111,7 +120,6 @@ function validateRecord(
       toolValidators,
       sharedState,
     )
-    validateSignalSupersession(candidate.signals, candidateIndex, context)
   })
 
   validatePreferences(record.preference_relations, new Set(candidateIds), context)
@@ -130,25 +138,6 @@ function validateAlternatingContents(
       addIssue(context, [...path, index, 'role'], 'Content roles must alternate')
     }
   }
-}
-
-function validateCandidate(
-  candidate: CandidateV2,
-  candidateIndex: number,
-  context: z.RefinementCtx,
-): void {
-  if (candidate.contents[0]?.role !== 'ai') {
-    addIssue(
-      context,
-      ['candidates', candidateIndex, 'contents', 0, 'role'],
-      'Candidate must start with ai',
-    )
-  }
-  validateAlternatingContents(candidate.contents, context, [
-    'candidates',
-    candidateIndex,
-    'contents',
-  ])
 }
 
 interface TrajectoryState {
@@ -246,57 +235,6 @@ function compileTools(
   return validators
 }
 
-function validateSignalSupersession(
-  signals: readonly SignalV2[],
-  candidateIndex: number,
-  context: z.RefinementCtx,
-): void {
-  const byId = new Map<string, { signal: SignalV2; index: number }>()
-  const successorCount = new Map<string, number>()
-
-  signals.forEach((signal, index) => {
-    if (signal.source.type === 'human' && signal.source.id.includes('@')) {
-      addIssue(
-        context,
-        ['candidates', candidateIndex, 'signals', index, 'source', 'id'],
-        'Human source IDs must be anonymous internal identifiers',
-      )
-    }
-    if (signal.supersedes !== null) {
-      const target = byId.get(signal.supersedes)
-      if (!target) {
-        addIssue(
-          context,
-          ['candidates', candidateIndex, 'signals', index, 'supersedes'],
-          'Signal may only supersede an earlier signal',
-        )
-      } else if (
-        target.signal.name !== signal.name ||
-        target.signal.kind !== signal.kind ||
-        !sameSignalSource(target.signal.source, signal.source)
-      ) {
-        addIssue(
-          context,
-          ['candidates', candidateIndex, 'signals', index, 'supersedes'],
-          'Superseded signal must have the same name, kind, and source',
-        )
-      }
-      successorCount.set(signal.supersedes, (successorCount.get(signal.supersedes) ?? 0) + 1)
-    }
-    byId.set(signal.id, { signal, index })
-  })
-
-  for (const [id, count] of successorCount) {
-    if (count > 1) {
-      addIssue(
-        context,
-        ['candidates', candidateIndex, 'signals'],
-        `Signal ${id} has more than one direct successor`,
-      )
-    }
-  }
-}
-
 function validatePreferences(
   relations: readonly PreferenceRelationV2[],
   candidateIds: ReadonlySet<string>,
@@ -307,16 +245,6 @@ function validatePreferences(
   const successorCount = new Map<string, number>()
 
   relations.forEach((relation, index) => {
-    if (relation.source.type === 'human' && relation.source.id.includes('@')) {
-      addIssue(
-        context,
-        ['preference_relations', index, 'source', 'id'],
-        'Human source IDs must be anonymous internal identifiers',
-      )
-    }
-    if (relation.left_candidate_id === relation.right_candidate_id) {
-      addIssue(context, ['preference_relations', index], 'Preference candidates must be different')
-    }
     if (!candidateIds.has(relation.left_candidate_id)) {
       addIssue(
         context,
@@ -385,7 +313,7 @@ function validatePreferences(
 }
 
 function validateLineage(
-  record: z.infer<typeof PostTrainingRecordV2BaseSchema>,
+  record: PostTrainingRecordV2Payload & { readonly id?: string },
   context: z.RefinementCtx,
 ): void {
   if (!record.lineage) {
@@ -396,7 +324,7 @@ function validateLineage(
     addIssue(context, ['lineage', 'parent_refs'], 'Lineage parent logical IDs must be unique')
   }
   record.lineage.parent_refs.forEach((parent, index) => {
-    if (parent.id === record.id) {
+    if (record.id !== undefined && parent.id === record.id) {
       addIssue(
         context,
         ['lineage', 'parent_refs', index, 'id'],
@@ -414,7 +342,7 @@ function validateCanonicalTags(tags: readonly string[], context: z.RefinementCtx
 }
 
 function validateSensitivePayloads(
-  record: z.infer<typeof PostTrainingRecordV2BaseSchema>,
+  record: PostTrainingRecordV2Payload,
   context: z.RefinementCtx,
 ): void {
   const check = (value: unknown, path: PropertyKey[], extra = new Set<string>()) => {
@@ -485,10 +413,6 @@ function validateSensitivePayloads(
       })
     })
   }
-}
-
-function sameSignalSource(left: SignalSourceV2, right: SignalSourceV2): boolean {
-  return left.type === right.type && left.id === right.id && left.version === right.version
 }
 
 function preferencePairKey(relation: PreferenceRelationV2): string {

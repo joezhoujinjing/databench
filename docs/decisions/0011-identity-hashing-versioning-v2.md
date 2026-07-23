@@ -87,7 +87,8 @@ entity_id = prefix + blake3(
 - parent revision 不进入 derived record logical ID：相同 op/version/params 对同一组
   logical parents 的后续 revisions 再运行时，产生同一 derived logical record 的新
   revision；精确 parent revisions 由本 ADR 第 8 节的 `parent_refs` 固定并参与 record
-  digest;
+  digest。Derived identity claim只审计首次 logical ID分配；后续 parent revision改变时，
+  不能因为完整初始 record或 `request_digest` 改变而拒绝该 logical ID的新 revision;
 - candidate 使用 record ID、不可变 generation run ID 与该 run 内稳定的 output index；
   generation run 必须固定模型、参数与输出排序，不能使用 candidate 当前所在数组的位置;
 - signal/preference relation 使用所属实体 ID 与稳定 producer event key。Producer 有
@@ -95,8 +96,9 @@ entity_id = prefix + blake3(
   index；在线创建使用客户端 event idempotency key，没有提供时生成 256-bit CSPRNG
   seed。当前 append position 永远不参与事件 ID。
 
-同一 namespace 下重复使用相同 create idempotency key、却提交不同初始语义内容时必须
-返回 typed conflict，不能把第二个请求静默当作已有 record 的 revision。
+同一 namespace 下，root/direct/candidate/event 等一次性创建重复使用相同 create
+idempotency key、却提交不同初始语义内容时必须返回 typed conflict，不能把第二个请求静默
+当作已有实体的 revision。`derived-record-v1` 按上一条规则复用 logical ID，不适用该冲突规则。
 
 机器生成的 ID 必须按上述函数产生。Canonical import 可以保留已经符合对应格式的 v2
 ID；外部系统自己的 ID 放入 `source.original_id` 或 provenance，不能直接冒充 canonical

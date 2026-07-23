@@ -2,6 +2,7 @@ import { z } from 'zod'
 import {
   addIssue,
   FiniteNumberSchema,
+  findForbiddenJsonKey,
   NonEmptyStringSchema,
   NullableNonEmptyStringSchema,
   Rfc3339UtcSchema,
@@ -62,8 +63,7 @@ export const SignalKindSchema = z.enum([
   'other',
 ])
 
-export const SignalSchema = z.strictObject({
-  id: SignalIdSchema,
+const SignalPayloadShape = {
   name: NonEmptyStringSchema,
   kind: SignalKindSchema,
   value: SignalValueSchema,
@@ -71,5 +71,36 @@ export const SignalSchema = z.strictObject({
   rationale: z.string().nullable(),
   created_at: Rfc3339UtcSchema.nullable(),
   supersedes: SignalIdSchema.nullable(),
-})
+} as const
+
+export const SignalSchema = z
+  .strictObject({
+    id: SignalIdSchema,
+    ...SignalPayloadShape,
+  })
+  .superRefine(validateSignalSource)
 export type SignalV2 = z.infer<typeof SignalSchema>
+
+export const InitialSignalV2Schema = z
+  .strictObject(SignalPayloadShape)
+  .superRefine(validateSignalSource)
+export type InitialSignalV2 = z.infer<typeof InitialSignalV2Schema>
+
+function validateSignalSource(
+  signal: { source: SignalSourceV2; value: SignalValueV2 },
+  context: z.RefinementCtx,
+): void {
+  if (signal.source.type === 'human' && signal.source.id.includes('@')) {
+    addIssue(context, ['source', 'id'], 'Human source IDs must be anonymous internal identifiers')
+  }
+  if (signal.value.type === 'json') {
+    const forbiddenPath = findForbiddenJsonKey(signal.value.value)
+    if (forbiddenPath) {
+      addIssue(
+        context,
+        ['value', 'value', ...forbiddenPath],
+        'Canonical signals must not contain credentials',
+      )
+    }
+  }
+}

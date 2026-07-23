@@ -1,0 +1,78 @@
+{
+  "schema_version": "2.0.0",
+  "id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "system_instruction": "Use the available evidence.",
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Classify this example.",
+          "thought": false,
+          "thought_signature": null,
+          "part_metadata": { "fixture": { "nested": [1, null, true] } }
+        }
+      ],
+      "loss_weight": 0
+    }
+  ],
+  "candidates": [
+    {
+      "id": "cand_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "contents": [
+        {
+          "role": "ai",
+          "parts": [
+            {
+              "type": "text",
+              "text": "positive",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": {}
+            }
+          ],
+          "loss_weight": 1
+        }
+      ],
+      "finish_reason": "stop",
+      "rank": 0,
+      "selected": true,
+      "signals": [
+        {
+          "id": "sig_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "name": "quality",
+          "kind": "rating",
+          "value": {
+            "type": "number",
+            "value": 1,
+            "scale_min": 0,
+            "scale_max": 1,
+            "higher_is_better": true
+          },
+          "source": { "type": "human", "id": "reviewer-1", "version": null },
+          "rationale": null,
+          "created_at": null,
+          "supersedes": null
+        }
+      ],
+      "generator": null,
+      "token_count": 1,
+      "avg_logprobs": null
+    }
+  ],
+  "preference_relations": [],
+  "tools": [],
+  "verification": null,
+  "source": {
+    "name": "fixture",
+    "kind": "jsonl",
+    "url": null,
+    "license": null,
+    "original_id": "row-1"
+  },
+  "lang": "zh-CN",
+  "lineage": null,
+  "tags": ["fixture", "v2"],
+  "extra": { "deep": { "array": [{ "value": "immutable" }] } }
+}
