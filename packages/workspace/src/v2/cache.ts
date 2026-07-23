@@ -25,6 +25,12 @@ export interface V2DatasetCacheOptions {
 
 export interface V2DatasetCacheAcquireOptions {
   readonly signal?: AbortSignal
+  /**
+   * Internal orchestration mode: reject for cancellation only after an already
+   * running shared loader settles, so an outer resource gate cannot release
+   * early while the loader still consumes memory or I/O.
+   */
+  readonly settleOnAbort?: boolean
 }
 
 export interface V2DatasetLease {
@@ -176,7 +182,7 @@ export class V2DatasetCache {
     }
     if (existing?.kind === 'loading') {
       existing.waiters += 1
-      return this.#waitForLoading(existing, signal)
+      return this.#waitForLoading(existing, signal, options.settleOnAbort === true)
     }
 
     this.#assertQueueCapacity()
@@ -205,7 +211,7 @@ export class V2DatasetCache {
     // the normal waiters still observe the original promise.
     void deferred.promise.catch(() => undefined)
     this.#pumpLoads()
-    return this.#waitForLoading(loading, signal)
+    return this.#waitForLoading(loading, signal, options.settleOnAbort === true)
   }
 
   /**
@@ -289,7 +295,11 @@ export class V2DatasetCache {
     return true
   }
 
-  #waitForLoading(entry: LoadingEntry, signal: AbortSignal | undefined): Promise<V2DatasetLease> {
+  #waitForLoading(
+    entry: LoadingEntry,
+    signal: AbortSignal | undefined,
+    settleOnAbort: boolean,
+  ): Promise<V2DatasetLease> {
     return new Promise<V2DatasetLease>((resolve, reject) => {
       let waiting = true
       const cleanup = (): void => signal?.removeEventListener('abort', onAbort)
@@ -297,8 +307,17 @@ export class V2DatasetCache {
         if (!waiting) return
         waiting = false
         cleanup()
-        this.#releaseLoadingWaiter(entry, signal?.reason)
-        reject(signal?.reason ?? abortError('V2 dataset cache waiter was aborted'))
+        const reason = signal?.reason ?? abortError('V2 dataset cache waiter was aborted')
+        const waitForLoader = settleOnAbort && entry.started && entry.phase === 'loading'
+        this.#releaseLoadingWaiter(entry, reason)
+        if (waitForLoader) {
+          void entry.deferred.promise.then(
+            () => reject(reason),
+            () => reject(reason),
+          )
+        } else {
+          reject(reason)
+        }
       }
 
       signal?.addEventListener('abort', onAbort, { once: true })

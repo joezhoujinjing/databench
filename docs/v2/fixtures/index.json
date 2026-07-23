@@ -192,7 +192,7 @@
       "path": "packages/workspace/test/golden/fixtures/v2/transform-identity-cache-race.fixture.json",
       "assertion": "Preserve/derive, run ID, cache hit and double-miss races are deterministic",
       "source": "TECHNICAL-DESIGN-13",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "converter-output-bytes-and-fidelity",

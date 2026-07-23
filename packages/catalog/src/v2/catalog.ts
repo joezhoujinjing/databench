@@ -22,6 +22,7 @@ import type {
   CatalogRefPageV2,
   CatalogRefRowV2,
   CatalogRunInputV2,
+  CatalogRunPageV2,
   CatalogRunRowV2,
   CatalogSnapshotInputV2,
   CatalogSnapshotRowV2,
@@ -33,6 +34,8 @@ import type {
 const EXACT_VERSION = /^[0-9a-f]{64}$/
 const REGISTRATION_TRANSACTION_TIMEOUT_MS = 30_000
 const REGISTRATION_BATCH_SIZE = 1_000
+const MAX_CATALOG_PAGE_SIZE = 1_000
+const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
 
 export interface V2CatalogOptions {
   readonly databaseUrl?: string
@@ -68,6 +71,10 @@ interface RecordParentSqlRow extends RecordRevisionSqlRow {
   readonly position: number
   readonly parent_record_id: string
   readonly parent_record_digest: string
+}
+
+interface LineageSnapshotSequenceSqlRow {
+  readonly snapshot_sequence: bigint
 }
 
 export class V2Catalog {
@@ -215,13 +222,94 @@ export class V2Catalog {
     return row ? prismaRowToRun(row) : null
   }
 
-  async runsProducing(version: string): Promise<CatalogRunRowV2[]> {
+  async lineageSnapshotSequence(): Promise<bigint> {
+    return await this.#client.$transaction(
+      async (tx) => {
+        await acquireLineageRegistrationLock(tx)
+        const rows = await tx.$queryRaw<LineageSnapshotSequenceSqlRow[]>`
+          SELECT COALESCE(MAX("lineage_seq"), 0)::bigint AS "snapshot_sequence"
+          FROM "runs_v2"
+        `
+        const value = rows[0]?.snapshot_sequence
+        if (rows.length !== 1 || typeof value !== 'bigint' || value < 0n) {
+          throw new V2CatalogConsistencyError(
+            'V2 lineage snapshot query did not return exactly one valid run sequence',
+          )
+        }
+        return value
+      },
+      { timeout: REGISTRATION_TRANSACTION_TIMEOUT_MS },
+    )
+  }
+
+  async listRunsProducing(
+    version: string,
+    afterCacheKey: string | null,
+    limit: number,
+    lineageSequenceAtOrBefore: bigint,
+  ): Promise<CatalogRunPageV2> {
+    const fetchLimit = checkedPageFetchLimit(limit, 'V2 producing-run page limit')
+    if (!EXACT_VERSION.test(version)) {
+      throw new V2CatalogInputError('V2 producing-run version must be 64 lowercase hex characters')
+    }
+    if (afterCacheKey !== null && !EXACT_VERSION.test(afterCacheKey)) {
+      throw new V2CatalogInputError('V2 producing-run seek key must be 64 lowercase hex characters')
+    }
+    if (
+      typeof lineageSequenceAtOrBefore !== 'bigint' ||
+      lineageSequenceAtOrBefore < 0n ||
+      lineageSequenceAtOrBefore > POSTGRES_BIGINT_MAX
+    ) {
+      throw new V2CatalogInputError(
+        'V2 producing-run snapshot sequence must fit a non-negative PostgreSQL bigint',
+      )
+    }
+    const keys =
+      afterCacheKey === null
+        ? await this.#client.$queryRaw<Array<{ readonly cache_key: string }>>`
+            SELECT "cache_key"
+            FROM "runs_v2"
+            WHERE
+              "output_version" = ${version} AND
+              "lineage_seq" <= ${lineageSequenceAtOrBefore}
+            ORDER BY "cache_key" COLLATE "C" ASC
+            LIMIT ${fetchLimit}
+          `
+        : await this.#client.$queryRaw<Array<{ readonly cache_key: string }>>`
+            SELECT "cache_key"
+            FROM "runs_v2"
+            WHERE
+              "output_version" = ${version} AND
+              "lineage_seq" <= ${lineageSequenceAtOrBefore} AND
+              "cache_key" COLLATE "C" > ${afterCacheKey}
+            ORDER BY "cache_key" COLLATE "C" ASC
+            LIMIT ${fetchLimit}
+          `
+    const orderedKeys = keys.map(({ cache_key }) => cache_key)
     const rows = await this.#client.v2Run.findMany({
-      where: { outputVersion: version },
+      where: {
+        cacheKey: { in: orderedKeys },
+        outputVersion: version,
+        lineageSeq: { lte: lineageSequenceAtOrBefore },
+      },
       include: { inputs: { orderBy: { position: 'asc' } } },
-      orderBy: [{ createdAt: 'asc' }, { cacheKey: 'asc' }],
     })
-    return rows.map(prismaRowToRun)
+    const rowsByKey = new Map(rows.map((row) => [row.cacheKey, row]))
+    const orderedRows = orderedKeys.map((cacheKey) => {
+      const row = rowsByKey.get(cacheKey)
+      if (!row) {
+        throw new V2CatalogConsistencyError(
+          `V2 producing-run seek selected a missing run: ${cacheKey}`,
+        )
+      }
+      return row
+    })
+    const hasMore = orderedRows.length > limit
+    const visible = hasMore ? orderedRows.slice(0, limit) : orderedRows
+    return {
+      rows: visible.map(prismaRowToRun),
+      nextCacheKey: hasMore ? (visible.at(-1)?.cacheKey ?? null) : null,
+    }
   }
 
   async locateRecordRevision(recordId: string, recordDigest: string): Promise<string | null> {
@@ -321,13 +409,7 @@ export class V2Catalog {
     afterName: string | null,
     limit: number,
   ): Promise<CatalogRefPageV2> {
-    if (!Number.isSafeInteger(limit) || limit <= 0) {
-      throw new V2CatalogInputError('V2 ref page limit must be a positive safe integer')
-    }
-    const fetchLimit = limit + 1
-    if (!Number.isSafeInteger(fetchLimit)) {
-      throw new V2CatalogInputError('V2 ref page limit is too large')
-    }
+    const fetchLimit = checkedPageFetchLimit(limit, 'V2 ref page limit')
     const rows =
       afterName === null
         ? await this.#client.$queryRaw<RefSqlRow[]>`
@@ -353,6 +435,20 @@ export class V2Catalog {
       nextName: hasMore ? (visible.at(-1)?.name ?? null) : null,
     }
   }
+}
+
+function checkedPageFetchLimit(limit: number, label: string): number {
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new V2CatalogInputError(`${label} must be a positive safe integer`)
+  }
+  if (limit > MAX_CATALOG_PAGE_SIZE) {
+    throw new V2CatalogInputError(`${label} must not exceed ${MAX_CATALOG_PAGE_SIZE}`)
+  }
+  const fetchLimit = limit + 1
+  if (!Number.isSafeInteger(fetchLimit)) {
+    throw new V2CatalogInputError(`${label} is too large`)
+  }
+  return fetchLimit
 }
 
 async function acquireLineageRegistrationLock(tx: Prisma.TransactionClient): Promise<void> {
@@ -765,6 +861,7 @@ function prismaRowToLayout(row: {
 function prismaRowToRun(row: {
   id: string
   cacheKey: string
+  lineageSeq: bigint
   op: string
   opVersion: string
   params: Prisma.JsonValue
@@ -772,6 +869,9 @@ function prismaRowToRun(row: {
   createdAt: Date
   inputs: Array<{ position: number; datasetVersion: string }>
 }): CatalogRunRowV2 {
+  if (row.lineageSeq <= 0n) {
+    throw new V2CatalogConsistencyError('Stored V2 run lineage sequence is not positive')
+  }
   const params = parseStoredJsonObject(row.params, 'V2 run params')
   const inputVersions = row.inputs.map((input, position) => {
     if (input.position !== position) {
@@ -782,6 +882,7 @@ function prismaRowToRun(row: {
   return {
     id: row.id,
     cacheKey: row.cacheKey,
+    lineageSequence: row.lineageSeq,
     op: row.op,
     opVersion: row.opVersion,
     params,

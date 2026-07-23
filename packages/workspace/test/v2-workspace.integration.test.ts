@@ -11,6 +11,8 @@ import {
 } from '@aws-sdk/client-s3'
 import { createPrismaClient, V2Catalog } from '@databench/catalog'
 import { V2Dataset } from '@databench/engine'
+import { defineV2Transform, SubsetV2ParamsSchema, V2TransformRegistry } from '@databench/ops'
+import type { DatasetLayoutIdentityV2, DatasetManifestV2 } from '@databench/schema'
 import {
   type ConditionalCreateInput,
   type ConditionalCreateResult,
@@ -18,9 +20,12 @@ import {
   FileBackedV2Store,
   type ObjectDownloadInputV2,
   type ObjectHeadV2,
+  type PreparedArtifactV2,
   S3ConditionalObjectStoreV2,
   type S3ConditionalObjectStoreV2Config,
+  type AuditResultV2 as StoreAuditResultV2,
   type V2OperationContext,
+  type V2Store,
 } from '@databench/store'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { V2Workspace } from '../src/v2/workspace.js'
@@ -199,6 +204,206 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     })
   })
 
+  test('transform miss/hit, cross-Workspace races, exact parents, lineage, and cleanup', async () => {
+    const first = canonicalRecord(
+      `rec_${'4'.repeat(64)}`,
+      'First V10 transform integration record.',
+    )
+    const second = canonicalRecord(
+      `rec_${'5'.repeat(64)}`,
+      'Second V10 transform integration record.',
+    )
+    const input = await workspace.addRecords([first, second], noRefOptions())
+    const observed = createObservedWorkspace('v10-observed')
+    const subsetRequest = {
+      inputs: [input.dataset_version],
+      params: { record_ids: [first.id] },
+      ...noRefOptions(),
+    }
+
+    const downloadsBeforeMissRead = objects.artifactDownloads
+    const miss = await observed.workspace.runTransform('subset', subsetRequest)
+    expect(miss).toMatchObject({
+      cache_hit: false,
+      run: {
+        run_id: `run_${miss.run.cache_key}`,
+        input_dataset_versions: [input.dataset_version],
+      },
+    })
+    expect(objects.artifactDownloads).toBe(downloadsBeforeMissRead + 1)
+    const downloadsBeforeOutputRead = objects.artifactDownloads
+    const missOutput = await observed.workspace.get(miss.run.output_dataset_version)
+    expect([...missOutput.records()].map(({ record }) => record.id)).toEqual([first.id])
+    expect(objects.artifactDownloads).toBe(downloadsBeforeOutputRead + 1)
+    expect(await prisma.v2Run.count({ where: { cacheKey: miss.run.cache_key } })).toBe(1)
+    expect(observed.store.prepared).toHaveLength(1)
+    expectUniqueCleanup(observed.store)
+
+    const preparedAfterMiss = observed.store.prepared.length
+    const hit = await observed.workspace.runTransform('subset', subsetRequest)
+    expect(hit).toEqual({ ...miss, cache_hit: true })
+    expect(observed.store.prepared).toHaveLength(preparedAfterMiss)
+    expect(await prisma.v2Run.count({ where: { cacheKey: miss.run.cache_key } })).toBe(1)
+    expectUniqueCleanup(observed.store)
+
+    const sameOutputBarrier = createTwoPartyBarrier()
+    const sameOutputLeft = createObservedWorkspace(
+      'v10-same-output-left',
+      integrationRaceRegistry('integration-same-output', 0, sameOutputBarrier),
+    )
+    const sameOutputRight = createObservedWorkspace(
+      'v10-same-output-right',
+      integrationRaceRegistry('integration-same-output', 0, sameOutputBarrier),
+    )
+    const sameOutputRequest = {
+      inputs: [input.dataset_version],
+      params: {
+        record_ids: [first.id, second.id].sort(),
+      },
+      ...noRefOptions(),
+    }
+    const sameOutputRace = await Promise.all([
+      sameOutputLeft.workspace.runTransform('integration-same-output', sameOutputRequest),
+      sameOutputRight.workspace.runTransform('integration-same-output', sameOutputRequest),
+    ])
+    const [sameOutputFirst, sameOutputSecond] = sameOutputRace
+    if (!sameOutputFirst || !sameOutputSecond) {
+      throw new Error('the identical-output race did not return both Workspace results')
+    }
+    expect(sameOutputSecond.run.output_dataset_version).toBe(
+      sameOutputFirst.run.output_dataset_version,
+    )
+    expect(sameOutputSecond.run.cache_key).toBe(sameOutputFirst.run.cache_key)
+    expect(sameOutputRace.every(({ cache_hit }) => cache_hit === false)).toBe(true)
+    expect(await prisma.v2Run.count({ where: { cacheKey: sameOutputFirst.run.cache_key } })).toBe(1)
+    expect(sameOutputLeft.store.prepared).toHaveLength(1)
+    expect(sameOutputRight.store.prepared).toHaveLength(1)
+    expectUniqueCleanup(sameOutputLeft.store)
+    expectUniqueCleanup(sameOutputRight.store)
+
+    const raceFirst = canonicalRecord(`rec_${'2'.repeat(64)}`, 'First determinism-race output.')
+    const raceSecond = canonicalRecord(`rec_${'3'.repeat(64)}`, 'Second determinism-race output.')
+    const raceInput = await workspace.addRecords([raceFirst, raceSecond], noRefOptions())
+    const raceRef = 'v10-determinism-race'
+    await observed.workspace.putRef(raceRef, {
+      new_version: raceInput.dataset_version,
+      expected_version: null,
+      message: 'before V10 determinism race',
+    })
+    const determinismBarrier = createTwoPartyBarrier()
+    const determinismLeft = createObservedWorkspace(
+      'v10-determinism-left',
+      integrationRaceRegistry('integration-determinism-race', 0, determinismBarrier),
+    )
+    const determinismRight = createObservedWorkspace(
+      'v10-determinism-right',
+      integrationRaceRegistry('integration-determinism-race', 1, determinismBarrier),
+    )
+    const determinismRequest = {
+      inputs: [raceInput.dataset_version],
+      params: {
+        record_ids: [raceFirst.id, raceSecond.id].sort(),
+      },
+      ref: raceRef,
+      expected_ref_version: raceInput.dataset_version,
+      message: 'only the catalog winner may move this ref',
+    }
+    const determinismRace = await Promise.allSettled([
+      determinismLeft.workspace.runTransform('integration-determinism-race', determinismRequest),
+      determinismRight.workspace.runTransform('integration-determinism-race', determinismRequest),
+    ])
+    const determinismWinners = determinismRace.filter(
+      (
+        result,
+      ): result is PromiseFulfilledResult<Awaited<ReturnType<V2Workspace['runTransform']>>> =>
+        result.status === 'fulfilled',
+    )
+    const determinismLosers = determinismRace.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    )
+    expect(determinismWinners).toHaveLength(1)
+    expect(determinismLosers).toHaveLength(1)
+    const winningTransform = determinismWinners[0]
+    const losingTransform = determinismLosers[0]
+    if (!winningTransform || !losingTransform) {
+      throw new Error('the determinism race did not produce exactly one winner and one loser')
+    }
+    expect(losingTransform.reason).toMatchObject({
+      name: 'DeterminismConflictErrorV2',
+      code: 'determinism_conflict',
+      detail: {
+        existing_output_version: winningTransform.value.run.output_dataset_version,
+        attempted_dataset_committed: true,
+      },
+    })
+    const losingVersion = (
+      losingTransform.reason as {
+        detail: { attempted_output_version: string }
+      }
+    ).detail.attempted_output_version
+    expect(losingVersion).not.toBe(winningTransform.value.run.output_dataset_version)
+    await expect(observed.workspace.getRef(raceRef)).resolves.toMatchObject({
+      version: winningTransform.value.run.output_dataset_version,
+    })
+    await expect(catalog.getSnapshot(losingVersion)).resolves.toBeNull()
+    expect(determinismLeft.store.prepared).toHaveLength(1)
+    expect(determinismRight.store.prepared).toHaveLength(1)
+    expectUniqueCleanup(determinismLeft.store)
+    expectUniqueCleanup(determinismRight.store)
+
+    const promptRecordId = `rec_${'1'.repeat(64)}`
+    const promptParent = canonicalRecord(promptRecordId, 'Original prompt text.')
+    const promptRewrite = canonicalRecord(promptRecordId, 'Rewritten prompt text.')
+    const parentDataset = await workspace.addRecords([promptParent], noRefOptions())
+    const rewriteDataset = await workspace.addRecords([promptRewrite], noRefOptions())
+    const rewritten = await observed.workspace.runTransform('prompt-rewrite', {
+      inputs: [parentDataset.dataset_version, rewriteDataset.dataset_version],
+      params: {},
+      ...noRefOptions(),
+    })
+    const rewrittenDataset = await observed.workspace.get(rewritten.run.output_dataset_version)
+    const childRevision = [...rewrittenDataset.records()][0]
+    const parentRevision = [...(await workspace.get(parentDataset.dataset_version)).records()][0]
+    if (!childRevision || !parentRevision) {
+      throw new Error('prompt rewrite integration fixtures produced an empty dataset')
+    }
+    expect(childRevision.record.id).not.toBe(parentRevision.record.id)
+    expect(childRevision.record.lineage).toMatchObject({
+      parent_refs: [
+        {
+          id: parentRevision.record.id,
+          record_digest: parentRevision.record_digest,
+        },
+      ],
+      run_id: rewritten.run.run_id,
+    })
+    await expect(
+      catalog.getRecordParents(childRevision.record.id, childRevision.record_digest),
+    ).resolves.toEqual([
+      {
+        position: 0,
+        parentRecordId: parentRevision.record.id,
+        parentRecordDigest: parentRevision.record_digest,
+      },
+    ])
+
+    const lineage = await observed.workspace.lineage(rewritten.run.output_dataset_version, {
+      max_depth: 4,
+      max_nodes: 10,
+      cursor: null,
+    })
+    expect(lineage.edges).toContainEqual({
+      run_id: rewritten.run.run_id,
+      input_dataset_versions: [parentDataset.dataset_version, rewriteDataset.dataset_version],
+      output_dataset_version: rewritten.run.output_dataset_version,
+    })
+    expect(lineage.nodes.map(({ dataset_version }) => dataset_version)).toContain(
+      parentDataset.dataset_version,
+    )
+    expect(observed.store.prepared).toHaveLength(2)
+    expectUniqueCleanup(observed.store)
+  })
+
   function createWorkspace(tempName: string): V2Workspace {
     return new V2Workspace({
       catalog,
@@ -211,6 +416,30 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       }),
       cursorSecret: 'gv9-integration-cursor-secret',
     })
+  }
+
+  function createObservedWorkspace(
+    tempName: string,
+    transformRegistry?: V2TransformRegistry,
+  ): { readonly workspace: V2Workspace; readonly store: ObservedV2Store } {
+    const store = new ObservedV2Store(
+      new FileBackedV2Store({
+        objectStore: objects,
+        tempRoot: join(temporaryRoot, tempName),
+        safetyMarginBytes: 0,
+        prepareConcurrency: 1,
+        readConcurrency: 1,
+      }),
+    )
+    return {
+      workspace: new V2Workspace({
+        catalog,
+        store,
+        cursorSecret: 'gv10-integration-cursor-secret',
+        ...(transformRegistry === undefined ? {} : { transformRegistry }),
+      }),
+      store,
+    }
   }
 
   async function clearV2Catalog(): Promise<void> {
@@ -272,6 +501,128 @@ class CountingObjectStore implements ConditionalObjectStoreV2 {
   }
 }
 
+class ObservedV2Store implements V2Store {
+  readonly readDatasetLimits
+  readonly prepared: PreparedArtifactV2[] = []
+  readonly discardCounts = new Map<PreparedArtifactV2, number>()
+
+  constructor(private readonly delegate: V2Store) {
+    this.readDatasetLimits = delegate.readDatasetLimits
+  }
+
+  async prepare(dataset: V2Dataset, context: V2OperationContext = {}): Promise<PreparedArtifactV2> {
+    const prepared = await this.delegate.prepare(dataset, context)
+    this.prepared.push(prepared)
+    return prepared
+  }
+
+  async commit(
+    prepared: PreparedArtifactV2,
+    context: V2OperationContext = {},
+  ): Promise<Readonly<DatasetManifestV2>> {
+    return await this.delegate.commit(prepared, context)
+  }
+
+  async discard(prepared: PreparedArtifactV2, context: V2OperationContext = {}): Promise<void> {
+    this.discardCounts.set(prepared, (this.discardCounts.get(prepared) ?? 0) + 1)
+    await this.delegate.discard(prepared, context)
+  }
+
+  async exists(
+    identity: DatasetLayoutIdentityV2,
+    context: V2OperationContext = {},
+  ): Promise<boolean> {
+    return await this.delegate.exists(identity, context)
+  }
+
+  async read(
+    identity: DatasetLayoutIdentityV2,
+    context: V2OperationContext = {},
+  ): Promise<V2Dataset> {
+    return await this.delegate.read(identity, context)
+  }
+
+  async audit(
+    identity: DatasetLayoutIdentityV2,
+    context: V2OperationContext = {},
+  ): Promise<StoreAuditResultV2> {
+    return await this.delegate.audit(identity, context)
+  }
+
+  async ping(context: V2OperationContext = {}): Promise<void> {
+    await this.delegate.ping(context)
+  }
+}
+
+interface TwoPartyBarrier {
+  arrive(): Promise<void>
+}
+
+function createTwoPartyBarrier(): TwoPartyBarrier {
+  let arrivals = 0
+  let release: (() => void) | undefined
+  const opened = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return {
+    async arrive(): Promise<void> {
+      arrivals += 1
+      if (arrivals === 2) release?.()
+      await opened
+    },
+  }
+}
+
+function integrationRaceRegistry(
+  name: string,
+  outputIndex: number,
+  barrier: TwoPartyBarrier,
+): V2TransformRegistry {
+  return new V2TransformRegistry([
+    defineV2Transform({
+      name,
+      version: '1',
+      paramsSchema: SubsetV2ParamsSchema,
+      identityMode: 'preserve',
+      rngSeed: () => null,
+      estimateWorkingSet(inputs) {
+        const input = inputs[0]
+        if (!input || inputs.length !== 1) {
+          throw new TypeError(`${name} requires exactly one integration input`)
+        }
+        return {
+          outputUpperBoundBytes: input.canonicalBytes,
+          frameEstimateBytes: input.canonicalBytes,
+        }
+      },
+      async run(inputs, _params, context) {
+        const input = inputs[0]
+        if (!input || inputs.length !== 1) {
+          throw new TypeError(`${name} requires exactly one integration input`)
+        }
+        await barrier.arrive()
+        context.signal.throwIfAborted()
+        const revision = [...input.records()][outputIndex]
+        if (!revision) throw new TypeError(`${name} output index is outside the integration input`)
+        return V2Dataset.fromRecords([revision.record], context.limits)
+      },
+    }),
+  ])
+}
+
+function expectUniqueCleanup(store: ObservedV2Store): void {
+  expect(store.discardCounts.size).toBe(store.prepared.length)
+  expect([...store.discardCounts.values()]).toEqual(store.prepared.map(() => 1))
+}
+
+function noRefOptions() {
+  return {
+    ref: null,
+    expected_ref_version: null,
+    message: null,
+  } as const
+}
+
 function createS3Client(): S3Client {
   const config = s3Config()
   return new S3Client({
@@ -311,7 +662,7 @@ function secondRecord(): unknown {
   return canonicalRecord(SECOND_RECORD_ID, 'Prove the ref conflict path.')
 }
 
-function canonicalRecord(id: string, text: string): unknown {
+function canonicalRecord(id: string, text: string) {
   return {
     schema_version: '2.0.0',
     id,

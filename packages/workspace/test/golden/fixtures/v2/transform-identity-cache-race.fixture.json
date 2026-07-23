@@ -1,0 +1,163 @@
+{
+  "fixture_version": 1,
+  "identity_profile": "databench-v2-jcs-1",
+  "operations": [
+    {
+      "name": "append-evidence",
+      "version": "1",
+      "input_roles": ["base", "patch"],
+      "params": {},
+      "identity_mode": "preserve"
+    },
+    {
+      "name": "prompt-rewrite",
+      "version": "1",
+      "input_roles": ["base", "rewrite"],
+      "params": {},
+      "identity_mode": "derive"
+    },
+    {
+      "name": "sample",
+      "version": "1",
+      "input_roles": ["base"],
+      "params": {
+        "count": 2,
+        "seed": 7
+      },
+      "identity_mode": "preserve"
+    },
+    {
+      "name": "selection-update",
+      "version": "1",
+      "input_roles": ["base", "patch"],
+      "params": {},
+      "identity_mode": "preserve"
+    },
+    {
+      "name": "subset",
+      "version": "1",
+      "input_roles": ["base"],
+      "params": {
+        "record_ids": ["rec_1111111111111111111111111111111111111111111111111111111111111111"]
+      },
+      "identity_mode": "preserve"
+    }
+  ],
+  "rng": {
+    "algorithm": "mulberry32-v1",
+    "seed": 1,
+    "next_uint32": [2693262067, 11749833, 2265367787, 4213581821, 4159151403],
+    "next_int": [
+      {
+        "seed": 1,
+        "max_exclusive": 2147483649,
+        "value": 11749833
+      },
+      {
+        "seed": 1,
+        "max_exclusive": 4294967296,
+        "value": 2693262067
+      }
+    ]
+  },
+  "cache": {
+    "operation": "subset",
+    "input_dataset_versions": ["627987b4abd5ebfb339ab8ea0b39b8ec5d3842dbd1839654d1146e0f203451bf"],
+    "normalized_params": {
+      "record_ids": ["rec_1111111111111111111111111111111111111111111111111111111111111111"]
+    },
+    "cache_key": "90afd83db18a26ec448782d54ba04d62ef398806caa180c7cf00ec6f3e657f2c",
+    "run_id": "run_90afd83db18a26ec448782d54ba04d62ef398806caa180c7cf00ec6f3e657f2c",
+    "output_dataset_version": "627987b4abd5ebfb339ab8ea0b39b8ec5d3842dbd1839654d1146e0f203451bf",
+    "first_run_cache_hit": false,
+    "retry_cache_hit": true
+  },
+  "sample": {
+    "input_dataset_version": "4e2431e6fca40b33a730296b2c2995f1a0e8480b325e861c548a63c5831da074",
+    "params": {
+      "count": 2,
+      "seed": 7
+    },
+    "output_record_ids": [
+      "rec_2222222222222222222222222222222222222222222222222222222222222222",
+      "rec_3333333333333333333333333333333333333333333333333333333333333333"
+    ],
+    "output_dataset_version": "d5faf7aa9c6653cc2eba45cfca72e012f1c95bc193c45064cadc8d085cde4911"
+  },
+  "append_evidence": {
+    "output_dataset_version": "0d09077a80b68a4258f71f0b82e1bc0f44c180d78d010331d0635dfa21979be5",
+    "changed_record_digest": "e41612b496b64b46e5a540bf3d4283107f45ebdd45e6b439139dbf8698a52a05"
+  },
+  "selection_update": {
+    "output_dataset_version": "59579c9b95b4366d7d07f8c025c9a4ed293d663c5c643e017f22f7cbe9e4efef",
+    "changed_record_digest": "1935c6d6431a648b3d0c2d691baeab2d65ae987e73be48d6afecf0e0bbb9ed19"
+  },
+  "prompt_rewrite": {
+    "input_dataset_versions": [
+      "aacec3f6f8dd32c02edb890ad77f2ab921bb470464a8b076b56ab52aac52a74b",
+      "0117b76ef376b83d96f44bfb7bd7864628b2ff035d578f2956899548c636edac"
+    ],
+    "cache_key": "7048edb3a0b64e84427fe025de8573c1fba245ecc6ed00b07c389aaaa18c0e18",
+    "run_id": "run_7048edb3a0b64e84427fe025de8573c1fba245ecc6ed00b07c389aaaa18c0e18",
+    "parent_record_id": "rec_2222222222222222222222222222222222222222222222222222222222222222",
+    "parent_record_digest": "052b74ea31de48145985f151b573c8ae5890056984b844b52a09ebf3dfb11fa0",
+    "derived_record_id": "rec_10bb447c3259b7a619ef4df4b078edfc3f490915e54f7d21a69f5354c05d08ca",
+    "derived_record_digest": "0720012773aa24a7535e7702b65a299e7528f121455a41390f39fe38deb3b236",
+    "output_dataset_version": "45de9b56f6e709964c537546bea755e8e823a4d0b3061a3be52c3168f1c573b0",
+    "output_index": 0,
+    "parent_count": 1
+  },
+  "lineage": {
+    "traversal": "breadth-first",
+    "producing_run_order": "cache_key_ascii",
+    "run_input_order": "position",
+    "root_depth": 0,
+    "root_dataset_version": "45de9b56f6e709964c537546bea755e8e823a4d0b3061a3be52c3168f1c573b0",
+    "input_dataset_versions": [
+      "aacec3f6f8dd32c02edb890ad77f2ab921bb470464a8b076b56ab52aac52a74b",
+      "0117b76ef376b83d96f44bfb7bd7864628b2ff035d578f2956899548c636edac"
+    ],
+    "request": {
+      "max_depth": 8,
+      "max_nodes": 1
+    },
+    "page_node_versions": [
+      ["45de9b56f6e709964c537546bea755e8e823a4d0b3061a3be52c3168f1c573b0"],
+      ["aacec3f6f8dd32c02edb890ad77f2ab921bb470464a8b076b56ab52aac52a74b"],
+      ["0117b76ef376b83d96f44bfb7bd7864628b2ff035d578f2956899548c636edac"]
+    ],
+    "cursor_strategy": "snapshot-replay",
+    "cursor_max_chars": 1536,
+    "cursor_bindings": [
+      "namespace_id",
+      "requested_ref",
+      "root_dataset_version",
+      "snapshot_sequence",
+      "max_depth",
+      "max_nodes",
+      "emitted_nodes",
+      "emitted_edges"
+    ],
+    "reject_at_or_after_ttl": true
+  },
+  "race": {
+    "same_cache_key": {
+      "result": "idempotent",
+      "run_id": "run_90afd83db18a26ec448782d54ba04d62ef398806caa180c7cf00ec6f3e657f2c",
+      "output_dataset_version": "627987b4abd5ebfb339ab8ea0b39b8ec5d3842dbd1839654d1146e0f203451bf"
+    },
+    "different_output": {
+      "result": "determinism_conflict",
+      "error_code": "determinism_conflict",
+      "attempted_dataset_committed": true,
+      "ref_moved": false
+    }
+  },
+  "capacity": {
+    "working_set_budget_bytes": 0,
+    "error_code": "capacity_exceeded",
+    "resource": "working_set_bytes",
+    "cache_lookup_attempted": false,
+    "prepare_attempted": false
+  }
+}

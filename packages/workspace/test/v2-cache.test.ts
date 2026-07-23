@@ -276,6 +276,37 @@ describe('V2DatasetCache', () => {
     })
   })
 
+  test('can keep an outer executor waiting until an aborted loader really settles', async () => {
+    const dataset = makeDataset('9', 'settling cancellation')
+    const weight = v2DatasetCacheWeight(dataset)
+    const cache = createCache(weight, weight, 1)
+    const controller = new AbortController()
+    const load = deferred<V2Dataset>()
+    const pending = cache.acquire(key(dataset), async () => await load.promise, {
+      signal: controller.signal,
+      settleOnAbort: true,
+    })
+    let publiclySettled = false
+    void pending.catch(() => {
+      publiclySettled = true
+    })
+    await eventually(() => expect(cache.activeLoads).toBe(1))
+
+    controller.abort(new DOMException('cancel settling waiter', 'AbortError'))
+    await Promise.resolve()
+    expect(publiclySettled).toBe(false)
+    expect(cache.activeLoads).toBe(1)
+    expect(cache.reservedBytes).toBe(weight)
+
+    load.resolve(dataset)
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await eventually(() => {
+      expect(cache.activeLoads).toBe(0)
+      expect(cache.reservedBytes).toBe(0)
+      expect(cache.entryCount).toBe(0)
+    })
+  })
+
   test('explicit eviction rejects a queued cold load without invoking its loader', async () => {
     const firstDataset = makeDataset('0', 'active')
     const queuedDataset = makeDataset('1', 'queued')

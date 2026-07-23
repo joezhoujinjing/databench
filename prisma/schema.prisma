@@ -126,6 +126,7 @@ model V2DatasetLayout {
 model V2Run {
   id            String   @unique @db.Char(68)
   cacheKey      String   @id @map("cache_key") @db.Char(64)
+  lineageSeq    BigInt   @unique @default(autoincrement()) @map("lineage_seq")
   op            String
   opVersion     String   @map("op_version")
   params        Json     @map("params_json")

@@ -7,6 +7,7 @@ export {
 } from './filter-by-signal.js'
 export { type SampleNParams, SampleNParamsSchema, sampleN } from './sample-n.js'
 export { messageText, pythonWordCount, sampleText } from './text.js'
+export * from './v2/index.js'
 
 import type { Transform } from '@databench/engine'
 import { dedup } from './dedup.js'

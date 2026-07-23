@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V10
-last_completed_step: V9
+current_step: V11
+last_completed_step: V10
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V10 — Transform、Run Cache 与 Lineage
+- **下一步:** V11 — Converter Registry 与 Fidelity
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -30,7 +30,7 @@ capability_enabled: false
 | V7 | Prisma与 v2 Catalog | ✅ | 当前分支 | GV7 | 九表迁移、并发 claim/lineage、immutable run与 Ref CAS 已过闸门 |
 | V8 | Canonical JSONL与共享投影 | ✅ | 当前分支 | GV8 | fixed-byte golden、增量eager admission与资源/取消边界通过 |
 | V9 | Workspace publish/read cache/ref | ✅ | 当前分支 | GV9 | 发布顺序、恢复、cache/ref与真实依赖闸门通过 |
-| V10 | Transform、run cache与 lineage | ⬜ | | GV10 | |
+| V10 | Transform、run cache与 lineage | ✅ | 当前分支 | GV10 | 五个最小operation、staged identity、run cache race与稳定lineage分页已过闸门 |
 | V11 | Converter registry与 fidelity | ⬜ | | GV11 | |
 | V12 | `/v2` API、OpenAPI与 generated client | ⬜ | | GV12 | |
 | V13 | `databench v2` CLI | ⬜ | | GV13 | |
@@ -206,3 +206,26 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   bucket清理均通过；独立review无剩余P0/P1/P2；
 - `pnpm v2:status:check`、`git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、
   `pnpm test`、`pnpm openapi:check`、`pnpm peers check`全部通过；capability继续保持关闭。
+
+## V10 Gate 记录
+
+- registry固定`subset`、`sample`、`append-evidence`、`selection-update`与`prompt-rewrite`五个
+  operation的name/version、ordered input roles、strict params、identity mode、working-set estimator
+  与seed extractor；Mulberry32 uint32、rejection sampling和`2^32`边界均有fixed vectors；
+- Workspace在执行前锁定ordered exact inputs、规范化params并派生cache key/run ID；aggregate
+  working-set、input count、并发/等待队列和实际output upper-bound均fail closed；cache hit完整验证
+  metadata/object，双miss同结果幂等、不同结果触发determinism conflict且不移动Ref；
+- preserve/derive身份矩阵、staged claim allocator、exact parent revision、candidate→signal、claim replay、
+  失败不污染与record locator/parent edge登记均有回归；mutation payload固定来自第二个immutable dataset，
+  不进入params/run row；五个operation及两个mutation output digest/version由golden锁定；
+- lineage固定BFS、producing run C-order seek和run input position顺序；proxy-safe cursor只携带root、
+  PostgreSQL bigint sequence水位、scope与已发计数。run注册和高水位读取共用transaction advisory lock，
+  跨事务未提交run、分页后新增run、cursor tamper/TTL/capacity均通过；`lineage_seq > 0`由数据库约束；
+- 独立review修复时间cutoff不等同提交快照、响应数组缺少硬上限、estimator低报、identityMode factory
+  漏检、fixture未消费与RNG/operation边界覆盖；最终无剩余P0/P1/P2；capability继续保持关闭；
+- Schema 191 tests、Catalog 27 PostgreSQL tests、Ops 15 tests、Workspace普通suite 84 passed /
+  2 gated skipped；fresh migration + 真实MinIO/Postgres Workspace suite 86/86通过；
+- 全仓并行gate暴露并修复Store双实例初始化清理owner candidate时的`readdir → lstat`消失竞态；
+  `ENOENT`按已被并发清理安全跳过，Store 77 passed / 8 gated skipped；
+- `pnpm v2:status:check`、`git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、
+  `pnpm test`、`pnpm openapi:check`、`pnpm peers check`全部通过。

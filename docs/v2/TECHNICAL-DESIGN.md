@@ -1034,6 +1034,7 @@ model V2DatasetLayout {
 model V2Run {
   id            String   @unique @db.Char(68)
   cacheKey      String   @id @map("cache_key") @db.Char(64)
+  lineageSeq    BigInt   @unique @default(autoincrement()) @map("lineage_seq")
   op            String
   opVersion     String   @map("op_version")
   params        Json     @map("params_json")
@@ -1180,7 +1181,13 @@ interface V2Catalog {
   getLayout(version: string, layout: string): Promise<LayoutMetadataV2 | null>
 
   findRun(cacheKey: string): Promise<CatalogRunRowV2 | null>
-  runsProducing(version: string): Promise<CatalogRunRowV2[]>
+  lineageSnapshotSequence(): Promise<bigint>
+  listRunsProducing(
+    version: string,
+    afterCacheKey: string | null,
+    limit: number,
+    lineageSequenceAtOrBefore: bigint,
+  ): Promise<CatalogRunPageV2>
   locateRecordRevision(recordId: string, recordDigest: string): Promise<string | null>
   getRecordParents(
     recordId: string,
@@ -1444,7 +1451,18 @@ interface V2TransformDefinition<P extends JsonObject> {
   readonly version: string
   readonly paramsSchema: ZodType<P>
   readonly identityMode: 'preserve' | 'derive'
+  rngSeed(params: P): number | null
+  estimateWorkingSet(
+    inputs: readonly V2Dataset[],
+    params: P,
+    limits?: V2DatasetLimits,
+  ): V2TransformResourceEstimate
   run(inputs: readonly V2Dataset[], params: P, context: V2TransformContext): Promise<V2Dataset>
+}
+
+interface V2TransformResourceEstimate {
+  readonly outputUpperBoundBytes: number
+  readonly frameEstimateBytes: number
 }
 
 interface V2TransformContext {
@@ -1460,6 +1478,7 @@ interface V2TransformLimits {
   readonly max_input_datasets: number
   readonly max_working_set_bytes: number
   readonly max_concurrent_runs: number
+  readonly max_pending_runs: number
 }
 ```
 
@@ -1492,12 +1511,37 @@ operation必须把 seed物化为 strict param后取得 deterministic RNG。写�
 3. cache hit时逐字段核对 op/version/ordered inputs/params/run ID，再验证 output manifest/layout，
    直接返回 immutable output；可选 ref仍单独执行 CAS；
 4. miss才执行 definition并按 §12.2提交 manifest + catalog transaction；
+   实际 `output.canonicalBytes` 超过 definition声明的 output upper bound属于实现完整性错误，禁止发布；
 5. 双 miss竞态注册同 metadata/output为幂等成功，不同 output为 determinism conflict；失败 worker
    绝不能移动 ref；
 6. `registerTransformResult` 再次验证 `run_id === 'run_' + cache_key`，cache hit不得新建 run。
 
 Derived claim复用 logical ID不替代上述 determinism gate：新的 exact input dataset versions会形成
 新的 cache key并可注册同 ID的新 revision；同一 cache key出现不同 output仍必须冲突。
+
+首批 built-in contract 固定如下；这些名称、版本、输入顺序与 params 形状属于 V10 fixture，
+后续不能在同一 version 下静默改变：
+
+| name | version | inputs | strict params | identity mode |
+|---|---|---|---|---|
+| `subset` | `1` | `[base]` | `{record_ids: RecordId[]}`，唯一且 ASCII 严格升序 | preserve |
+| `sample` | `1` | `[base]` | `{count: nonnegative safe int, seed: uint32}` | preserve |
+| `append-evidence` | `1` | `[base, patch]` | `{}` | preserve |
+| `selection-update` | `1` | `[base, patch]` | `{}` | preserve |
+| `prompt-rewrite` | `1` | `[base, rewrite]` | `{}` | derive |
+
+后三个 operation 的 mutation payload 固定来自第二个 immutable dataset input，不能放入 params、
+run row或 lineage step；它们的 lineage step params固定为小型 `{}`。`append-evidence` 的 patch
+只能 append 已分配 canonical ID 的 signal/preference，`selection-update` 只能改变既有 candidate
+的 `selected/rank`。新 event ID 的创建仍须在进入该 immutable patch前通过 §6 identity allocator，
+使用 producer event key，operation 本身不能根据 append position重新生成或改写 ID。
+
+`sample@1` 的 deterministic RNG固定为 Mulberry32，seed就是完整 normalized `seed` param；
+Fisher–Yates partial shuffle从 dataset 的 canonical revision顺序开始。`prompt-rewrite@1` 首期只接受
+base/rewrite双方都没有 candidates/preferences 的 prompt-only record，只允许改变
+`system_instruction/contents/tools/verification`；derived seed的 ordered parents只有 base logical
+record ID，且每个 parent固定 `output_index=0`。Exact base parent `(id, record_digest)`写入
+`parent_refs`，不把 rewrite payload或 exact digest塞进 logical ID seed。
 
 ### 13.2 Identity mode
 
@@ -1996,9 +2040,32 @@ interface DatasetLineageV2 {
 ```
 
 `GET /v2/refs?cursor=&limit=` 返回 `CursorPageV2<RefMetadataV2>`；show/put返回单项。Lineage
-接受 `max_depth`、`max_nodes` 与 opaque `cursor`，每项不得超过 capabilities上限；到界时设置
-`truncated=true` 并给 continuation cursor，禁止无界 recursive query或一次把全图推给浏览器。
-Cursor绑定 root exact version和边界参数，篡改/过期返回 validation error。
+接受 `max_depth`、`max_nodes` 与 opaque `cursor`，每项不得超过 capabilities上限。遍历顺序固定为：
+root depth为0的 BFS；同一 output 的 producing runs按 `cache_key COLLATE "C"` seek顺序；每个 run
+的 exact inputs保持 Catalog `position`顺序；dataset node按首次发现顺序。Dataset version和run ID
+分别去重，self-output、共享祖先与环不能造成无限遍历。
+
+`max_nodes` 同时限制单页发出的 nodes和 edges；页预算到界且仍有 traversal work时设置
+`truncated=true`并给 continuation cursor。为保证后续 GET query可以穿过常见浏览器/代理，cursor
+不得内嵌 frontier：固定使用小型 signed state
+`{root_dataset_version,snapshot_sequence,emitted_nodes,emitted_edges,max_depth,max_nodes}`，最多1536
+字符；`snapshot_sequence`在JCS payload中使用无前导零的 bigint十进制字符串，禁止经过 JavaScript
+number而丢失精度。
+`runs_v2.lineage_seq`是数据库生成的正 bigint；run注册事务在取得 schema-scoped lineage advisory
+transaction lock后才插入该值。首次请求用同一把锁读取已提交 run的`MAX(lineage_seq)`高水位；所有
+producing-run seek都加`lineage_seq <= snapshot_sequence`。锁把 run commit与高水位读取排成全序，
+sequence gap不影响语义，续页则在同一 immutable cutoff下从 root有界重放并跳过已发计数。因此分页
+期间新登记的 producing run不会造成重复或漏项；`created_at`仅是展示元数据，不参与分页正确性。
+
+Cursor还绑定 namespace与原始 requested ref并带 expiry；续页不重复已发出的 root/node/edge。
+Cursor篡改、过期、跨 root/ref/namespace复用或改变边界参数均返回 validation error。每次重放的
+known dataset versions与 producing runs分别硬上限1000，超过返回 `capacity_exceeded`，不能退化成
+无界 recursive query。该设计以最多1000项的有界 replay换取 proxy-safe无服务端 cursor状态；
+未来若提高 lineage上限，必须同时引入服务端 cursor store或重新评估 POST contract。
+
+`max_depth` 是语义剪枝边界：仍可发出该深度 dataset 的 producing-run edge，但不再把其 inputs
+加入 frontier。仅命中 depth边界不会产生 continuation，因为用相同绑定参数续页也不可能展开更深；
+因此 depth剪枝本身不等同于 `truncated`，只有尚未消费完的有界 frontier/seek页才返回 cursor。
 
 ## 16. 错误模型
 

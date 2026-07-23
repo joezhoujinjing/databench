@@ -24,6 +24,7 @@ export type {
   CatalogRefPageV2,
   CatalogRefRowV2,
   CatalogRunInputV2,
+  CatalogRunPageV2,
   CatalogRunRowV2,
   CatalogSnapshotInputV2,
   CatalogSnapshotRowV2,

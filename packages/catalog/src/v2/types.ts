@@ -95,7 +95,13 @@ export interface CatalogRunInputV2 {
 }
 
 export interface CatalogRunRowV2 extends CatalogRunInputV2 {
+  readonly lineageSequence: bigint
   readonly createdAt: Date
+}
+
+export interface CatalogRunPageV2 {
+  readonly rows: readonly CatalogRunRowV2[]
+  readonly nextCacheKey: string | null
 }
 
 export interface RegisterTransformResultV2 extends RegisterLayoutV2 {

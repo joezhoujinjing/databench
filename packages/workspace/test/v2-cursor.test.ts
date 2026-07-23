@@ -26,6 +26,16 @@ function expectInvalidCursor(action: () => unknown): void {
   expect(action).toThrow(ValidationError)
 }
 
+function expectInvalidLineageCursor(action: () => unknown): void {
+  expect(action).toThrowError(
+    expect.objectContaining({
+      name: 'ValidationError',
+      code: 'validation_error',
+      message: 'Invalid or expired V2 lineage cursor',
+    }),
+  )
+}
+
 describe('V2CursorCodec', () => {
   test('round-trips signed ref cursors across valid C-collation punctuation', () => {
     const codec = new V2CursorCodec(SECRET)
@@ -105,5 +115,59 @@ describe('V2CursorCodec', () => {
       new TypeError('V2 cursor secret must contain at least 16 bytes'),
     )
     expect(() => new V2CursorCodec(new Uint8Array(15))).toThrow(TypeError)
+  })
+
+  test('round-trips bounded lineage frontier state and binds all query scope', () => {
+    const codec = new V2CursorCodec(SECRET)
+    const root = 'a'.repeat(64)
+    const state = {
+      root_dataset_version: root,
+      snapshot_sequence: '1721692800000',
+      max_depth: 8,
+      max_nodes: 20,
+      emitted_nodes: 7,
+      emitted_edges: 5,
+    }
+    const cursor = codec.encodeLineage(NAMESPACE, 'main', state)
+
+    expect(codec.decodeLineage(cursor, NAMESPACE, 'main', 8, 20)).toEqual(state)
+    expectInvalidLineageCursor(() =>
+      codec.decodeLineage(cursor, 'another-namespace', 'main', 8, 20),
+    )
+    expectInvalidLineageCursor(() => codec.decodeLineage(cursor, NAMESPACE, 'other', 8, 20))
+    expectInvalidLineageCursor(() => codec.decodeLineage(cursor, NAMESPACE, 'main', 7, 20))
+    expectInvalidLineageCursor(() => codec.decodeLineage(cursor, NAMESPACE, 'main', 8, 19))
+    expect(() =>
+      codec.encodeLineage(NAMESPACE, 'main', { ...state, snapshot_sequence: '01' }),
+    ).toThrow(TypeError)
+    expect(() =>
+      codec.encodeLineage(NAMESPACE, 'main', {
+        ...state,
+        snapshot_sequence: '9223372036854775808',
+      }),
+    ).toThrow(TypeError)
+  })
+
+  test('rejects tampered and expired lineage cursors', () => {
+    let now = 100
+    const codec = new V2CursorCodec(SECRET, { ttlMs: 10, now: () => now })
+    const root = 'c'.repeat(64)
+    const cursor = codec.encodeLineage(NAMESPACE, root, {
+      root_dataset_version: root,
+      snapshot_sequence: '100',
+      max_depth: 1,
+      max_nodes: 1,
+      emitted_nodes: 1,
+      emitted_edges: 0,
+    })
+    const [payload, signature] = cursor.split('.') as [string, string]
+    const changed = Buffer.from(signature, 'base64url')
+    changed[0] = (changed[0] ?? 0) ^ 1
+
+    expectInvalidLineageCursor(() =>
+      codec.decodeLineage(`${payload}.${changed.toString('base64url')}`, NAMESPACE, root, 1, 1),
+    )
+    now = 110
+    expectInvalidLineageCursor(() => codec.decodeLineage(cursor, NAMESPACE, root, 1, 1))
   })
 })

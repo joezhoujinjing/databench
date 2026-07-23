@@ -1,15 +1,27 @@
 import { readFileSync } from 'node:fs'
 import {
+  type CatalogIdentityClaimInputV2,
+  type CatalogIdentityClaimResultV2,
+  type CatalogIdentityClaimRowV2,
   type CatalogLayoutRowV2,
   type CatalogRefPageV2,
   type CatalogRefRowV2,
+  type CatalogRunPageV2,
+  type CatalogRunRowV2,
   type CatalogSnapshotRowV2,
   type CompareAndSetRefV2,
   type RegisterLayoutV2,
+  type RegisterTransformResultV2,
+  V2CatalogDeterminismConflictError,
   V2CatalogRefConflictError,
   V2CatalogTargetNotCommittedError,
 } from '@databench/catalog'
 import { DEFAULT_V2_DATASET_LIMITS, V2Dataset, type V2DatasetLimits } from '@databench/engine'
+import {
+  AppendEvidenceV2ParamsSchema,
+  defineV2Transform,
+  V2TransformRegistry,
+} from '@databench/ops'
 import {
   CapacityExceededError,
   createDatasetManifestV2,
@@ -19,6 +31,7 @@ import {
   NotFoundError,
   type PostTrainingRecordV2,
   RefConflictErrorV2,
+  V2_LINEAGE_CURSOR_MAX_CHARS,
 } from '@databench/schema'
 import type {
   PreparedArtifactV2,
@@ -32,6 +45,7 @@ import {
   DEFAULT_V2_CURSOR_TTL_MS,
   registrationFromCommittedDataset,
   V2DatasetCache,
+  type V2TransformLimits,
   V2Workspace,
   type V2WorkspaceCatalog,
   v2DatasetCacheWeight,
@@ -51,12 +65,87 @@ interface WorkspaceV2Fixture {
   readonly ref_conflict_preserves_committed_dataset: true
 }
 
+interface TransformV2Fixture {
+  readonly fixture_version: 1
+  readonly identity_profile: 'databench-v2-jcs-1'
+  readonly operations: readonly {
+    readonly name: string
+    readonly version: '1'
+    readonly input_roles: readonly string[]
+    readonly params: Readonly<Record<string, unknown>>
+    readonly identity_mode: 'preserve' | 'derive'
+  }[]
+  readonly cache: {
+    readonly operation: 'subset'
+    readonly input_dataset_versions: readonly [string]
+    readonly normalized_params: { readonly record_ids: readonly [string] }
+    readonly cache_key: string
+    readonly run_id: string
+    readonly output_dataset_version: string
+    readonly first_run_cache_hit: false
+    readonly retry_cache_hit: true
+  }
+  readonly prompt_rewrite: {
+    readonly input_dataset_versions: readonly [string, string]
+    readonly cache_key: string
+    readonly run_id: string
+    readonly parent_record_id: string
+    readonly parent_record_digest: string
+    readonly derived_record_id: string
+    readonly derived_record_digest: string
+    readonly output_dataset_version: string
+    readonly output_index: 0
+    readonly parent_count: 1
+  }
+  readonly lineage: {
+    readonly traversal: 'breadth-first'
+    readonly producing_run_order: 'cache_key_ascii'
+    readonly run_input_order: 'position'
+    readonly root_depth: 0
+    readonly root_dataset_version: string
+    readonly input_dataset_versions: readonly [string, string]
+    readonly request: { readonly max_depth: number; readonly max_nodes: number }
+    readonly page_node_versions: readonly [readonly [string], readonly [string], readonly [string]]
+    readonly cursor_strategy: 'snapshot-replay'
+    readonly cursor_max_chars: 1536
+    readonly cursor_bindings: readonly string[]
+    readonly reject_at_or_after_ttl: true
+  }
+  readonly race: {
+    readonly same_cache_key: {
+      readonly result: 'idempotent'
+      readonly run_id: string
+      readonly output_dataset_version: string
+    }
+    readonly different_output: {
+      readonly result: 'determinism_conflict'
+      readonly error_code: 'determinism_conflict'
+      readonly attempted_dataset_committed: true
+      readonly ref_moved: false
+    }
+  }
+  readonly capacity: {
+    readonly working_set_budget_bytes: 0
+    readonly error_code: 'capacity_exceeded'
+    readonly resource: 'working_set_bytes'
+    readonly cache_lookup_attempted: false
+    readonly prepare_attempted: false
+  }
+}
+
 const fixture = JSON.parse(
   readFileSync(
     new URL('./golden/fixtures/v2/workspace-publish-read-cache-ref.fixture.json', import.meta.url),
     'utf8',
   ),
 ) as WorkspaceV2Fixture
+
+const transformFixture = JSON.parse(
+  readFileSync(
+    new URL('./golden/fixtures/v2/transform-identity-cache-race.fixture.json', import.meta.url),
+    'utf8',
+  ),
+) as TransformV2Fixture
 
 test('locks the V9 cache/cursor golden policy', () => {
   const dataset = makeDataset('f', 'golden policy')
@@ -67,6 +156,38 @@ test('locks the V9 cache/cursor golden policy', () => {
   )
   expect(DEFAULT_V2_CURSOR_TTL_MS).toBe(fixture.cursor_ttl_ms)
   expect(DEFAULT_V2_CACHE_MAX_PENDING_LOADS).toBe(fixture.cache_max_pending_loads)
+})
+
+test('locks the V10 transform, lineage, race, and capacity golden policy', () => {
+  expect(transformFixture.fixture_version).toBe(1)
+  expect(transformFixture.identity_profile).toBe('databench-v2-jcs-1')
+  expect(transformFixture.lineage).toMatchObject({
+    traversal: 'breadth-first',
+    producing_run_order: 'cache_key_ascii',
+    run_input_order: 'position',
+    root_depth: 0,
+    cursor_strategy: 'snapshot-replay',
+    cursor_max_chars: V2_LINEAGE_CURSOR_MAX_CHARS,
+    cursor_bindings: [
+      'namespace_id',
+      'requested_ref',
+      'root_dataset_version',
+      'snapshot_sequence',
+      'max_depth',
+      'max_nodes',
+      'emitted_nodes',
+      'emitted_edges',
+    ],
+    reject_at_or_after_ttl: true,
+  })
+  expect(transformFixture.race).toMatchObject({
+    same_cache_key: { result: 'idempotent' },
+    different_output: {
+      result: 'determinism_conflict',
+      attempted_dataset_committed: true,
+      ref_moved: false,
+    },
+  })
 })
 
 describe('V2Workspace publish orchestration', () => {
@@ -505,6 +626,372 @@ describe('V2Workspace refs facade', () => {
   })
 })
 
+describe('V2Workspace transform and dataset lineage', () => {
+  test('lists the stable built-in registry and reuses a fully verified run cache hit', async () => {
+    const rig = createRig()
+    const input = makeDataset('1', 'subset cache')
+    rig.seed(input)
+
+    expect(
+      rig.workspace.listTransforms().map(({ name, version, identity_mode }) => ({
+        name,
+        version,
+        identity_mode,
+      })),
+    ).toEqual(
+      transformFixture.operations.map(({ name, version, identity_mode }) => ({
+        name,
+        version,
+        identity_mode,
+      })),
+    )
+    expect(input.version).toBe(transformFixture.cache.input_dataset_versions[0])
+    const request = {
+      inputs: [input.version],
+      params: transformFixture.cache.normalized_params,
+      ...noRef(),
+    }
+    const first = await rig.workspace.runTransform('subset', request)
+    expect(first).toMatchObject({
+      cache_hit: transformFixture.cache.first_run_cache_hit,
+      run: {
+        cache_key: transformFixture.cache.cache_key,
+        run_id: transformFixture.cache.run_id,
+        input_dataset_versions: transformFixture.cache.input_dataset_versions,
+        normalized_params: transformFixture.cache.normalized_params,
+        output_dataset_version: transformFixture.cache.output_dataset_version,
+        created_at: NOW.toISOString(),
+      },
+    })
+    const prepares = rig.store.prepare.mock.calls.length
+
+    const second = await rig.workspace.runTransform('subset', request)
+    expect(second).toEqual({ ...first, cache_hit: transformFixture.cache.retry_cache_hit })
+    expect(second.run).toMatchObject({
+      run_id: transformFixture.race.same_cache_key.run_id,
+      output_dataset_version: transformFixture.race.same_cache_key.output_dataset_version,
+    })
+    expect(rig.store.prepare).toHaveBeenCalledTimes(prepares)
+    expect(rig.catalog.registerTransformResult).toHaveBeenCalledTimes(1)
+  })
+
+  test('derives prompt-only records with a stable claim and exact parent revision', async () => {
+    const rig = createRig()
+    const parent = makeDataset('2', 'old prompt')
+    const rewrite = makeDataset('2', 'new prompt')
+    rig.seed(parent)
+    rig.seed(rewrite)
+    expect([parent.version, rewrite.version]).toEqual(
+      transformFixture.prompt_rewrite.input_dataset_versions,
+    )
+
+    const result = await rig.workspace.runTransform('prompt-rewrite', {
+      inputs: [parent.version, rewrite.version],
+      params: {},
+      ...noRef(),
+    })
+    const output = await rig.workspace.get(result.run.output_dataset_version)
+    const revision = [...output.records()][0]
+    const parentRevision = [...parent.records()][0]
+    expect(revision).toBeDefined()
+    expect(parentRevision).toBeDefined()
+    expect(result.run).toMatchObject({
+      cache_key: transformFixture.prompt_rewrite.cache_key,
+      run_id: transformFixture.prompt_rewrite.run_id,
+      output_dataset_version: transformFixture.prompt_rewrite.output_dataset_version,
+    })
+    expect(output.version).toBe(transformFixture.prompt_rewrite.output_dataset_version)
+    expect(parentRevision).toMatchObject({
+      record: { id: transformFixture.prompt_rewrite.parent_record_id },
+      record_digest: transformFixture.prompt_rewrite.parent_record_digest,
+    })
+    expect(revision).toMatchObject({
+      record: { id: transformFixture.prompt_rewrite.derived_record_id },
+      record_digest: transformFixture.prompt_rewrite.derived_record_digest,
+    })
+    expect(revision?.record.contents).toEqual([...rewrite.records()][0]?.record.contents)
+    expect(revision?.record.lineage).toMatchObject({
+      parent_refs: [
+        { id: parentRevision?.record.id, record_digest: parentRevision?.record_digest },
+      ],
+      run_id: result.run.run_id,
+      steps: [{ name: 'prompt-rewrite', version: '1', params: {} }],
+    })
+    expect(rig.catalog.insertOrReadIdentityClaim).toHaveBeenCalledTimes(1)
+
+    const retry = await rig.workspace.runTransform('prompt-rewrite', {
+      inputs: [parent.version, rewrite.version],
+      params: {},
+      ...noRef(),
+    })
+    expect(retry.run.output_dataset_version).toBe(output.version)
+    expect(retry.cache_hit).toBe(true)
+    expect(rig.catalog.insertOrReadIdentityClaim).toHaveBeenCalledTimes(1)
+  })
+
+  test('paginates BFS lineage with ordered exact run inputs and a scoped cursor', async () => {
+    const rig = createRig()
+    const parent = makeDataset('2', 'old prompt')
+    const rewrite = makeDataset('2', 'new prompt')
+    rig.seed(parent)
+    rig.seed(rewrite)
+    const transformed = await rig.workspace.runTransform('prompt-rewrite', {
+      inputs: [parent.version, rewrite.version],
+      params: {},
+      ...noRef(),
+    })
+
+    const first = await rig.workspace.lineage(transformed.run.output_dataset_version, {
+      ...transformFixture.lineage.request,
+      cursor: null,
+    })
+    expect(first.root_dataset_version).toBe(transformFixture.lineage.root_dataset_version)
+    expect(first.nodes.map(({ dataset_version }) => dataset_version)).toEqual(
+      transformFixture.lineage.page_node_versions[0],
+    )
+    expect(first.edges).toEqual([
+      {
+        run_id: transformFixture.prompt_rewrite.run_id,
+        input_dataset_versions: transformFixture.lineage.input_dataset_versions,
+        output_dataset_version: transformFixture.lineage.root_dataset_version,
+      },
+    ])
+    expect(first.truncated).toBe(true)
+    expect(first.next_cursor).toEqual(expect.any(String))
+
+    const snapshotSequence = rig.catalog.runs.get(transformed.run.cache_key)?.lineageSequence
+    if (snapshotSequence === undefined) throw new Error('transform run sequence was not retained')
+    const lateCacheKey = 'f'.repeat(64)
+    const lateRunId = `run_${lateCacheKey}`
+    rig.catalog.runs.set(lateCacheKey, {
+      id: lateRunId,
+      cacheKey: lateCacheKey,
+      lineageSequence: snapshotSequence + 1n,
+      op: 'prompt-rewrite',
+      opVersion: '1',
+      params: {},
+      inputVersions: [parent.version, rewrite.version],
+      outputVersion: transformed.run.output_dataset_version,
+      createdAt: new Date(NOW.getTime() + 1),
+    })
+
+    const second = await rig.workspace.lineage(transformed.run.output_dataset_version, {
+      ...transformFixture.lineage.request,
+      cursor: first.next_cursor,
+    })
+    expect(second.nodes.map(({ dataset_version }) => dataset_version)).toEqual(
+      transformFixture.lineage.page_node_versions[1],
+    )
+    expect(second.truncated).toBe(true)
+    expect(second.next_cursor).toEqual(expect.any(String))
+
+    const third = await rig.workspace.lineage(transformed.run.output_dataset_version, {
+      ...transformFixture.lineage.request,
+      cursor: second.next_cursor,
+    })
+    expect(third.nodes.map(({ dataset_version }) => dataset_version)).toEqual(
+      transformFixture.lineage.page_node_versions[2],
+    )
+    expect(third).toMatchObject({ truncated: false, next_cursor: null })
+    expect([...second.edges, ...third.edges].map(({ run_id }) => run_id)).not.toContain(lateRunId)
+    expect(rig.catalog.listRunsProducing.mock.calls).toSatisfy((calls) =>
+      calls.every(([, , , cutoff]) => cutoff === snapshotSequence),
+    )
+
+    await expect(
+      rig.workspace.lineage(parent.version, {
+        ...transformFixture.lineage.request,
+        cursor: first.next_cursor,
+      }),
+    ).rejects.toMatchObject({ code: 'validation_error' })
+  })
+
+  test('rejects working-set overcommit before execution', async () => {
+    const rig = createRig({
+      max_working_set_bytes: transformFixture.capacity.working_set_budget_bytes,
+    })
+    const input = makeDataset('4', 'capacity')
+    rig.seed(input)
+
+    await expect(
+      rig.workspace.runTransform('subset', {
+        inputs: [input.version],
+        params: { record_ids: [[...input.records()][0]?.record.id] },
+        ...noRef(),
+      }),
+    ).rejects.toMatchObject({
+      code: transformFixture.capacity.error_code,
+      detail: { resource: transformFixture.capacity.resource },
+    })
+    expect(transformFixture.capacity.cache_lookup_attempted).toBe(false)
+    expect(rig.catalog.findRun).not.toHaveBeenCalled()
+    expect(transformFixture.capacity.prepare_attempted).toBe(false)
+    expect(rig.store.prepare).not.toHaveBeenCalled()
+  })
+
+  test('fails closed when a custom transform underestimates its output', async () => {
+    const definition = defineV2Transform({
+      name: 'underestimated-output',
+      version: '1',
+      paramsSchema: AppendEvidenceV2ParamsSchema,
+      identityMode: 'preserve',
+      rngSeed: () => null,
+      estimateWorkingSet: () => ({ outputUpperBoundBytes: 0, frameEstimateBytes: 0 }),
+      async run(inputs) {
+        const input = inputs[0]
+        if (!input) throw new TypeError('missing test input')
+        return input
+      },
+    })
+    const rig = createRig({}, new V2TransformRegistry([definition]))
+    const input = makeDataset('5', 'underestimated output')
+    rig.seed(input)
+
+    await expect(
+      rig.workspace.runTransform('underestimated-output', {
+        inputs: [input.version],
+        params: {},
+        ...noRef(),
+      }),
+    ).rejects.toMatchObject({
+      code: 'integrity_error',
+      detail: {
+        reason: 'transform_output_exceeds_estimate',
+        declared_bytes: 0,
+        actual_bytes: input.canonicalBytes,
+      },
+    })
+    expect(rig.store.prepare).not.toHaveBeenCalled()
+  })
+
+  test('reports a committed determinism loser and never moves its requested ref', async () => {
+    const rig = createRig()
+    const input = makeDataset('5', 'determinism')
+    rig.seed(input)
+    rig.catalog.transformConflictOutput = 'f'.repeat(64)
+
+    await expect(
+      rig.workspace.runTransform('subset', {
+        inputs: [input.version],
+        params: { record_ids: [[...input.records()][0]?.record.id] },
+        ref: 'main',
+        expected_ref_version: null,
+        message: 'must not move',
+      }),
+    ).rejects.toMatchObject({
+      code: transformFixture.race.different_output.error_code,
+      detail: {
+        existing_output_version: 'f'.repeat(64),
+        attempted_output_version: input.version,
+        attempted_dataset_committed:
+          transformFixture.race.different_output.attempted_dataset_committed,
+      },
+    })
+    expect(transformFixture.race.different_output.ref_moved).toBe(false)
+    expect(rig.catalog.compareAndSetRef).not.toHaveBeenCalled()
+    expect(rig.store.committed.has(input.version)).toBe(true)
+  })
+
+  test('maps the read-after-determinism-conflict Catalog failure at the dependency boundary', async () => {
+    const rig = createRig()
+    const input = makeDataset('6', 'conflict read failure')
+    rig.seed(input)
+    rig.catalog.transformConflictOutput = 'e'.repeat(64)
+    rig.catalog.findRun
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error('database connection dropped'))
+
+    await expect(
+      rig.workspace.runTransform('subset', {
+        inputs: [input.version],
+        params: { record_ids: [[...input.records()][0]?.record.id] },
+        ...noRef(),
+      }),
+    ).rejects.toMatchObject({
+      name: 'ServiceUnavailableError',
+      code: 'service_unavailable',
+      detail: { dependency: 'catalog' },
+    })
+  })
+
+  test('treats a Catalog conflict for an identical winning run as integrity corruption', async () => {
+    const rig = createRig()
+    const input = makeDataset('7', 'identical conflict')
+    rig.seed(input)
+    rig.catalog.transformConflictOutput = input.version
+
+    await expect(
+      rig.workspace.runTransform('subset', {
+        inputs: [input.version],
+        params: { record_ids: [[...input.records()][0]?.record.id] },
+        ...noRef(),
+      }),
+    ).rejects.toMatchObject({
+      code: 'integrity_error',
+      detail: { reason: 'transform_conflict_for_identical_run' },
+    })
+  })
+
+  test('keeps the transform slot until an aborted non-cooperative Catalog lookup settles', async () => {
+    const rig = createRig({ max_concurrent_runs: 1, max_pending_runs: 1 })
+    const input = makeDataset('8', 'catalog cancellation')
+    rig.seed(input)
+    const lookup = deferred<CatalogRunRowV2 | null>()
+    rig.catalog.findRun.mockImplementationOnce(async () => await lookup.promise)
+    const request = {
+      inputs: [input.version],
+      params: { record_ids: [[...input.records()][0]?.record.id] },
+      ...noRef(),
+    }
+    const controller = new AbortController()
+    const first = rig.workspace.runTransform('subset', request, { signal: controller.signal })
+    await eventually(() => expect(rig.catalog.findRun).toHaveBeenCalledTimes(1))
+
+    controller.abort(new DOMException('cancel first transform', 'AbortError'))
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' })
+    const second = rig.workspace.runTransform('subset', request)
+    await Promise.resolve()
+    expect(rig.catalog.findRun).toHaveBeenCalledTimes(1)
+    expect(rig.store.prepare).not.toHaveBeenCalled()
+
+    lookup.resolve(null)
+    await expect(second).resolves.toMatchObject({ cache_hit: false })
+    expect(rig.store.prepare).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps the transform slot until an aborted cache-hit output read settles', async () => {
+    const rig = createRig({ max_concurrent_runs: 1, max_pending_runs: 1 })
+    const parent = makeDataset('9', 'old prompt cancellation')
+    const rewrite = makeDataset('9', 'new prompt cancellation')
+    rig.seed(parent)
+    rig.seed(rewrite)
+    const request = {
+      inputs: [parent.version, rewrite.version],
+      params: {},
+      ...noRef(),
+    }
+    const initial = await rig.workspace.runTransform('prompt-rewrite', request)
+    const outputRead = deferred<void>()
+    rig.store.readGates.set(initial.run.output_dataset_version, outputRead.promise)
+    const controller = new AbortController()
+    const readsBeforeHit = rig.store.read.mock.calls.length
+    const hit = rig.workspace.runTransform('prompt-rewrite', request, {
+      signal: controller.signal,
+    })
+    await eventually(() => expect(rig.store.read.mock.calls.length).toBe(readsBeforeHit + 1))
+
+    controller.abort(new DOMException('cancel cached output read', 'AbortError'))
+    await expect(hit).rejects.toMatchObject({ name: 'AbortError' })
+    const findCallsWhileReadIsRunning = rig.catalog.findRun.mock.calls.length
+    const retry = rig.workspace.runTransform('prompt-rewrite', request)
+    await Promise.resolve()
+    expect(rig.catalog.findRun).toHaveBeenCalledTimes(findCallsWhileReadIsRunning)
+
+    outputRead.resolve()
+    await expect(retry).resolves.toMatchObject({ cache_hit: true })
+  })
+})
+
 test('rejects undersized or cross-Workspace cache injection', () => {
   const events: string[] = []
   const catalog = new FakeCatalog(events)
@@ -550,6 +1037,7 @@ class FakeStore implements V2Store {
   readonly preparedDatasets: V2Dataset[] = []
   readonly discardContexts: V2OperationContext[] = []
   readonly failures: FakeFailures = {}
+  readonly readGates = new Map<string, Promise<void>>()
   beforeCommit: (() => void) | undefined
   commitManifest: Readonly<DatasetManifestV2> | undefined
 
@@ -622,6 +1110,7 @@ class FakeStore implements V2Store {
       _context: V2OperationContext = {},
     ): Promise<V2Dataset> => {
       this.events.push('read')
+      await this.readGates.get(identity.dataset_version)
       const dataset = this.committed.get(identity.dataset_version)
       if (!dataset) throw new NotFoundError('fake Store layout is missing')
       return dataset
@@ -664,9 +1153,13 @@ class FakeCatalog implements V2WorkspaceCatalog {
   readonly snapshots = new Map<string, CatalogSnapshotRowV2>()
   readonly layouts = new Map<string, CatalogLayoutRowV2>()
   readonly refs = new Map<string, CatalogRefRowV2>()
+  readonly runs = new Map<string, CatalogRunRowV2>()
+  readonly claims = new Map<string, CatalogIdentityClaimRowV2>()
   readonly listPages = new Map<string | null, CatalogRefPageV2>()
   readonly registrations: RegisterLayoutV2[] = []
   readonly failures: { register?: unknown; cas?: unknown } = {}
+  transformConflictOutput: string | undefined
+  #nextRunSequence = 1n
 
   constructor(private readonly events: string[]) {}
 
@@ -675,6 +1168,19 @@ class FakeCatalog implements V2WorkspaceCatalog {
     return NAMESPACE_ID
   })
 
+  readonly insertOrReadIdentityClaim = vi.fn(
+    async (input: CatalogIdentityClaimInputV2): Promise<CatalogIdentityClaimResultV2> => {
+      this.events.push('claim')
+      const byClaim = this.claims.get(input.claimKeyDigest)
+      if (byClaim) return { status: 'existing_claim', row: byClaim }
+      const byEntity = [...this.claims.values()].find(({ entityId }) => entityId === input.entityId)
+      if (byEntity) return { status: 'existing_entity', row: byEntity }
+      const row = { ...input, createdAt: NOW }
+      this.claims.set(input.claimKeyDigest, row)
+      return { status: 'created', row }
+    },
+  )
+
   readonly registerCommittedLayout = vi.fn(async (input: RegisterLayoutV2): Promise<void> => {
     this.events.push('register')
     if (this.failures.register !== undefined) throw this.failures.register
@@ -682,6 +1188,77 @@ class FakeCatalog implements V2WorkspaceCatalog {
     this.snapshots.set(input.snapshot.version, { ...input.snapshot, createdAt: NOW })
     this.layouts.set(input.layout.datasetVersion, { ...input.layout, committedAt: NOW })
   })
+
+  readonly registerTransformResult = vi.fn(
+    async (input: RegisterTransformResultV2): Promise<void> => {
+      this.events.push('registerTransform')
+      const existing = this.runs.get(input.run.cacheKey)
+      if (existing) {
+        if (existing.outputVersion !== input.run.outputVersion) {
+          throw new V2CatalogDeterminismConflictError(input.run.cacheKey)
+        }
+        return
+      }
+      if (this.transformConflictOutput !== undefined) {
+        this.runs.set(input.run.cacheKey, {
+          ...input.run,
+          lineageSequence: this.#allocateRunSequence(),
+          outputVersion: this.transformConflictOutput,
+          createdAt: NOW,
+        })
+        throw new V2CatalogDeterminismConflictError(input.run.cacheKey)
+      }
+      await this.registerCommittedLayout(input)
+      this.runs.set(input.run.cacheKey, {
+        ...input.run,
+        lineageSequence: this.#allocateRunSequence(),
+        createdAt: NOW,
+      })
+    },
+  )
+
+  readonly findRun = vi.fn(async (cacheKey: string): Promise<CatalogRunRowV2 | null> => {
+    this.events.push('findRun')
+    return this.runs.get(cacheKey) ?? null
+  })
+
+  readonly lineageSnapshotSequence = vi.fn(
+    async (): Promise<bigint> =>
+      [...this.runs.values()].reduce(
+        (maximum, row) => (row.lineageSequence > maximum ? row.lineageSequence : maximum),
+        0n,
+      ),
+  )
+
+  readonly listRunsProducing = vi.fn(
+    async (
+      version: string,
+      afterCacheKey: string | null,
+      limit: number,
+      lineageSequenceAtOrBefore: bigint,
+    ): Promise<CatalogRunPageV2> => {
+      this.events.push('listRunsProducing')
+      const rows = [...this.runs.values()]
+        .filter(
+          (row) =>
+            row.outputVersion === version &&
+            row.lineageSequence <= lineageSequenceAtOrBefore &&
+            (afterCacheKey === null || row.cacheKey > afterCacheKey),
+        )
+        .sort((left, right) => (left.cacheKey < right.cacheKey ? -1 : 1))
+      const visible = rows.slice(0, limit)
+      return {
+        rows: visible,
+        nextCacheKey: rows.length > limit ? (visible.at(-1)?.cacheKey ?? null) : null,
+      }
+    },
+  )
+
+  #allocateRunSequence(): bigint {
+    const value = this.#nextRunSequence
+    this.#nextRunSequence += 1n
+    return value
+  }
 
   readonly getSnapshot = vi.fn(async (version: string): Promise<CatalogSnapshotRowV2 | null> => {
     this.events.push('getSnapshot')
@@ -732,7 +1309,10 @@ interface TestRig {
   readonly seedCatalogOnly: (dataset: V2Dataset) => void
 }
 
-function createRig(): TestRig {
+function createRig(
+  transformLimits: Partial<V2TransformLimits> = {},
+  transformRegistry?: V2TransformRegistry,
+): TestRig {
   const events: string[] = []
   const store = new FakeStore(events)
   const catalog = new FakeCatalog(events)
@@ -742,6 +1322,8 @@ function createRig(): TestRig {
     catalog,
     store,
     cursorSecret: CURSOR_SECRET,
+    transformLimits,
+    ...(transformRegistry === undefined ? {} : { transformRegistry }),
     onCleanupError: (error, primaryError) => cleanupErrors.push({ error, primaryError }),
   })
 
@@ -828,4 +1410,27 @@ function refRow(name: string, version: string, message: string | null): CatalogR
 function artifactDigest(datasetVersion: string): string {
   const first = datasetVersion[0] ?? '0'
   return first.repeat(64)
+}
+
+function deferred<T>() {
+  let resolvePromise: ((value: T | PromiseLike<T>) => void) | undefined
+  let rejectPromise: ((reason?: unknown) => void) | undefined
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve
+    rejectPromise = reject
+  })
+  if (!resolvePromise || !rejectPromise) throw new Error('failed to create deferred promise')
+  return { promise, resolve: resolvePromise, reject: rejectPromise }
+}
+
+async function eventually(assertion: () => void): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      assertion()
+      return
+    } catch {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    }
+  }
+  assertion()
 }

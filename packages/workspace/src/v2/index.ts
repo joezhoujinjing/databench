@@ -17,6 +17,10 @@ export {
   type V2CursorCodecOptions,
 } from './cursor.js'
 export {
+  type V2IdentityAllocatorCatalog,
+  V2WorkspaceIdentityAllocator,
+} from './identity-allocator.js'
+export {
   layoutIdentityFromCatalog,
   manifestFromCatalogIdentity,
   mapV2CatalogError,
@@ -24,6 +28,13 @@ export {
   registrationFromCommittedDataset,
 } from './mappings.js'
 export {
+  DEFAULT_V2_TRANSFORM_CONCURRENCY,
+  DEFAULT_V2_TRANSFORM_MAX_PENDING,
+  V2TransformSemaphore,
+  type V2TransformSemaphoreOptions,
+} from './transform-semaphore.js'
+export {
+  type V2TransformLimits,
   V2Workspace,
   type V2WorkspaceCatalog,
   type V2WorkspaceOperationOptions,

@@ -4,8 +4,10 @@ import {
   Catalog,
   createPrismaClient,
   V2Catalog,
+  V2CatalogConsistencyError,
   V2CatalogDeterminismConflictError,
   V2CatalogImmutableConflictError,
+  V2CatalogInputError,
   V2CatalogLineageCycleError,
   V2CatalogRefConflictError,
   V2CatalogTargetNotCommittedError,
@@ -256,6 +258,37 @@ describe('Catalog', () => {
     ])
   })
 })
+
+function deferred<T>() {
+  let resolvePromise: ((value: T | PromiseLike<T>) => void) | undefined
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve
+  })
+  if (!resolvePromise) throw new Error('failed to create deferred promise')
+  return { promise, resolve: resolvePromise }
+}
+
+async function waitForAdvisoryWaiters(expected: number): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const rows = await prisma.$queryRaw<Array<{ readonly count: bigint }>>`
+      SELECT COUNT(*)::bigint AS "count"
+      FROM pg_locks
+      WHERE
+        "locktype" = 'advisory' AND
+        NOT "granted" AND
+        "classid" = hashtext('databench-v2-lineage-registration')::oid AND
+        "objid" = hashtext(current_schema())::oid AND
+        "database" = (
+          SELECT "oid"
+          FROM pg_database
+          WHERE "datname" = current_database()
+        )
+    `
+    if ((rows[0]?.count ?? 0n) >= BigInt(expected)) return
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  }
+  throw new Error(`expected at least ${expected} waiting advisory locks`)
+}
 
 describe('V2Catalog', () => {
   test('keeps Prisma model and raw SQL schemas aligned with explicit connection options', async () => {
@@ -565,7 +598,17 @@ describe('V2Catalog', () => {
     await v2Catalog.registerTransformResult({ ...output, run: v2Fixture.run })
 
     expect(await v2Catalog.findRun(v2Fixture.run.cacheKey)).toMatchObject(v2Fixture.run)
-    expect(await v2Catalog.runsProducing(v2Fixture.run.outputVersion)).toHaveLength(1)
+    const snapshotSequence = await v2Catalog.lineageSnapshotSequence()
+    expect(
+      (
+        await v2Catalog.listRunsProducing(
+          v2Fixture.run.outputVersion,
+          null,
+          1_000,
+          snapshotSequence,
+        )
+      ).rows,
+    ).toHaveLength(1)
 
     await expect(
       v2Catalog.registerTransformResult({
@@ -622,6 +665,252 @@ describe('V2Catalog', () => {
       }),
     ).rejects.toBeInstanceOf(V2CatalogDeterminismConflictError)
     expect(await v2Catalog.getSnapshot(conflictingOutput.snapshot.version)).toBeNull()
+  })
+
+  test('treats concurrent identical transform misses as one immutable run', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    await v2Catalog.registerCommittedLayout(
+      registration('beta', [withParents(fixtureRevision('inputBeta'))]),
+    )
+    const output = registration('gamma', [withParents(fixtureRevision('output'))])
+    const registrationInput = { ...output, run: v2Fixture.run }
+
+    const results = await Promise.allSettled([
+      v2Catalog.registerTransformResult(registrationInput),
+      v2Catalog.registerTransformResult(registrationInput),
+    ])
+
+    expect(results).toEqual([
+      expect.objectContaining({ status: 'fulfilled' }),
+      expect.objectContaining({ status: 'fulfilled' }),
+    ])
+    expect(await prisma.v2Run.count()).toBe(1)
+    expect(await prisma.v2RunInput.count()).toBe(v2Fixture.run.inputVersions.length)
+    expect(await v2Catalog.findRun(v2Fixture.run.cacheKey)).toMatchObject(v2Fixture.run)
+  })
+
+  test('allows only one output to win a concurrent transform determinism race', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    await v2Catalog.registerCommittedLayout(
+      registration('beta', [withParents(fixtureRevision('inputBeta'))]),
+    )
+    const firstOutput = registration('gamma', [withParents(fixtureRevision('output'))])
+    const secondOutput = registration('delta', [withParents(fixtureRevision('outputDelta'))])
+    const results = await Promise.allSettled([
+      v2Catalog.registerTransformResult({ ...firstOutput, run: v2Fixture.run }),
+      v2Catalog.registerTransformResult({
+        ...secondOutput,
+        run: { ...v2Fixture.run, outputVersion: secondOutput.snapshot.version },
+      }),
+    ])
+
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
+    const failure = results.find(({ status }) => status === 'rejected')
+    expect(failure).toMatchObject({ status: 'rejected' })
+    if (failure?.status === 'rejected') {
+      expect(failure.reason).toBeInstanceOf(V2CatalogDeterminismConflictError)
+    }
+
+    const winningRun = await v2Catalog.findRun(v2Fixture.run.cacheKey)
+    if (!winningRun) throw new Error('the transform race committed no run')
+    const winningVersion = winningRun.outputVersion
+    const losingVersion =
+      winningVersion === firstOutput.snapshot.version
+        ? secondOutput.snapshot.version
+        : firstOutput.snapshot.version
+    expect(await v2Catalog.getSnapshot(winningVersion)).not.toBeNull()
+    expect(await v2Catalog.getLayout(winningVersion, v2Fixture.layoutVersion)).not.toBeNull()
+    expect(await v2Catalog.getSnapshot(losingVersion)).toBeNull()
+    expect(await v2Catalog.getLayout(losingVersion, v2Fixture.layoutVersion)).toBeNull()
+    const snapshotSequence = await v2Catalog.lineageSnapshotSequence()
+    expect(
+      (await v2Catalog.listRunsProducing(losingVersion, null, 1_000, snapshotSequence)).rows,
+    ).toEqual([])
+  })
+
+  test('rolls back output metadata when an exact transform input is not registered', async () => {
+    const output = registration('gamma', [withParents(fixtureRevision('output'))])
+    const unknownInput = 'f'.repeat(64)
+
+    await expect(
+      v2Catalog.registerTransformResult({
+        ...output,
+        run: { ...v2Fixture.run, inputVersions: [unknownInput] },
+      }),
+    ).rejects.toThrow()
+
+    expect(await v2Catalog.findRun(v2Fixture.run.cacheKey)).toBeNull()
+    expect(await v2Catalog.getSnapshot(output.snapshot.version)).toBeNull()
+    expect(
+      await v2Catalog.getLayout(output.snapshot.version, output.layout.layoutVersion),
+    ).toBeNull()
+    const outputRevision = output.revisions[0]
+    if (!outputRevision) throw new Error('the transform output fixture has no revision')
+    expect(
+      await v2Catalog.locateRecordRevision(outputRevision.recordId, outputRevision.recordDigest),
+    ).toBeNull()
+  })
+
+  test('paginates producing runs by bounded C-order cache-key seek', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const output = registration('gamma', [withParents(fixtureRevision('output'))])
+    const snapshotCacheKeys = ['a'.repeat(64), '0'.repeat(64)]
+    for (const cacheKey of snapshotCacheKeys) {
+      await v2Catalog.registerTransformResult({
+        ...output,
+        run: {
+          ...v2Fixture.run,
+          id: `run_${cacheKey}`,
+          cacheKey,
+          inputVersions: [fixtureVersion('alpha')],
+        },
+      })
+    }
+    const snapshotSequence = await v2Catalog.lineageSnapshotSequence()
+    expect(typeof snapshotSequence).toBe('bigint')
+    expect(snapshotSequence).toBeGreaterThan(0n)
+
+    const laterCacheKey = '5'.repeat(64)
+    await v2Catalog.registerTransformResult({
+      ...output,
+      run: {
+        ...v2Fixture.run,
+        id: `run_${laterCacheKey}`,
+        cacheKey: laterCacheKey,
+        inputVersions: [fixtureVersion('alpha')],
+      },
+    })
+    const first = await v2Catalog.listRunsProducing(
+      output.snapshot.version,
+      null,
+      1,
+      snapshotSequence,
+    )
+    expect(first.rows.map(({ cacheKey }) => cacheKey)).toEqual(['0'.repeat(64)])
+    expect(first.nextCacheKey).toBe('0'.repeat(64))
+    expect(
+      first.rows.every(({ inputVersions }) => inputVersions[0] === fixtureVersion('alpha')),
+    ).toBe(true)
+
+    const second = await v2Catalog.listRunsProducing(
+      output.snapshot.version,
+      first.nextCacheKey,
+      1,
+      snapshotSequence,
+    )
+    expect(second.rows.map(({ cacheKey }) => cacheKey)).toEqual(['a'.repeat(64)])
+    expect(second.nextCacheKey).toBeNull()
+    expect([...first.rows, ...second.rows].map(({ cacheKey }) => cacheKey)).not.toContain(
+      laterCacheKey,
+    )
+
+    await expect(
+      v2Catalog.listRunsProducing(output.snapshot.version, null, 1_001, snapshotSequence),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    await expect(
+      v2Catalog.listRunsProducing(output.snapshot.version.toUpperCase(), null, 1, snapshotSequence),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    await expect(
+      v2Catalog.listRunsProducing(output.snapshot.version, 'not-a-cache-key', 1, snapshotSequence),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    await expect(
+      v2Catalog.listRunsProducing(output.snapshot.version, null, 1, -1n),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+  })
+
+  test('serializes the lineage watermark after an earlier in-flight run registration', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const output = registration('gamma', [withParents(fixtureRevision('output'))])
+    const isolated = createPrismaClient()
+    const lockAcquired = deferred<void>()
+    const releaseLock = deferred<void>()
+    let blocker: Promise<unknown> | undefined
+    try {
+      blocker = isolated.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT 1 AS "locked"
+            FROM pg_advisory_xact_lock(
+              hashtext('databench-v2-lineage-registration'),
+              hashtext(current_schema())
+            )
+          `
+          lockAcquired.resolve()
+          await releaseLock.promise
+        },
+        { timeout: 30_000 },
+      )
+      await lockAcquired.promise
+
+      const registrationPromise = v2Catalog.registerTransformResult({
+        ...output,
+        run: { ...v2Fixture.run, inputVersions: [fixtureVersion('alpha')] },
+      })
+      await waitForAdvisoryWaiters(1)
+      let snapshotSettled = false
+      const snapshotPromise = v2Catalog.lineageSnapshotSequence().finally(() => {
+        snapshotSettled = true
+      })
+      await waitForAdvisoryWaiters(2)
+      expect(snapshotSettled).toBe(false)
+
+      releaseLock.resolve()
+      await blocker
+      await registrationPromise
+      const snapshotSequence = await snapshotPromise
+      const page = await v2Catalog.listRunsProducing(
+        output.snapshot.version,
+        null,
+        10,
+        snapshotSequence,
+      )
+      expect(page.rows.map(({ cacheKey }) => cacheKey)).toEqual([v2Fixture.run.cacheKey])
+    } finally {
+      releaseLock.resolve()
+      await blocker?.catch(() => undefined)
+      await isolated.$disconnect()
+    }
+  })
+
+  test('fails closed when stored exact run inputs are not zero-based and contiguous', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    await v2Catalog.registerCommittedLayout(
+      registration('gamma', [withParents(fixtureRevision('output'))]),
+    )
+    const cacheKey = 'e'.repeat(64)
+    await prisma.v2Run.create({
+      data: {
+        id: `run_${cacheKey}`,
+        cacheKey,
+        op: 'malformed-input-positions',
+        opVersion: '1',
+        params: {},
+        outputVersion: fixtureVersion('gamma'),
+      },
+    })
+    await prisma.v2RunInput.create({
+      data: {
+        cacheKey,
+        position: 1,
+        datasetVersion: fixtureVersion('alpha'),
+      },
+    })
+
+    await expect(v2Catalog.findRun(cacheKey)).rejects.toBeInstanceOf(V2CatalogConsistencyError)
+    const snapshotSequence = await v2Catalog.lineageSnapshotSequence()
+    await expect(
+      v2Catalog.listRunsProducing(fixtureVersion('gamma'), null, 10, snapshotSequence),
+    ).rejects.toBeInstanceOf(V2CatalogConsistencyError)
   })
 
   test('uses compare-and-set refs without lost updates and paginates by seek name', async () => {
@@ -902,6 +1191,9 @@ describe('V2Catalog', () => {
         outputVersion: committed.snapshot.version,
       },
     })
+    await expect(
+      prisma.v2Run.update({ where: { cacheKey }, data: { lineageSeq: 0n } }),
+    ).rejects.toThrow()
     await expect(
       prisma.v2RunInput.create({
         data: {
