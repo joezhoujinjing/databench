@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { Workspace } from '@databench/workspace'
 import { afterEach, describe, expect, test } from 'vitest'
-import { createApp } from '../src/app.js'
 import { createMemoryStore } from './memory-store.js'
+import { createTestApp } from './test-app.js'
 
 const workspaces: Workspace[] = []
 
@@ -300,7 +300,7 @@ function makeApp(): {
   workspaces.push(workspace)
 
   return {
-    app: createApp({ workspace }),
+    app: createTestApp({ workspace }),
     prefix,
     workspace,
   }

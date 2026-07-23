@@ -441,6 +441,28 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     expect(row.completion).toEqual([{ content: 'Persisted export completed.', role: 'assistant' }])
   })
 
+  test('production open composes Catalog, S3, and file-backed Store end to end', async () => {
+    const runtime = await V2Workspace.open({
+      root: join(temporaryRoot, 'production-factory'),
+      cursorSecret: 'v12-production-runtime-cursor-secret',
+      ...(process.env.DATABASE_URL === undefined ? {} : { databaseUrl: process.env.DATABASE_URL }),
+      storeConfig: { ...s3Config(), kind: 's3' },
+    })
+    try {
+      const ingested = await runtime.addJsonl(
+        jsonl(canonicalRecord(`rec_${'7'.repeat(64)}`, 'Exercise the V12 production factory.')),
+        Promise.resolve(noRefOptions()),
+      )
+      await expect(runtime.describeDataset(ingested.dataset_version)).resolves.toMatchObject({
+        dataset_version: ingested.dataset_version,
+        manifest: ingested.manifest,
+      })
+      expect(runtime.postTrainingV2Capability().enabled).toBe(false)
+    } finally {
+      await Promise.all([runtime.close(), runtime.close()])
+    }
+  })
+
   function createWorkspace(tempName: string): V2Workspace {
     return new V2Workspace({
       catalog,

@@ -14,8 +14,8 @@ import { createRoute } from '@hono/zod-openapi'
 import { HTTPException } from 'hono/http-exception'
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
-import { createApp } from '../src/app.js'
 import { jsonResponse } from '../src/openapi.js'
+import { createTestApp } from './test-app.js'
 
 const validationRoute = createRoute({
   method: 'get',
@@ -32,7 +32,7 @@ const validationRoute = createRoute({
 
 describe('api error envelope', () => {
   test('unversioned domain routes return a not_found envelope', async () => {
-    const response = await createApp().fetch(request('/datasets', { method: 'POST' }))
+    const response = await createTestApp().fetch(request('/datasets', { method: 'POST' }))
 
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({
@@ -44,7 +44,7 @@ describe('api error envelope', () => {
   })
 
   test('request validation returns 422 validation_error envelope', async () => {
-    const app = createApp()
+    const app = createTestApp()
     app.openapi(validationRoute, (context) => context.json({ ok: true }, 200))
 
     const response = await app.fetch(request('/v1/_test-validation?limit=5000'))
@@ -63,7 +63,7 @@ describe('api error envelope', () => {
   })
 
   test('domain and schema validation errors map to their envelopes', async () => {
-    const app = createApp()
+    const app = createTestApp()
     installThrowRoutes(app)
 
     await expectError(app, '/v1/_test-error/not-found', 404, 'not_found', 'missing dataset')
@@ -95,7 +95,7 @@ describe('api error envelope', () => {
   })
 
   test('HTTPException status map is preserved in the envelope', async () => {
-    const app = createApp()
+    const app = createTestApp()
     installThrowRoutes(app)
 
     await expectError(
@@ -115,7 +115,7 @@ describe('api error envelope', () => {
   })
 
   test('bad input, TypeError, and plain Error map to bad_request', async () => {
-    const app = createApp()
+    const app = createTestApp()
     installThrowRoutes(app)
 
     await expectError(app, '/v1/_test-error/bad-input', 400, 'bad_request', 'invalid JSON')
@@ -136,7 +136,7 @@ describe('api error envelope', () => {
   })
 
   test('unclassified throws fall back to internal_error envelope', async () => {
-    const app = createApp()
+    const app = createTestApp()
     installThrowRoutes(app)
 
     await expectError(

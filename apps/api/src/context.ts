@@ -1,7 +1,29 @@
-import type { Workspace } from '@databench/workspace'
+import type { V2Workspace, Workspace } from '@databench/workspace'
 import type { Context } from 'hono'
 
+export type ApiV2Workspace = Pick<
+  V2Workspace,
+  | 'addJsonl'
+  | 'audit'
+  | 'describeDataset'
+  | 'export'
+  | 'getConverter'
+  | 'getRecordPage'
+  | 'getRecordView'
+  | 'getRef'
+  | 'inspectExport'
+  | 'lineage'
+  | 'listConverters'
+  | 'listRefs'
+  | 'listTransforms'
+  | 'postTrainingV2Capability'
+  | 'putRef'
+  | 'runTransform'
+>
+
 export interface ApiVariables {
+  requestId: string
+  v2Workspace: ApiV2Workspace
   workspace: Workspace
 }
 
@@ -11,4 +33,12 @@ export interface ApiEnv {
 
 export function getWorkspace(context: Context<ApiEnv>): Workspace {
   return context.get('workspace')
+}
+
+export function getV2Workspace(context: Context<ApiEnv>): ApiV2Workspace {
+  return context.get('v2Workspace')
+}
+
+export function getRequestId(context: Context<ApiEnv>): string {
+  return context.get('requestId')
 }

@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V12
-last_completed_step: V11
+current_step: V13
+last_completed_step: V12
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V12 — `/v2` API、OpenAPI 与 Generated Client
+- **下一步:** V13 — `databench v2` CLI
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -32,7 +32,7 @@ capability_enabled: false
 | V9 | Workspace publish/read cache/ref | ✅ | 当前分支 | GV9 | 发布顺序、恢复、cache/ref与真实依赖闸门通过 |
 | V10 | Transform、run cache与 lineage | ✅ | 当前分支 | GV10 | 五个最小operation、staged identity、run cache race与稳定lineage分页已过闸门 |
 | V11 | Converter registry与 fidelity | ✅ | 当前分支 | GV11 | 五种converter、strict inspect/stream、fidelity授权与真实依赖导出已过闸门 |
-| V12 | `/v2` API、OpenAPI与 generated client | ⬜ | | GV12 | |
+| V12 | `/v2` API、OpenAPI与 generated client | ✅ | 当前分支 | GV12 | 15个operation、流式multipart、typed errors与真实HTTP lifecycle均已过闸门 |
 | V13 | `databench v2` CLI | ⬜ | | GV13 | |
 | V14 | Web foundation、refs与 record read | ⬜ | | GV14 | |
 | V15 | Web ingest/transform/lineage/export | ⬜ | | GV15 | |
@@ -251,3 +251,26 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   inspect→fidelity授权→exact-version stream；双路独立review最终无剩余P0/P1/P2；
 - `pnpm v2:status:check`、`git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、
   `pnpm test`、`pnpm openapi:check`、`pnpm peers check`全部通过；capability继续保持关闭。
+
+## V12 Gate 记录
+
+- 14条OpenAPI path / 15个operation全部落地，覆盖canonical JSONL ingest、dataset/record read、
+  audit、converter/transform registry、transform run、Refs、bounded lineage、stateless inspect与
+  exact-version binary export；Hono action runtime使用严格suffix route，OpenAPI保持锁定contract；
+- identity-bearing JSON route全部读取有界raw bytes并拒绝duplicate key；multipart使用真流式
+  Busboy parser，file-first、trailing options、backpressure、absence/null语义、request/file/field limit
+  与取消清理均有回归；pending raw-body read可被AbortSignal立即打断并取消底层stream；
+- 所有request/success/typed error、multipart/binary和response headers由Schema单一来源进入OpenAPI；
+  每条route只声明可达错误detail，`X-Request-ID`、private/no-store、nosniff、CORS exposed headers、
+  safe Content-Disposition和optional Content-Length同步进入generated client；
+- production `V2Workspace.open()`组合Catalog、S3/OSS与file-backed Store；cursor secret启动时fail
+  closed，capability从registry/limits单一来源生成且保持`enabled=false`；API继续只依赖Workspace+Schema；
+- 独立contract与runtime/security双路review修复untyped error message泄漏、transport abort悬挂、
+  OpenAPI错误过宽/漏413、page bounds、raw JSON reason和unsafe Content-Length精度；最终均无剩余
+  P0/P1/P2；V12 wire fixture已标记verified；
+- Schema 208 tests、API普通suite 68 passed / 1 real integration skipped、Workspace真实
+  MinIO/Postgres 107/107通过；真实MinIO/Postgres HTTP ingest→read→audit→transform→lineage→
+  inspect→export lifecycle所在API suite 69/69通过；
+- `pnpm v2:status:check`、`git diff --check`、`pnpm lint`（383 files）、`pnpm build`（12 tasks）、
+  `pnpm typecheck`（21 tasks）、`pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）与
+  `pnpm peers check`全部通过；capability继续保持关闭。

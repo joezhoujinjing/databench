@@ -12,6 +12,7 @@ import {
   type CompareAndSetRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
+  V2Catalog,
   V2CatalogDeterminismConflictError,
   V2CatalogRefConflictError,
   V2CatalogTargetNotCommittedError,
@@ -44,6 +45,7 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   DEFAULT_V2_CACHE_MAX_PENDING_LOADS,
   DEFAULT_V2_CURSOR_TTL_MS,
+  postTrainingV2Capability,
   registrationFromCommittedDataset,
   V2DatasetCache,
   type V2TransformLimits,
@@ -51,6 +53,7 @@ import {
   type V2WorkspaceCatalog,
   v2DatasetCacheRequiredWeight,
   v2DatasetCacheWeight,
+  v2WorkspaceTempRoot,
 } from '../src/v2/index.js'
 
 const CURSOR_SECRET = '0123456789abcdef-v2-workspace-secret'
@@ -209,6 +212,76 @@ describe('V2Workspace publish orchestration', () => {
 
     expect(result.dataset_version).toBe(expected.version)
     expect(rig.events).toEqual(['prepare', 'commit', 'register', 'discard'])
+  })
+
+  test('consumes the file part before awaiting asynchronous multipart options', async () => {
+    const rig = createRig()
+    const record = makeRecord('0', 'field-order independent multipart')
+    const bytes = new TextEncoder().encode(`${JSON.stringify(record)}\n`)
+    const options = deferred<ReturnType<typeof noRef>>()
+    let sourceStarted = false
+    const source = (async function* (): AsyncIterable<Uint8Array> {
+      sourceStarted = true
+      yield bytes
+    })()
+
+    const pending = rig.workspace.addJsonl(source, options.promise)
+    await eventually(() => expect(sourceStarted).toBe(true))
+    expect(rig.store.prepare).not.toHaveBeenCalled()
+    options.resolve(noRef())
+
+    await expect(pending).resolves.toMatchObject({
+      dataset_version: V2Dataset.fromRecords([record]).version,
+    })
+    expect(rig.events).toEqual(['prepare', 'commit', 'register', 'discard'])
+  })
+
+  test('closes the JSONL source and preserves an asynchronous options failure', async () => {
+    const rig = createRig()
+    const record = makeRecord('0', 'invalid trailing multipart field')
+    const bytes = new TextEncoder().encode(`${JSON.stringify(record)}\n`)
+    const options = deferred<ReturnType<typeof noRef>>()
+    const failure = new Error('multipart options invalid')
+    let sourceClosed = false
+    const source = (async function* (): AsyncIterable<Uint8Array> {
+      try {
+        yield bytes
+        options.reject(failure)
+        yield bytes
+      } finally {
+        sourceClosed = true
+      }
+    })()
+
+    await expect(rig.workspace.addJsonl(source, options.promise)).rejects.toBe(failure)
+    expect(sourceClosed).toBe(true)
+    expect(rig.store.prepare).not.toHaveBeenCalled()
+  })
+
+  test('cancels while waiting for trailing multipart options after closing the file source', async () => {
+    const rig = createRig()
+    const record = makeRecord('0', 'cancel trailing multipart fields')
+    const bytes = new TextEncoder().encode(`${JSON.stringify(record)}\n`)
+    const options = deferred<ReturnType<typeof noRef>>()
+    const controller = new AbortController()
+    const cancelled = new Error('request cancelled')
+    let sourceClosed = false
+    const source = (async function* (): AsyncIterable<Uint8Array> {
+      try {
+        yield bytes
+      } finally {
+        sourceClosed = true
+      }
+    })()
+
+    const pending = rig.workspace.addJsonl(source, options.promise, {
+      signal: controller.signal,
+    })
+    await eventually(() => expect(sourceClosed).toBe(true))
+    controller.abort(cancelled)
+
+    await expect(pending).rejects.toBe(cancelled)
+    expect(rig.store.prepare).not.toHaveBeenCalled()
   })
 
   test('publishes in the fixed prepare/commit/register/CAS/discard order', async () => {
@@ -1457,6 +1530,146 @@ test('rejects undersized or cross-Workspace cache injection', () => {
         datasetLimits: limits,
       }),
   ).toThrowError('A V2 dataset cache cannot be shared across Workspace instances')
+})
+
+describe('V2Workspace production runtime', () => {
+  test('derives a controlled non-root absolute temp directory', () => {
+    expect(v2WorkspaceTempRoot('/var/lib/databench')).toBe('/var/lib/databench/.databench-v2-temp')
+    expect(v2WorkspaceTempRoot('./bench')).toMatch(/^\/.*\/bench\/\.databench-v2-temp$/)
+    expect(() => v2WorkspaceTempRoot('/')).toThrowError(
+      'V2 Workspace root must not be the filesystem root',
+    )
+  })
+
+  test('opens the production S3 runtime and closes its owned Catalog exactly once', async () => {
+    const close = vi.spyOn(V2Catalog.prototype, 'close').mockResolvedValue()
+    try {
+      const workspace = await V2Workspace.open({
+        root: '/tmp/databench-v2-runtime-factory',
+        cursorSecret: CURSOR_SECRET,
+        storeConfig: {
+          kind: 's3',
+          bucket: 'databench',
+          region: 'us-east-1',
+          endpoint: 'http://localhost:9000',
+        },
+      })
+
+      await Promise.all([workspace.close(), workspace.close(), workspace.close()])
+      expect(close).toHaveBeenCalledOnce()
+    } finally {
+      close.mockRestore()
+    }
+  })
+
+  test('opens the production OSS runtime without eagerly requiring network access', async () => {
+    const close = vi.spyOn(V2Catalog.prototype, 'close').mockResolvedValue()
+    try {
+      const workspace = await V2Workspace.open({
+        root: '/tmp/databench-v2-runtime-factory',
+        cursorSecret: CURSOR_SECRET,
+        storeConfig: {
+          kind: 'oss',
+          bucket: 'databench',
+          region: 'oss-cn-hangzhou',
+          accessKeyId: 'test-access-key',
+          accessKeySecret: 'test-access-secret',
+        },
+      })
+
+      await workspace.close()
+      expect(close).toHaveBeenCalledOnce()
+    } finally {
+      close.mockRestore()
+    }
+  })
+
+  test('closes an owned Catalog when production runtime construction fails', async () => {
+    const close = vi.spyOn(V2Catalog.prototype, 'close').mockResolvedValue()
+    try {
+      await expect(
+        V2Workspace.open({
+          root: '/tmp/databench-v2-runtime-factory',
+          cursorSecret: 'too-short',
+          storeConfig: {
+            kind: 's3',
+            bucket: 'databench',
+            region: 'us-east-1',
+          },
+        }),
+      ).rejects.toThrowError('V2 cursor secret must contain at least 16 bytes')
+      expect(close).toHaveBeenCalledOnce()
+    } finally {
+      close.mockRestore()
+    }
+  })
+
+  test('reports immutable runtime limits and converters from the configured registries', () => {
+    const events: string[] = []
+    const datasetLimits = {
+      max_records: 12,
+      max_canonical_bytes: 8192,
+      max_record_bytes: 2048,
+    }
+    const workspace = new V2Workspace({
+      catalog: new FakeCatalog(events),
+      store: new FakeStore(events),
+      cursorSecret: CURSOR_SECRET,
+      datasetLimits,
+      jsonlLimits: {
+        max_request_bytes: 16_384,
+        max_nesting_depth: 32,
+      },
+      transformLimits: {
+        max_input_datasets: 3,
+        max_working_set_bytes: 32_768,
+        max_concurrent_runs: 4,
+      },
+    })
+
+    const capability = workspace.postTrainingV2Capability()
+    expect(capability).toMatchObject({
+      enabled: false,
+      api_versions: ['2'],
+      record_schema_versions: ['2.0.0'],
+      identity_profiles: ['databench-v2-jcs-1'],
+      layout_versions: ['record-json-v1'],
+      export_fidelity_profiles: ['databench-export-fidelity-1'],
+      converters: ['canonical-jsonl', 'ms-swift', 'trl-dpo', 'trl-grpo-rlvr', 'trl-sft'],
+      limits: {
+        max_record_bytes: 2048,
+        max_snapshot_records: 12,
+        max_canonical_bytes: 8192,
+        max_request_bytes: 16_384,
+        max_nesting_depth: 32,
+        max_json_schema_bytes: 65_536,
+        max_json_schema_nodes: 4096,
+        max_lineage_depth: 32,
+        max_lineage_nodes: 1000,
+        max_transform_inputs: 3,
+        max_transform_working_set_bytes: 32_768,
+        max_concurrent_transforms: 4,
+      },
+    })
+    expect(Object.isFrozen(capability)).toBe(true)
+    expect(Object.isFrozen(capability.converters)).toBe(true)
+    expect(Object.isFrozen(capability.limits)).toBe(true)
+    expect(workspace.postTrainingV2Capability()).toBe(capability)
+    expect(
+      postTrainingV2Capability({
+        datasetLimits,
+        jsonlLimits: {
+          max_request_bytes: 16_384,
+          max_nesting_depth: 32,
+        },
+        transformLimits: {
+          max_input_datasets: 3,
+          max_working_set_bytes: 32_768,
+          max_concurrent_runs: 4,
+        },
+      }),
+    ).toEqual(capability)
+  })
 })
 
 interface FakeFailures {

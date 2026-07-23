@@ -922,6 +922,230 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v2/converters': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['listConvertersV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/converters/{name}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['getConverterV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/datasets:ingest-jsonl': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['ingestCanonicalDatasetV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/datasets/{dataset_version}:export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['exportDatasetV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/datasets/{ref_or_version}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['describeDatasetV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/datasets/{ref_or_version}:audit': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['auditDatasetV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/datasets/{ref_or_version}:inspect-export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['inspectDatasetExportV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/datasets/{ref_or_version}/records': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['listDatasetRecordsV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/datasets/{ref_or_version}/records/{record_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['getDatasetRecordV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/lineage/{ref_or_version}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['getLineageV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/refs': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['listRefsV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/refs/{name}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['getRefV2']
+    put: operations['putRefV2']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/transforms': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['listTransformsV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/transforms/{name}/run': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['runTransformV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/version': {
     parameters: {
       query?: never
@@ -970,6 +1194,36 @@ export interface paths {
 export type webhooks = Record<string, never>
 export interface components {
   schemas: {
+    AuditResultV2: {
+      artifact_digest: string
+      artifact_size_bytes: number
+      checks: {
+        /** @enum {string} */
+        artifact_digest: 'ok'
+        /** @enum {string} */
+        dataset_version: 'ok'
+        /** @enum {string} */
+        manifest: 'ok'
+        /** @enum {string} */
+        parquet_schema: 'ok'
+        /** @enum {string} */
+        record_digests: 'ok'
+      }
+      dataset_version: string
+      /** @enum {string} */
+      layout_version: 'record-json-v1'
+    }
+    BadRequestDetailV2: {
+      issues: components['schemas']['ValidationIssueV2'][]
+    }
+    BadRequestErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'bad_request'
+        detail: components['schemas']['BadRequestDetailV2']
+        message: string
+      }
+    }
     Capabilities: {
       /** @default v1 */
       api_version: string
@@ -985,11 +1239,182 @@ export interface components {
       }
       /** @default 0.1.0 */
       min_client: string
+      post_training_v2?: components['schemas']['PostTrainingV2Capability']
     }
+    CapacityExceededDetailV2:
+      | {
+          actual: number | string
+          limit: number | string
+          resource: string
+        }
+      | {
+          available: number | string
+          required: number | string
+          resource: string
+        }
+    CapacityExceededErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'capacity_exceeded'
+        detail: components['schemas']['CapacityExceededDetailV2']
+        message: string
+      }
+    }
+    ConverterDescriptorV2: {
+      /** @enum {string} */
+      export_fidelity_profile: 'databench-export-fidelity-1'
+      media_type: string
+      name: components['schemas']['ConverterNameV2']
+      options_schema: {
+        [key: string]: unknown
+      }
+      task_views: ('canonical' | 'sft' | 'dpo' | 'rlvr-grpo' | 'ms-swift')[]
+      version: string
+    }
+    /** @enum {string} */
+    ConverterNameV2: 'canonical-jsonl' | 'trl-sft' | 'trl-dpo' | 'trl-grpo-rlvr' | 'ms-swift'
+    ConverterRegistryNameV2: string
+    ConverterRegistryPageV2: {
+      items: components['schemas']['ConverterDescriptorV2'][]
+      total: number
+    }
+    DatasetLineageV2: {
+      edges: {
+        input_dataset_versions: string[]
+        output_dataset_version: string
+        run_id: string
+      }[]
+      next_cursor: string | null
+      nodes: {
+        dataset_version: string
+        manifest: components['schemas']['DatasetManifestV2']
+      }[]
+      root_dataset_version: string
+      truncated: boolean
+    }
+    DatasetManifestV2: {
+      artifact_digest: string
+      artifact_size_bytes: number
+      columns: ('record_id' | 'record_digest' | 'record_json')[]
+      dataset_version: string
+      /** @enum {string} */
+      hash_algorithm: 'blake3'
+      /** @enum {string} */
+      identity_profile: 'databench-v2-jcs-1'
+      /** @enum {string} */
+      layout_version: 'record-json-v1'
+      /** @enum {string} */
+      manifest_version: '2.0.0'
+      num_records: number
+      /** @enum {string} */
+      record_schema_version: '2.0.0'
+    }
+    DatasetViewV2: {
+      dataset_version: string
+      manifest: components['schemas']['DatasetManifestV2']
+      ref_name: string | null
+      requested_ref: string
+    }
+    DeterminismConflictDetailV2: {
+      attempted_dataset_committed: boolean
+      attempted_output_version: string
+      cache_key: string
+      existing_output_version: string
+    }
+    DeterminismConflictErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'determinism_conflict'
+        detail: components['schemas']['DeterminismConflictDetailV2']
+        message: string
+      }
+    }
+    /** @enum {string} */
+    EligibilityReasonCodeV2:
+      | 'selected_candidate_missing'
+      | 'adjudicated_directional_preference_missing'
+      | 'verification_missing'
     ErrorResponse: {
       error: {
         code: string
         detail?: unknown
+        message: string
+      }
+    }
+    ErrorResponse409V2:
+      | components['schemas']['IdentityConflictErrorResponseV2']
+      | components['schemas']['DeterminismConflictErrorResponseV2']
+      | components['schemas']['LayoutConflictErrorResponseV2']
+      | components['schemas']['RefConflictErrorResponseV2']
+    ErrorResponse422V2:
+      | components['schemas']['ValidationErrorResponseV2']
+      | components['schemas']['UnsupportedProfileErrorResponseV2']
+      | components['schemas']['FidelityErrorResponseV2']
+    ErrorResponse500V2:
+      | components['schemas']['IntegrityErrorResponseV2']
+      | components['schemas']['InternalErrorResponseV2']
+    ErrorResponse503V2:
+      | components['schemas']['CapacityExceededErrorResponseV2']
+      | components['schemas']['ServiceUnavailableErrorResponseV2']
+    ExportPlanV2: {
+      config_hints: {
+        [key: string]: unknown
+      }
+      converter: components['schemas']['ConverterNameV2']
+      converter_version: string
+      dataset_version: string
+      /** @enum {string} */
+      export_fidelity_profile: 'databench-export-fidelity-1'
+      fidelity: components['schemas']['FidelityV2']
+      fidelity_digest: string
+      media_type: string
+      normalized_options: {
+        [key: string]: unknown
+      }
+      output_count: number
+      suggested_filename: string
+    }
+    ExportRequestV2: {
+      accepted_fidelity_digest: string | null
+      converter: components['schemas']['ConverterNameV2']
+      options: {
+        [key: string]: unknown
+      }
+    }
+    FidelityChangeV2: {
+      /** @enum {string} */
+      action: 'transformed' | 'dropped'
+      /** @enum {string} */
+      impact: 'none' | 'informational' | 'semantic'
+      path: string
+      reason: string
+    }
+    FidelityErrorDetailV2: {
+      plan: components['schemas']['ExportPlanV2']
+      /** @enum {string} */
+      reason: 'semantic_loss_requires_approval' | 'fidelity_digest_mismatch'
+    }
+    FidelityErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'fidelity_error'
+        detail: components['schemas']['FidelityErrorDetailV2']
+        message: string
+      }
+    }
+    FidelityV2: {
+      changes: components['schemas']['FidelityChangeV2'][]
+      preserved: string[]
+    }
+    ForbiddenDetailV2: {
+      /** @enum {string} */
+      reason: 'workspace_access_denied'
+    }
+    ForbiddenErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'forbidden'
+        detail: components['schemas']['ForbiddenDetailV2']
         message: string
       }
     }
@@ -999,10 +1424,92 @@ export interface components {
       version: string
       workspace_root: string
     }
+    IdentityConflictDetailV2: {
+      /** @enum {string} */
+      reason: 'claim_request_mismatch' | 'claim_identity_mismatch'
+    }
+    IdentityConflictErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'identity_conflict'
+        detail: components['schemas']['IdentityConflictDetailV2']
+        message: string
+      }
+    }
+    IngestCanonicalV2Form: {
+      expected_ref_version?: string
+      /** Format: binary */
+      file: string
+      message?: string
+      ref?: string
+    }
+    IngestConflictErrorResponseV2:
+      | components['schemas']['IdentityConflictErrorResponseV2']
+      | components['schemas']['LayoutConflictErrorResponseV2']
+      | components['schemas']['RefConflictErrorResponseV2']
+    IngestResultV2: {
+      dataset_version: string
+      manifest: components['schemas']['DatasetManifestV2']
+      ref_update:
+        | {
+            /** @enum {string} */
+            status: 'not_requested'
+          }
+        | {
+            current_version: string
+            previous_version: string | null
+            ref_name: string
+            /** @enum {string} */
+            status: 'updated'
+          }
+    }
     IngestSamplesRequest: {
       message?: string | null
       name?: string | null
       samples: components['schemas']['Sample'][]
+    }
+    InspectExportRequestV2: {
+      converter: components['schemas']['ConverterNameV2']
+      options: {
+        [key: string]: unknown
+      }
+    }
+    IntegrityErrorDetailV2: {
+      dataset_version?: string
+      layout_version?: string
+      reason: string
+    }
+    IntegrityErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'integrity_error'
+        detail: components['schemas']['IntegrityErrorDetailV2']
+        message: string
+      }
+    }
+    InternalErrorDetailV2: {
+      /** @enum {string} */
+      reason: 'unexpected_error'
+    }
+    InternalErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'internal_error'
+        detail: components['schemas']['InternalErrorDetailV2']
+        message: string
+      }
+    }
+    LayoutConflictDetailV2: {
+      /** @enum {string} */
+      reason: 'layout_conflict'
+    }
+    LayoutConflictErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'layout_conflict'
+        detail: components['schemas']['LayoutConflictDetailV2']
+        message: string
+      }
     }
     LineageNode: {
       /** @enum {boolean} */
@@ -1060,15 +1567,466 @@ export interface components {
       }
       ref?: string | null
     }
+    NotFoundDetailV2: {
+      /** @enum {string} */
+      kind: 'route' | 'ref' | 'dataset' | 'record' | 'converter' | 'transform'
+      value: string
+    }
+    NotFoundErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'not_found'
+        detail: components['schemas']['NotFoundDetailV2']
+        message: string
+      }
+    }
+    PostTrainingRecordV2: {
+      candidates: {
+        avg_logprobs: number | null
+        contents: {
+          loss_weight: number | null
+          parts: (
+            | {
+                part_metadata: {
+                  [key: string]: unknown
+                }
+                text: string
+                thought: boolean
+                thought_signature: string | null
+                /** @enum {string} */
+                type: 'text'
+              }
+            | {
+                function_call: {
+                  args: {
+                    [key: string]: unknown
+                  }
+                  id: string
+                  name: string
+                }
+                part_metadata: {
+                  [key: string]: unknown
+                }
+                thought: boolean
+                thought_signature: string | null
+                /** @enum {string} */
+                type: 'function_call'
+              }
+            | {
+                function_response: {
+                  call_id: string
+                  response:
+                    | (
+                        | ({
+                            [key: string]: unknown
+                          } | null)
+                        | unknown[]
+                        | string
+                        | number
+                        | boolean
+                      )
+                    | null
+                }
+                part_metadata: {
+                  [key: string]: unknown
+                }
+                thought: boolean
+                thought_signature: string | null
+                /** @enum {string} */
+                type: 'function_response'
+              }
+            | {
+                file_data: {
+                  digest: {
+                    /** @enum {string} */
+                    algorithm: 'blake3'
+                    value: string
+                  }
+                  media_type: string
+                  size_bytes: number
+                  uri: string
+                }
+                part_metadata: {
+                  [key: string]: unknown
+                }
+                thought: boolean
+                thought_signature: string | null
+                /** @enum {string} */
+                type: 'file_data'
+              }
+          )[]
+          /** @enum {string} */
+          role: 'user' | 'ai'
+        }[]
+        finish_reason: string | null
+        generator: {
+          model: string
+          parameters: {
+            [key: string]: unknown
+          }
+          provider: string | null
+          revision: string | null
+        } | null
+        id: string
+        rank: number | null
+        selected: boolean | null
+        signals: {
+          created_at: string | null
+          id: string
+          /** @enum {string} */
+          kind: 'rating' | 'reward' | 'verdict' | 'safety' | 'logprob' | 'other'
+          name: string
+          rationale: string | null
+          source: {
+            id: string
+            /** @enum {string} */
+            type: 'human' | 'ai' | 'verifier' | 'heuristic' | 'imported'
+            version: string | null
+          }
+          supersedes: string | null
+          value:
+            | {
+                higher_is_better: boolean | null
+                scale_max: number | null
+                scale_min: number | null
+                /** @enum {string} */
+                type: 'number'
+                value: number
+              }
+            | {
+                /** @enum {string} */
+                type: 'boolean'
+                value: boolean
+              }
+            | {
+                /** @enum {string} */
+                type: 'category'
+                value: string
+              }
+            | {
+                /** @enum {string} */
+                type: 'json'
+                value:
+                  | (
+                      | ({
+                          [key: string]: unknown
+                        } | null)
+                      | unknown[]
+                      | string
+                      | number
+                      | boolean
+                    )
+                  | null
+              }
+        }[]
+        token_count: number | null
+      }[]
+      contents: {
+        loss_weight: number | null
+        parts: (
+          | {
+              part_metadata: {
+                [key: string]: unknown
+              }
+              text: string
+              thought: boolean
+              thought_signature: string | null
+              /** @enum {string} */
+              type: 'text'
+            }
+          | {
+              function_call: {
+                args: {
+                  [key: string]: unknown
+                }
+                id: string
+                name: string
+              }
+              part_metadata: {
+                [key: string]: unknown
+              }
+              thought: boolean
+              thought_signature: string | null
+              /** @enum {string} */
+              type: 'function_call'
+            }
+          | {
+              function_response: {
+                call_id: string
+                response:
+                  | (
+                      | ({
+                          [key: string]: unknown
+                        } | null)
+                      | unknown[]
+                      | string
+                      | number
+                      | boolean
+                    )
+                  | null
+              }
+              part_metadata: {
+                [key: string]: unknown
+              }
+              thought: boolean
+              thought_signature: string | null
+              /** @enum {string} */
+              type: 'function_response'
+            }
+          | {
+              file_data: {
+                digest: {
+                  /** @enum {string} */
+                  algorithm: 'blake3'
+                  value: string
+                }
+                media_type: string
+                size_bytes: number
+                uri: string
+              }
+              part_metadata: {
+                [key: string]: unknown
+              }
+              thought: boolean
+              thought_signature: string | null
+              /** @enum {string} */
+              type: 'file_data'
+            }
+        )[]
+        /** @enum {string} */
+        role: 'user' | 'ai'
+      }[]
+      extra: {
+        [key: string]: unknown
+      }
+      id: string
+      lang: string | null
+      lineage: {
+        parent_refs: {
+          id: string
+          record_digest: string
+        }[]
+        recipe: string | null
+        recipe_revision: string | null
+        run_id: string | null
+        steps: {
+          name: string
+          params: {
+            [key: string]: unknown
+          }
+          version: string
+        }[]
+      } | null
+      preference_relations: {
+        created_at: string | null
+        criterion: string | null
+        id: string
+        left_candidate_id: string
+        /** @enum {string} */
+        outcome: 'left' | 'right' | 'tie' | 'abstain'
+        rationale: string | null
+        right_candidate_id: string
+        source: {
+          id: string
+          /** @enum {string} */
+          type: 'human' | 'ai' | 'verifier' | 'heuristic' | 'imported'
+          version: string | null
+        }
+        /** @enum {string} */
+        status: 'observation' | 'adjudicated'
+        supersedes: string | null
+      }[]
+      /** @enum {string} */
+      schema_version: '2.0.0'
+      source: {
+        kind: string
+        license: string | null
+        name: string
+        original_id: string | null
+        url: string | null
+      } | null
+      system_instruction: string | null
+      tags: string[]
+      tools: {
+        description: string | null
+        input_schema: {
+          [key: string]: unknown
+        }
+        name: string
+      }[]
+      verification: {
+        config: {
+          [key: string]: unknown
+        }
+        constraint:
+          | (
+              | ({
+                  [key: string]: unknown
+                } | null)
+              | unknown[]
+              | string
+              | number
+              | boolean
+            )
+          | null
+        ground_truth:
+          | (
+              | ({
+                  [key: string]: unknown
+                } | null)
+              | unknown[]
+              | string
+              | number
+              | boolean
+            )
+          | null
+        verifier: string
+        verifier_version: string
+      } | null
+    }
+    PostTrainingV2Capability: {
+      api_versions: '2'[]
+      converters: components['schemas']['ConverterNameV2'][]
+      enabled: boolean
+      export_fidelity_profiles: 'databench-export-fidelity-1'[]
+      identity_profiles: 'databench-v2-jcs-1'[]
+      layout_versions: 'record-json-v1'[]
+      limits: components['schemas']['PostTrainingV2Limits']
+      record_schema_versions: '2.0.0'[]
+    }
+    PostTrainingV2Limits: {
+      max_canonical_bytes: number
+      max_concurrent_transforms: number
+      max_json_schema_bytes: number
+      max_json_schema_nodes: number
+      max_lineage_depth: number
+      max_lineage_nodes: number
+      max_nesting_depth: number
+      max_record_bytes: number
+      max_request_bytes: number
+      max_snapshot_records: number
+      max_transform_inputs: number
+      max_transform_working_set_bytes: number
+    }
+    PutRefRequestV2: {
+      expected_version: string | null
+      message: string | null
+      new_version: string
+    }
+    RecordEligibilityV2: {
+      dpo: components['schemas']['TaskEligibilityV2']
+      rlvr_grpo: components['schemas']['TaskEligibilityV2']
+      sft: components['schemas']['TaskEligibilityV2']
+    }
+    RecordPageV2: {
+      dataset_version: string
+      items: components['schemas']['RecordSummaryV2'][]
+      limit: number
+      offset: number
+      total: number
+    }
+    RecordSummaryV2: {
+      candidate_count: number
+      eligibility: components['schemas']['RecordEligibilityV2']
+      lang: string | null
+      preview: string | null
+      record_digest: string
+      record_id: string
+      selected_count: number
+      signal_count: number
+    }
+    RecordViewV2: {
+      dataset_version: string
+      eligibility: components['schemas']['RecordEligibilityV2']
+      record: components['schemas']['PostTrainingRecordV2']
+      record_digest: string
+    }
+    RefConflictDetailV2: {
+      current_version: string | null
+      expected_version: string | null
+      new_dataset_committed: boolean
+      new_version: string
+      ref_name: string
+    }
+    RefConflictErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'ref_conflict'
+        detail: components['schemas']['RefConflictDetailV2']
+        message: string
+      }
+    }
     RefInfo: {
       name: string
       version: string
+    }
+    RefMetadataV2: {
+      message: string | null
+      name: string
+      updated_at: string
+      version: string
+    }
+    RefPageV2: {
+      items: components['schemas']['RefMetadataV2'][]
+      next_cursor: string | null
     }
     RefsPage: {
       items: components['schemas']['RefInfo'][]
       limit: number
       offset: number
       total: number
+    }
+    ResourceLimitDetailV2: {
+      actual: number | string
+      issues?: components['schemas']['ValidationIssueV2'][]
+      limit: number
+      resource: string
+    }
+    ResourceLimitErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'resource_limit'
+        detail: components['schemas']['ResourceLimitDetailV2']
+        message: string
+      }
+    }
+    RunMetadataV2: {
+      cache_key: string
+      created_at: string
+      input_dataset_versions: string[]
+      normalized_params: {
+        [key: string]: unknown
+      }
+      op: string
+      op_version: string
+      output_dataset_version: string
+      run_id: string
+    }
+    RunTransformRequestV2: {
+      expected_ref_version: string | null
+      inputs: string[]
+      message: string | null
+      params: {
+        [key: string]: unknown
+      }
+      ref: string | null
+    }
+    RunTransformResultV2: {
+      cache_hit: boolean
+      manifest: components['schemas']['DatasetManifestV2']
+      ref_update:
+        | {
+            /** @enum {string} */
+            status: 'not_requested'
+          }
+        | {
+            current_version: string
+            previous_version: string | null
+            ref_name: string
+            /** @enum {string} */
+            status: 'updated'
+          }
+      run: components['schemas']['RunMetadataV2']
     }
     Sample:
       | {
@@ -1329,6 +2287,25 @@ export interface components {
       offset: number
       total: number
     }
+    ServiceUnavailableDetailV2: {
+      /** @enum {string} */
+      dependency: 'postgres' | 'object_store' | 'unknown'
+      /** @enum {boolean} */
+      retryable: true
+    }
+    ServiceUnavailableErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'service_unavailable'
+        detail: components['schemas']['ServiceUnavailableDetailV2']
+        message: string
+      }
+    }
+    TaskEligibilityV2: {
+      eligible: boolean
+      output_count: number
+      reason_codes: components['schemas']['EligibilityReasonCodeV2'][]
+    }
     Term: {
       /** @default [] */
       aliases: string[]
@@ -1338,6 +2315,26 @@ export interface components {
         [key: string]: unknown
       }
     }
+    TooManyRequestsDetailV2: {
+      retry_after_seconds: number | null
+    }
+    TooManyRequestsErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'too_many_requests'
+        detail: components['schemas']['TooManyRequestsDetailV2']
+        message: string
+      }
+    }
+    TransformDescriptorV2: {
+      /** @enum {string} */
+      identity_mode: 'preserve' | 'derive'
+      name: string
+      params_schema: {
+        [key: string]: unknown
+      }
+      version: string
+    }
     TransformInfo: {
       name: string
       /** @default null */
@@ -1345,6 +2342,10 @@ export interface components {
         [key: string]: unknown
       } | null
       version: string
+    }
+    TransformRegistryPageV2: {
+      items: components['schemas']['TransformDescriptorV2'][]
+      total: number
     }
     TransformRunRequest: {
       inputs: string[]
@@ -1361,6 +2362,32 @@ export interface components {
       offset: number
       total: number
     }
+    UnauthorizedDetailV2: {
+      /** @enum {string} */
+      reason: 'credentials_missing' | 'credentials_invalid'
+    }
+    UnauthorizedErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'unauthorized'
+        detail: components['schemas']['UnauthorizedDetailV2']
+        message: string
+      }
+    }
+    UnsupportedProfileDetailV2: {
+      /** @enum {string} */
+      kind: 'identity' | 'record_schema' | 'layout' | 'export_fidelity'
+      supported: string[]
+      value: string
+    }
+    UnsupportedProfileErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'unsupported_profile'
+        detail: components['schemas']['UnsupportedProfileDetailV2']
+        message: string
+      }
+    }
     ValidateResponse: {
       dataset: components['schemas']['Manifest']
       summary: components['schemas']['ValidateSummary']
@@ -1373,6 +2400,26 @@ export interface components {
         [key: string]: number
       }
     }
+    ValidationErrorDetailV2: {
+      issues: components['schemas']['ValidationIssueV2'][]
+    }
+    ValidationErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'validation_error'
+        detail: components['schemas']['ValidationErrorDetailV2']
+        message: string
+      }
+    }
+    ValidationIssueV2: {
+      code: string
+      line: number | null
+      message: string
+      path: string
+    }
+    ValidationOrUnsupportedProfileErrorResponseV2:
+      | components['schemas']['ValidationErrorResponseV2']
+      | components['schemas']['UnsupportedProfileErrorResponseV2']
     VersionInfo: {
       /** @default v1 */
       api_version: string
@@ -1443,4 +2490,1749 @@ export interface components {
   pathItems: never
 }
 export type $defs = Record<string, never>
-export type operations = Record<string, never>
+export interface operations {
+  listConvertersV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Complete V2 converter registry */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ConverterRegistryPageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+    }
+  }
+  getConverterV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        name: components['schemas']['ConverterRegistryNameV2']
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description V2 converter descriptor */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ConverterDescriptorV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Registry entry was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Invalid registry name */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+    }
+  }
+  ingestCanonicalDatasetV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['IngestCanonicalV2Form']
+      }
+    }
+    responses: {
+      /** @description Committed canonical V2 dataset */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['IngestResultV2']
+        }
+      }
+      /** @description Malformed multipart request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Identity, layout, or Ref conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['IngestConflictErrorResponseV2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid canonical record or unsupported profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  exportDatasetV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        dataset_version: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ExportRequestV2']
+      }
+    }
+    responses: {
+      /** @description Exact-version deterministic V2 export stream */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'Content-Disposition': string
+          'Content-Length'?: string
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/x-ndjson': string
+        }
+      }
+      /** @description Malformed export request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Exact V2 dataset was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid request, unsupported profile, or fidelity approval mismatch */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse422V2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  describeDatasetV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        ref_or_version: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Exact V2 dataset view */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['DatasetViewV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset or record was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Invalid identifier, page request, or stored profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  auditDatasetV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        ref_or_version: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Full V2 layout integrity audit */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AuditResultV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset or record was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid identifier, page request, or stored profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  inspectDatasetExportV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        ref_or_version: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['InspectExportRequestV2']
+      }
+    }
+    responses: {
+      /** @description Deterministic V2 export fidelity plan */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExportPlanV2']
+        }
+      }
+      /** @description Malformed export inspection request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid export request or unsupported profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  listDatasetRecordsV2: {
+    parameters: {
+      query?: {
+        offset?: number | null
+        limit?: number
+      }
+      header?: never
+      path: {
+        ref_or_version: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Exact-version V2 record summaries */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RecordPageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset or record was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid identifier, page request, or stored profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  getDatasetRecordV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        ref_or_version: string
+        record_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Complete canonical V2 record view */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RecordViewV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset or record was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid identifier, page request, or stored profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  getLineageV2: {
+    parameters: {
+      query?: {
+        max_depth?: number | null
+        max_nodes?: number
+        cursor?: string | null
+      }
+      header?: never
+      path: {
+        ref_or_version: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Bounded exact V2 dataset lineage page */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['DatasetLineageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Lineage root dataset was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Invalid lineage request or unsupported stored profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  listRefsV2: {
+    parameters: {
+      query?: {
+        cursor?: string | null
+        limit?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Cursor-paginated V2 refs */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RefPageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Invalid Ref page request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  getRefV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description V2 ref metadata */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RefMetadataV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 Ref was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Invalid Ref name */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  putRefV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PutRefRequestV2']
+      }
+    }
+    responses: {
+      /** @description Updated V2 ref metadata */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RefMetadataV2']
+        }
+      }
+      /** @description Malformed Ref update request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Target V2 dataset was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Ref compare-and-set conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RefConflictErrorResponseV2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid Ref update request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  listTransformsV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Complete V2 transform registry */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransformRegistryPageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+    }
+  }
+  runTransformV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RunTransformRequestV2']
+      }
+    }
+    responses: {
+      /** @description Committed deterministic V2 transform output */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RunTransformResultV2']
+        }
+      }
+      /** @description Malformed transform request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Transform or input dataset was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Determinism, identity, layout, or Ref conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid transform request or unsupported profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+}

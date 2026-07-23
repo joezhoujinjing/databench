@@ -1,4 +1,23 @@
-import { classifyError, DomainError, type ErrorClass, ErrorResponseSchema } from '@databench/schema'
+import {
+  BadRequestDetailV2Schema,
+  CapacityExceededDetailV2Schema,
+  classifyError,
+  DeterminismConflictDetailV2Schema,
+  DomainError,
+  type ErrorClass,
+  ErrorResponseSchema,
+  ErrorResponseV2Schema,
+  FidelityErrorDetailV2Schema,
+  IdentityConflictDetailV2Schema,
+  IntegrityErrorDetailV2Schema,
+  LayoutConflictDetailV2Schema,
+  NotFoundDetailV2Schema,
+  RefConflictDetailV2Schema,
+  ResourceLimitDetailV2Schema,
+  ServiceUnavailableDetailV2Schema,
+  UnsupportedProfileDetailV2Schema,
+  ValidationErrorDetailV2Schema,
+} from '@databench/schema'
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
@@ -9,14 +28,18 @@ type ErrorCode =
   | 'bad_request'
   | 'capacity_exceeded'
   | 'conflict'
+  | 'determinism_conflict'
   | 'error'
+  | 'fidelity_error'
   | 'forbidden'
+  | 'identity_conflict'
   | 'integrity_error'
   | 'internal_error'
   | 'layout_conflict'
   | 'method_not_allowed'
   | 'not_found'
   | 'resource_limit'
+  | 'ref_conflict'
   | 'service_unavailable'
   | 'too_many_requests'
   | 'unauthorized'
@@ -99,10 +122,16 @@ export const errorHandler: ErrorHandler<ApiEnv> = (error, context) => {
     return validationErrorResponse(context, 'payload validation failed', error)
   }
 
-  const errorClass = classifyError(error)
-  const status = STATUS_FOR[errorClass]
-
   if (error instanceof DomainError) {
+    const errorClass = classifyError(error)
+    const status = STATUS_FOR[errorClass]
+    if (isV2Request(context) && error.code === 'conflict') {
+      return errorResponse(context, {
+        status: STATUS_CODES.internalError,
+        code: 'internal_error',
+        message: 'internal server error',
+      })
+    }
     return errorResponse(context, {
       status,
       code: error.code as ErrorCode,
@@ -110,6 +139,21 @@ export const errorHandler: ErrorHandler<ApiEnv> = (error, context) => {
       detail: error.detail,
     })
   }
+
+  // V2 only exposes explicitly typed domain/HTTP/Zod failures. Legacy
+  // classifyError intentionally treats some plain Error/TypeError messages as
+  // bad input for v1 parity; applying that heuristic here could leak SDK,
+  // absolute-path, or configuration details from an untyped V2 failure.
+  if (isV2Request(context)) {
+    return errorResponse(context, {
+      status: STATUS_CODES.internalError,
+      code: 'internal_error',
+      message: 'internal server error',
+    })
+  }
+
+  const errorClass = classifyError(error)
+  const status = STATUS_FOR[errorClass]
 
   if (errorClass === 'internal_error') {
     // Don't leak internal failure messages over HTTP.
@@ -136,18 +180,20 @@ export function validationErrorResponse(
     status: STATUS_CODES.unprocessableEntity,
     code: 'validation_error',
     message,
-    detail: error.issues,
+    detail: isV2Request(context) ? { issues: zodIssues(error) } : error.issues,
   })
 }
 
 export function errorResponse(context: Context<ApiEnv>, options: ErrorEnvelopeOptions): Response {
-  const response = ErrorResponseSchema.parse({
-    error: {
-      code: options.code,
-      message: options.message,
-      ...(options.detail !== undefined ? { detail: options.detail } : {}),
-    },
-  })
+  const response = isV2Request(context)
+    ? ErrorResponseV2Schema.parse({ error: normalizeV2Error(context, options) })
+    : ErrorResponseSchema.parse({
+        error: {
+          code: options.code,
+          message: options.message,
+          ...(options.detail !== undefined ? { detail: options.detail } : {}),
+        },
+      })
 
   return context.json(response, options.status)
 }
@@ -158,4 +204,364 @@ function httpExceptionResponse(error: HTTPException, context: Context<ApiEnv>): 
     code: HTTP_STATUS_CODE[error.status] ?? 'error',
     message: error.message,
   })
+}
+
+function isV2Request(context: Context<ApiEnv>): boolean {
+  return new URL(context.req.url).pathname.startsWith('/v2/')
+}
+
+function normalizeV2Error(
+  context: Context<ApiEnv>,
+  options: ErrorEnvelopeOptions,
+): {
+  readonly code: string
+  readonly message: string
+  readonly detail: unknown
+} {
+  const message = boundedMessage(options.message)
+  const detail = options.detail
+  switch (options.code) {
+    case 'bad_request':
+      return {
+        code: 'bad_request',
+        message,
+        detail: normalizeIssuesDetail(BadRequestDetailV2Schema, detail, message, 'bad_request'),
+      }
+    case 'validation_error':
+    case 'unprocessable_entity':
+      return {
+        code: 'validation_error',
+        message,
+        detail: normalizeIssuesDetail(
+          ValidationErrorDetailV2Schema,
+          detail,
+          message,
+          'validation_error',
+        ),
+      }
+    case 'resource_limit':
+      return {
+        code: 'resource_limit',
+        message,
+        detail: normalizeResourceLimit(detail, message),
+      }
+    case 'capacity_exceeded':
+      return {
+        code: 'capacity_exceeded',
+        message,
+        detail: normalizeCapacityExceeded(detail),
+      }
+    case 'not_found':
+      return {
+        code: 'not_found',
+        message,
+        detail: normalizeNotFound(context, detail),
+      }
+    case 'identity_conflict':
+      return {
+        code: 'identity_conflict',
+        message,
+        detail: IdentityConflictDetailV2Schema.safeParse(detail).data ?? {
+          reason: 'claim_request_mismatch',
+        },
+      }
+    case 'determinism_conflict':
+      return {
+        code: 'determinism_conflict',
+        message,
+        detail: DeterminismConflictDetailV2Schema.parse(detail),
+      }
+    case 'layout_conflict':
+      return {
+        code: 'layout_conflict',
+        message,
+        detail: LayoutConflictDetailV2Schema.safeParse(detail).data ?? {
+          reason: 'layout_conflict',
+        },
+      }
+    case 'ref_conflict':
+      return {
+        code: 'ref_conflict',
+        message,
+        detail: RefConflictDetailV2Schema.parse(detail),
+      }
+    case 'unsupported_profile':
+      return {
+        code: 'unsupported_profile',
+        message,
+        detail: normalizeUnsupportedProfile(detail),
+      }
+    case 'fidelity_error':
+      return {
+        code: 'fidelity_error',
+        message,
+        detail: FidelityErrorDetailV2Schema.parse(detail),
+      }
+    case 'integrity_error':
+      return {
+        code: 'integrity_error',
+        message,
+        detail: normalizeIntegrity(detail),
+      }
+    case 'unauthorized':
+      return {
+        code: 'unauthorized',
+        message,
+        detail: {
+          reason: message.toLowerCase().includes('missing')
+            ? 'credentials_missing'
+            : 'credentials_invalid',
+        },
+      }
+    case 'forbidden':
+      return {
+        code: 'forbidden',
+        message,
+        detail: { reason: 'workspace_access_denied' },
+      }
+    case 'too_many_requests':
+      return {
+        code: 'too_many_requests',
+        message,
+        detail: { retry_after_seconds: null },
+      }
+    case 'service_unavailable':
+      return {
+        code: 'service_unavailable',
+        message,
+        detail: normalizeServiceUnavailable(detail),
+      }
+    case 'conflict':
+    case 'error':
+    case 'internal_error':
+    case 'method_not_allowed':
+      return {
+        code: 'internal_error',
+        message: 'internal server error',
+        detail: { reason: 'unexpected_error' },
+      }
+  }
+}
+
+function normalizeIssuesDetail(
+  schema: typeof BadRequestDetailV2Schema | typeof ValidationErrorDetailV2Schema,
+  detail: unknown,
+  message: string,
+  fallbackCode: string,
+) {
+  const parsed = schema.safeParse(detail)
+  if (parsed.success) return parsed.data
+  const record = asRecord(detail)
+  const candidates = Array.isArray(record?.issues)
+    ? record.issues
+    : Array.isArray(detail)
+      ? detail
+      : []
+  const issues = candidates
+    .slice(0, 1_024)
+    .map((issue) => normalizeIssue(issue, message, fallbackCode))
+  const directReason = normalizeOptionalToken(record?.reason)
+  return schema.parse({
+    issues:
+      issues.length > 0
+        ? issues
+        : [
+            {
+              path: '',
+              line: null,
+              code: directReason ?? normalizeToken(fallbackCode),
+              message,
+            },
+          ],
+  })
+}
+
+function normalizeResourceLimit(detail: unknown, message: string) {
+  const parsed = ResourceLimitDetailV2Schema.safeParse(detail)
+  if (parsed.success) return parsed.data
+  const record = asRecord(detail)
+  const issues =
+    Array.isArray(record?.issues) && record.issues.length > 0
+      ? record.issues
+          .slice(0, 1_024)
+          .map((issue) => normalizeIssue(issue, message, 'resource_limit'))
+      : undefined
+  return ResourceLimitDetailV2Schema.parse({
+    resource: normalizeToken(record?.resource, 'unknown'),
+    limit: nonNegativeSafeInteger(record?.limit),
+    actual: quantity(record?.actual),
+    ...(issues === undefined ? {} : { issues }),
+  })
+}
+
+function normalizeCapacityExceeded(detail: unknown) {
+  const parsed = CapacityExceededDetailV2Schema.safeParse(detail)
+  if (parsed.success) return parsed.data
+  const record = asRecord(detail)
+  if (record?.required !== undefined || record?.available !== undefined) {
+    return CapacityExceededDetailV2Schema.parse({
+      resource: normalizeToken(record.resource, 'unknown'),
+      required: quantity(record.required),
+      available: quantity(record.available),
+    })
+  }
+  return CapacityExceededDetailV2Schema.parse({
+    resource: normalizeToken(record?.resource, 'unknown'),
+    limit: quantity(record?.limit),
+    actual: quantity(record?.actual),
+  })
+}
+
+function normalizeNotFound(context: Context<ApiEnv>, detail: unknown) {
+  const parsed = NotFoundDetailV2Schema.safeParse(detail)
+  if (parsed.success) return parsed.data
+  const record = asRecord(detail)
+  if (typeof record?.record_id === 'string') {
+    return { kind: 'record' as const, value: boundedValue(record.record_id) }
+  }
+  for (const [key, kind] of [
+    ['ref_name', 'ref'],
+    ['dataset_version', 'dataset'],
+    ['converter', 'converter'],
+    ['transform', 'transform'],
+  ] as const) {
+    const value = record?.[key]
+    if (typeof value === 'string') {
+      return { kind, value: boundedValue(value) }
+    }
+  }
+  return {
+    kind: 'route' as const,
+    value: boundedValue(new URL(context.req.url).pathname),
+  }
+}
+
+function normalizeUnsupportedProfile(detail: unknown) {
+  const parsed = UnsupportedProfileDetailV2Schema.safeParse(detail)
+  if (parsed.success) return parsed.data
+  const record = asRecord(detail)
+  return UnsupportedProfileDetailV2Schema.parse({
+    kind: isProfileKind(record?.kind) ? record.kind : 'identity',
+    value: boundedValue(typeof record?.value === 'string' ? record.value : 'unknown', 128),
+    supported: Array.isArray(record?.supported)
+      ? record.supported
+          .filter((value): value is string => typeof value === 'string')
+          .slice(0, 64)
+          .map((value) => boundedValue(value, 128))
+      : [],
+  })
+}
+
+function normalizeIntegrity(detail: unknown) {
+  const parsed = IntegrityErrorDetailV2Schema.safeParse(detail)
+  if (parsed.success) return parsed.data
+  const record = asRecord(detail)
+  const datasetVersion =
+    typeof record?.dataset_version === 'string' && /^[0-9a-f]{64}$/.test(record.dataset_version)
+      ? record.dataset_version
+      : undefined
+  const layoutVersion =
+    typeof record?.layout_version === 'string'
+      ? boundedValue(record.layout_version, 128)
+      : undefined
+  return IntegrityErrorDetailV2Schema.parse({
+    reason: normalizeToken(record?.reason, 'integrity_check_failed'),
+    ...(datasetVersion === undefined ? {} : { dataset_version: datasetVersion }),
+    ...(layoutVersion === undefined ? {} : { layout_version: layoutVersion }),
+  })
+}
+
+function normalizeServiceUnavailable(detail: unknown) {
+  const parsed = ServiceUnavailableDetailV2Schema.safeParse(detail)
+  if (parsed.success) return parsed.data
+  const record = asRecord(detail)
+  const dependency =
+    record?.provider === 's3' || record?.provider === 'oss'
+      ? 'object_store'
+      : record?.dependency === 'catalog'
+        ? 'postgres'
+        : record?.dependency === 'postgres' || record?.dependency === 'object_store'
+          ? record.dependency
+          : 'unknown'
+  return ServiceUnavailableDetailV2Schema.parse({ dependency, retryable: true })
+}
+
+function zodIssues(error: ZodError) {
+  return error.issues.slice(0, 1_024).map((issue) => ({
+    path: jsonPointer(issue.path),
+    line: null,
+    code: normalizeToken(issue.code),
+    message: boundedMessage(issue.message),
+  }))
+}
+
+function normalizeIssue(issue: unknown, fallbackMessage: string, fallbackCode: string) {
+  const record = asRecord(issue)
+  return {
+    path:
+      typeof record?.path === 'string'
+        ? boundedValue(record.path, 1_024)
+        : Array.isArray(record?.path)
+          ? jsonPointer(record.path)
+          : '',
+    line:
+      typeof record?.line === 'number' && Number.isSafeInteger(record.line) && record.line > 0
+        ? record.line
+        : null,
+    code: normalizeToken(record?.code, fallbackCode),
+    message: boundedMessage(typeof record?.message === 'string' ? record.message : fallbackMessage),
+  }
+}
+
+function jsonPointer(path: readonly unknown[]): string {
+  if (path.length === 0) return ''
+  return `/${path
+    .map((part) => String(part).replaceAll('~', '~0').replaceAll('/', '~1'))
+    .join('/')}`.slice(0, 1_024)
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function normalizeToken(value: unknown, fallback = 'unknown'): string {
+  if (typeof value === 'string' && /^[a-z][a-z0-9._-]{0,127}$/.test(value)) return value
+  return fallback
+}
+
+function normalizeOptionalToken(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[a-z][a-z0-9._-]{0,127}$/.test(value) ? value : undefined
+}
+
+function boundedMessage(value: string): string {
+  const bounded = value.slice(0, 2_048)
+  return bounded.length > 0 ? bounded : 'request failed'
+}
+
+function boundedValue(value: string, max = 512): string {
+  const bounded = value.slice(0, max)
+  return bounded.length > 0 ? bounded : 'unknown'
+}
+
+function nonNegativeSafeInteger(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
+}
+
+function quantity(value: unknown): number | string {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value
+  if (typeof value === 'string' && /^(?:0|[1-9][0-9]{0,63})$/.test(value)) return value
+  return 0
+}
+
+function isProfileKind(
+  value: unknown,
+): value is 'identity' | 'record_schema' | 'layout' | 'export_fidelity' {
+  return (
+    value === 'identity' ||
+    value === 'record_schema' ||
+    value === 'layout' ||
+    value === 'export_fidelity'
+  )
 }

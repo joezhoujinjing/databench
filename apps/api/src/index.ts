@@ -22,6 +22,7 @@ export function createAppFromConfig(config: ApiConfig) {
     ...(config.databaseUrl !== undefined ? { databaseUrl: config.databaseUrl } : {}),
     corsOrigins: config.corsOrigins,
     storeConfig: config.storeConfig,
+    v2CursorSecret: config.v2CursorSecret,
     version: config.version,
     workspaceRoot: config.workspaceRoot,
   })

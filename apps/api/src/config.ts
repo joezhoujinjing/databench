@@ -21,6 +21,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().optional(),
   DATABENCH_CORS_ORIGINS: z.string().default(''),
   DATABENCH_ROOT: z.string().default('./bench'),
+  DATABENCH_V2_CURSOR_SECRET: z.string().min(16),
   PORT: z.coerce.number().int().positive().default(8000),
 })
 
@@ -29,6 +30,7 @@ export interface ApiConfig {
   readonly databaseUrl?: string
   readonly port: number
   readonly storeConfig: NonNullable<WorkspaceOpenOptions['storeConfig']>
+  readonly v2CursorSecret: string
   readonly version: string
   readonly workspaceRoot: string
 }
@@ -42,6 +44,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       .filter(Boolean),
     port: parsed.PORT,
     storeConfig: storeConfigFromEnv(env),
+    v2CursorSecret: parsed.DATABENCH_V2_CURSOR_SECRET,
     version: readVersion(),
     workspaceRoot: parsed.DATABENCH_ROOT,
   }

@@ -1,0 +1,63 @@
+{
+  "fixture_version": 1,
+  "operations": [
+    "GET /v2/converters",
+    "GET /v2/converters/{name}",
+    "GET /v2/datasets/{ref_or_version}",
+    "GET /v2/datasets/{ref_or_version}/records",
+    "GET /v2/datasets/{ref_or_version}/records/{record_id}",
+    "GET /v2/lineage/{ref_or_version}",
+    "GET /v2/refs",
+    "GET /v2/refs/{name}",
+    "GET /v2/transforms",
+    "POST /v2/datasets/{dataset_version}:export",
+    "POST /v2/datasets/{ref_or_version}:audit",
+    "POST /v2/datasets/{ref_or_version}:inspect-export",
+    "POST /v2/datasets:ingest-jsonl",
+    "POST /v2/transforms/{name}/run",
+    "PUT /v2/refs/{name}"
+  ],
+  "success_components": [
+    "AuditResultV2",
+    "ConverterDescriptorV2",
+    "ConverterRegistryPageV2",
+    "DatasetLineageV2",
+    "DatasetViewV2",
+    "ExportPlanV2",
+    "IngestResultV2",
+    "PostTrainingV2Capability",
+    "RecordPageV2",
+    "RecordViewV2",
+    "RefMetadataV2",
+    "RefPageV2",
+    "RunTransformResultV2",
+    "TransformDescriptorV2",
+    "TransformRegistryPageV2"
+  ],
+  "typed_error_detail_components": [
+    "BadRequestDetailV2",
+    "CapacityExceededDetailV2",
+    "DeterminismConflictDetailV2",
+    "FidelityErrorDetailV2",
+    "ForbiddenDetailV2",
+    "IdentityConflictDetailV2",
+    "IntegrityErrorDetailV2",
+    "InternalErrorDetailV2",
+    "LayoutConflictDetailV2",
+    "NotFoundDetailV2",
+    "RefConflictDetailV2",
+    "ResourceLimitDetailV2",
+    "ServiceUnavailableDetailV2",
+    "TooManyRequestsDetailV2",
+    "UnauthorizedDetailV2",
+    "UnsupportedProfileDetailV2",
+    "ValidationErrorDetailV2"
+  ],
+  "binary_media_types": ["application/x-ndjson"],
+  "exposed_headers": ["Content-Disposition", "Content-Length", "Content-Type", "X-Request-ID"],
+  "private_response_headers": {
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "capability_enabled_before_v17": false
+}

@@ -1,11 +1,19 @@
 import { z } from 'zod'
 import { ConflictError } from '../errors.js'
 import { DigestHexSchema, Rfc3339UtcSchema } from './common.js'
-import { RefNameV2Schema, RefOrVersionV2Schema, RefUpdateResultV2Schema } from './contracts.js'
+import {
+  type DeterminismConflictDetailV2,
+  DeterminismConflictDetailV2Schema,
+  OpaqueCursorQueryV2Schema,
+  RefNameV2Schema,
+  RefOrVersionV2Schema,
+  RefUpdateResultV2Schema,
+} from './contracts.js'
 import { JsonObjectSchema } from './json-value.js'
 import { DatasetManifestV2Schema } from './manifest.js'
 
 export const V2_TRANSFORM_MAX_INPUTS = 16
+export const V2_TRANSFORM_REGISTRY_MAX_ITEMS = 128
 export const V2_LINEAGE_DEFAULT_MAX_DEPTH = 8
 export const V2_LINEAGE_MAX_DEPTH = 32
 export const V2_LINEAGE_DEFAULT_MAX_NODES = 100
@@ -32,6 +40,39 @@ export const TransformDescriptorV2Schema = z
   })
   .meta({ id: 'TransformDescriptorV2' })
 export type TransformDescriptorV2 = z.infer<typeof TransformDescriptorV2Schema>
+
+export const TransformRegistryPageV2Schema = z
+  .strictObject({
+    items: z.array(TransformDescriptorV2Schema).max(V2_TRANSFORM_REGISTRY_MAX_ITEMS),
+    total: z.number().int().safe().nonnegative().max(V2_TRANSFORM_REGISTRY_MAX_ITEMS),
+  })
+  .superRefine((page, context) => {
+    if (page.total !== page.items.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['total'],
+        message: 'registry total must equal the complete item count',
+      })
+    }
+    for (let index = 1; index < page.items.length; index += 1) {
+      const previous = page.items[index - 1]
+      const current = page.items[index]
+      if (previous && current && previous.name >= current.name) {
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'name'],
+          message: 'registry items must be strictly ASCII name sorted and unique',
+        })
+      }
+    }
+  })
+  .meta({ id: 'TransformRegistryPageV2' })
+export type TransformRegistryPageV2 = z.infer<typeof TransformRegistryPageV2Schema>
+
+export const TransformParamsV2Schema = z
+  .strictObject({ name: TransformNameV2Schema })
+  .meta({ id: 'TransformParamsV2' })
+export type TransformParamsV2 = z.infer<typeof TransformParamsV2Schema>
 
 export const RunTransformRequestV2Schema = z
   .strictObject({
@@ -102,16 +143,6 @@ export const RunTransformResultV2Schema = z
   .meta({ id: 'RunTransformResultV2' })
 export type RunTransformResultV2 = z.infer<typeof RunTransformResultV2Schema>
 
-export const DeterminismConflictDetailV2Schema = z
-  .strictObject({
-    cache_key: DigestHexSchema,
-    existing_output_version: DigestHexSchema,
-    attempted_output_version: DigestHexSchema,
-    attempted_dataset_committed: z.boolean(),
-  })
-  .meta({ id: 'DeterminismConflictDetailV2' })
-export type DeterminismConflictDetailV2 = z.infer<typeof DeterminismConflictDetailV2Schema>
-
 export class DeterminismConflictErrorV2 extends ConflictError {
   override readonly name = 'DeterminismConflictErrorV2'
   override readonly code = 'determinism_conflict'
@@ -122,23 +153,25 @@ export class DeterminismConflictErrorV2 extends ConflictError {
   }
 }
 
-export const LineagePageRequestV2Schema = z.strictObject({
-  max_depth: z
-    .number()
-    .int()
-    .safe()
-    .min(0)
-    .max(V2_LINEAGE_MAX_DEPTH)
-    .default(V2_LINEAGE_DEFAULT_MAX_DEPTH),
-  max_nodes: z
-    .number()
-    .int()
-    .safe()
-    .min(1)
-    .max(V2_LINEAGE_MAX_NODES)
-    .default(V2_LINEAGE_DEFAULT_MAX_NODES),
-  cursor: z.string().min(1).max(V2_LINEAGE_CURSOR_MAX_CHARS).nullable(),
-})
+export const LineagePageRequestV2Schema = z
+  .strictObject({
+    max_depth: z.coerce
+      .number()
+      .int()
+      .safe()
+      .min(0)
+      .max(V2_LINEAGE_MAX_DEPTH)
+      .default(V2_LINEAGE_DEFAULT_MAX_DEPTH),
+    max_nodes: z.coerce
+      .number()
+      .int()
+      .safe()
+      .min(1)
+      .max(V2_LINEAGE_MAX_NODES)
+      .default(V2_LINEAGE_DEFAULT_MAX_NODES),
+    cursor: OpaqueCursorQueryV2Schema,
+  })
+  .meta({ id: 'LineagePageRequestV2' })
 export type LineagePageRequestV2 = z.infer<typeof LineagePageRequestV2Schema>
 
 export const DatasetLineageNodeV2Schema = z

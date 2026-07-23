@@ -1,11 +1,41 @@
 import { Workspace } from '@databench/workspace'
 import { describe, expect, test } from 'vitest'
 import { createApp, createOpenApiDocument } from '../src/app.js'
-import { createAppFromConfig } from '../src/index.js'
+import { createAppFromConfig, loadConfig } from '../src/index.js'
+import { createTestApp } from './test-app.js'
 
 describe('api support', () => {
+  test('fails closed when the V2 cursor secret is missing at runtime', () => {
+    expect(() => createApp()).toThrow(
+      'createApp requires v2CursorSecret when a V2 Workspace is not injected',
+    )
+    expect(() => createApp({ v2CursorSecret: 'too-short-for-production' })).not.toThrow()
+    expect(() => createOpenApiDocument()).not.toThrow()
+  })
+
+  test('requires and loads the V2 cursor secret from the service environment', () => {
+    expect(() => loadConfig({ DATABENCH_OBJECT_STORE: 's3' })).toThrow()
+    expect(() =>
+      loadConfig({
+        DATABENCH_OBJECT_STORE: 's3',
+        DATABENCH_V2_CURSOR_SECRET: 'short',
+      }),
+    ).toThrow()
+
+    const config = loadConfig({
+      DATABENCH_CORS_ORIGINS: ' https://one.example,https://two.example ',
+      DATABENCH_OBJECT_STORE: 's3',
+      DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+      S3_BUCKET: 'v2-config-test',
+    })
+
+    expect(config.v2CursorSecret).toBe('databench-api-v2-config-secret')
+    expect(config.corsOrigins).toEqual(['https://one.example', 'https://two.example'])
+    expect(config.storeConfig).toMatchObject({ kind: 's3', bucket: 'v2-config-test' })
+  })
+
   test('meta routes expose Python-compatible health, version, and capabilities shapes', async () => {
-    const app = createApp({ version: '1.2.3', workspaceRoot: './bench-test' })
+    const app = createTestApp({ version: '1.2.3', workspaceRoot: './bench-test' })
 
     const health = await getJson<Record<string, unknown>>(app.fetch(request('/health')))
     expect(health).toEqual({
@@ -35,14 +65,14 @@ describe('api support', () => {
   })
 
   test('does not register legacy unversioned domain routes', async () => {
-    const app = createApp()
+    const app = createTestApp()
 
     expect((await app.fetch(request('/datasets'))).status).toBe(404)
     expect((await app.fetch(request('/refs'))).status).toBe(404)
   })
 
   test('injects a shared workspace into versioned routes', async () => {
-    const app = createApp({ workspace: Workspace.open({ root: './bench-test' }) })
+    const app = createTestApp({ workspace: Workspace.open({ root: './bench-test' }) })
 
     app.get('/v1/_test-workspace', (context) =>
       context.json({
@@ -58,7 +88,7 @@ describe('api support', () => {
   })
 
   test('cors allows local dev and sets PNA only when requested', async () => {
-    const app = createApp()
+    const app = createTestApp()
     const response = await app.fetch(
       request('/health', {
         method: 'OPTIONS',
@@ -88,7 +118,7 @@ describe('api support', () => {
   })
 
   test('cors configured origins are exact and reject lookalikes', async () => {
-    const app = createApp({ corsOrigins: ['https://databench.jinjing.me'] })
+    const app = createTestApp({ corsOrigins: ['https://databench.jinjing.me'] })
 
     const allowed = await app.fetch(
       request('/health', {
@@ -121,6 +151,7 @@ describe('api support', () => {
         bucket: 'databench-test',
         region: 'us-east-1',
       },
+      v2CursorSecret: 'databench-api-v2-test-cursor-secret',
       version: '9.9.9',
       workspaceRoot: './configured-root',
     })

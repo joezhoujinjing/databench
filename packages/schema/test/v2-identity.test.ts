@@ -75,6 +75,23 @@ describe('v2 identity requests and claims', () => {
     expect(first.claim_key_digest).toBe(changed.claim_key_digest)
     expect(first.request_digest).not.toBe(changed.request_digest)
     expect(() => compareExistingIdentityClaimV2(first, changed)).toThrow(IdentityConflictErrorV2)
+    try {
+      compareExistingIdentityClaimV2(first, changed)
+      throw new Error('Expected the changed request to conflict')
+    } catch (error) {
+      expect(error).toMatchObject({ detail: { reason: 'claim_request_mismatch' } })
+    }
+
+    const differentClaim = prepareIdentityClaimV2(
+      fixture.namespace,
+      buildRequests(record, fixture.seeds).source_root,
+    )
+    try {
+      compareExistingIdentityClaimV2(first, differentClaim)
+      throw new Error('Expected the different claim to conflict')
+    } catch (error) {
+      expect(error).toMatchObject({ detail: { reason: 'claim_identity_mismatch' } })
+    }
   })
 
   test('classifies invalid stored claims as integrity failures and invalid incoming claims as validation failures', () => {

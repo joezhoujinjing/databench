@@ -14,7 +14,16 @@ import { JsonObjectSchema } from './json-value.js'
 export const V2_FIDELITY_MAX_PRESERVED = 256
 export const V2_FIDELITY_MAX_CHANGES = 1_024
 
+export const V2_CONVERTER_NAMES = [
+  'canonical-jsonl',
+  'trl-sft',
+  'trl-dpo',
+  'trl-grpo-rlvr',
+  'ms-swift',
+] as const
+
 const CONVERTER_VERSION_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/
+const CONVERTER_REGISTRY_NAME_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/
 const FIDELITY_REASON_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/
 const IDENTITY_VALUE_IN_REASON_PATTERN = /(?:(?:rec|cand|sig|pref)_)?[0-9a-f]{64}/
 const JSON_POINTER_PATTERN = /^(?:\/(?:[^~/]|~[01])*)*$/
@@ -37,10 +46,14 @@ const SuggestedFilenameV2Schema = z
     }
   })
 
-export const ConverterNameV2Schema = z
-  .enum(['canonical-jsonl', 'trl-sft', 'trl-dpo', 'trl-grpo-rlvr', 'ms-swift'])
-  .meta({ id: 'ConverterNameV2' })
+export const ConverterNameV2Schema = z.enum(V2_CONVERTER_NAMES).meta({ id: 'ConverterNameV2' })
 export type ConverterNameV2 = z.infer<typeof ConverterNameV2Schema>
+
+export const ConverterRegistryNameV2Schema = z
+  .string()
+  .regex(CONVERTER_REGISTRY_NAME_PATTERN)
+  .meta({ id: 'ConverterRegistryNameV2' })
+export type ConverterRegistryNameV2 = z.infer<typeof ConverterRegistryNameV2Schema>
 
 export const ConverterTaskViewV2Schema = z.enum([
   'canonical',
@@ -115,6 +128,22 @@ export const ConverterDescriptorV2Schema = z
   })
   .meta({ id: 'ConverterDescriptorV2' })
 export type ConverterDescriptorV2 = z.infer<typeof ConverterDescriptorV2Schema>
+
+export const ConverterRegistryPageV2Schema = z
+  .strictObject({
+    items: z.array(ConverterDescriptorV2Schema).max(V2_CONVERTER_NAMES.length),
+    total: NonNegativeSafeIntegerSchema.max(V2_CONVERTER_NAMES.length),
+  })
+  .superRefine((page, context) => {
+    validateCompleteRegistryPageV2(page, context)
+  })
+  .meta({ id: 'ConverterRegistryPageV2' })
+export type ConverterRegistryPageV2 = z.infer<typeof ConverterRegistryPageV2Schema>
+
+export const ConverterParamsV2Schema = z
+  .strictObject({ name: ConverterRegistryNameV2Schema })
+  .meta({ id: 'ConverterParamsV2' })
+export type ConverterParamsV2 = z.infer<typeof ConverterParamsV2Schema>
 
 export const InspectExportRequestV2Schema = z
   .strictObject({
@@ -289,6 +318,30 @@ function compareFidelityChanges(left: FidelityChangeV2, right: FidelityChangeV2)
     if (result !== 0) return result
   }
   return 0
+}
+
+function validateCompleteRegistryPageV2(
+  page: { readonly items: readonly ConverterDescriptorV2[]; readonly total: number },
+  context: z.RefinementCtx,
+): void {
+  if (page.total !== page.items.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['total'],
+      message: 'registry total must equal the complete item count',
+    })
+  }
+  for (let index = 1; index < page.items.length; index += 1) {
+    const previous = page.items[index - 1]
+    const current = page.items[index]
+    if (previous && current && previous.name >= current.name) {
+      context.addIssue({
+        code: 'custom',
+        path: ['items', index, 'name'],
+        message: 'registry items must be strictly ASCII name sorted and unique',
+      })
+    }
+  }
 }
 
 function fidelityErrorMessage(reason: FidelityErrorReasonV2): string {

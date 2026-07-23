@@ -1,3 +1,4 @@
+import { parse as parsePath, resolve as resolvePath } from 'node:path'
 import {
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
@@ -10,6 +11,7 @@ import {
   type CompareAndSetRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
+  V2Catalog,
   V2CatalogDeterminismConflictError,
 } from '@databench/catalog'
 import {
@@ -26,6 +28,7 @@ import {
 } from '@databench/hashing'
 import {
   createDefaultV2ConverterRegistry,
+  DEFAULT_CANONICAL_JSONL_MAX_TRANSPORT_BYTES_V2,
   readCanonicalJsonlV2,
   type V2ConverterRegistry,
 } from '@databench/io'
@@ -45,16 +48,20 @@ import {
   type ConverterAnalysisV2,
   type ConverterDescriptorV2,
   ConverterDescriptorV2Schema,
+  type ConverterNameV2,
   ConverterNameV2Schema,
   type CursorPageRequestV2,
   CursorPageRequestV2Schema,
   createExportPlanV2,
+  createPostTrainingV2Capability,
   createRecordSummaryV2,
   type DatasetLayoutIdentityV2,
   type DatasetLineageV2,
   DatasetLineageV2Schema,
   type DatasetViewV2,
   DatasetViewV2Schema,
+  DEFAULT_RAW_JSON_LIMITS_V2,
+  DEFAULT_TOOL_SCHEMA_LIMITS_V2,
   DeterminismConflictErrorV2,
   DigestHexV2Schema,
   datasetLayoutIdentityV2FromManifest,
@@ -71,6 +78,8 @@ import {
   type LineagePageRequestV2,
   LineagePageRequestV2Schema,
   NotFoundError,
+  type PostTrainingV2Capability,
+  type PostTrainingV2Limits,
   type PutRefRequestV2,
   PutRefRequestV2Schema,
   RecordIdV2Schema,
@@ -96,11 +105,24 @@ import {
   TransformCacheIdentityV1Schema,
   type TransformDescriptorV2,
   TransformDescriptorV2Schema,
+  V2_LINEAGE_MAX_DEPTH,
   V2_LINEAGE_MAX_NODES,
   V2_RECORD_JSON_LAYOUT_VERSION,
   V2_TRANSFORM_MAX_INPUTS,
 } from '@databench/schema'
-import type { PreparedArtifactV2, V2OperationContext, V2Store } from '@databench/store'
+import {
+  type ConditionalObjectStoreV2,
+  FileBackedV2Store,
+  type OssConditionalClientV2,
+  OssConditionalObjectStoreV2,
+  type PreparedArtifactV2,
+  S3ConditionalObjectStoreV2,
+  type StoreConfig,
+  storeConfigFromEnv,
+  type V2OperationContext,
+  type V2Store,
+} from '@databench/store'
+import type { WorkspaceOpenOptions } from '../workspace.js'
 import {
   V2DatasetCache,
   type V2DatasetCacheKey,
@@ -127,6 +149,8 @@ const DEFAULT_V2_CACHE_ENTRIES = 2
 const DEFAULT_V2_TRANSFORM_WORKING_SET_MULTIPLIER = 4
 const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
 const claimedWorkspaceCaches = new WeakSet<V2DatasetCache>()
+const V2_WORKSPACE_TEMP_DIRECTORY = '.databench-v2-temp'
+const NO_ASYNC_OPTIONS_FAILURE = Symbol('no async V2 ingest options failure')
 
 export interface V2WorkspaceCatalog {
   getOrCreateNamespace(scope: 'default'): Promise<string>
@@ -159,6 +183,21 @@ export interface V2TransformLimits {
   readonly max_pending_runs: number
 }
 
+export interface V2JsonlLimits {
+  readonly max_request_bytes: number
+  readonly max_nesting_depth: number
+}
+
+export type V2WorkspaceRuntimeLimits = PostTrainingV2Limits
+export type PostTrainingV2RuntimeCapability = PostTrainingV2Capability
+
+export interface PostTrainingV2CapabilityOptions {
+  readonly datasetLimits?: V2DatasetLimits
+  readonly transformLimits?: Partial<V2TransformLimits>
+  readonly jsonlLimits?: Partial<V2JsonlLimits>
+  readonly converterRegistry?: V2ConverterRegistry
+}
+
 export interface V2WorkspaceOptions {
   readonly catalog: V2WorkspaceCatalog
   readonly store: V2Store
@@ -168,7 +207,16 @@ export interface V2WorkspaceOptions {
   readonly transformRegistry?: V2TransformRegistry
   readonly converterRegistry?: V2ConverterRegistry
   readonly transformLimits?: Partial<V2TransformLimits>
+  readonly jsonlLimits?: Partial<V2JsonlLimits>
   readonly onCleanupError?: (error: unknown, primaryError: unknown | null) => void
+}
+
+export interface V2WorkspaceOpenOptions
+  extends Pick<WorkspaceOpenOptions, 'root' | 'databaseUrl' | 'storeConfig'> {
+  readonly cursorSecret: Uint8Array | string
+  readonly datasetLimits?: V2DatasetLimits
+  readonly transformLimits?: Partial<V2TransformLimits>
+  readonly jsonlLimits?: Partial<V2JsonlLimits>
 }
 
 interface ResolvedLayoutV2 {
@@ -202,9 +250,51 @@ export class V2Workspace {
   readonly #transformRegistry: V2TransformRegistry
   readonly #converterRegistry: V2ConverterRegistry
   readonly #transformLimits: Readonly<V2TransformLimits>
+  readonly #jsonlLimits: Readonly<V2JsonlLimits>
+  readonly #runtimeCapability: Readonly<PostTrainingV2RuntimeCapability>
   readonly #transformSemaphore: V2TransformSemaphore
   readonly #onCleanupError: ((error: unknown, primaryError: unknown | null) => void) | undefined
   #namespacePromise: Promise<string> | undefined
+  #closeOwnedResources: (() => Promise<void>) | undefined
+  #closePromise: Promise<void> | undefined
+
+  static async open(optionsInput: V2WorkspaceOpenOptions): Promise<V2Workspace> {
+    const options = snapshotV2WorkspaceOpenOptions(optionsInput)
+    const catalog = new V2Catalog(
+      options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl },
+    )
+    try {
+      const objectStore = createConditionalObjectStoreV2(
+        options.storeConfig ?? storeConfigFromEnv(),
+      )
+      const store = new FileBackedV2Store({
+        objectStore,
+        tempRoot: v2WorkspaceTempRoot(options.root),
+        ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
+      })
+      const workspace = new V2Workspace({
+        catalog,
+        store,
+        cursorSecret: options.cursorSecret,
+        ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
+        ...(options.transformLimits === undefined
+          ? {}
+          : { transformLimits: options.transformLimits }),
+        ...(options.jsonlLimits === undefined ? {} : { jsonlLimits: options.jsonlLimits }),
+      })
+      workspace.#closeOwnedResources = async () => {
+        await catalog.close()
+      }
+      return workspace
+    } catch (error) {
+      try {
+        await catalog.close()
+      } catch (closeError) {
+        attachSuppressed(error, closeError)
+      }
+      throw error
+    }
+  }
 
   constructor(options: V2WorkspaceOptions) {
     if (!options || typeof options !== 'object') {
@@ -226,6 +316,7 @@ export class V2Workspace {
       options.transformLimits,
       this.#datasetLimits.max_canonical_bytes,
     )
+    this.#jsonlLimits = snapshotJsonlLimits(options.jsonlLimits)
     this.#transformSemaphore = new V2TransformSemaphore({
       maxConcurrentRuns: this.#transformLimits.max_concurrent_runs,
       maxPendingRuns: this.#transformLimits.max_pending_runs,
@@ -248,6 +339,21 @@ export class V2Workspace {
     claimedWorkspaceCaches.add(cache)
     this.#cache = cache
     this.#onCleanupError = options.onCleanupError
+    this.#runtimeCapability = postTrainingV2Capability({
+      datasetLimits: this.#datasetLimits,
+      jsonlLimits: this.#jsonlLimits,
+      transformLimits: this.#transformLimits,
+      converterRegistry: this.#converterRegistry,
+    })
+  }
+
+  async close(): Promise<void> {
+    this.#closePromise ??= this.#closeOwnedResources?.() ?? Promise.resolve()
+    return await this.#closePromise
+  }
+
+  postTrainingV2Capability(): Readonly<PostTrainingV2RuntimeCapability> {
+    return this.#runtimeCapability
   }
 
   async addRecords(
@@ -267,16 +373,48 @@ export class V2Workspace {
 
   async addJsonl(
     source: AsyncIterable<Uint8Array>,
-    optionsInput: AddRecordsV2Options,
+    optionsInput: AddRecordsV2Options | PromiseLike<AddRecordsV2Options>,
     context: V2WorkspaceOperationOptions = {},
   ): Promise<IngestResultV2> {
     context.signal?.throwIfAborted()
-    const options = AddRecordsV2OptionsSchema.parse(optionsInput)
+    const internalAbort = new AbortController()
+    const operationSignal =
+      context.signal === undefined
+        ? internalAbort.signal
+        : AbortSignal.any([context.signal, internalAbort.signal])
+    let optionsFailure: unknown = NO_ASYNC_OPTIONS_FAILURE
+    const optionsPromise = Promise.resolve(optionsInput)
+      .then((input) => AddRecordsV2OptionsSchema.parse(input))
+      .catch((error: unknown) => {
+        optionsFailure = error
+        internalAbort.abort(error)
+        throw error
+      })
+    // Observe an early rejection even while the JSONL reader is still between
+    // chunks. The same promise is awaited below once the file part is consumed.
+    void optionsPromise.catch(() => undefined)
     const records = readCanonicalJsonlV2(source, {
-      ...(context.signal === undefined ? {} : { signal: context.signal }),
+      limits: {
+        maxBytes: this.#datasetLimits.max_record_bytes,
+        maxDepth: this.#jsonlLimits.max_nesting_depth,
+      },
+      maxTransportBytes: this.#jsonlLimits.max_request_bytes,
+      signal: operationSignal,
     })
-    const dataset = await V2Dataset.fromAsyncRecords(records, this.#datasetLimits, context)
-    return await this.#publish(dataset, options, context.signal)
+    try {
+      // Multipart text fields may follow the file part. Start consuming the
+      // file before awaiting their Promise so field order cannot deadlock.
+      const dataset = await V2Dataset.fromAsyncRecords(records, this.#datasetLimits, {
+        signal: operationSignal,
+      })
+      const options = await awaitWithAbort(optionsPromise, context.signal)
+      context.signal?.throwIfAborted()
+      return await this.#publish(dataset, options, context.signal)
+    } catch (error) {
+      internalAbort.abort(error)
+      if (optionsFailure !== NO_ASYNC_OPTIONS_FAILURE) throw optionsFailure
+      throw error
+    }
   }
 
   listTransforms(): readonly Readonly<TransformDescriptorV2>[] {
@@ -1786,6 +1924,183 @@ function registeredObjectMissing(
     Object.defineProperty(error, 'cause', { configurable: true, value: cause })
   }
   return error
+}
+
+export function postTrainingV2Capability(
+  options: PostTrainingV2CapabilityOptions = {},
+): Readonly<PostTrainingV2RuntimeCapability> {
+  if (options === null || typeof options !== 'object') {
+    throw new TypeError('V2 capability options must be an object')
+  }
+  const datasetLimits = snapshotDatasetLimits(options.datasetLimits ?? DEFAULT_V2_DATASET_LIMITS)
+  const jsonlLimits = snapshotJsonlLimits(options.jsonlLimits)
+  const transformLimits = snapshotTransformLimits(
+    options.transformLimits,
+    datasetLimits.max_canonical_bytes,
+  )
+  const converterRegistry = options.converterRegistry ?? createDefaultV2ConverterRegistry()
+  return runtimeCapability(
+    datasetLimits,
+    jsonlLimits,
+    transformLimits,
+    converterRegistry.descriptors().map(({ name }) => name),
+  )
+}
+
+export function v2WorkspaceTempRoot(root = './bench'): string {
+  if (typeof root !== 'string' || root.length === 0) {
+    throw new TypeError('V2 Workspace root must be a non-empty path')
+  }
+  const absoluteRoot = resolvePath(root)
+  if (absoluteRoot === parsePath(absoluteRoot).root) {
+    throw new TypeError('V2 Workspace root must not be the filesystem root')
+  }
+  return resolvePath(absoluteRoot, V2_WORKSPACE_TEMP_DIRECTORY)
+}
+
+function snapshotV2WorkspaceOpenOptions(
+  input: V2WorkspaceOpenOptions,
+): Readonly<V2WorkspaceOpenOptions> {
+  if (input === null || typeof input !== 'object') {
+    throw new TypeError('V2Workspace open options must be an object')
+  }
+  if (input.root !== undefined) v2WorkspaceTempRoot(input.root)
+  if (
+    input.databaseUrl !== undefined &&
+    (typeof input.databaseUrl !== 'string' || input.databaseUrl.length === 0)
+  ) {
+    throw new TypeError('V2Workspace databaseUrl must be a non-empty string')
+  }
+  if (
+    input.storeConfig !== undefined &&
+    (input.storeConfig === null || typeof input.storeConfig !== 'object')
+  ) {
+    throw new TypeError('V2Workspace storeConfig must be an object')
+  }
+  return Object.freeze({
+    cursorSecret: input.cursorSecret,
+    ...(input.root === undefined ? {} : { root: input.root }),
+    ...(input.databaseUrl === undefined ? {} : { databaseUrl: input.databaseUrl }),
+    ...(input.storeConfig === undefined ? {} : { storeConfig: input.storeConfig }),
+    ...(input.datasetLimits === undefined ? {} : { datasetLimits: input.datasetLimits }),
+    ...(input.transformLimits === undefined ? {} : { transformLimits: input.transformLimits }),
+    ...(input.jsonlLimits === undefined ? {} : { jsonlLimits: input.jsonlLimits }),
+  })
+}
+
+function createConditionalObjectStoreV2(config: StoreConfig): ConditionalObjectStoreV2 {
+  if (config.kind === 's3') {
+    return new S3ConditionalObjectStoreV2({
+      bucket: config.bucket,
+      region: config.region,
+      ...(config.endpoint === undefined ? {} : { endpoint: config.endpoint }),
+      ...(config.accessKeyId === undefined ? {} : { accessKeyId: config.accessKeyId }),
+      ...(config.secretAccessKey === undefined ? {} : { secretAccessKey: config.secretAccessKey }),
+      ...(config.forcePathStyle === undefined ? {} : { forcePathStyle: config.forcePathStyle }),
+      ...(config.client === undefined ? {} : { client: config.client }),
+    })
+  }
+
+  const client =
+    config.client === undefined ? undefined : requireOssConditionalClientV2(config.client)
+  return new OssConditionalObjectStoreV2({
+    bucket: config.bucket,
+    accessKeyId: config.accessKeyId,
+    accessKeySecret: config.accessKeySecret,
+    ...(config.region === undefined ? {} : { region: config.region }),
+    ...(config.endpoint === undefined ? {} : { endpoint: config.endpoint }),
+    ...(config.secure === undefined ? {} : { secure: config.secure }),
+    ...(config.internal === undefined ? {} : { internal: config.internal }),
+    ...(client === undefined ? {} : { client }),
+  })
+}
+
+function requireOssConditionalClientV2(client: unknown): OssConditionalClientV2 {
+  if (
+    typeof client !== 'object' ||
+    client === null ||
+    !hasFunction(client, 'putStream') ||
+    !hasFunction(client, 'get') ||
+    !hasFunction(client, 'getObjectMeta') ||
+    !hasFunction(client, 'getBucketInfo')
+  ) {
+    throw new TypeError(
+      'Injected OSS client must implement the V2 conditional object-store methods',
+    )
+  }
+  return client as OssConditionalClientV2
+}
+
+function hasFunction(value: object, key: string): boolean {
+  return key in value && typeof (value as Record<string, unknown>)[key] === 'function'
+}
+
+function snapshotJsonlLimits(input: Partial<V2JsonlLimits> | undefined): Readonly<V2JsonlLimits> {
+  if (input !== undefined && (input === null || typeof input !== 'object')) {
+    throw new TypeError('V2 JSONL limits must be an object')
+  }
+  return Object.freeze({
+    max_request_bytes: nonNegativeSafeInteger(
+      'max_request_bytes',
+      input?.max_request_bytes ?? DEFAULT_CANONICAL_JSONL_MAX_TRANSPORT_BYTES_V2,
+    ),
+    max_nesting_depth: nonNegativeSafeInteger(
+      'max_nesting_depth',
+      input?.max_nesting_depth ?? DEFAULT_RAW_JSON_LIMITS_V2.maxDepth,
+    ),
+  })
+}
+
+function runtimeCapability(
+  datasetLimits: Readonly<V2DatasetLimits>,
+  jsonlLimits: Readonly<V2JsonlLimits>,
+  transformLimits: Readonly<V2TransformLimits>,
+  converterNames: readonly ConverterNameV2[],
+): PostTrainingV2RuntimeCapability {
+  return deepFreeze(
+    createPostTrainingV2Capability({
+      enabled: false,
+      converters: converterNames,
+      limits: {
+        max_record_bytes: datasetLimits.max_record_bytes,
+        max_snapshot_records: datasetLimits.max_records,
+        max_canonical_bytes: datasetLimits.max_canonical_bytes,
+        max_request_bytes: jsonlLimits.max_request_bytes,
+        max_nesting_depth: jsonlLimits.max_nesting_depth,
+        max_json_schema_bytes: DEFAULT_TOOL_SCHEMA_LIMITS_V2.maxSchemaBytes,
+        max_json_schema_nodes: DEFAULT_TOOL_SCHEMA_LIMITS_V2.maxSchemaNodes,
+        max_lineage_depth: V2_LINEAGE_MAX_DEPTH,
+        max_lineage_nodes: V2_LINEAGE_MAX_NODES,
+        max_transform_inputs: transformLimits.max_input_datasets,
+        max_transform_working_set_bytes: transformLimits.max_working_set_bytes,
+        max_concurrent_transforms: transformLimits.max_concurrent_runs,
+      },
+    }),
+  )
+}
+
+async function awaitWithAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  signal?.throwIfAborted()
+  if (signal === undefined) return await promise
+  return await new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      cleanup()
+      reject(signal.reason ?? new DOMException('The operation was aborted', 'AbortError'))
+    }
+    const cleanup = (): void => signal.removeEventListener('abort', onAbort)
+    signal.addEventListener('abort', onAbort, { once: true })
+    void promise.then(
+      (value) => {
+        cleanup()
+        resolve(value)
+      },
+      (error: unknown) => {
+        cleanup()
+        reject(error)
+      },
+    )
+    if (signal.aborted) onAbort()
+  })
 }
 
 function snapshotDatasetLimits(limits: V2DatasetLimits): Readonly<V2DatasetLimits> {

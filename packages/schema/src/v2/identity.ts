@@ -447,8 +447,11 @@ export type ExistingIdentityClaimDispositionV2 =
 export class IdentityConflictErrorV2 extends ConflictError {
   override readonly code = 'identity_conflict'
 
-  constructor(message = 'Identity claim conflicts with an existing immutable claim') {
-    super(message)
+  constructor(
+    reason: 'claim_request_mismatch' | 'claim_identity_mismatch',
+    message = 'Identity claim conflicts with an existing immutable claim',
+  ) {
+    super(message, { reason })
   }
 }
 
@@ -471,7 +474,7 @@ export function compareExistingIdentityClaimV2(
   if (existing.request_digest === incoming.request_digest) {
     return 'existing_same_request'
   }
-  throw new IdentityConflictErrorV2()
+  throw new IdentityConflictErrorV2('claim_request_mismatch')
 }
 
 export function compareExistingDerivedRevisionClaimV2(
@@ -485,7 +488,10 @@ export function compareExistingDerivedRevisionClaimV2(
     existing.creation_profile !== 'derived-record-v1' ||
     incoming.creation_profile !== 'derived-record-v1'
   ) {
-    throw new IdentityConflictErrorV2('Derived revision comparison requires derived-record claims')
+    throw new IdentityConflictErrorV2(
+      'claim_identity_mismatch',
+      'Derived revision comparison requires derived-record claims',
+    )
   }
   return existing.request_digest === incoming.request_digest
     ? 'existing_same_request'
@@ -513,7 +519,10 @@ function assertSameIdentityClaim(
     existing.entity_id !== incoming.entity_id ||
     existing.claim_key_digest !== incoming.claim_key_digest
   ) {
-    throw new IdentityConflictErrorV2('Identity claim profile or entity ID does not match')
+    throw new IdentityConflictErrorV2(
+      'claim_identity_mismatch',
+      'Identity claim profile or entity ID does not match',
+    )
   }
 }
 

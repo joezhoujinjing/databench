@@ -10,6 +10,7 @@ import { ErrorResponseSchema } from './errors.js'
 import { ManifestSchema } from './manifest.js'
 import { RecipeSchema } from './recipe.js'
 import { KindSchema, MessageSchema, SampleSchema } from './sample.js'
+import { type PostTrainingV2Capability, PostTrainingV2CapabilitySchema } from './v2/contracts.js'
 import {
   ValidateSummarySchema,
   VocabularyInfoSchema,
@@ -56,6 +57,7 @@ export const CapabilitiesSchema = z
     api_version: z.string().default(API_VERSION),
     min_client: z.string().default(MIN_CLIENT),
     features: CapabilityFeaturesSchema,
+    post_training_v2: PostTrainingV2CapabilitySchema.optional(),
   })
   .meta({ id: 'Capabilities' })
 export type Capabilities = z.infer<typeof CapabilitiesSchema>
@@ -86,7 +88,10 @@ export function defaultCapabilities(): Capabilities {
 // The service's declared capability policy (per D1/D2), single-sourced so the
 // HTTP API and the CLI cannot drift. `transforms` is runtime-derived (whether
 // any transform is registered), so callers pass it in.
-export function serviceCapabilities(runtime: { readonly transforms: boolean }): Capabilities {
+export function serviceCapabilities(runtime: {
+  readonly transforms: boolean
+  readonly post_training_v2?: PostTrainingV2Capability
+}): Capabilities {
   return {
     api_version: API_VERSION,
     min_client: MIN_CLIENT,
@@ -100,6 +105,9 @@ export function serviceCapabilities(runtime: { readonly transforms: boolean }): 
       annotation: false,
       vocabularies: true,
     },
+    ...(runtime.post_training_v2 === undefined
+      ? {}
+      : { post_training_v2: runtime.post_training_v2 }),
   }
 }
 

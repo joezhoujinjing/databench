@@ -212,7 +212,7 @@
       "path": "apps/api/test/golden/fixtures/v2/api-v2-wire-contract.fixture.json",
       "assertion": "Every v2 request, success, typed error, page and binary response matches OpenAPI",
       "source": "TECHNICAL-DESIGN-15,16",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "cli-v2-lifecycle",

@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Workspace } from '@databench/workspace'
 import { afterEach, describe, expect, test } from 'vitest'
-import { createApp } from '../src/app.js'
 import { createMemoryStore } from './memory-store.js'
+import { createTestApp } from './test-app.js'
 
 // A sample whose OPEN dicts carry integer-valued floats (signals.quality=1.0 and
 // rollout.meta.s=2.0). Both the HTTP entry and the JSONL entry must preserve the
@@ -47,7 +47,7 @@ describe('HTTP ingest preserves JSON number lexemes', () => {
 
 async function ingestViaHttp(): Promise<Ingested> {
   const workspace = openWorkspace()
-  const app = createApp({ workspace })
+  const app = createTestApp({ workspace })
   const ref = `lex-http-${randomUUID()}`
   // Build the request body as raw text so the `1.0`/`2.0` lexemes survive to the
   // server; JSON.stringify of a parsed object would already have folded them.

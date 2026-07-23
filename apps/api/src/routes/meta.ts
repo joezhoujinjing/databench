@@ -60,5 +60,7 @@ export function registerMetaRoutes(app: OpenAPIHono<ApiEnv>, options: CreateAppO
     return context.json(response, 200)
   })
 
-  app.openapi(capabilitiesRoute, (context) => context.json(getCapabilities(), 200))
+  app.openapi(capabilitiesRoute, (context) =>
+    context.json(getCapabilities(options.v2Workspace?.postTrainingV2Capability()), 200),
+  )
 }

@@ -25,10 +25,12 @@
     "@databench/workspace": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "@hono/zod-openapi": "^1.4.0",
+    "busboy": "1.6.0",
     "hono": "^4.10.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@types/busboy": "1.5.4",
     "tsx": "^4.20.0"
   }
 }

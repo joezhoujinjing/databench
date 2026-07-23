@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Workspace } from '@databench/workspace'
 import { expect, test } from 'vitest'
-import { createApp } from '../src/app.js'
 import { createMemoryStore } from './memory-store.js'
+import { createTestApp } from './test-app.js'
 
 // The legacy Python repo lives outside this monorepo, so its path is
 // configurable via `DATABENCH_LEGACY_REPO`. When it (or its venv) is absent —
@@ -25,7 +25,7 @@ test.runIf(existsSync(LEGACY_UVICORN))(
 
     try {
       const legacy = await runLifecycle(httpClient(python.baseUrl), prefix)
-      const ts = await runLifecycle(honoClient(createApp({ workspace })), prefix)
+      const ts = await runLifecycle(honoClient(createTestApp({ workspace })), prefix)
 
       expect(projectManifests(ts.manifests)).toEqual(projectManifests(legacy.manifests))
       expect(projectPage(ts.rawPage)).toEqual(projectPage(legacy.rawPage))

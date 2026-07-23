@@ -3,6 +3,7 @@ import type { ApiEnv } from '../context.js'
 
 const LOCAL_DEV_ORIGIN = /^https?:\/\/(?:localhost|127\.0\.0\.1):5173$/
 const ALLOW_METHODS = 'GET,POST,PUT,PATCH,DELETE,OPTIONS'
+const EXPOSE_HEADERS = 'Content-Disposition, Content-Length, Content-Type, X-Request-ID'
 
 export interface CorsOptions {
   readonly origins?: readonly string[]
@@ -17,6 +18,7 @@ export function createCorsMiddleware(options: CorsOptions = {}): MiddlewareHandl
 
     if (allowed) {
       context.header('access-control-allow-origin', origin)
+      context.header('access-control-expose-headers', EXPOSE_HEADERS)
       context.header('vary', 'Origin')
     }
 

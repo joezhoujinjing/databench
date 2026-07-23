@@ -35,9 +35,16 @@ export {
 } from './transform-semaphore.js'
 export {
   type ExportStreamV2,
+  type PostTrainingV2CapabilityOptions,
+  type PostTrainingV2RuntimeCapability,
+  postTrainingV2Capability,
+  type V2JsonlLimits,
   type V2TransformLimits,
   V2Workspace,
   type V2WorkspaceCatalog,
+  type V2WorkspaceOpenOptions,
   type V2WorkspaceOperationOptions,
   type V2WorkspaceOptions,
+  type V2WorkspaceRuntimeLimits,
+  v2WorkspaceTempRoot,
 } from './workspace.js'
