@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V7
-last_completed_step: V6
+current_step: V8
+last_completed_step: V7
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V7 — Prisma 与 v2 Catalog
+- **下一步:** V8 — Canonical JSONL 与共享投影
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -27,7 +27,7 @@ capability_enabled: false
 | V4 | Immutable `V2Dataset` | ✅ | 当前分支 | GV4 | eager set、资源准入、working-set估算与错误映射已过闸门 |
 | V5 | `record-json-v1`确定性 Parquet | ✅ | 当前分支 | GV5 | REQUIRED schema、固定 writer与双 ABI raw-byte matrix已通过 |
 | V6 | Manifest与 file-backed Store | ✅ | 当前分支 | GV6 | strict manifest、conditional-create provider adapters、受控 temp与流式 file-backed Store已过闸门 |
-| V7 | Prisma与 v2 Catalog | ⬜ | | GV7 | |
+| V7 | Prisma与 v2 Catalog | ✅ | 当前分支 | GV7 | 九表迁移、并发 claim/lineage、immutable run与 Ref CAS 已过闸门 |
 | V8 | Canonical JSONL与共享投影 | ⬜ | | GV8 | |
 | V9 | Workspace publish/read cache/ref | ⬜ | | GV9 | |
 | V10 | Transform、run cache与 lineage | ⬜ | | GV10 | |
@@ -144,3 +144,24 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - `darwin-arm64` Parquet确定性matrix 8/8通过（68.02s）；`pnpm v2:status:check`、
   `git diff --check`、`pnpm lint`、`pnpm build`（12 tasks）、`pnpm typecheck`（21 tasks）、
   `pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）与`pnpm peers check`全部通过。
+
+## V7 Gate 记录
+
+- 新增九张独立 v2 表的 additive migration，全部外键显式 `RESTRICT`；digest/ID/profile、
+  count/size/position、JSON形状、run ID和 ref name不变量由 raw `CHECK`固定，v1 表与数据未修改；
+- namespace/claim使用无 target的 `ON CONFLICT DO NOTHING`并发算法；snapshot/layout、representative
+  revision locator、ordered exact parent edges、run及ordered inputs全部write-once，BigInt在Catalog
+  边界保持`bigint`；
+- lineage registration使用schema-scoped advisory transaction lock和批量 locator/edge/parent compare，
+  5000条无parent snapshot按chunk登记；unresolved parent、晚到解析、跨snapshot cycle及并发反向闭环
+  均通过；
+- Ref create/move使用单写CAS，只允许已提交layout目标；响应丢失重放返回可确认conflict且不改
+  timestamp/message；seek分页的查询与索引都固定为C collation；
+- 独立review修复完整parent/run-input前缀补写、Prisma model/raw SQL `search_path`分裂，以及JSONB
+  `-0`/`0` JCS语义比较；最终review无剩余P0/P1/P2；
+- Catalog typecheck、Biome、Prisma validate、`git diff --check`通过；Catalog 20 tests通过，覆盖
+  claim双唯一竞态、revision representative、lineage、immutable run、Ref CAS、分页、数据库约束和
+  v1 sentinel；
+- `pnpm lint`（327 files）、`pnpm build`（12 tasks）、`pnpm typecheck`（21 tasks）、
+  `pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm peers check`与
+  `pnpm v2:status:check`全部通过，capability继续保持关闭。

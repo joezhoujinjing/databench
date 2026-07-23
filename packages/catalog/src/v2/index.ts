@@ -1,0 +1,33 @@
+export { V2Catalog, type V2CatalogOptions } from './catalog.js'
+export {
+  V2CatalogConsistencyError,
+  V2CatalogDeterminismConflictError,
+  V2CatalogImmutableConflictError,
+  type V2CatalogImmutableKind,
+  V2CatalogInputError,
+  V2CatalogLineageCycleError,
+  V2CatalogRefConflictError,
+  V2CatalogTargetNotCommittedError,
+} from './errors.js'
+export type {
+  CatalogCreationProfileV2,
+  CatalogEntityKindV2,
+  CatalogIdentityClaimInputV2,
+  CatalogIdentityClaimResultV2,
+  CatalogIdentityClaimRowV2,
+  CatalogJsonValueV2,
+  CatalogLayoutInputV2,
+  CatalogLayoutRowV2,
+  CatalogParentRevisionV2,
+  CatalogRecordParentRowV2,
+  CatalogRecordRevisionV2,
+  CatalogRefPageV2,
+  CatalogRefRowV2,
+  CatalogRunInputV2,
+  CatalogRunRowV2,
+  CatalogSnapshotInputV2,
+  CatalogSnapshotRowV2,
+  CompareAndSetRefV2,
+  RegisterLayoutV2,
+  RegisterTransformResultV2,
+} from './types.js'

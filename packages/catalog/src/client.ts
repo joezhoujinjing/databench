@@ -13,11 +13,37 @@ export function createPrismaClient(options: PrismaClientOptions = {}): PrismaCli
   // Honor the connection URL's `?schema=` at the driver level. Without this the
   // pg adapter ignores it and every connection queries `public`, so the
   // per-package test schemas (databench_test_*) collapse onto one shared schema
-  // and parallel test runs corrupt each other. Absent/`public` → unchanged.
+  // and parallel test runs corrupt each other. An absent schema remains
+  // unchanged; every explicit schema, including `public`, is enforced below.
   const schema = schemaFromUrl(connectionString)
-  const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined)
+  // Prisma's adapter-level schema qualifies generated model queries, but raw
+  // SQL still follows PostgreSQL's connection search_path. Keep both paths on
+  // the same schema so TypedSQL/$queryRaw cannot accidentally touch `public`.
+  const driverConnectionString = connectionStringWithSearchPath(connectionString, schema)
+  const adapter = new PrismaPg(
+    { connectionString: driverConnectionString },
+    schema ? { schema } : undefined,
+  )
 
   return new PrismaClient({ adapter })
+}
+
+function connectionStringWithSearchPath(
+  connectionString: string,
+  schema: string | undefined,
+): string {
+  if (schema === undefined) return connectionString
+  if (!/^[a-z_][a-z0-9_]*$/.test(schema)) {
+    throw new TypeError('DATABASE_URL schema must be a lowercase PostgreSQL identifier')
+  }
+  const url = new URL(connectionString)
+  const existingOptions = url.searchParams.get('options')
+  const searchPathOption = `-c search_path=${schema}`
+  url.searchParams.set(
+    'options',
+    existingOptions ? `${existingOptions} ${searchPathOption}` : searchPathOption,
+  )
+  return url.toString()
 }
 
 function schemaFromUrl(connectionString: string): string | undefined {

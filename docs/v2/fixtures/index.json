@@ -162,7 +162,7 @@
       "path": "packages/catalog/test/golden/fixtures/v2/catalog-concurrency-and-record-lineage.fixture.json",
       "assertion": "Claims, locators, parent edges, run metadata and ref CAS obey concurrent invariants",
       "source": "TECHNICAL-DESIGN-11",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "canonical-jsonl-round-trip",

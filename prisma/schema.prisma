@@ -61,3 +61,136 @@ model VocabularyRefRecord {
 
   @@map("vocab_refs")
 }
+
+model V2IdentityNamespace {
+  id        String   @id @db.Uuid
+  scope     String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  claims V2IdentityClaim[]
+  refs   V2Ref[]
+
+  @@map("identity_namespaces_v2")
+}
+
+model V2IdentityClaim {
+  namespaceId     String   @map("namespace_id") @db.Uuid
+  entityKind      String   @map("entity_kind")
+  claimKeyDigest  String   @map("claim_key_digest") @db.Char(64)
+  claimProfile    String   @map("claim_profile")
+  requestProfile  String   @map("request_profile")
+  creationProfile String   @map("creation_profile")
+  entityId        String   @map("entity_id")
+  requestDigest   String   @map("request_digest") @db.Char(64)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  namespace V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([namespaceId, entityKind, claimKeyDigest])
+  @@unique([namespaceId, entityId], map: "uq_identity_claims_v2_entity")
+  @@map("identity_claims_v2")
+}
+
+model V2DatasetSnapshot {
+  version             String   @id @db.Char(64)
+  identityProfile     String   @map("identity_profile")
+  recordSchemaVersion String   @map("record_schema_version")
+  numRecords          BigInt   @map("num_records")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  layouts                 V2DatasetLayout[]
+  refs                    V2Ref[]
+  producingRuns           V2Run[]
+  consumingRunInputs      V2RunInput[]
+  representativeRevisions V2RecordRevisionLocation[]
+
+  @@map("dataset_snapshots_v2")
+}
+
+model V2DatasetLayout {
+  datasetVersion    String   @map("dataset_version") @db.Char(64)
+  layoutVersion     String   @map("layout_version")
+  artifactDigest    String   @map("artifact_digest") @db.Char(64)
+  artifactSizeBytes BigInt   @map("artifact_size_bytes")
+  manifestKey       String   @map("manifest_key")
+  columns           Json     @map("columns_json")
+  committedAt       DateTime @default(now()) @map("committed_at") @db.Timestamptz(6)
+
+  dataset V2DatasetSnapshot @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([datasetVersion, layoutVersion])
+  @@unique([manifestKey], map: "uq_dataset_layouts_v2_manifest_key")
+  @@map("dataset_layouts_v2")
+}
+
+model V2Run {
+  id            String   @unique @db.Char(68)
+  cacheKey      String   @id @map("cache_key") @db.Char(64)
+  op            String
+  opVersion     String   @map("op_version")
+  params        Json     @map("params_json")
+  outputVersion String   @map("output_version") @db.Char(64)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  output V2DatasetSnapshot @relation(fields: [outputVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  inputs V2RunInput[]
+
+  @@index([outputVersion], map: "idx_runs_v2_output")
+  @@map("runs_v2")
+}
+
+model V2RunInput {
+  cacheKey       String @map("cache_key") @db.Char(64)
+  position       Int
+  datasetVersion String @map("dataset_version") @db.Char(64)
+
+  run     V2Run             @relation(fields: [cacheKey], references: [cacheKey], onDelete: Restrict, onUpdate: Restrict)
+  dataset V2DatasetSnapshot @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([cacheKey, position])
+  @@index([datasetVersion], map: "idx_run_inputs_v2_dataset")
+  @@map("run_inputs_v2")
+}
+
+model V2RecordRevisionLocation {
+  recordId       String @map("record_id") @db.Char(68)
+  recordDigest   String @map("record_digest") @db.Char(64)
+  datasetVersion String @map("dataset_version") @db.Char(64)
+
+  dataset    V2DatasetSnapshot    @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  childEdges V2RecordParentEdge[]
+
+  @@id([recordId, recordDigest])
+  @@index([datasetVersion], map: "idx_record_revision_locations_v2_dataset")
+  @@map("record_revision_locations_v2")
+}
+
+model V2RecordParentEdge {
+  childRecordId      String @map("child_record_id") @db.Char(68)
+  childRecordDigest  String @map("child_record_digest") @db.Char(64)
+  position           Int
+  parentRecordId     String @map("parent_record_id") @db.Char(68)
+  parentRecordDigest String @map("parent_record_digest") @db.Char(64)
+
+  child V2RecordRevisionLocation @relation(fields: [childRecordId, childRecordDigest], references: [recordId, recordDigest], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([childRecordId, childRecordDigest, position])
+  @@unique([childRecordId, childRecordDigest, parentRecordId], map: "uq_record_parent_edges_v2_parent_id")
+  @@index([parentRecordId, parentRecordDigest], map: "idx_record_parent_edges_v2_parent")
+  @@map("record_parent_edges_v2")
+}
+
+model V2Ref {
+  namespaceId String   @map("namespace_id") @db.Uuid
+  name        String
+  version     String   @db.Char(64)
+  message     String?
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  namespace V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dataset   V2DatasetSnapshot   @relation(fields: [version], references: [version], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([namespaceId, name])
+  @@index([version], map: "idx_refs_v2_version")
+  @@map("refs_v2")
+}

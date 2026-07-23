@@ -1,0 +1,84 @@
+{
+  "fixtureVersion": 1,
+  "namespaceScope": "default",
+  "identityProfile": "databench-v2-jcs-1",
+  "recordSchemaVersion": "2.0.0",
+  "layoutVersion": "record-json-v1",
+  "columns": ["record_id", "record_digest", "record_json"],
+  "claim": {
+    "entityKind": "record",
+    "claimKeyDigest": "8888888888888888888888888888888888888888888888888888888888888888",
+    "claimProfile": "databench-identity-claim-v1",
+    "requestProfile": "databench-identity-request-v1",
+    "creationProfile": "source-root-v1",
+    "entityId": "rec_7777777777777777777777777777777777777777777777777777777777777777",
+    "requestDigest": "9999999999999999999999999999999999999999999999999999999999999999"
+  },
+  "versions": {
+    "alpha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "beta": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "gamma": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "delta": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "revisions": {
+    "shared": {
+      "recordId": "rec_0000000000000000000000000000000000000000000000000000000000000000",
+      "recordDigest": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "unresolvedChild": {
+      "recordId": "rec_1111111111111111111111111111111111111111111111111111111111111111",
+      "recordDigest": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "unresolvedParent": {
+      "recordId": "rec_2222222222222222222222222222222222222222222222222222222222222222",
+      "recordDigest": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "cycleA": {
+      "recordId": "rec_3333333333333333333333333333333333333333333333333333333333333333",
+      "recordDigest": "4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    "cycleB": {
+      "recordId": "rec_4444444444444444444444444444444444444444444444444444444444444444",
+      "recordDigest": "5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    "concurrentLeft": {
+      "recordId": "rec_5555555555555555555555555555555555555555555555555555555555555555",
+      "recordDigest": "6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "concurrentRight": {
+      "recordId": "rec_6666666666666666666666666666666666666666666666666666666666666666",
+      "recordDigest": "7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    "inputAlpha": {
+      "recordId": "rec_8888888888888888888888888888888888888888888888888888888888888888",
+      "recordDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "inputBeta": {
+      "recordId": "rec_9999999999999999999999999999999999999999999999999999999999999999",
+      "recordDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "output": {
+      "recordId": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "recordDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "outputDelta": {
+      "recordId": "rec_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "recordDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  },
+  "run": {
+    "id": "run_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "cacheKey": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "op": "fixture-transform",
+    "opVersion": "1",
+    "params": {
+      "stable": true,
+      "threshold": 0.5
+    },
+    "inputVersions": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "outputVersion": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}
