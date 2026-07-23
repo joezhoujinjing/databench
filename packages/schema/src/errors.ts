@@ -27,7 +27,7 @@ export abstract class DomainError extends Error {
 }
 
 export class NotFoundError extends DomainError {
-  override readonly name = 'NotFoundError'
+  override readonly name: string = 'NotFoundError'
 
   constructor(message: string, detail?: unknown) {
     super('not_found', message, detail)
@@ -35,7 +35,7 @@ export class NotFoundError extends DomainError {
 }
 
 export class BadInputError extends DomainError {
-  override readonly name = 'BadInputError'
+  override readonly name: string = 'BadInputError'
 
   constructor(message: string, detail?: unknown) {
     super('bad_request', message, detail)
@@ -43,7 +43,7 @@ export class BadInputError extends DomainError {
 }
 
 export class ValidationError extends DomainError {
-  override readonly name = 'ValidationError'
+  override readonly name: string = 'ValidationError'
 
   constructor(message: string, detail?: unknown) {
     super('validation_error', message, detail)
@@ -51,10 +51,34 @@ export class ValidationError extends DomainError {
 }
 
 export class ConflictError extends DomainError {
-  override readonly name = 'ConflictError'
+  override readonly name: string = 'ConflictError'
 
   constructor(message: string, detail?: unknown) {
     super('conflict', message, detail)
+  }
+}
+
+export class ResourceLimitError extends DomainError {
+  override readonly name: string = 'ResourceLimitError'
+
+  constructor(message: string, detail?: unknown) {
+    super('resource_limit', message, detail)
+  }
+}
+
+export class CapacityExceededError extends DomainError {
+  override readonly name: string = 'CapacityExceededError'
+
+  constructor(message: string, detail?: unknown) {
+    super('capacity_exceeded', message, detail)
+  }
+}
+
+export class IntegrityError extends DomainError {
+  override readonly name: string = 'IntegrityError'
+
+  constructor(message: string, detail?: unknown) {
+    super('integrity_error', message, detail)
   }
 }
 
@@ -67,9 +91,21 @@ export type ErrorClass =
   | 'conflict'
   | 'validation_error'
   | 'bad_request'
+  | 'resource_limit'
+  | 'capacity_exceeded'
+  | 'integrity_error'
   | 'internal_error'
 
 export function classifyError(error: unknown): ErrorClass {
+  if (error instanceof ResourceLimitError) {
+    return 'resource_limit'
+  }
+  if (error instanceof CapacityExceededError) {
+    return 'capacity_exceeded'
+  }
+  if (error instanceof IntegrityError) {
+    return 'integrity_error'
+  }
   if (error instanceof NotFoundError) {
     return 'not_found'
   }

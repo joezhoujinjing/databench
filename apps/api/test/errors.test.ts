@@ -1,8 +1,11 @@
 import {
   BadInputError,
+  CapacityExceededError,
   ConflictError,
+  IntegrityError,
   MAX_PAGE_LIMIT,
   NotFoundError,
+  ResourceLimitError,
   ValidationError,
 } from '@databench/schema'
 import { createRoute } from '@hono/zod-openapi'
@@ -70,6 +73,9 @@ describe('api error envelope', () => {
       'validation_error',
       'payload validation failed',
     )
+    await expectError(app, '/v1/_test-error/resource', 413, 'resource_limit', 'too large')
+    await expectError(app, '/v1/_test-error/capacity', 503, 'capacity_exceeded', 'busy')
+    await expectError(app, '/v1/_test-error/integrity', 500, 'integrity_error', 'corrupt')
   })
 
   test('HTTPException status map is preserved in the envelope', async () => {
@@ -139,6 +145,15 @@ function installThrowRoutes(app: ReturnType<typeof createApp>): void {
     }
     if (kind === 'validation') {
       throw new ValidationError('payload validation failed', [{ path: ['samples'] }])
+    }
+    if (kind === 'resource') {
+      throw new ResourceLimitError('too large')
+    }
+    if (kind === 'capacity') {
+      throw new CapacityExceededError('busy')
+    }
+    if (kind === 'integrity') {
+      throw new IntegrityError('corrupt')
     }
     if (kind === 'http-not-found') {
       throw new HTTPException(404, { message: 'unknown transform: nope' })

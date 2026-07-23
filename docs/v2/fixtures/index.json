@@ -132,7 +132,7 @@
       "path": "packages/engine/test/golden/fixtures/v2/dataset-permutation-and-limits.fixture.json",
       "assertion": "Permutations share a version and eager record/count/byte limits reject before retention",
       "source": "TECHNICAL-DESIGN-9.1",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "parquet-determinism-matrix",

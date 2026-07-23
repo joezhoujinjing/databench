@@ -82,7 +82,7 @@ function getOrCompileValidator(
   }
 
   let validator: ValidateFunction
-  const startedAt = performance.now()
+  const startedCpu = process.threadCpuUsage()
   try {
     validator = toolSchemaAjv.compile(schema)
   } catch (error) {
@@ -90,7 +90,8 @@ function getOrCompileValidator(
       `Tool input_schema failed Draft 2020-12 compilation: ${errorMessage(error)}`,
     )
   }
-  if (performance.now() - startedAt > maxCompileMilliseconds) {
+  const compileCpu = process.threadCpuUsage(startedCpu)
+  if ((compileCpu.user + compileCpu.system) / 1000 > maxCompileMilliseconds) {
     throw new ToolSchemaValidationErrorV2('Tool input_schema exceeded the compile time budget')
   }
 

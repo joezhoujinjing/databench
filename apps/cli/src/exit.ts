@@ -18,6 +18,9 @@ const EXIT_FOR: Record<ErrorClass, number> = {
   not_found: EXIT.notFound,
   conflict: EXIT.conflict,
   validation_error: EXIT.validation,
+  resource_limit: EXIT.validation,
+  capacity_exceeded: EXIT.internal,
+  integrity_error: EXIT.internal,
 }
 
 export function exitCodeFor(error: unknown): number {

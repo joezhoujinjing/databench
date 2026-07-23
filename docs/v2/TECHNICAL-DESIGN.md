@@ -359,7 +359,9 @@ record、JSON 与 digest 来自三个不同调用点。`V2Dataset` 的
 间接获得 validator。配置固定为 strict mode、禁止远程 schema loader与非 fragment外部 `$ref`；
 允许同一 schema 内合法的递归 `#...` local refs，拒绝 unresolved refs且不做无限静态展开，根类型
 必须为 object。Schema 先经过 byte/depth/node/ref数量和 compile time budget，再 compile；instance
-validation仍受 nesting depth限制。未知 `format` 按 JSON Schema annotation处理且不影响有效性；
+validation仍受 nesting depth限制。Compile budget按当前 Node worker thread CPU time计量，不把
+OS调度暂停或其他 worker的并行负载误算为 schema编译耗时。未知 `format` 按 JSON Schema
+annotation处理且不影响有效性；
 需要 assertion的 formats必须在固定 allowlist中显式注册。每个 function call的 `args` 必须通过
 对应 tool schema。Ajv版本由 lockfile固定，升级需重新跑协议 fixtures，但不改变 canonical bytes。
 
@@ -649,11 +651,34 @@ interface V2DatasetLimits {
 
 class V2Dataset {
   readonly identity: DatasetSnapshotIdentityV2
+  readonly canonicalBytes: number
 
   static fromRecords(records: Iterable<unknown>, limits: V2DatasetLimits): V2Dataset
   records(offset?: number, limit?: number): Iterable<RecordRevisionV2>
   get(recordId: string): RecordRevisionV2 | null
 }
+
+interface V2TransformWorkingSetInput {
+  readonly inputDatasets: readonly V2Dataset[]
+  readonly outputUpperBoundBytes: number
+  readonly frameEstimateBytes: number
+}
+
+interface V2TransformWorkingSetEstimate {
+  readonly inputCanonicalBytes: number
+  readonly outputUpperBoundBytes: number
+  readonly frameEstimateBytes: number
+  readonly totalBytes: number
+}
+
+function estimateV2TransformWorkingSet(
+  input: V2TransformWorkingSetInput,
+): V2TransformWorkingSetEstimate
+
+function admitV2TransformWorkingSet(
+  input: V2TransformWorkingSetInput,
+  budgetBytes: number,
+): V2TransformWorkingSetEstimate
 ```
 
 `hashV2DatasetIdentity` 只接受字段精确为 profile/schema/sorted `record_digests` 的
@@ -663,10 +688,27 @@ artifact、manifest 与 catalog layout，使同一 logical version 可以并存�
 Polars frame materialization是 `record-json-v1` codec私有能力，不从 `V2Dataset` 公共 API导出；
 它必须先取得 working-set admission，避免 record objects + JCS strings + frame无界复制。
 
-`fromRecords` 在逐条 JCS 后累计 UTF-8 byte length，并在保留下一条 record 前检查单条、总
-bytes 与 count 限制；ingest 与 transform 使用同一 limits，不能只限制 HTTP transport。
-`records()` 固定返回 `(record_digest, record_id)` ASCII 升序。v2.0 不承诺超内存处理。未来
-chunked dataset/manifest 是独立设计，不能在首期把“一份 Parquet + manifest”偷偷改成 shards。
+`fromRecords`只接受 raw canonical record；每条 unknown都必须经过唯一
+`createRecordRevisionV2`，不能信任 caller提供的 digest/JSON，也没有 revision fast path。它在逐条
+JCS后累计每个 `record_json` 的 UTF-8 byte length之和，不计算 newline、hash domain、digest或
+JS object overhead；该 `canonicalBytes`统计不进入 dataset identity。Limits先于 iterable消费
+校验为非负 safe integer，默认分别为100,000 records、512 MiB总 canonical bytes与16 MiB单条；
+实际值等于上限允许，只有 `actual > limit`时抛带 `resource/limit/actual` detail的
+`ResourceLimitError`。每次按 count → revision/JCS → 单条 bytes → checked-add总 bytes →
+ID/collision → retain的顺序执行，任一步失败都不返回或保留部分 Dataset；调用方 iterable已经发生的
+外部副作用无法回滚，但 abrupt completion必须关闭 iterator。外部 JSON/JSONL仍须在解析/JCS前执行
+逐条 transport byte gate；内部 transform则必须在运行前执行 aggregate working-set admission。
+
+`records()`固定返回 `(record_digest, record_id)`直接 ASCII比较的升序 defensive snapshot；offset
+默认0，limit默认到末尾，0与越界返回空，负数、小数、非有限或 unsafe值拒绝。`get()`按 logical ID
+做 O(1) exact lookup，未命中（包括格式不匹配的字符串）返回 `null`。同 logical ID重复输入，无论
+是否同一 revision，都抛 validation error；同 digest映射不同 canonical bytes抛 integrity error。
+
+Working-set estimator固定为 checked sum：所有 ordered input datasets的 `canonicalBytes`之和（重复
+input保守地重复计数）+ output upper bound + frame estimate。所有分量和 budget都是非负 safe
+integer，每次加法先检查溢出；exact budget允许，超预算由 `admitV2TransformWorkingSet`抛
+`CapacityExceededError`。v2.0不承诺超内存处理。未来 chunked dataset/manifest是独立设计，不能在
+首期把“一份 Parquet + manifest”偷偷改成 shards。
 
 ### 9.2 `record-json-v1`
 

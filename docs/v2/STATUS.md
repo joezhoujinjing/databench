@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V4
-last_completed_step: V3
+current_step: V5
+last_completed_step: V4
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V4 — Immutable `V2Dataset`
+- **下一步:** V5 — `record-json-v1`确定性 Parquet
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -24,7 +24,7 @@ capability_enabled: false
 | V1 | RFC 8785、raw JSON与 Hashing API | ✅ | 当前分支 | GV1 | RFC/JCS、具名 domains、raw parser 与 fixtures已过闸门 |
 | V2 | Canonical Record与 Ajv | ✅ | 当前分支 | GV2 | strict/compatible schema、Ajv与真实 OpenAPI生成已过闸门 |
 | V3 | Identity、Claim与 Opaque Revision | ✅ | 当前分支 | GV3 | 7类 strict identity、随机物化、opaque revision与 fixed vectors已过闸门 |
-| V4 | Immutable `V2Dataset` | ⬜ | | GV4 | |
+| V4 | Immutable `V2Dataset` | ✅ | 当前分支 | GV4 | eager set、资源准入、working-set估算与错误映射已过闸门 |
 | V5 | `record-json-v1`确定性 Parquet | ⬜ | | GV5 | |
 | V6 | Manifest与 file-backed Store | ⬜ | | GV6 | |
 | V7 | Prisma与 v2 Catalog | ⬜ | | GV7 | |
@@ -87,3 +87,20 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - hashing 33 tests、schema 139 tests通过；`pnpm v2:status:check`、`git diff --check`、
   `pnpm lint`（288 files）、`pnpm build`（12 tasks）、`pnpm typecheck`（21 tasks）、
   `pnpm test`（21 tasks）与 `pnpm openapi:check`（11 tasks）全部通过。
+
+## V4 Gate 记录
+
+- eager immutable `V2Dataset`只接受 raw canonical records并统一经过 opaque revision factory；
+  dataset identity、空集向量、直接 ASCII排序、exact lookup与 defensive pagination已落地；
+- 默认100k records / 512 MiB canonical UTF-8 / 16 MiB单条的 inclusive admission已实现，
+  count、单条、总量、Unicode、iterator关闭、invalid limits与失败不返回部分 Dataset均有测试；
+- working-set estimator使用 safe checked sum，exact budget允许，超预算映射
+  `CapacityExceededError`；resource/capacity/integrity已统一映射到 API 413/503/500与 CLI；
+- 3条 fixture的 canonical JSON、record digests、UTF-8 bytes与 dataset version已由独立 Python
+  `blake3`复算一致；6种 permutation、重复 ID、模拟 digest collision、runtime constructor绕过与
+  deep immutability均通过；Engine 28 tests、Schema 140 tests通过；
+- Ajv compile budget改按当前 Node worker thread CPU time计量，排除并行调度造成的合法 schema
+  假超时，不改变250ms预算及 byte/depth/node/ref限制；
+- `pnpm v2:status:check`、`git diff --check`、`pnpm lint`（294 files）、`pnpm build`
+  （12 tasks）、`pnpm typecheck`（21 tasks）、`pnpm test`（21 tasks）与
+  `pnpm openapi:check`（11 tasks）全部通过。

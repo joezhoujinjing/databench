@@ -1,4 +1,12 @@
-import { BadInputError, ConflictError, NotFoundError, ValidationError } from '@databench/schema'
+import {
+  BadInputError,
+  CapacityExceededError,
+  ConflictError,
+  IntegrityError,
+  NotFoundError,
+  ResourceLimitError,
+  ValidationError,
+} from '@databench/schema'
 import type { Workspace } from '@databench/workspace'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { ZodError } from 'zod'
@@ -262,6 +270,9 @@ describe('exitCodeFor', () => {
     expect(exitCodeFor(new NotFoundError('x'))).toBe(EXIT.notFound)
     expect(exitCodeFor(new ConflictError('x'))).toBe(EXIT.conflict)
     expect(exitCodeFor(new ValidationError('x'))).toBe(EXIT.validation)
+    expect(exitCodeFor(new ResourceLimitError('x'))).toBe(EXIT.validation)
+    expect(exitCodeFor(new CapacityExceededError('x'))).toBe(EXIT.internal)
+    expect(exitCodeFor(new IntegrityError('x'))).toBe(EXIT.internal)
     expect(exitCodeFor(new ZodError([]))).toBe(EXIT.validation)
     expect(exitCodeFor(new BadInputError('x'))).toBe(EXIT.badInput)
     expect(exitCodeFor(new TypeError('x'))).toBe(EXIT.badInput)

@@ -7,12 +7,16 @@ import type { ApiEnv } from '../context.js'
 
 type ErrorCode =
   | 'bad_request'
+  | 'capacity_exceeded'
   | 'conflict'
   | 'error'
   | 'forbidden'
+  | 'integrity_error'
   | 'internal_error'
   | 'method_not_allowed'
   | 'not_found'
+  | 'resource_limit'
+  | 'service_unavailable'
   | 'too_many_requests'
   | 'unauthorized'
   | 'unprocessable_entity'
@@ -32,9 +36,11 @@ const STATUS_CODES = {
   notFound: 404,
   methodNotAllowed: 405,
   conflict: 409,
+  payloadTooLarge: 413,
   unprocessableEntity: 422,
   tooManyRequests: 429,
   internalError: 500,
+  serviceUnavailable: 503,
 } as const
 
 const HTTP_STATUS_CODE: Partial<Record<number, ErrorCode>> = {
@@ -44,9 +50,11 @@ const HTTP_STATUS_CODE: Partial<Record<number, ErrorCode>> = {
   404: 'not_found',
   405: 'method_not_allowed',
   409: 'conflict',
+  413: 'resource_limit',
   422: 'unprocessable_entity',
   429: 'too_many_requests',
   500: 'internal_error',
+  503: 'service_unavailable',
 }
 
 // HTTP status per shared taxonomy class (see @databench/schema classifyError).
@@ -55,6 +63,9 @@ const STATUS_FOR: Record<ErrorClass, ContentfulStatusCode> = {
   conflict: 409,
   validation_error: 422,
   bad_request: 400,
+  resource_limit: 413,
+  capacity_exceeded: 503,
+  integrity_error: 500,
   internal_error: 500,
 }
 

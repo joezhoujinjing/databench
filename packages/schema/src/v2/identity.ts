@@ -16,7 +16,7 @@ import {
   V2_RECORD_SCHEMA_VERSION,
 } from '@databench/hashing'
 import { z } from 'zod'
-import { ConflictError, DomainError } from '../errors.js'
+import { ConflictError, IntegrityError } from '../errors.js'
 import { CandidateSchema, InitialCandidateV2Schema } from './candidate.js'
 import {
   CandidateIdSchema,
@@ -452,11 +452,11 @@ export class IdentityConflictErrorV2 extends ConflictError {
   }
 }
 
-export class IdentityClaimIntegrityErrorV2 extends DomainError {
+export class IdentityClaimIntegrityErrorV2 extends IntegrityError {
   override readonly name = 'IdentityClaimIntegrityErrorV2'
 
   constructor() {
-    super('integrity_error', 'Stored identity claim failed strict validation')
+    super('Stored identity claim failed strict validation')
   }
 }
 

@@ -1,0 +1,102 @@
+{
+  "records": [
+    {
+      "schema_version": "2.0.0",
+      "id": "rec_1111111111111111111111111111111111111111111111111111111111111111",
+      "system_instruction": null,
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "type": "text",
+              "text": "hello",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": {}
+            }
+          ],
+          "loss_weight": 0
+        }
+      ],
+      "candidates": [],
+      "preference_relations": [],
+      "tools": [],
+      "verification": null,
+      "source": null,
+      "lang": null,
+      "lineage": null,
+      "tags": ["ascii"],
+      "extra": { "label": "plain" }
+    },
+    {
+      "schema_version": "2.0.0",
+      "id": "rec_2222222222222222222222222222222222222222222222222222222222222222",
+      "system_instruction": "请准确回答🙂",
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "type": "text",
+              "text": "你好，世界🌍",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": { "语言": "中文" }
+            }
+          ],
+          "loss_weight": null
+        }
+      ],
+      "candidates": [],
+      "preference_relations": [],
+      "tools": [],
+      "verification": null,
+      "source": null,
+      "lang": "zh-Hans",
+      "lineage": null,
+      "tags": ["unicode"],
+      "extra": { "emoji": "🙂" }
+    },
+    {
+      "schema_version": "2.0.0",
+      "id": "rec_3333333333333333333333333333333333333333333333333333333333333333",
+      "system_instruction": null,
+      "contents": [],
+      "candidates": [],
+      "preference_relations": [],
+      "tools": [],
+      "verification": null,
+      "source": null,
+      "lang": null,
+      "lineage": null,
+      "tags": ["nested"],
+      "extra": {
+        "nested": {
+          "items": [null, true, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"],
+          "level": { "value": 7 }
+        }
+      }
+    }
+  ],
+  "expected": {
+    "record_json": [
+      "{\"candidates\":[],\"contents\":[{\"loss_weight\":0,\"parts\":[{\"part_metadata\":{},\"text\":\"hello\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"user\"}],\"extra\":{\"label\":\"plain\"},\"id\":\"rec_1111111111111111111111111111111111111111111111111111111111111111\",\"lang\":null,\"lineage\":null,\"preference_relations\":[],\"schema_version\":\"2.0.0\",\"source\":null,\"system_instruction\":null,\"tags\":[\"ascii\"],\"tools\":[],\"verification\":null}",
+      "{\"candidates\":[],\"contents\":[{\"loss_weight\":null,\"parts\":[{\"part_metadata\":{\"语言\":\"中文\"},\"text\":\"你好，世界🌍\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"user\"}],\"extra\":{\"emoji\":\"🙂\"},\"id\":\"rec_2222222222222222222222222222222222222222222222222222222222222222\",\"lang\":\"zh-Hans\",\"lineage\":null,\"preference_relations\":[],\"schema_version\":\"2.0.0\",\"source\":null,\"system_instruction\":\"请准确回答🙂\",\"tags\":[\"unicode\"],\"tools\":[],\"verification\":null}",
+      "{\"candidates\":[],\"contents\":[],\"extra\":{\"nested\":{\"items\":[null,true,\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"],\"level\":{\"value\":7}}},\"id\":\"rec_3333333333333333333333333333333333333333333333333333333333333333\",\"lang\":null,\"lineage\":null,\"preference_relations\":[],\"schema_version\":\"2.0.0\",\"source\":null,\"system_instruction\":null,\"tags\":[\"nested\"],\"tools\":[],\"verification\":null}"
+    ],
+    "record_digests": [
+      "40fcf39b8d59e9804fe0d6278ed55ec4b43ccc9db0fb6d5d78443f53f3c6d67e",
+      "8204121676c52302da378b1eb162a77e6818c9163caee7212d7265b3cce6b2ba",
+      "2840a4f49932e94ce5a56d5e989c3c1c912d92f5bb45ee16627b4336ecd97c75"
+    ],
+    "record_utf8_bytes": [431, 488, 386],
+    "iteration_record_ids": [
+      "rec_3333333333333333333333333333333333333333333333333333333333333333",
+      "rec_1111111111111111111111111111111111111111111111111111111111111111",
+      "rec_2222222222222222222222222222222222222222222222222222222222222222"
+    ],
+    "dataset_version": "ad20d8f85630cb0c9902d23c10a2792a50b0d68fba91d80eccc5154013552ed3",
+    "total_canonical_bytes": 1305
+  }
+}
