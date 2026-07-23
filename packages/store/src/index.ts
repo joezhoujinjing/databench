@@ -13,3 +13,4 @@ export {
   type StoreConfig,
   storeConfigFromEnv,
 } from './store.js'
+export * from './v2/index.js'

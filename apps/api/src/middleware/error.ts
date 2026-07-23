@@ -13,6 +13,7 @@ type ErrorCode =
   | 'forbidden'
   | 'integrity_error'
   | 'internal_error'
+  | 'layout_conflict'
   | 'method_not_allowed'
   | 'not_found'
   | 'resource_limit'
@@ -66,6 +67,7 @@ const STATUS_FOR: Record<ErrorClass, ContentfulStatusCode> = {
   resource_limit: 413,
   capacity_exceeded: 503,
   integrity_error: 500,
+  service_unavailable: 503,
   internal_error: 500,
 }
 

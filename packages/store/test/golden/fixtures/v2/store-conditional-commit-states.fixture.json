@@ -1,0 +1,49 @@
+{
+  "cases": [
+    {
+      "id": "created",
+      "preload": false,
+      "artifact_steps": [],
+      "manifest_steps": [],
+      "outcome": "committed",
+      "artifact_create_calls": 1,
+      "manifest_create_calls": 1
+    },
+    {
+      "id": "already-exists",
+      "preload": true,
+      "artifact_steps": [],
+      "manifest_steps": [],
+      "outcome": "committed",
+      "artifact_create_calls": 1,
+      "manifest_create_calls": 1
+    },
+    {
+      "id": "ambiguous-created",
+      "preload": false,
+      "artifact_steps": ["ambiguous_created"],
+      "manifest_steps": ["ambiguous_created"],
+      "outcome": "committed",
+      "artifact_create_calls": 1,
+      "manifest_create_calls": 1
+    },
+    {
+      "id": "ambiguous-absent-retry",
+      "preload": false,
+      "artifact_steps": ["ambiguous_absent"],
+      "manifest_steps": [],
+      "outcome": "committed",
+      "artifact_create_calls": 2,
+      "manifest_create_calls": 1
+    },
+    {
+      "id": "failure",
+      "preload": false,
+      "artifact_steps": ["failure"],
+      "manifest_steps": [],
+      "outcome": "failure",
+      "artifact_create_calls": 1,
+      "manifest_create_calls": 0
+    }
+  ]
+}

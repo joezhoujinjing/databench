@@ -21,6 +21,7 @@ const EXIT_FOR: Record<ErrorClass, number> = {
   resource_limit: EXIT.validation,
   capacity_exceeded: EXIT.internal,
   integrity_error: EXIT.internal,
+  service_unavailable: EXIT.internal,
 }
 
 export function exitCodeFor(error: unknown): number {

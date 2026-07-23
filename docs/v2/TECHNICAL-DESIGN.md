@@ -807,10 +807,26 @@ interface DatasetManifestV2 {
   artifact_size_bytes: number
   columns: ['record_id', 'record_digest', 'record_json']
 }
+
+interface DatasetLayoutIdentityV2 {
+  identity_profile: 'databench-v2-jcs-1'
+  record_schema_version: '2.0.0'
+  dataset_version: string
+  num_records: number
+  layout_version: 'record-json-v1'
+  artifact_digest: string
+  artifact_size_bytes: number
+}
 ```
 
 Manifest 经 strict Zod + RFC 8785 JCS 序列化。Dataset name、ref、created time、writer
-host、临时 key 与 signed URL 不进入 manifest。
+host、临时 key 与 signed URL 不进入 manifest。`DatasetLayoutIdentityV2`是所有
+`exists/read/audit`与 cache key的唯一 layout身份；它必须从 strict manifest投影，不允许只传
+dataset version后由 Store猜测 artifact。Manifest硬上限固定16 KiB；读取必须使用 duplicate-aware
+raw parser，raw bytes必须逐字节等于 strict parse后重新生成的 canonical JCS。重复键、合法但非
+canonical bytes或未知字段是 `IntegrityError`；同一个 manifest key已有另一份 canonical manifest
+时，仅 commit竞争路径报告 `LayoutConflictError`；read/audit的请求 identity与远端 manifest不符，
+或 manifest自身字段与所在 key不符，均报告 `IntegrityError`。
 
 ### 10.2 Object keys
 
@@ -827,14 +843,18 @@ objects/v2/record-json-v1/<vv>/<dataset_version>/manifest.json
 ### 10.3 Store API
 
 ```ts
+interface V2OperationContext {
+  signal?: AbortSignal
+}
+
 interface V2Store {
-  prepare(dataset: V2Dataset): Promise<PreparedArtifactV2>
-  commit(prepared: PreparedArtifactV2): Promise<DatasetManifestV2>
-  discard(prepared: PreparedArtifactV2): Promise<void>
-  exists(identity: DatasetLayoutIdentityV2): Promise<boolean>
-  read(identity: DatasetLayoutIdentityV2): Promise<V2Dataset>
-  audit(identity: DatasetLayoutIdentityV2): Promise<AuditResultV2>
-  ping(): Promise<void>
+  prepare(dataset: V2Dataset, context?: V2OperationContext): Promise<PreparedArtifactV2>
+  commit(prepared: PreparedArtifactV2, context?: V2OperationContext): Promise<DatasetManifestV2>
+  discard(prepared: PreparedArtifactV2, cleanupContext?: V2OperationContext): Promise<void>
+  exists(identity: DatasetLayoutIdentityV2, context?: V2OperationContext): Promise<boolean>
+  read(identity: DatasetLayoutIdentityV2, context?: V2OperationContext): Promise<V2Dataset>
+  audit(identity: DatasetLayoutIdentityV2, context?: V2OperationContext): Promise<AuditResultV2>
+  ping(context?: V2OperationContext): Promise<void>
 }
 ```
 
@@ -846,10 +866,29 @@ conditional-write。Workspace 必须在 `finally` 调用幂等 `discard`，成�
 清理 handle。进程启动时只清理 store 自己前缀下超过安全年龄的 stale temp，不扫描任意系统
 目录。业务调用方不能跳过 prepare 自己拼 manifest。
 
+`PreparedArtifactV2`由未导出实现 class构造，运行时含 Store实例 owner token与
+`prepared → committing → committed → discarded`状态；公开类型使用不可导出的 unique-symbol
+brand。伪造、跨 Store、discard后 commit及并发 commit全部拒绝。成功 commit后仍必须允许一次
+幂等 discard关闭 handle并删 temp；discard重复调用不报错。commit失败把状态恢复为 prepared，
+允许同一 prepared bytes安全重试。调用方取消后的 finally cleanup不得复用已经 aborted的业务
+signal；cleanupContext缺省为不带 signal，且一旦开始 close/unlink/reservation release必须跑完。
+
 Store 在 prepare/read 前执行 admission：检查预计/manifest size、受控 temp volume 可用空间，
 并通过全局 prepare semaphore 与 read/load semaphore限制并发；等待和 I/O 都传播 cancellation。
 无法安全接纳时抛 `CapacityExceededError`，不得先写满磁盘或把多份 512 MiB dataset 同时装入
 heap。清理器只处理本实例专用 prefix 且文件名/owner marker合法的 stale entry。
+
+V6固定配置默认值：`tempRoot`必须由部署显式给出绝对路径（不默认使用任意系统 temp）；Store在
+该目录写入内容固定为 `databench-v2-temp-v1\n`的 owner marker，root `0700`、file `0600`；
+stale age 24h；prepare并发2、read并发2；磁盘 safety margin 512 MiB；每次 reservation按
+`canonicalBytes + 256 * numRecords + 64 MiB`（prepare）或 manifest artifact size（read）计算，
+并与进程内未释放 reservation及 `statfs` free bytes一起准入。默认 provider request timeout
+30s。默认 read semaphore允许两个下载/校验并行，但完整 eager decode另经单并发 heap gate，避免
+同时构造两份上限512 MiB的 dataset。所有等待、文件读写、S3 request与本地 stream传播 signal；OSS普通 SDK请求没有原生
+AbortSignal，固定语义为销毁本地 upload/download stream并依赖30s request timeout有界结束，不能
+宣称远端请求已原子取消。OSS `x-oss-forbid-overwrite`在 bucket versioning为 Enabled或Suspended
+时会被服务端忽略，因此v2只能使用从未启用 versioning的专用 bucket；adapter在每次 commit前通过
+bucket info fail-closed校验，部署/IAM同时禁止运行期间开启 versioning。
 
 ### 10.4 Commit 状态机
 
@@ -880,6 +919,12 @@ precondition/file-already-exists；transport 失败导致的 `ambiguous`；以�
 failure。明确 already-exists 必须读取并验证；ambiguous 必须 probe，并只重试**同一次**
 conditional create 后再验证。任何 409/412/timeout 都不能一概当成功，且任何分支都禁止
 fallback 到普通 PUT。OSS/S3 provider error 映射必须有集成测试。
+
+四态精确映射固定为：S3 `412 PreconditionFailed`、OSS `FileAlreadyExists/ObjectAlreadyExists`
+为 `already_exists`；S3 `409 ConditionalRequestConflict`、timeout、socket reset、5xx或响应丢失为
+`ambiguous`；明确2xx为 `created`；auth、参数、bucket不存在及其他确定性4xx为 `failure`。
+`ambiguous`先 HEAD/probe；缺失时仅重放同一份 conditional create一次，再 probe；仍不能判定时
+抛 typed dependency error，不得降级为普通覆盖 PUT。
 
 普通覆盖式 PUT 在 v2 路径被禁止。未被 manifest 引用的 artifact 是 orphan，不对 reader
 可见；GC 不属于本方案。

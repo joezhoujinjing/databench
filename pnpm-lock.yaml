@@ -248,6 +248,9 @@ importers:
       '@databench/engine':
         specifier: workspace:*
         version: link:../engine
+      '@databench/hashing':
+        specifier: workspace:*
+        version: link:../hashing
       '@databench/schema':
         specifier: workspace:*
         version: link:../schema

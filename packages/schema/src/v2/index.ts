@@ -31,6 +31,21 @@ export {
   type JsonValueV2,
 } from './json-value.js'
 export {
+  canonicalDatasetManifestV2Bytes,
+  createDatasetManifestV2,
+  type DatasetLayoutIdentityV2,
+  DatasetLayoutIdentityV2Schema,
+  type DatasetManifestV2,
+  DatasetManifestV2Schema,
+  datasetLayoutIdentityV2FromManifest,
+  ManifestIntegrityErrorV2,
+  parseStoredDatasetManifestV2,
+  V2_MANIFEST_MAX_BYTES,
+  V2_MANIFEST_VERSION,
+  V2_RECORD_JSON_COLUMNS,
+  V2_RECORD_JSON_LAYOUT_VERSION,
+} from './manifest.js'
+export {
   type CompatiblePartV2,
   FileDataPartSchema as FileDataPartV2Schema,
   FileDataSchema as FileDataV2Schema,

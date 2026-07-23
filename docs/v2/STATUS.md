@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V6
-last_completed_step: V5
+current_step: V7
+last_completed_step: V6
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V6 — Manifest 与 File-backed Store
+- **下一步:** V7 — Prisma 与 v2 Catalog
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -26,7 +26,7 @@ capability_enabled: false
 | V3 | Identity、Claim与 Opaque Revision | ✅ | 当前分支 | GV3 | 7类 strict identity、随机物化、opaque revision与 fixed vectors已过闸门 |
 | V4 | Immutable `V2Dataset` | ✅ | 当前分支 | GV4 | eager set、资源准入、working-set估算与错误映射已过闸门 |
 | V5 | `record-json-v1`确定性 Parquet | ✅ | 当前分支 | GV5 | REQUIRED schema、固定 writer与双 ABI raw-byte matrix已通过 |
-| V6 | Manifest与 file-backed Store | ⬜ | | GV6 | |
+| V6 | Manifest与 file-backed Store | ✅ | 当前分支 | GV6 | strict manifest、conditional-create provider adapters、受控 temp与流式 file-backed Store已过闸门 |
 | V7 | Prisma与 v2 Catalog | ⬜ | | GV7 | |
 | V8 | Canonical JSONL与共享投影 | ⬜ | | GV8 | |
 | V9 | Workspace publish/read cache/ref | ⬜ | | GV9 | |
@@ -126,3 +126,21 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - Engine普通 suite 52 tests、专用 matrix 8 tests通过；`pnpm v2:status:check`登记25组 fixture，
   `git diff --check`、`pnpm lint`（305 files）、`pnpm build`（12 tasks）、`pnpm typecheck`
   （21 tasks）、`pnpm test`（21 tasks）与`pnpm openapi:check`（11 tasks）全部通过。
+
+## V6 Gate 记录
+
+- strict `DatasetManifestV2`、16 KiB canonical manifest边界与layout identity投影已落地；unknown、
+  duplicate、malformed、非canonical raw bytes统一按 manifest integrity失败；
+- `FileBackedV2Store`实现 artifact-first / manifest-last、opaque prepared handle、可重试cleanup、
+  streaming hash/upload/download、同一file handle校验、temp容量预留、stale清理与symlink/inode防护；
+- S3/MinIO使用 `If-None-Match: *`且关闭SDK写重试；OSS使用
+  `x-oss-forbid-overwrite: true`、关闭写重试，并对曾启用versioning的bucket fail closed；
+  created/already-exists/ambiguous/failure四态、fresh probe与最多一次同conditional create重放均有回归；
+- 独立review后补齐 OSS `ObjectAlreadyExists`映射、S3本地body error优先级、caller-aborted
+  manifest fresh probe，以及双cold-download并行且仅eager decode串行；最终无剩余P0/P1/P2；
+- Schema 151 tests、Engine 52 tests、Store普通suite 77 passed / 8 gated skipped、API 23 tests、
+  CLI 38 tests通过；真实 MinIO suite 82 passed / 3 OSS-only skipped，覆盖原生 `200/412`、首对象
+  不覆盖、两个独立Store并发commit/read与每个V2 PUT均携带条件头；
+- `darwin-arm64` Parquet确定性matrix 8/8通过（68.02s）；`pnpm v2:status:check`、
+  `git diff --check`、`pnpm lint`、`pnpm build`（12 tasks）、`pnpm typecheck`（21 tasks）、
+  `pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）与`pnpm peers check`全部通过。

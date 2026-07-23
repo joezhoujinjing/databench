@@ -18,6 +18,8 @@ import {
   type RawJsonLimitsV2,
   RecordIdV2Schema,
   ResourceLimitError,
+  V2_RECORD_JSON_COLUMNS,
+  V2_RECORD_JSON_LAYOUT_VERSION,
 } from '@databench/schema'
 import {
   type AsyncBuffer,
@@ -48,12 +50,8 @@ import {
   type RecordJsonV1IntegrityReason,
 } from './record-json-errors.js'
 
-export const RECORD_JSON_V1_LAYOUT_VERSION = 'record-json-v1' as const
-export const RECORD_JSON_V1_COLUMNS = Object.freeze([
-  'record_id',
-  'record_digest',
-  'record_json',
-] as const)
+export const RECORD_JSON_V1_LAYOUT_VERSION = V2_RECORD_JSON_LAYOUT_VERSION
+export const RECORD_JSON_V1_COLUMNS = V2_RECORD_JSON_COLUMNS
 
 export const RECORD_JSON_V1_ROW_GROUP_SIZE = 65_536
 export const RECORD_JSON_V1_DATA_PAGE_SIZE = 1024 * 1024

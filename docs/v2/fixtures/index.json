@@ -152,7 +152,7 @@
       "path": "packages/store/test/golden/fixtures/v2/store-conditional-commit-states.fixture.json",
       "assertion": "Created, existing, ambiguous and failed conditional writes preserve the commit protocol",
       "source": "TECHNICAL-DESIGN-10.4",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "catalog-concurrency-and-record-lineage",

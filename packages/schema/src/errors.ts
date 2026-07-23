@@ -82,6 +82,21 @@ export class IntegrityError extends DomainError {
   }
 }
 
+export class ServiceUnavailableError extends DomainError {
+  override readonly name: string = 'ServiceUnavailableError'
+
+  constructor(message: string, detail?: unknown, options?: { readonly cause?: unknown }) {
+    super('service_unavailable', message, detail)
+    if (options && 'cause' in options) {
+      Object.defineProperty(this, 'cause', {
+        configurable: true,
+        value: options.cause,
+        writable: true,
+      })
+    }
+  }
+}
+
 // The single source of the error taxonomy. Both transports classify with this
 // and map the result to their own surface: apps/api → HTTP status, apps/cli →
 // exit code. Mirrors the instanceof ladder both need (HTTPException is
@@ -94,9 +109,13 @@ export type ErrorClass =
   | 'resource_limit'
   | 'capacity_exceeded'
   | 'integrity_error'
+  | 'service_unavailable'
   | 'internal_error'
 
 export function classifyError(error: unknown): ErrorClass {
+  if (error instanceof ServiceUnavailableError) {
+    return 'service_unavailable'
+  }
   if (error instanceof ResourceLimitError) {
     return 'resource_limit'
   }

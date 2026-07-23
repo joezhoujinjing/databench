@@ -5,6 +5,7 @@ import {
   IntegrityError,
   NotFoundError,
   ResourceLimitError,
+  ServiceUnavailableError,
   ValidationError,
 } from '@databench/schema'
 import type { Workspace } from '@databench/workspace'
@@ -273,6 +274,7 @@ describe('exitCodeFor', () => {
     expect(exitCodeFor(new ResourceLimitError('x'))).toBe(EXIT.validation)
     expect(exitCodeFor(new CapacityExceededError('x'))).toBe(EXIT.internal)
     expect(exitCodeFor(new IntegrityError('x'))).toBe(EXIT.internal)
+    expect(exitCodeFor(new ServiceUnavailableError('x'))).toBe(EXIT.internal)
     expect(exitCodeFor(new ZodError([]))).toBe(EXIT.validation)
     expect(exitCodeFor(new BadInputError('x'))).toBe(EXIT.badInput)
     expect(exitCodeFor(new TypeError('x'))).toBe(EXIT.badInput)

@@ -1,5 +1,6 @@
 export {
   hashV2ArtifactFile,
+  hashV2ArtifactFileHandle,
   type V2ArtifactFileDigest,
 } from './artifact-file.js'
 export {
