@@ -1,4 +1,5 @@
-import type { WorkspaceOpenOptions } from '@databench/workspace'
+import { BadInputError } from '@databench/schema'
+import type { V2WorkspaceOpenOptions, WorkspaceOpenOptions } from '@databench/workspace'
 
 // Global flags shared by every command. Output is always JSON per ADR-0007;
 // `compact` only toggles single-line vs indented. `databaseUrl` overrides the
@@ -11,6 +12,19 @@ export interface GlobalFlags {
 
 export function workspaceOptions(flags: GlobalFlags): WorkspaceOpenOptions {
   return {
+    ...(flags.databaseUrl !== undefined ? { databaseUrl: flags.databaseUrl } : {}),
+  }
+}
+
+export function v2WorkspaceOptions(flags: GlobalFlags): V2WorkspaceOpenOptions {
+  const cursorSecret = process.env.DATABENCH_V2_CURSOR_SECRET
+  if (cursorSecret === undefined || cursorSecret.length < 16) {
+    throw new BadInputError(
+      'DATABENCH_V2_CURSOR_SECRET must be set to at least 16 characters for v2 commands',
+    )
+  }
+  return {
+    cursorSecret,
     ...(flags.databaseUrl !== undefined ? { databaseUrl: flags.databaseUrl } : {}),
   }
 }

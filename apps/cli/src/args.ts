@@ -1,4 +1,9 @@
-import { BadInputError, PaginationQuerySchema } from '@databench/schema'
+import {
+  BadInputError,
+  JsonObjectV2Schema,
+  PaginationQuerySchema,
+  parseRawJsonV2,
+} from '@databench/schema'
 import type { Values } from './types.js'
 
 export function optString(values: Values, key: string): string | undefined {
@@ -57,4 +62,25 @@ export function parseJsonFlag(text: string, label: string): unknown {
   } catch {
     throw new BadInputError(`${label}: invalid JSON`)
   }
+}
+
+export function requireExactPositionals(
+  positionals: readonly string[],
+  count: number,
+  usage: string,
+): void {
+  if (positionals.length !== count) {
+    throw new BadInputError(
+      `${usage}: expected ${count} positional argument${count === 1 ? '' : 's'}`,
+    )
+  }
+}
+
+export function parseV2JsonObjectFlag(
+  values: Values,
+  key: string,
+): ReturnType<typeof JsonObjectV2Schema.parse> {
+  const text = optString(values, key)
+  if (text === undefined) return JsonObjectV2Schema.parse({})
+  return JsonObjectV2Schema.parse(parseRawJsonV2(new TextEncoder().encode(text)))
 }

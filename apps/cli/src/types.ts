@@ -26,9 +26,9 @@ export interface PositionalSpec {
 }
 
 // Declared shape of a verb's output, surfaced in `help --json` so agents know
-// what to expect: 'json' = a single JSON value on stdout; 'ndjson' = a raw
-// newline-delimited JSON stream (the documented exception to JSON-everywhere).
-export type OutputKind = 'json' | 'ndjson'
+// what to expect: 'json' = a single JSON value on stdout; 'ndjson'/'binary' =
+// a raw stream (the documented exceptions to JSON-everywhere).
+export type OutputKind = 'json' | 'ndjson' | 'binary'
 
 export interface Verb {
   readonly summary: string

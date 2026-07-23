@@ -10,6 +10,7 @@ import { vocabCommands } from './commands/vocab.js'
 import type { GlobalFlags } from './config.js'
 import { emitResult } from './output.js'
 import { type CommandGroup, STREAMED, type Values } from './types.js'
+import { dispatchV2 } from './v2-router.js'
 
 const COMMANDS: Record<string, CommandGroup> = {
   dataset: datasetCommands,
@@ -97,6 +98,11 @@ export async function dispatch(rest: readonly string[], flags: GlobalFlags): Pro
   const head = rest[0]
   if (head === undefined || HELP_TOKENS.has(head)) {
     emitHelp(rest[1], flags)
+    return
+  }
+
+  if (head === 'v2') {
+    await dispatchV2(rest.slice(1), flags)
     return
   }
 

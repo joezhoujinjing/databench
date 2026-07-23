@@ -52,10 +52,10 @@ apps/api/
 ```text
 apps/cli/
 ├─ src/
-│  ├─ index.ts · main.ts · router.ts · runtime.ts
-│  ├─ args.ts · config.ts · output.ts · exit.ts · types.ts · version.ts
+│  ├─ index.ts · main.ts · router.ts · v2-router.ts · runtime.ts
+│  ├─ args.ts · config.ts · output.ts · streaming.ts · exit.ts · types.ts · version.ts
 │  └─ commands/
-│     ├─ dataset.ts · transform.ts · ref.ts · lineage.ts
+│     ├─ dataset.ts · converter.ts · transform.ts · ref.ts · lineage.ts
 │     └─ recipe.ts · vocab.ts · meta.ts
 ├─ test/
 │  ├─ router.test.ts

@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V13
-last_completed_step: V12
+current_step: V14
+last_completed_step: V13
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V13 — `databench v2` CLI
+- **下一步:** V14 — Web foundation、refs 与 record read
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -33,7 +33,7 @@ capability_enabled: false
 | V10 | Transform、run cache与 lineage | ✅ | 当前分支 | GV10 | 五个最小operation、staged identity、run cache race与稳定lineage分页已过闸门 |
 | V11 | Converter registry与 fidelity | ✅ | 当前分支 | GV11 | 五种converter、strict inspect/stream、fidelity授权与真实依赖导出已过闸门 |
 | V12 | `/v2` API、OpenAPI与 generated client | ✅ | 当前分支 | GV12 | 15个operation、流式multipart、typed errors与真实HTTP lifecycle均已过闸门 |
-| V13 | `databench v2` CLI | ⬜ | | GV13 | |
+| V13 | `databench v2` CLI | ✅ | 当前分支 | GV13 | 完整命令面、流式输出、原子文件写入与取消边界已过闸门 |
 | V14 | Web foundation、refs与 record read | ⬜ | | GV14 | |
 | V15 | Web ingest/transform/lineage/export | ⬜ | | GV15 | |
 | V16 | Recovery、安全与容量 | ⬜ | | GV16 | |
@@ -272,5 +272,20 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   MinIO/Postgres 107/107通过；真实MinIO/Postgres HTTP ingest→read→audit→transform→lineage→
   inspect→export lifecycle所在API suite 69/69通过；
 - `pnpm v2:status:check`、`git diff --check`、`pnpm lint`（383 files）、`pnpm build`（12 tasks）、
+  `pnpm typecheck`（21 tasks）、`pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）与
+  `pnpm peers check`全部通过；capability继续保持关闭。
+
+## V13 Gate 记录
+
+- `databench v2`完整命令面已落地，覆盖 dataset ingest/show/records/audit/export、converter
+  list/show、transform list/run、ref list/show/move与lineage show；v1命令表及行为保持不变；
+- CLI只依赖Workspace/Schema；JSON/NDJSON/binary严格输出stdout，diagnostics输出stderr；export
+  强制inspect-first并锁定exact version，semantic loss必须显式接受精确fidelity digest；
+- 文件输出使用同目录`0600`临时文件、fsync与原子rename；失败、取消及cleanup secondary error均有
+  稳定诊断与清理，binary TTY拒绝，stdout断管会取消Workspace操作；Ref move要求显式CAS预期；
+- API、CLI与Workspace使用同一真实MinIO/Postgres lifecycle fixture，完整version、manifest及export
+  plan对拍一致；真实依赖suite 3 files、12/12 tests通过；独立review修复原生异常路径/凭据泄漏、
+  cleanup failure和部分manifest/plan比较，最终无剩余P0/P1/P2；V13 fixture已标记verified；
+- `pnpm v2:status:check`、`git diff --check`、`pnpm lint`（389 files）、`pnpm build`（12 tasks）、
   `pnpm typecheck`（21 tasks）、`pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）与
   `pnpm peers check`全部通过；capability继续保持关闭。

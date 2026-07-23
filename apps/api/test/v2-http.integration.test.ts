@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { V2Workspace } from '@databench/workspace'
@@ -11,11 +11,35 @@ const FIRST_ID = `rec_${'1'.repeat(64)}`
 const SECOND_ID = `rec_${'2'.repeat(64)}`
 const REF_NAME = `v12-http-${randomUUID()}`
 
+interface CliV2Fixture {
+  readonly record_source: string
+  readonly expected_dataset_version: string
+  readonly export: {
+    readonly converter: 'canonical-jsonl'
+    readonly options: Record<string, never>
+    readonly media_type: string
+    readonly suggested_filename: string
+    readonly output_count: number
+  }
+}
+
 describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', () => {
   let temporaryRoot: string
   let workspace: V2Workspace
+  let cliFixture: CliV2Fixture
+  let fixtureRecords: unknown[]
 
   beforeAll(async () => {
+    cliFixture = JSON.parse(
+      await readFile(
+        new URL('../../cli/test/golden/fixtures/v2/cli-v2-lifecycle.fixture.json', import.meta.url),
+        'utf8',
+      ),
+    ) as CliV2Fixture
+    const recordFixture = JSON.parse(
+      await readFile(new URL(`../../../${cliFixture.record_source}`, import.meta.url), 'utf8'),
+    ) as { records: unknown[] }
+    fixtureRecords = recordFixture.records
     temporaryRoot = await mkdtemp(join(tmpdir(), 'databench-v12-http-'))
     workspace = await V2Workspace.open({
       root: temporaryRoot,
@@ -44,10 +68,7 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
     form.set(
       'file',
       new File(
-        [
-          `${JSON.stringify(canonicalRecord(FIRST_ID, 'First real V12 HTTP record.'))}\n`,
-          `${JSON.stringify(canonicalRecord(SECOND_ID, 'Second real V12 HTTP record.'))}\n`,
-        ],
+        [`${fixtureRecords.map((record) => JSON.stringify(record)).join('\n')}\n`],
         'v12.jsonl',
       ),
     )
@@ -62,19 +83,41 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       dataset_version: string
       manifest: { num_records: number }
     }>(ingestedResponse)
-    expect(ingested.manifest.num_records).toBe(2)
+    expect(ingested.dataset_version).toBe(cliFixture.expected_dataset_version)
+    expect(ingested.manifest.num_records).toBe(cliFixture.export.output_count)
 
-    const described = await responseJson<{ dataset_version: string }>(
-      await app.fetch(request(`/v2/datasets/${REF_NAME}`)),
+    const described = await responseJson(await app.fetch(request(`/v2/datasets/${REF_NAME}`)))
+    const directView = await workspace.describeDataset(REF_NAME)
+    expect(described).toEqual(directView)
+    expect(ingested.manifest).toEqual(directView.manifest)
+
+    const sharedInspectResponse = await app.fetch(
+      request(`/v2/datasets/${REF_NAME}:inspect-export`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          converter: cliFixture.export.converter,
+          options: cliFixture.export.options,
+        }),
+      }),
     )
-    expect(described.dataset_version).toBe(ingested.dataset_version)
+    expect(sharedInspectResponse.status).toBe(200)
+    const directSharedPlan = await workspace.inspectExport(REF_NAME, {
+      converter: cliFixture.export.converter,
+      options: cliFixture.export.options,
+    })
+    expect(await responseJson(sharedInspectResponse)).toEqual(directSharedPlan)
 
     const page = await responseJson<{
       dataset_version: string
       items: Array<{ record_id: string }>
     }>(await app.fetch(request(`/v2/datasets/${ingested.dataset_version}/records?limit=20`)))
     expect(page.dataset_version).toBe(ingested.dataset_version)
-    expect(page.items.map(({ record_id }) => record_id).sort()).toEqual([FIRST_ID, SECOND_ID])
+    expect(page.items.map(({ record_id }) => record_id).sort()).toEqual([
+      FIRST_ID,
+      SECOND_ID,
+      `rec_${'3'.repeat(64)}`,
+    ])
 
     const audit = await app.fetch(
       request(`/v2/datasets/${ingested.dataset_version}:audit`, { method: 'POST' }),
@@ -143,38 +186,6 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
     expect(exportedText).not.toContain(SECOND_ID)
   })
 })
-
-function canonicalRecord(id: string, text: string) {
-  return {
-    schema_version: '2.0.0',
-    id,
-    system_instruction: null,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          {
-            type: 'text',
-            text,
-            thought: false,
-            thought_signature: null,
-            part_metadata: {},
-          },
-        ],
-        loss_weight: null,
-      },
-    ],
-    candidates: [],
-    preference_relations: [],
-    tools: [],
-    verification: null,
-    source: null,
-    lang: null,
-    lineage: null,
-    tags: [],
-    extra: {},
-  }
-}
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`http://localhost${path}`, init)

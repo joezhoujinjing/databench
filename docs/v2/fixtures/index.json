@@ -222,7 +222,7 @@
       "path": "apps/cli/test/golden/fixtures/v2/cli-v2-lifecycle.fixture.json",
       "assertion": "CLI lifecycle matches Workspace versions, plans, errors and cancellation behavior",
       "source": "TECHNICAL-DESIGN-17.1",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "web-v2-record-cache-security",

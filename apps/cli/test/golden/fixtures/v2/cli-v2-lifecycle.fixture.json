@@ -1,0 +1,55 @@
+{
+  "fixture_version": 1,
+  "record_source": "packages/engine/test/golden/fixtures/v2/dataset-permutation-and-limits.fixture.json",
+  "expected_dataset_version": "ad20d8f85630cb0c9902d23c10a2792a50b0d68fba91d80eccc5154013552ed3",
+  "export": {
+    "converter": "canonical-jsonl",
+    "options": {},
+    "media_type": "application/x-ndjson",
+    "suggested_filename": "canonical.jsonl",
+    "output_count": 3,
+    "semantic_approval_required": false
+  },
+  "commands": [
+    "dataset ingest",
+    "dataset show",
+    "dataset records",
+    "dataset audit",
+    "dataset export",
+    "converter list",
+    "converter show",
+    "transform list",
+    "transform run",
+    "ref list",
+    "ref show",
+    "ref move",
+    "lineage show"
+  ],
+  "transport": {
+    "json_stdout": true,
+    "diagnostics_stderr": true,
+    "export_inspect_first": true,
+    "semantic_loss_requires_exact_fidelity_digest": true,
+    "binary_tty_rejected": true,
+    "pipe_break_aborts_operation": true,
+    "file_mode": "0600",
+    "file_flush_before_atomic_rename": true,
+    "failure_removes_temporary_file": true
+  },
+  "stable_error_codes": [
+    "bad_request",
+    "validation_error",
+    "unsupported_profile",
+    "not_found",
+    "identity_conflict",
+    "determinism_conflict",
+    "layout_conflict",
+    "fidelity_error",
+    "ref_conflict",
+    "resource_limit",
+    "capacity_exceeded",
+    "integrity_error",
+    "service_unavailable",
+    "internal_error"
+  ]
+}
