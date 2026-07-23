@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ResourceLimitError,
   ServiceUnavailableError,
+  UnsupportedProfileError,
   ValidationError,
 } from '@databench/schema'
 import type { Workspace } from '@databench/workspace'
@@ -272,6 +273,7 @@ describe('exitCodeFor', () => {
     expect(exitCodeFor(new ConflictError('x'))).toBe(EXIT.conflict)
     expect(exitCodeFor(new ValidationError('x'))).toBe(EXIT.validation)
     expect(exitCodeFor(new ResourceLimitError('x'))).toBe(EXIT.validation)
+    expect(exitCodeFor(new UnsupportedProfileError('x'))).toBe(EXIT.validation)
     expect(exitCodeFor(new CapacityExceededError('x'))).toBe(EXIT.internal)
     expect(exitCodeFor(new IntegrityError('x'))).toBe(EXIT.internal)
     expect(exitCodeFor(new ServiceUnavailableError('x'))).toBe(EXIT.internal)

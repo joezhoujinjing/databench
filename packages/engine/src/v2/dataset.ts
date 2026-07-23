@@ -33,6 +33,10 @@ export interface V2DatasetLimits {
   readonly max_record_bytes: number
 }
 
+export interface V2DatasetAsyncOptions {
+  readonly signal?: AbortSignal
+}
+
 export const DEFAULT_V2_DATASET_LIMITS: Readonly<V2DatasetLimits> = Object.freeze({
   max_records: 100_000,
   max_canonical_bytes: 512 * MEBIBYTE,
@@ -88,49 +92,40 @@ export class V2Dataset {
     records: Iterable<unknown>,
     limitsInput: V2DatasetLimits = DEFAULT_V2_DATASET_LIMITS,
   ): V2Dataset {
-    const limits = validateV2DatasetLimits(limitsInput)
-    const retained: RecordRevisionV2[] = []
-    const recordIds = new Set<string>()
-    const canonicalByDigest = new Map<string, string>()
-    let canonicalBytes = 0
+    const state = createV2DatasetBuildState(limitsInput)
 
     for (const input of records) {
-      if (retained.length >= limits.max_records) {
-        throwDatasetLimit('records', limits.max_records, nextActual(retained.length, 1))
-      }
-
-      const revision = createRecordRevisionV2(input)
-      const recordBytes = textEncoder.encode(revision.record_json).byteLength
-      if (recordBytes > limits.max_record_bytes) {
-        throwDatasetLimit('record_bytes', limits.max_record_bytes, recordBytes)
-      }
-      if (recordBytes > limits.max_canonical_bytes - canonicalBytes) {
-        throwDatasetLimit(
-          'canonical_bytes',
-          limits.max_canonical_bytes,
-          nextActual(canonicalBytes, recordBytes),
-        )
-      }
-
-      assertV2RecordIdentityAvailable(
-        {
-          record_id: revision.record.id,
-          record_digest: revision.record_digest,
-          record_json: revision.record_json,
-        },
-        recordIds,
-        canonicalByDigest,
-        retained.length,
-      )
-
-      canonicalBytes += recordBytes
-      retained.push(revision)
-      recordIds.add(revision.record.id)
-      canonicalByDigest.set(revision.record_digest, revision.record_json)
+      appendV2DatasetRecord(state, input)
     }
 
-    retained.sort(compareRevisionIdentityAscii)
-    return new V2Dataset(V2_DATASET_CONSTRUCTION, retained, canonicalBytes)
+    return V2Dataset.fromBuildState(state)
+  }
+
+  /**
+   * Incrementally materializes an eager snapshot from an asynchronous source.
+   * Admission runs before the next record is retained, so JSONL callers do not
+   * need to buffer the complete transport before applying dataset limits.
+   */
+  static async fromAsyncRecords(
+    records: AsyncIterable<unknown>,
+    limitsInput: V2DatasetLimits = DEFAULT_V2_DATASET_LIMITS,
+    options: V2DatasetAsyncOptions = {},
+  ): Promise<V2Dataset> {
+    const state = createV2DatasetBuildState(limitsInput)
+    const signal = options.signal
+    signal?.throwIfAborted()
+    for await (const input of records) {
+      signal?.throwIfAborted()
+      appendV2DatasetRecord(state, input)
+      signal?.throwIfAborted()
+    }
+    signal?.throwIfAborted()
+    return V2Dataset.fromBuildState(state)
+  }
+
+  private static fromBuildState(state: V2DatasetBuildState): V2Dataset {
+    state.retained.sort(compareRevisionIdentityAscii)
+    return new V2Dataset(V2_DATASET_CONSTRUCTION, state.retained, state.canonicalBytes)
   }
 
   get length(): number {
@@ -206,6 +201,59 @@ export function admitV2TransformWorkingSet(
 }
 
 export { DuplicateRecordIdErrorV2, RecordDigestCollisionErrorV2 }
+
+interface V2DatasetBuildState {
+  readonly limits: Readonly<V2DatasetLimits>
+  readonly retained: RecordRevisionV2[]
+  readonly recordIds: Set<string>
+  readonly canonicalByDigest: Map<string, string>
+  canonicalBytes: number
+}
+
+function createV2DatasetBuildState(limitsInput: V2DatasetLimits): V2DatasetBuildState {
+  return {
+    limits: validateV2DatasetLimits(limitsInput),
+    retained: [],
+    recordIds: new Set<string>(),
+    canonicalByDigest: new Map<string, string>(),
+    canonicalBytes: 0,
+  }
+}
+
+function appendV2DatasetRecord(state: V2DatasetBuildState, input: unknown): void {
+  if (state.retained.length >= state.limits.max_records) {
+    throwDatasetLimit('records', state.limits.max_records, nextActual(state.retained.length, 1))
+  }
+
+  const revision = createRecordRevisionV2(input)
+  const recordBytes = textEncoder.encode(revision.record_json).byteLength
+  if (recordBytes > state.limits.max_record_bytes) {
+    throwDatasetLimit('record_bytes', state.limits.max_record_bytes, recordBytes)
+  }
+  if (recordBytes > state.limits.max_canonical_bytes - state.canonicalBytes) {
+    throwDatasetLimit(
+      'canonical_bytes',
+      state.limits.max_canonical_bytes,
+      nextActual(state.canonicalBytes, recordBytes),
+    )
+  }
+
+  assertV2RecordIdentityAvailable(
+    {
+      record_id: revision.record.id,
+      record_digest: revision.record_digest,
+      record_json: revision.record_json,
+    },
+    state.recordIds,
+    state.canonicalByDigest,
+    state.retained.length,
+  )
+
+  state.canonicalBytes += recordBytes
+  state.retained.push(revision)
+  state.recordIds.add(revision.record.id)
+  state.canonicalByDigest.set(revision.record_digest, revision.record_json)
+}
 
 function validateV2DatasetLimits(limits: V2DatasetLimits): Readonly<V2DatasetLimits> {
   if (limits === null || typeof limits !== 'object') {

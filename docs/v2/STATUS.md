@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V8
-last_completed_step: V7
+current_step: V9
+last_completed_step: V8
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V8 — Canonical JSONL 与共享投影
+- **下一步:** V9 — Workspace Publish、Read Cache 与 Ref
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -28,7 +28,7 @@ capability_enabled: false
 | V5 | `record-json-v1`确定性 Parquet | ✅ | 当前分支 | GV5 | REQUIRED schema、固定 writer与双 ABI raw-byte matrix已通过 |
 | V6 | Manifest与 file-backed Store | ✅ | 当前分支 | GV6 | strict manifest、conditional-create provider adapters、受控 temp与流式 file-backed Store已过闸门 |
 | V7 | Prisma与 v2 Catalog | ✅ | 当前分支 | GV7 | 九表迁移、并发 claim/lineage、immutable run与 Ref CAS 已过闸门 |
-| V8 | Canonical JSONL与共享投影 | ⬜ | | GV8 | |
+| V8 | Canonical JSONL与共享投影 | ✅ | 当前分支 | GV8 | fixed-byte golden、增量eager admission与资源/取消边界通过 |
 | V9 | Workspace publish/read cache/ref | ⬜ | | GV9 | |
 | V10 | Transform、run cache与 lineage | ⬜ | | GV10 | |
 | V11 | Converter registry与 fidelity | ⬜ | | GV11 | |
@@ -165,3 +165,25 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - `pnpm lint`（327 files）、`pnpm build`（12 tasks）、`pnpm typecheck`（21 tasks）、
   `pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm peers check`与
   `pnpm v2:status:check`全部通过，capability继续保持关闭。
+
+## V8 Gate 记录
+
+- Canonical JSONL reader按byte-level LF流式分帧，复用duplicate-aware raw parser并严格校验
+  `2.0.0` record；合法ID原样保留，writer重算opaque revision后只保留稳定字符串投影，按
+  `(record_digest,record_id)` ASCII排序并固定输出尾LF；
+- 默认16 MiB单record、depth 128与1 GiB总transport均为inclusive资源门，分别返回带line、
+  JSON Pointer和actual的typed 413；合法但非精确`2.0.0`的SemVer返回`unsupported_profile`
+  并统一映射API 422 / CLI validation；
+- committed input/expected JSONL golden锁定read→write→read digest和输出bytes；覆盖BOM、非法/
+  截断UTF-8、duplicate key优先级、CRLF/空行/无尾LF、zero-length/reused chunks、exact/+1、
+  iterator关闭以及reader/writer done尾态取消；
+- `RecordSummaryV2`与SFT/DPO/RLVR-GRPO eligibility/output count逐项对拍ADR 0009；preview只读
+  shared contents，以有界string iterator截取240 Unicode code points，不改写空白；
+- `V2Dataset.fromAsyncRecords`提供生产级增量eager admission，JSONL调用方无需先物化完整transport；
+  count/canonical/single-record limits、source关闭、取消与同步identity等价均有真实Engine回归；
+- 三轮独立review修复双record graph驻留、增量handoff、buffer reuse/chunk放大、资源错误分类、
+  done/yield取消竞态与超长preview放大；最终无剩余P0/P1/P2；capability继续保持关闭。
+- Schema 160 tests、IO 35 tests、Engine 56 tests、API 23 tests、CLI 38 tests通过；
+  `git diff --check`、`pnpm lint`（334 files）、`pnpm build`（12 tasks）、`pnpm typecheck`
+  （21 tasks）、`pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm peers check`
+  与`pnpm v2:status:check`全部通过。

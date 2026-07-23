@@ -172,7 +172,7 @@
       "path": "packages/io/test/golden/fixtures/v2/canonical-jsonl-round-trip.input.jsonl",
       "assertion": "Canonical import preserves IDs and digest-sorted export bytes round-trip",
       "source": "TECHNICAL-DESIGN-14.1",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "workspace-publish-read-cache-ref",

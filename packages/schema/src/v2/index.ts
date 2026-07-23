@@ -73,6 +73,21 @@ export {
   PreferenceStatusSchema as PreferenceStatusV2Schema,
 } from './preference.js'
 export {
+  createRecordSummaryV2,
+  deriveRecordEligibilityV2,
+  deriveRecordPreviewV2,
+  type EligibilityReasonCodeV2,
+  EligibilityReasonCodeV2Schema,
+  type RecordEligibilityV2,
+  RecordEligibilityV2Schema,
+  type RecordProjectionSourceV2,
+  type RecordSummaryV2,
+  RecordSummaryV2Schema,
+  type TaskEligibilityV2,
+  TaskEligibilityV2Schema,
+  V2_RECORD_PREVIEW_MAX_CODE_POINTS,
+} from './projection.js'
+export {
   LineageSchema as LineageV2Schema,
   type LineageV2,
   ParentRevisionRefSchema as ParentRevisionRefV2Schema,

@@ -11,6 +11,7 @@ export {
   estimateV2TransformWorkingSet,
   RecordDigestCollisionErrorV2,
   V2Dataset,
+  type V2DatasetAsyncOptions,
   type V2DatasetLimits,
   type V2TransformWorkingSetEstimate,
   type V2TransformWorkingSetInput,

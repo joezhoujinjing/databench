@@ -50,6 +50,14 @@ export class ValidationError extends DomainError {
   }
 }
 
+export class UnsupportedProfileError extends DomainError {
+  override readonly name: string = 'UnsupportedProfileError'
+
+  constructor(message: string, detail?: unknown) {
+    super('unsupported_profile', message, detail)
+  }
+}
+
 export class ConflictError extends DomainError {
   override readonly name: string = 'ConflictError'
 
@@ -105,6 +113,7 @@ export type ErrorClass =
   | 'not_found'
   | 'conflict'
   | 'validation_error'
+  | 'unsupported_profile'
   | 'bad_request'
   | 'resource_limit'
   | 'capacity_exceeded'
@@ -133,6 +142,9 @@ export function classifyError(error: unknown): ErrorClass {
   }
   if (error instanceof ValidationError || error instanceof ZodError) {
     return 'validation_error'
+  }
+  if (error instanceof UnsupportedProfileError) {
+    return 'unsupported_profile'
   }
   if (error instanceof BadInputError || error instanceof TypeError) {
     return 'bad_request'

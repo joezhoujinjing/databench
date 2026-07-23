@@ -21,6 +21,7 @@ type ErrorCode =
   | 'too_many_requests'
   | 'unauthorized'
   | 'unprocessable_entity'
+  | 'unsupported_profile'
   | 'validation_error'
 
 interface ErrorEnvelopeOptions {
@@ -63,6 +64,7 @@ const STATUS_FOR: Record<ErrorClass, ContentfulStatusCode> = {
   not_found: 404,
   conflict: 409,
   validation_error: 422,
+  unsupported_profile: 422,
   bad_request: 400,
   resource_limit: 413,
   capacity_exceeded: 503,

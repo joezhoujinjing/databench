@@ -127,6 +127,107 @@ describe('V2Dataset identity and ordering', () => {
 })
 
 describe('V2Dataset admission', () => {
+  test('incrementally materializes an async source with the same identity', async () => {
+    async function* records(): AsyncIterableIterator<PostTrainingRecordV2> {
+      for (const record of fixture.records) {
+        yield structuredClone(record)
+      }
+    }
+
+    const asynchronous = await V2Dataset.fromAsyncRecords(records(), permissiveLimits)
+    const synchronous = V2Dataset.fromRecords(fixture.records, permissiveLimits)
+    expect(asynchronous.identity).toEqual(synchronous.identity)
+    expect(asynchronous.canonicalBytes).toBe(synchronous.canonicalBytes)
+    expect([...asynchronous.records()].map((revision) => revision.record_digest)).toEqual(
+      [...synchronous.records()].map((revision) => revision.record_digest),
+    )
+  })
+
+  test('stops and closes an async source at the real eager record limit', async () => {
+    let pulls = 0
+    let closed = false
+    async function* records(): AsyncIterableIterator<PostTrainingRecordV2> {
+      try {
+        for (const record of fixture.records) {
+          pulls += 1
+          yield record
+        }
+      } finally {
+        closed = true
+      }
+    }
+
+    await expect(
+      V2Dataset.fromAsyncRecords(records(), {
+        ...permissiveLimits,
+        max_records: 2,
+      }),
+    ).rejects.toMatchObject({
+      name: 'ResourceLimitError',
+      code: 'resource_limit',
+      detail: { resource: 'records', limit: 2, actual: 3 },
+    })
+    expect(pulls).toBe(3)
+    expect(closed).toBe(true)
+  })
+
+  test('validates async limits before pulling and closes on cancellation', async () => {
+    let pulls = 0
+    let closed = false
+    async function* records(): AsyncIterableIterator<PostTrainingRecordV2> {
+      try {
+        for (const record of fixture.records) {
+          pulls += 1
+          yield record
+        }
+      } finally {
+        closed = true
+      }
+    }
+
+    await expect(
+      V2Dataset.fromAsyncRecords(records(), {
+        ...permissiveLimits,
+        max_records: -1,
+      }),
+    ).rejects.toThrow(TypeError)
+    expect(pulls).toBe(0)
+
+    const controller = new AbortController()
+    async function* abortingRecords(): AsyncIterableIterator<PostTrainingRecordV2> {
+      try {
+        pulls += 1
+        yield fixtureRecord(0)
+        controller.abort()
+        pulls += 1
+        yield fixtureRecord(1)
+      } finally {
+        closed = true
+      }
+    }
+    await expect(
+      V2Dataset.fromAsyncRecords(abortingRecords(), permissiveLimits, {
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(pulls).toBe(2)
+    expect(closed).toBe(true)
+  })
+
+  test('does not publish an async snapshot cancelled while its source finishes', async () => {
+    const controller = new AbortController()
+    async function* records(): AsyncIterableIterator<PostTrainingRecordV2> {
+      yield fixtureRecord(0)
+      controller.abort()
+    }
+
+    await expect(
+      V2Dataset.fromAsyncRecords(records(), permissiveLimits, {
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
   test('accepts exact record, total byte, and count limits', () => {
     const dataset = V2Dataset.fromRecords(fixture.records, {
       max_records: fixture.records.length,

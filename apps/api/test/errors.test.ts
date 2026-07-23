@@ -7,6 +7,7 @@ import {
   NotFoundError,
   ResourceLimitError,
   ServiceUnavailableError,
+  UnsupportedProfileError,
   ValidationError,
 } from '@databench/schema'
 import { createRoute } from '@hono/zod-openapi'
@@ -75,6 +76,13 @@ describe('api error envelope', () => {
       'payload validation failed',
     )
     await expectError(app, '/v1/_test-error/resource', 413, 'resource_limit', 'too large')
+    await expectError(
+      app,
+      '/v1/_test-error/unsupported-profile',
+      422,
+      'unsupported_profile',
+      'unsupported record schema',
+    )
     await expectError(app, '/v1/_test-error/capacity', 503, 'capacity_exceeded', 'busy')
     await expectError(app, '/v1/_test-error/integrity', 500, 'integrity_error', 'corrupt')
     await expectError(
@@ -156,6 +164,9 @@ function installThrowRoutes(app: ReturnType<typeof createApp>): void {
     }
     if (kind === 'resource') {
       throw new ResourceLimitError('too large')
+    }
+    if (kind === 'unsupported-profile') {
+      throw new UnsupportedProfileError('unsupported record schema')
     }
     if (kind === 'capacity') {
       throw new CapacityExceededError('busy')
