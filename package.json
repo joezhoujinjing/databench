@@ -14,6 +14,7 @@
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "v2:status:check": "node scripts/check-v2-status.mjs",
     "openapi:check": "turbo run openapi:check",
     "spike:s1": "node scripts/spikes/s1-determinism.mjs --write",
     "prepare": "lefthook install"

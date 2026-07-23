@@ -1,0 +1,258 @@
+{
+  "fixture_index_version": 1,
+  "identity_profile": "databench-v2-jcs-1",
+  "record_schema_version": "2.0.0",
+  "layout_version": "record-json-v1",
+  "fixtures": [
+    {
+      "id": "jcs-rfc8785-official",
+      "step": "V1",
+      "owner": "hashing",
+      "category": "canonical-json",
+      "path": "packages/hashing/test/golden/fixtures/v2/jcs-rfc8785-official.input.json",
+      "assertion": "RFC 8785 official vectors produce exact UTF-8 bytes",
+      "source": "ADR-0011-2",
+      "status": "planned"
+    },
+    {
+      "id": "jcs-unicode-number-boundaries",
+      "step": "V1",
+      "owner": "hashing",
+      "category": "canonical-json",
+      "path": "packages/hashing/test/golden/fixtures/v2/jcs-unicode-number-boundaries.input.json",
+      "assertion": "UTF-16 ordering, scalar validation and ECMAScript number formatting are exact",
+      "source": "ADR-0011-2",
+      "status": "planned"
+    },
+    {
+      "id": "jcs-invalid-values-and-duplicate-keys",
+      "step": "V1",
+      "owner": "schema",
+      "category": "raw-json",
+      "path": "packages/schema/test/golden/fixtures/v2/jcs-invalid-values-and-duplicate-keys.input.json",
+      "assertion": "Duplicate keys, lone surrogates, invalid values, depth and byte overflow are rejected",
+      "source": "TECHNICAL-DESIGN-6.2",
+      "status": "planned"
+    },
+    {
+      "id": "hash-domain-separation",
+      "step": "V1",
+      "owner": "hashing",
+      "category": "hashing",
+      "path": "packages/hashing/test/golden/fixtures/v2/hash-domain-separation.expected.json",
+      "assertion": "Entity, record, dataset, cache, claim, request and fidelity domains cannot collide",
+      "source": "ADR-0011-1,3,4,8",
+      "status": "planned"
+    },
+    {
+      "id": "record-all-fields",
+      "step": "V2",
+      "owner": "schema",
+      "category": "record-schema",
+      "path": "packages/schema/test/golden/fixtures/v2/record-all-fields.input.json",
+      "assertion": "Every v2.0 field and Part variant round-trips through the strict writer",
+      "source": "ADR-0009",
+      "status": "planned"
+    },
+    {
+      "id": "record-cross-field-invalid",
+      "step": "V2",
+      "owner": "schema",
+      "category": "record-schema",
+      "path": "packages/schema/test/golden/fixtures/v2/record-cross-field-invalid.input.json",
+      "assertion": "Call, candidate, signal, preference, supersession and verification invariants reject invalid records",
+      "source": "ADR-0009-invariants",
+      "status": "planned"
+    },
+    {
+      "id": "tool-schema-local-ref-budget",
+      "step": "V2",
+      "owner": "schema",
+      "category": "tool-schema",
+      "path": "packages/schema/test/golden/fixtures/v2/tool-schema-local-ref-budget.input.json",
+      "assertion": "Draft 2020-12 local recursive refs work while external refs and budget overflow fail",
+      "source": "TECHNICAL-DESIGN-7.4",
+      "status": "planned"
+    },
+    {
+      "id": "entity-id-four-prefixes",
+      "step": "V3",
+      "owner": "hashing",
+      "category": "identity",
+      "path": "packages/hashing/test/golden/fixtures/v2/entity-id-four-prefixes.expected.json",
+      "assertion": "Record, candidate, signal and preference seeds produce fixed IDs",
+      "source": "ADR-0011-1",
+      "status": "planned"
+    },
+    {
+      "id": "identity-claim-idempotency-conflict",
+      "step": "V3",
+      "owner": "schema",
+      "category": "identity",
+      "path": "packages/schema/test/golden/fixtures/v2/identity-claim-idempotency-conflict.expected.json",
+      "assertion": "Same strict seed and request is idempotent while changed initial semantics conflicts",
+      "source": "TECHNICAL-DESIGN-8.2",
+      "status": "planned"
+    },
+    {
+      "id": "record-digest-all-fields",
+      "step": "V3",
+      "owner": "hashing",
+      "category": "record-digest",
+      "path": "packages/hashing/test/golden/fixtures/v2/record-digest-all-fields.expected.json",
+      "assertion": "Every canonical record field participates in the fixed digest",
+      "source": "ADR-0011-3",
+      "status": "planned"
+    },
+    {
+      "id": "dataset-empty-2-0-0",
+      "step": "V3",
+      "owner": "hashing",
+      "category": "dataset-version",
+      "path": "packages/hashing/test/golden/fixtures/v2/dataset-empty-2-0-0.expected.json",
+      "assertion": "Empty dataset version equals the ADR fixed value",
+      "source": "ADR-0011-4",
+      "status": "planned"
+    },
+    {
+      "id": "record-revision-deep-immutable",
+      "step": "V3",
+      "owner": "schema",
+      "category": "revision",
+      "path": "packages/schema/test/golden/fixtures/v2/record-revision-deep-immutable.input.json",
+      "assertion": "Input and returned nested mutation cannot change record JSON or digest",
+      "source": "TECHNICAL-DESIGN-7.3",
+      "status": "planned"
+    },
+    {
+      "id": "dataset-permutation-and-limits",
+      "step": "V4",
+      "owner": "engine",
+      "category": "dataset",
+      "path": "packages/engine/test/golden/fixtures/v2/dataset-permutation-and-limits.fixture.json",
+      "assertion": "Permutations share a version and eager record/count/byte limits reject before retention",
+      "source": "TECHNICAL-DESIGN-9.1",
+      "status": "planned"
+    },
+    {
+      "id": "parquet-determinism-matrix",
+      "step": "V5",
+      "owner": "engine",
+      "category": "parquet",
+      "path": "packages/engine/test/golden/fixtures/v2/parquet-determinism-matrix.expected.json",
+      "assertion": "Empty, Unicode, cardinality, long-row and row-group boundaries have fixed raw bytes",
+      "source": "TECHNICAL-DESIGN-9.2",
+      "status": "planned"
+    },
+    {
+      "id": "store-conditional-commit-states",
+      "step": "V6",
+      "owner": "store",
+      "category": "object-store",
+      "path": "packages/store/test/golden/fixtures/v2/store-conditional-commit-states.fixture.json",
+      "assertion": "Created, existing, ambiguous and failed conditional writes preserve the commit protocol",
+      "source": "TECHNICAL-DESIGN-10.4",
+      "status": "planned"
+    },
+    {
+      "id": "catalog-concurrency-and-record-lineage",
+      "step": "V7",
+      "owner": "catalog",
+      "category": "catalog",
+      "path": "packages/catalog/test/golden/fixtures/v2/catalog-concurrency-and-record-lineage.fixture.json",
+      "assertion": "Claims, locators, parent edges, run metadata and ref CAS obey concurrent invariants",
+      "source": "TECHNICAL-DESIGN-11",
+      "status": "planned"
+    },
+    {
+      "id": "canonical-jsonl-round-trip",
+      "step": "V8",
+      "owner": "io",
+      "category": "jsonl",
+      "path": "packages/io/test/golden/fixtures/v2/canonical-jsonl-round-trip.input.jsonl",
+      "assertion": "Canonical import preserves IDs and digest-sorted export bytes round-trip",
+      "source": "TECHNICAL-DESIGN-14.1",
+      "status": "planned"
+    },
+    {
+      "id": "workspace-publish-read-cache-ref",
+      "step": "V9",
+      "owner": "workspace",
+      "category": "workspace",
+      "path": "packages/workspace/test/golden/fixtures/v2/workspace-publish-read-cache-ref.fixture.json",
+      "assertion": "Publish ordering, recovery, exact-version cache and ref conflicts are stable",
+      "source": "TECHNICAL-DESIGN-12",
+      "status": "planned"
+    },
+    {
+      "id": "transform-identity-cache-race",
+      "step": "V10",
+      "owner": "workspace",
+      "category": "transform",
+      "path": "packages/workspace/test/golden/fixtures/v2/transform-identity-cache-race.fixture.json",
+      "assertion": "Preserve/derive, run ID, cache hit and double-miss races are deterministic",
+      "source": "TECHNICAL-DESIGN-13",
+      "status": "planned"
+    },
+    {
+      "id": "converter-output-bytes-and-fidelity",
+      "step": "V11",
+      "owner": "io",
+      "category": "converter",
+      "path": "packages/io/test/golden/fixtures/v2/converter-output-bytes-and-fidelity.expected.json",
+      "assertion": "Canonical, TRL and ms-swift output bytes and fidelity plans are fixed",
+      "source": "TECHNICAL-DESIGN-14.2,15.3",
+      "status": "planned"
+    },
+    {
+      "id": "api-v2-wire-contract",
+      "step": "V12",
+      "owner": "api",
+      "category": "api",
+      "path": "apps/api/test/golden/fixtures/v2/api-v2-wire-contract.fixture.json",
+      "assertion": "Every v2 request, success, typed error, page and binary response matches OpenAPI",
+      "source": "TECHNICAL-DESIGN-15,16",
+      "status": "planned"
+    },
+    {
+      "id": "cli-v2-lifecycle",
+      "step": "V13",
+      "owner": "cli",
+      "category": "cli",
+      "path": "apps/cli/test/golden/fixtures/v2/cli-v2-lifecycle.fixture.json",
+      "assertion": "CLI lifecycle matches Workspace versions, plans, errors and cancellation behavior",
+      "source": "TECHNICAL-DESIGN-17.1",
+      "status": "planned"
+    },
+    {
+      "id": "web-v2-record-cache-security",
+      "step": "V14",
+      "owner": "web",
+      "category": "web",
+      "path": "apps/web/test/golden/fixtures/v2/web-v2-record-cache-security.fixture.json",
+      "assertion": "Session-scoped cache and Unified Record rendering do not leak or execute content",
+      "source": "TECHNICAL-DESIGN-17.2.1-17.2.4",
+      "status": "planned"
+    },
+    {
+      "id": "web-v2-mutations-export",
+      "step": "V15",
+      "owner": "web",
+      "category": "web",
+      "path": "apps/web/test/golden/fixtures/v2/web-v2-mutations-export.fixture.json",
+      "assertion": "Ingest, transform, lineage, fidelity review and bounded download complete safely",
+      "source": "TECHNICAL-DESIGN-17.2.5-17.2.7",
+      "status": "planned"
+    },
+    {
+      "id": "v2-fault-security-capacity-matrix",
+      "step": "V16",
+      "owner": "api",
+      "category": "e2e",
+      "path": "apps/api/test/golden/fixtures/v2/v2-fault-security-capacity-matrix.fixture.json",
+      "assertion": "Crash, concurrency, auth, resource and untrusted-output boundaries fail safely",
+      "source": "PLAN-V16",
+      "status": "planned"
+    }
+  ]
+}
