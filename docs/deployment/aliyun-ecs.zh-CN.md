@@ -233,6 +233,7 @@ GitHub Secrets。
 
 ```env
 DATABASE_URL=postgresql://databench_app:<url-encoded-password>@pgm-j6cgqlq44ku1k52n.pg.cnhk.rds.aliyuncs.com:5432/databench?schema=public
+DATABENCH_OBJECT_STORE=oss
 OSS_REGION=oss-cn-hongkong
 OSS_BUCKET=databench-data
 OSS_ACCESS_KEY_ID=<databench-api-runtime access key id>
@@ -248,6 +249,10 @@ PORT=8000
 
 部署脚本会在加载镜像或启动服务前校验这些变量。如果变量为空，或还保留
 `REPLACE_ME` 之类占位值，部署会直接失败。
+
+`deploy/ecs/docker-compose.yml` 也会给 API 服务显式注入
+`DATABENCH_OBJECT_STORE=oss`。这样即使本地开发可以用
+`DATABENCH_OBJECT_STORE=s3` 连接 MinIO，生产 ECS 仍然固定走 Aliyun OSS。
 
 ## 后端镜像和部署流程
 

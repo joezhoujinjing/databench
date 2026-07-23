@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { ossConfigFromEnv, type WorkspaceOpenOptions } from '@databench/workspace'
+import { storeConfigFromEnv, type WorkspaceOpenOptions } from '@databench/workspace'
 import { z } from 'zod'
 
 // Read the service version from the monorepo root package.json rather than
@@ -14,8 +14,9 @@ function readVersion(): string {
   return parsed.version ?? '0.0.0'
 }
 
-// OSS_* (object store / data plane) is parsed by ossConfigFromEnv, the single
-// source shared with @databench/workspace so the two adapters can't drift.
+// Object-store env (OSS_* or S3_*, selected by DATABENCH_OBJECT_STORE) is parsed
+// by storeConfigFromEnv, the single source shared with @databench/workspace so
+// the two adapters can't drift.
 const EnvSchema = z.object({
   DATABASE_URL: z.string().optional(),
   DATABENCH_CORS_ORIGINS: z.string().default(''),
@@ -40,7 +41,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       .map((origin) => origin.trim())
       .filter(Boolean),
     port: parsed.PORT,
-    storeConfig: ossConfigFromEnv(env),
+    storeConfig: storeConfigFromEnv(env),
     version: readVersion(),
     workspaceRoot: parsed.DATABENCH_ROOT,
   }

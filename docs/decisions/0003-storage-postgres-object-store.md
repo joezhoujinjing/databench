@@ -1,8 +1,9 @@
 # ADR 0003 — Storage: Postgres catalog + object-storage data plane
 
-- **Status:** Accepted — **object-store choice superseded by [ADR-0008](0008-object-store-aliyun-oss.md)**
-  (Aliyun OSS via native `ali-oss`; no S3-compatible client / MinIO / GCS). The
-  Postgres-catalog + object-store-data-plane split below still holds.
+- **Status:** Accepted — **production object-store choice superseded by [ADR-0008](0008-object-store-aliyun-oss.md)**
+  (Aliyun OSS via native `ali-oss`; local development may still use MinIO via
+  the S3-compatible adapter). The Postgres-catalog + object-store-data-plane
+  split below still holds.
 - **Date:** 2026-06-29
 - **Deciders:** owner
 - **Supersedes:** the SQLite catalog choice from ADR-0001 / early architecture draft

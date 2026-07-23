@@ -14,10 +14,11 @@ and a hashable **recipe** (mixture) as the bridge to training.
 
 **Deployment:** a hosted, horizontally-scaled service — N stateless Hono API
 replicas over exactly **two stateful services**: **Postgres** (catalog) and
-**object storage** (Parquet data plane). `nodejs-polars`, DuckDB, Arrow and
-Lance are in-process libraries, not infrastructure — DuckDB reads Parquet
-directly from object storage via `httpfs`. Local/CI run the same stack via
-docker-compose (`postgres` + `minio`). No SQLite. See
+**object storage** (Parquet data plane). Production uses RDS + Aliyun OSS; local
+development uses Postgres + MinIO via the S3-compatible adapter. `nodejs-polars`,
+DuckDB, Arrow and Lance are in-process libraries, not infrastructure — DuckDB
+reads Parquet directly from object storage via `httpfs`. Local runs the same
+shape via docker-compose (`postgres` + `minio`). No SQLite. See
 [decisions/0003](decisions/0003-storage-postgres-object-store.md).
 
 ## Monorepo layout
@@ -102,7 +103,7 @@ jobs — not a fallback we hope never to use:
 |---|---|
 | Schema / discriminated unions / OpenAPI source | `zod` v4 + `@hono/zod-openapi` |
 | blake3 + order-independent versioning | `hash-wasm` (or `@hashbuf/blake3`) |
-| Content-addressed write-once store | object storage (S3/R2; MinIO local) behind a `Store` interface |
+| Content-addressed write-once store | object storage (Aliyun OSS production; MinIO local via S3 adapter) behind a `Store` interface |
 | Parquet read/write | `nodejs-polars` (or DuckDB `COPY`/`read_parquet`) |
 | Arrow interchange | `apache-arrow` + polars IPC |
 | Catalog + lineage | **Postgres** + **Prisma**, lineage via `WITH RECURSIVE` (TypedSQL/`$queryRaw`) |

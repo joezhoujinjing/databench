@@ -82,11 +82,16 @@
 
 | 变量 | 用途 |
 |---|---|
-| `DATABASE_URL` | Supabase Postgres(本地指向 docker pg) |
-| `S3_ENDPOINT` | 对象存储 endpoint(GCS S3 互操作 / 本地 MinIO) |
-| `S3_REGION` `S3_BUCKET` | bucket 与区域 |
-| `S3_ACCESS_KEY_ID` `S3_SECRET_ACCESS_KEY` | GCS HMAC / MinIO 凭据 |
+| `DATABASE_URL` | Postgres(本地指向 docker pg,生产指向 RDS) |
+| `DATABENCH_OBJECT_STORE` | 对象存储后端:`oss`(默认/生产) 或 `s3`(本地 MinIO) |
+| `OSS_REGION` `OSS_BUCKET` | Aliyun OSS bucket 与区域(生产) |
+| `OSS_ACCESS_KEY_ID` `OSS_ACCESS_KEY_SECRET` | Aliyun OSS RAM 凭据(生产) |
+| `OSS_ENDPOINT` `OSS_INTERNAL` `OSS_SECURE` | Aliyun OSS 可选 endpoint / VPC 内网 / HTTPS 开关 |
+| `S3_ENDPOINT` | S3-compatible endpoint(本地 MinIO) |
+| `S3_REGION` `S3_BUCKET` | 本地 MinIO bucket 与区域 |
+| `S3_ACCESS_KEY_ID` `S3_SECRET_ACCESS_KEY` `S3_FORCE_PATH_STYLE` | 本地 MinIO 凭据与 path-style 访问 |
 | `DATABENCH_CORS_ORIGINS` | 逗号分隔精确 allowlist(`SVC-02`) |
+| `DATABENCH_ROOT` | Workspace 本地根目录 |
 | `PORT` | API 端口 |
 
 - **绝不**把密钥写进代码/仓库;本地用 `.env`(gitignore),CI/生产用平台 secret。

@@ -23,10 +23,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Postgres for the golden/e2e tests. The object store is Aliyun OSS, which
-      # has no local service — the store integration test is OSS-credential-gated
-      # (skips in CI) and unit/e2e tests use an in-memory store.
-      - run: docker compose up -d --wait postgres
+      # Stateful backends for the golden/e2e tests. The store suite creates its
+      # own temporary bucket, so minio-init is not required here.
+      - run: docker compose up -d --wait postgres minio
 
       # The pg driver adapter ignores the connection URL's ?schema param, so the
       # runtime queries the public schema. Migrate it here (CI's DB starts empty;
@@ -39,6 +38,8 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test
+        env:
+          RUN_MINIO_STORE_TESTS: "true"
       - run: pnpm openapi:check
 
       - if: always()
