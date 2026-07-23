@@ -1,0 +1,103 @@
+{
+  "schema_version": "2.0.0",
+  "id": "rec_1010101010101010101010101010101010101010101010101010101010101010",
+  "system_instruction": null,
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Choose the accurate answer.",
+          "thought": false,
+          "thought_signature": null,
+          "part_metadata": {}
+        }
+      ],
+      "loss_weight": null
+    }
+  ],
+  "candidates": [
+    {
+      "id": "cand_2020202020202020202020202020202020202020202020202020202020202020",
+      "contents": [
+        {
+          "role": "ai",
+          "parts": [
+            {
+              "type": "text",
+              "text": "The verified answer.",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": {}
+            }
+          ],
+          "loss_weight": null
+        }
+      ],
+      "finish_reason": null,
+      "rank": null,
+      "selected": true,
+      "signals": [],
+      "generator": null,
+      "token_count": null,
+      "avg_logprobs": null
+    },
+    {
+      "id": "cand_3030303030303030303030303030303030303030303030303030303030303030",
+      "contents": [
+        {
+          "role": "ai",
+          "parts": [
+            {
+              "type": "text",
+              "text": "The rejected answer.",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": {}
+            }
+          ],
+          "loss_weight": null
+        }
+      ],
+      "finish_reason": null,
+      "rank": null,
+      "selected": true,
+      "signals": [],
+      "generator": null,
+      "token_count": null,
+      "avg_logprobs": null
+    }
+  ],
+  "preference_relations": [
+    {
+      "id": "pref_4040404040404040404040404040404040404040404040404040404040404040",
+      "left_candidate_id": "cand_2020202020202020202020202020202020202020202020202020202020202020",
+      "right_candidate_id": "cand_3030303030303030303030303030303030303030303030303030303030303030",
+      "outcome": "left",
+      "status": "adjudicated",
+      "criterion": null,
+      "source": {
+        "type": "imported",
+        "id": "fixture",
+        "version": "1"
+      },
+      "rationale": null,
+      "created_at": null,
+      "supersedes": null
+    }
+  ],
+  "tools": [],
+  "verification": {
+    "verifier": "fixture-verifier",
+    "verifier_version": "1",
+    "ground_truth": "The verified answer.",
+    "constraint": null,
+    "config": {}
+  },
+  "source": null,
+  "lang": null,
+  "lineage": null,
+  "tags": [],
+  "extra": {}
+}

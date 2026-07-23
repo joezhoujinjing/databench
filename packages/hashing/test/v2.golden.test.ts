@@ -13,8 +13,10 @@ import {
   deriveV2RecordId,
   deriveV2SignalId,
   type EventSeedV1,
+  type ExportFidelityIdentityV1,
   hashArtifactBytes,
   hashV2DatasetIdentity,
+  hashV2DatasetIdentityFromSortedRecordDigests,
   hashV2ExportFidelity,
   hashV2IdentityClaimKey,
   hashV2IdentityRequest,
@@ -118,7 +120,7 @@ interface DomainFixture {
     cache: TransformCacheIdentityV1
     claim: IdentityClaimHashInputV1
     request: IdentityRequestHashInputV1
-    fidelity: CanonicalJsonValue
+    fidelity: ExportFidelityIdentityV1
   }
   expected: Record<string, string>
 }
@@ -144,6 +146,17 @@ describe('v2 named hash domains', () => {
     expect(deriveV2SignalId(fixture.inputs.signal_seed).slice(4)).not.toBe(
       deriveV2PreferenceId(fixture.inputs.signal_seed).slice(5),
     )
+
+    const fidelityCanonical =
+      '{"config_hints":{},"converter":"canonical-jsonl","converter_version":"1.0.0","dataset_version":"5555555555555555555555555555555555555555555555555555555555555555","export_fidelity_profile":"databench-export-fidelity-1","fidelity":{"changes":[],"preserved":["contents"]},"identity_profile":"databench-v2-jcs-1","media_type":"application/x-ndjson","normalized_options":{},"output_count":1}'
+    expect(canonicalJsonV2(fixture.inputs.fidelity)).toBe(fidelityCanonical)
+    expect(
+      hashArtifactBytes(
+        new TextEncoder().encode(
+          `databench.export-fidelity.databench-export-fidelity-1\0${fidelityCanonical}`,
+        ),
+      ),
+    ).toBe(fixture.expected.fidelity_digest)
   })
 
   test('sorts a defensive copy of record digests for unordered dataset identity', () => {
@@ -155,7 +168,68 @@ describe('v2 named hash domains', () => {
     const reversed = { ...base, record_digests: [...base.record_digests].reverse() }
 
     expect(hashV2DatasetIdentity(base)).toBe(hashV2DatasetIdentity(reversed))
+    expect(hashV2DatasetIdentityFromSortedRecordDigests([...base.record_digests].sort())).toBe(
+      hashV2DatasetIdentity(base),
+    )
     expect(base.record_digests).toEqual(['f'.repeat(64), '0'.repeat(64)])
+  })
+
+  test('rejects invalid or unsorted incremental dataset digest streams', () => {
+    expect(() => hashV2DatasetIdentityFromSortedRecordDigests(['z'.repeat(64)])).toThrow(TypeError)
+    expect(() =>
+      hashV2DatasetIdentityFromSortedRecordDigests(['f'.repeat(64), '0'.repeat(64)]),
+    ).toThrow(TypeError)
+  })
+
+  test('normalizes fidelity sets and excludes display-only or extra fields', () => {
+    const identity = {
+      export_fidelity_profile: 'databench-export-fidelity-1',
+      identity_profile: 'databench-v2-jcs-1',
+      dataset_version: '5'.repeat(64),
+      converter: 'trl-sft',
+      converter_version: '1.0.0',
+      normalized_options: { include_tools: true },
+      media_type: 'application/x-ndjson',
+      output_count: 2,
+      config_hints: { trainer: 'trl' },
+      fidelity: {
+        preserved: ['/tools', '/contents', '/tools'],
+        changes: [
+          {
+            path: '/candidates',
+            action: 'dropped',
+            impact: 'informational',
+            reason: 'trainer_omits_generator',
+          },
+          {
+            path: '/contents',
+            action: 'transformed',
+            impact: 'none',
+            reason: 'args_encoded_as_json_string',
+          },
+          {
+            path: '/candidates',
+            action: 'dropped',
+            impact: 'informational',
+            reason: 'trainer_omits_generator',
+          },
+        ],
+      },
+    } as const satisfies ExportFidelityIdentityV1
+    const normalized = {
+      ...identity,
+      fidelity: {
+        preserved: ['/contents', '/tools'],
+        changes: [identity.fidelity.changes[1], identity.fidelity.changes[0]],
+      },
+    } as const satisfies ExportFidelityIdentityV1
+    const widened = { ...identity, suggested_filename: 'ignored.jsonl' }
+    const widenedAsIdentity: ExportFidelityIdentityV1 = widened
+
+    const before = structuredClone(identity)
+    expect(hashV2ExportFidelity(identity)).toBe(hashV2ExportFidelity(normalized))
+    expect(hashV2ExportFidelity(widenedAsIdentity)).toBe(hashV2ExportFidelity(normalized))
+    expect(identity).toEqual(before)
   })
 
   test('excludes snapshot metadata from exact hash envelopes at runtime', () => {
@@ -237,6 +311,7 @@ describe('v2 identity and version fixed vectors', () => {
     }>('dataset-empty-2-0-0.expected.json')
     expect(canonicalJsonV2(fixture.input)).toBe(fixture.canonical)
     expect(hashV2DatasetIdentity(fixture.input)).toBe(fixture.expected_version)
+    expect(hashV2DatasetIdentityFromSortedRecordDigests([])).toBe(fixture.expected_version)
   })
 
   test('keeps transform input order and every cache identity field significant', () => {

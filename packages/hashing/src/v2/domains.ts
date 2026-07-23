@@ -1,11 +1,11 @@
 import { TextEncoder } from 'node:util'
-import { digest } from '../blake3.js'
-import { canonicalJsonV2 } from './canonical-json.js'
+import { createIncrementalDigest, digest } from '../blake3.js'
+import { canonicalJsonV2, compareJcsUtf16 } from './canonical-json.js'
 import type {
   CandidateSeedV1,
-  CanonicalJsonValue,
   DatasetIdentityEnvelopeV2,
   EventSeedV1,
+  ExportFidelityIdentityV1,
   IdentityClaimHashInputV1,
   IdentityRequestHashInputV1,
   RecordSeedV1,
@@ -15,6 +15,7 @@ import type {
   V2RecordId,
   V2SignalId,
 } from './types.js'
+import { V2_IDENTITY_PROFILE, V2_RECORD_SCHEMA_VERSION } from './types.js'
 
 const textEncoder = new TextEncoder()
 
@@ -86,6 +87,43 @@ export function hashV2DatasetIdentity<const Identity extends DatasetIdentityEnve
   })
 }
 
+/**
+ * Computes the exact dataset identity from an already sorted digest stream
+ * without retaining or serializing the complete digest array. The emitted
+ * preimage is byte-for-byte identical to `hashV2DatasetIdentity`.
+ */
+export function hashV2DatasetIdentityFromSortedRecordDigests(
+  recordDigests: Iterable<string>,
+): string {
+  const hasher = createIncrementalDigest()
+  hasher.update(textEncoder.encode(DOMAIN.dataset))
+  hasher.update(
+    textEncoder.encode(
+      `{"identity_profile":${canonicalJsonV2(V2_IDENTITY_PROFILE)},"record_digests":[`,
+    ),
+  )
+
+  let previous: string | null = null
+  let first = true
+  for (const recordDigest of recordDigests) {
+    if (!/^[0-9a-f]{64}$/.test(recordDigest)) {
+      throw new TypeError('V2 dataset record digest must be lowercase 64-hex')
+    }
+    if (previous !== null && compareJcsUtf16(previous, recordDigest) > 0) {
+      throw new TypeError('V2 dataset record digests must be sorted')
+    }
+    if (!first) hasher.update(textEncoder.encode(','))
+    hasher.update(textEncoder.encode(`"${recordDigest}"`))
+    first = false
+    previous = recordDigest
+  }
+
+  hasher.update(
+    textEncoder.encode(`],"record_schema_version":${canonicalJsonV2(V2_RECORD_SCHEMA_VERSION)}}`),
+  )
+  return hasher.digestHex()
+}
+
 export function hashV2TransformCache(identity: TransformCacheIdentityV1): string {
   return hashDomain(DOMAIN.transformCache, {
     identity_profile: identity.identity_profile,
@@ -96,8 +134,43 @@ export function hashV2TransformCache(identity: TransformCacheIdentityV1): string
   })
 }
 
-export function hashV2ExportFidelity(identity: CanonicalJsonValue): string {
-  return hashDomain(DOMAIN.exportFidelity, identity)
+export function hashV2ExportFidelity<const Identity extends ExportFidelityIdentityV1>(
+  identity: NoExtraKeys<ExportFidelityIdentityV1, Identity>,
+): string {
+  return hashDomain(DOMAIN.exportFidelity, {
+    export_fidelity_profile: identity.export_fidelity_profile,
+    identity_profile: identity.identity_profile,
+    dataset_version: identity.dataset_version,
+    converter: identity.converter,
+    converter_version: identity.converter_version,
+    normalized_options: identity.normalized_options,
+    media_type: identity.media_type,
+    output_count: identity.output_count,
+    config_hints: identity.config_hints,
+    fidelity: normalizeExportFidelity(identity.fidelity),
+  })
+}
+
+function normalizeExportFidelity(
+  fidelity: ExportFidelityIdentityV1['fidelity'],
+): ExportFidelityIdentityV1['fidelity'] {
+  const preserved = [...new Set(fidelity.preserved)].sort(compareJcsUtf16)
+  const changesByCanonicalValue = new Map(
+    fidelity.changes.map((change) => [canonicalJsonV2(change), change] as const),
+  )
+  const changes = [...changesByCanonicalValue.values()].sort(compareFidelityChanges)
+  return { preserved, changes }
+}
+
+function compareFidelityChanges(
+  left: ExportFidelityIdentityV1['fidelity']['changes'][number],
+  right: ExportFidelityIdentityV1['fidelity']['changes'][number],
+): number {
+  for (const key of ['path', 'action', 'impact', 'reason'] as const) {
+    const result = compareJcsUtf16(left[key], right[key])
+    if (result !== 0) return result
+  }
+  return 0
 }
 
 function hashDomain(domain: string, value: unknown): string {

@@ -1617,6 +1617,25 @@ trl-grpo-rlvr
 ms-swift
 ```
 
+首期 built-in converter version统一为`1.0.0`，options schema均为strict空对象；新增任何
+option或改变输出字段、行选择、fidelity reason都必须提升converter version。固定目标形状为：
+
+- `canonical-jsonl`：每行直接写已验证revision的`record_json`；
+- `trl-sft`：conversational prompt-completion的`prompt`、`completion`与`tools`；
+- `trl-dpo`：每个当前有效的directional adjudicated relation写`prompt`、`chosen`、
+  `rejected`与`tools`；
+- `trl-grpo-rlvr`：每个带verification的record写`prompt`、`tools`与结构化`verification`
+  reward column；
+- `ms-swift`：写`messages`与JSON-string `tools`，tool轨迹使用`tool_call`/
+  `tool_response` role；message `loss_scale`要求ms-swift `>=4.2.0`。
+
+Trainer JSONL使用UTF-16 key order稳定的紧凑JSON与单个尾LF。TRL工具轨迹保留call ID，
+`tool_calls[].function.arguments`按TRL当前dataset contract输出JSON object（不是OpenAI wire
+protocol中的JSON-string arguments）；
+ms-swift目标不能表达call ID时报告semantic loss。`file_data`、目标格式无法表达的loss mask、
+未输出的preference direction或selected状态同样必须报告semantic loss，不能以占位文本或隐式
+推断降级。
+
 所有 converter 返回 ADR 0009 的 fidelity metadata。Strict 默认:
 
 - semantic loss 未显式授权 → `FidelityError`;

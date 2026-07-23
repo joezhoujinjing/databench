@@ -404,6 +404,43 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     expectUniqueCleanup(observed.store)
   })
 
+  test('inspects and streams an exact persisted version through a fresh Workspace', async () => {
+    const source = trainerRecord(
+      `rec_${'3'.repeat(64)}`,
+      `cand_${'2'.repeat(64)}`,
+      'Export this persisted training row.',
+    )
+    const published = await workspace.addRecords([source], noRefOptions())
+    const fresh = createWorkspace('v11-export')
+    const inspected = await fresh.inspectExport(published.dataset_version, {
+      converter: 'trl-sft',
+      options: {},
+    })
+
+    expect(inspected).toMatchObject({
+      dataset_version: published.dataset_version,
+      converter: 'trl-sft',
+      converter_version: '1.0.0',
+      output_count: 1,
+    })
+    const exported = await fresh.export(published.dataset_version, {
+      converter: 'trl-sft',
+      options: {},
+      accepted_fidelity_digest: inspected.fidelity_digest,
+    })
+    expect(exported.plan).toEqual(inspected)
+    const output = await collectUtf8(exported.bytes)
+    const row = JSON.parse(output) as {
+      prompt: Array<{ content: string; role: string }>
+      completion: Array<{ content: string; role: string }>
+    }
+    expect(row.prompt.at(-1)).toEqual({
+      content: 'Export this persisted training row.',
+      role: 'user',
+    })
+    expect(row.completion).toEqual([{ content: 'Persisted export completed.', role: 'assistant' }])
+  })
+
   function createWorkspace(tempName: string): V2Workspace {
     return new V2Workspace({
       catalog,
@@ -692,4 +729,44 @@ function canonicalRecord(id: string, text: string) {
     tags: ['gv9'],
     extra: { fixture: 'workspace-real-integration' },
   }
+}
+
+function trainerRecord(id: string, candidateId: string, text: string) {
+  return {
+    ...canonicalRecord(id, text),
+    candidates: [
+      {
+        id: candidateId,
+        contents: [
+          {
+            role: 'ai',
+            parts: [
+              {
+                type: 'text',
+                text: 'Persisted export completed.',
+                thought: false,
+                thought_signature: null,
+                part_metadata: {},
+              },
+            ],
+            loss_weight: null,
+          },
+        ],
+        finish_reason: null,
+        rank: null,
+        selected: true,
+        signals: [],
+        generator: null,
+        token_count: null,
+        avg_logprobs: null,
+      },
+    ],
+  }
+}
+
+async function collectUtf8(source: AsyncIterable<Uint8Array>): Promise<string> {
+  const decoder = new TextDecoder()
+  let output = ''
+  for await (const chunk of source) output += decoder.decode(chunk, { stream: true })
+  return output + decoder.decode()
 }

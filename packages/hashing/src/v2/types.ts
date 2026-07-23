@@ -131,6 +131,45 @@ export interface TransformCacheIdentityV1 {
   readonly params: CanonicalJsonObject
 }
 
+export type V2ConverterName =
+  | 'canonical-jsonl'
+  | 'trl-sft'
+  | 'trl-dpo'
+  | 'trl-grpo-rlvr'
+  | 'ms-swift'
+
+export type V2FidelityAction = 'transformed' | 'dropped'
+export type V2FidelityImpact = 'none' | 'informational' | 'semantic'
+
+export interface V2FidelityChange {
+  readonly path: string
+  readonly action: V2FidelityAction
+  readonly impact: V2FidelityImpact
+  readonly reason: string
+}
+
+export interface V2ExportFidelity {
+  readonly preserved: readonly string[]
+  readonly changes: readonly V2FidelityChange[]
+}
+
+/**
+ * The complete approval identity from TECHNICAL-DESIGN §15.3. Display-only
+ * fields such as suggested_filename are deliberately not part of this type.
+ */
+export interface ExportFidelityIdentityV1 {
+  readonly export_fidelity_profile: typeof V2_EXPORT_FIDELITY_PROFILE
+  readonly identity_profile: typeof V2_IDENTITY_PROFILE
+  readonly dataset_version: string
+  readonly converter: V2ConverterName
+  readonly converter_version: string
+  readonly normalized_options: CanonicalJsonObject
+  readonly media_type: string
+  readonly output_count: number
+  readonly config_hints: CanonicalJsonObject
+  readonly fidelity: V2ExportFidelity
+}
+
 export type V2RecordId = `rec_${string}`
 export type V2CandidateId = `cand_${string}`
 export type V2SignalId = `sig_${string}`

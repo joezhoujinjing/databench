@@ -34,6 +34,7 @@ export {
   type V2TransformSemaphoreOptions,
 } from './transform-semaphore.js'
 export {
+  type ExportStreamV2,
   type V2TransformLimits,
   V2Workspace,
   type V2WorkspaceCatalog,

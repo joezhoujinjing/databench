@@ -202,7 +202,7 @@
       "path": "packages/io/test/golden/fixtures/v2/converter-output-bytes-and-fidelity.expected.json",
       "assertion": "Canonical, TRL and ms-swift output bytes and fidelity plans are fixed",
       "source": "TECHNICAL-DESIGN-14.2,15.3",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "api-v2-wire-contract",

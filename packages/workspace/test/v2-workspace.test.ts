@@ -17,6 +17,7 @@ import {
   V2CatalogTargetNotCommittedError,
 } from '@databench/catalog'
 import { DEFAULT_V2_DATASET_LIMITS, V2Dataset, type V2DatasetLimits } from '@databench/engine'
+import { createDefaultV2ConverterRegistry, type V2ConverterRegistry } from '@databench/io'
 import {
   AppendEvidenceV2ParamsSchema,
   defineV2Transform,
@@ -48,6 +49,7 @@ import {
   type V2TransformLimits,
   V2Workspace,
   type V2WorkspaceCatalog,
+  v2DatasetCacheRequiredWeight,
   v2DatasetCacheWeight,
 } from '../src/v2/index.js'
 
@@ -992,6 +994,440 @@ describe('V2Workspace transform and dataset lineage', () => {
   })
 })
 
+describe('V2Workspace converter and fidelity orchestration', () => {
+  test('inspects without opening a stream and resolves a ref only once', async () => {
+    const registry = createDefaultV2ConverterRegistry()
+    const stream = vi.spyOn(registry, 'stream')
+    const rig = createRig({}, undefined, registry)
+    const dataset = makeDataset('b', 'converter inspect')
+    rig.seed(dataset)
+    rig.catalog.refs.set('export-main', refRow('export-main', dataset.version, null))
+
+    expect(rig.workspace.listConverters().map(({ name }) => name)).toEqual([
+      'canonical-jsonl',
+      'ms-swift',
+      'trl-dpo',
+      'trl-grpo-rlvr',
+      'trl-sft',
+    ])
+    expect(rig.workspace.getConverter('canonical-jsonl')).toMatchObject({
+      name: 'canonical-jsonl',
+      export_fidelity_profile: 'databench-export-fidelity-1',
+    })
+    expect(rig.workspace.getConverter('unknown')).toBeNull()
+
+    const plan = await rig.workspace.inspectExport('export-main', {
+      converter: 'canonical-jsonl',
+      options: {},
+    })
+
+    expect(plan).toMatchObject({
+      dataset_version: dataset.version,
+      converter: 'canonical-jsonl',
+      converter_version: '1.0.0',
+      normalized_options: {},
+      output_count: 1,
+      fidelity: { changes: [] },
+    })
+    expect(Object.isFrozen(plan)).toBe(true)
+    expect(rig.catalog.getRef).toHaveBeenCalledTimes(1)
+    expect(stream).not.toHaveBeenCalled()
+  })
+
+  test('requires exact semantic approval before opening a trainer stream', async () => {
+    const registry = createDefaultV2ConverterRegistry()
+    const stream = vi.spyOn(registry, 'stream')
+    const rig = createRig({}, undefined, registry)
+    const dataset = V2Dataset.fromRecords([makeSelectedSftRecord('c')])
+    rig.seed(dataset)
+    const plan = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'trl-sft',
+      options: {},
+    })
+    expect(plan.fidelity.changes).toContainEqual({
+      path: '/contents',
+      action: 'dropped',
+      impact: 'semantic',
+      reason: 'custom_loss_weight_not_representable',
+    })
+
+    await expect(
+      rig.workspace.export(dataset.version, {
+        converter: 'trl-sft',
+        options: {},
+        accepted_fidelity_digest: null,
+      }),
+    ).rejects.toMatchObject({
+      name: 'FidelityErrorV2',
+      code: 'fidelity_error',
+      detail: {
+        reason: 'semantic_loss_requires_approval',
+        plan: { fidelity_digest: plan.fidelity_digest },
+      },
+    })
+    expect(stream).not.toHaveBeenCalled()
+
+    await expect(
+      rig.workspace.export(dataset.version, {
+        converter: 'trl-sft',
+        options: {},
+        accepted_fidelity_digest: '0'.repeat(64),
+      }),
+    ).rejects.toMatchObject({
+      code: 'fidelity_error',
+      detail: { reason: 'fidelity_digest_mismatch' },
+    })
+    expect(stream).not.toHaveBeenCalled()
+  })
+
+  test('does not pin an unconsumed export and pins only for active byte iteration', async () => {
+    const registry = createDefaultV2ConverterRegistry()
+    const requiredWeight = v2DatasetCacheRequiredWeight(DEFAULT_V2_DATASET_LIMITS)
+    const cache = new V2DatasetCache({
+      capacityBytes: requiredWeight,
+      maxEntryWeight: requiredWeight,
+    })
+    const rig = createRig({}, undefined, registry, cache)
+    const dataset = makeDataset('d', 'lazy converter stream')
+    rig.seed(dataset)
+    const result = await rig.workspace.export(dataset.version, {
+      converter: 'canonical-jsonl',
+      options: {},
+      accepted_fidelity_digest: null,
+    })
+    const key = {
+      dataset_version: dataset.version,
+      layout_version: 'record-json-v1',
+      artifact_digest: artifactDigest(dataset.version),
+    }
+
+    expect(cache.evict(key)).toBe(true)
+    const iterator = result.bytes[Symbol.asyncIterator]()
+    const first = await iterator.next()
+    if (first.done) throw new Error('canonical export ended before its first row')
+    const revision = [...dataset.records()][0]
+    expect(new TextDecoder().decode(first.value)).toBe(`${revision?.record_json}\n`)
+    expect(cache.evict(key)).toBe(false)
+    await iterator.return?.()
+    expect(cache.entryCount).toBe(0)
+    expect(cache.usedBytes).toBe(0)
+    expect(() => result.bytes[Symbol.asyncIterator]()).toThrowError(
+      'V2 export byte stream can only be consumed once',
+    )
+  })
+
+  test('releases an active stream pin on abort even when its iterator has no return', async () => {
+    const requiredWeight = v2DatasetCacheRequiredWeight(DEFAULT_V2_DATASET_LIMITS)
+    const cache = new V2DatasetCache({
+      capacityBytes: requiredWeight,
+      maxEntryWeight: requiredWeight,
+    })
+    const registry = createDefaultV2ConverterRegistry()
+    vi.spyOn(registry, 'stream').mockReturnValue({
+      [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+        let emitted = false
+        return {
+          next: async () => {
+            if (emitted) return await new Promise<IteratorResult<Uint8Array>>(() => undefined)
+            emitted = true
+            return { done: false, value: new TextEncoder().encode('first\n') }
+          },
+        }
+      },
+    })
+    const rig = createRig({}, undefined, registry, cache)
+    const dataset = makeDataset('e', 'aborted converter stream')
+    rig.seed(dataset)
+    const controller = new AbortController()
+    const result = await rig.workspace.export(
+      dataset.version,
+      {
+        converter: 'canonical-jsonl',
+        options: {},
+        accepted_fidelity_digest: null,
+      },
+      { signal: controller.signal },
+    )
+    const key = {
+      dataset_version: dataset.version,
+      layout_version: 'record-json-v1',
+      artifact_digest: artifactDigest(dataset.version),
+    }
+    const iterator = result.bytes[Symbol.asyncIterator]()
+    const first = await iterator.next()
+    if (first.done) throw new Error('canonical export ended before its first row')
+    expect(cache.evict(key)).toBe(false)
+
+    controller.abort(new DOMException('client disconnected', 'AbortError'))
+    await eventually(() => expect(cache.usedBytes).toBe(0))
+    await expect(iterator.next()).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  test('keeps the stream pin until a pending next without return settles after abort', async () => {
+    const nextGate = deferred<IteratorResult<Uint8Array>>()
+    let nextCalls = 0
+    const controller = new AbortController()
+    const prepared = await prepareMockedConverterExport(
+      {
+        [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+          return {
+            next: () => {
+              nextCalls += 1
+              if (nextCalls === 1) {
+                return Promise.resolve({
+                  done: false,
+                  value: new TextEncoder().encode('first\n'),
+                })
+              }
+              return nextGate.promise
+            },
+          }
+        },
+      },
+      'f',
+      controller.signal,
+    )
+    const iterator = prepared.result.bytes[Symbol.asyncIterator]()
+    expect((await iterator.next()).done).toBe(false)
+    expect(prepared.cache.evict(prepared.key)).toBe(false)
+
+    const pending = iterator.next()
+    await eventually(() => expect(nextCalls).toBe(2))
+    controller.abort(new DOMException('client disconnected', 'AbortError'))
+    await nextEventLoopTurn()
+    expect(prepared.cache.usedBytes).toBeGreaterThan(0)
+
+    nextGate.resolve({ done: true, value: undefined })
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await eventually(() => expect(prepared.cache.usedBytes).toBe(0))
+  })
+
+  test('installs the pending-next fence before next can synchronously abort', async () => {
+    const nextGate = deferred<IteratorResult<Uint8Array>>()
+    let nextCalls = 0
+    const controller = new AbortController()
+    const prepared = await prepareMockedConverterExport(
+      {
+        [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+          return {
+            next: () => {
+              nextCalls += 1
+              if (nextCalls === 1) {
+                return Promise.resolve({
+                  done: false,
+                  value: new TextEncoder().encode('first\n'),
+                })
+              }
+              controller.abort(new DOMException('synchronous disconnect', 'AbortError'))
+              return nextGate.promise
+            },
+          }
+        },
+      },
+      '6',
+      controller.signal,
+    )
+    const iterator = prepared.result.bytes[Symbol.asyncIterator]()
+    expect((await iterator.next()).done).toBe(false)
+    expect(prepared.cache.evict(prepared.key)).toBe(false)
+
+    const pending = iterator.next()
+    await eventually(() => expect(nextCalls).toBe(2))
+    await nextEventLoopTurn()
+    expect(prepared.cache.usedBytes).toBeGreaterThan(0)
+
+    nextGate.resolve({ done: true, value: undefined })
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await eventually(() => expect(prepared.cache.usedBytes).toBe(0))
+  })
+
+  test('keeps the stream pin when abort return resolves before pending next', async () => {
+    const nextGate = deferred<IteratorResult<Uint8Array>>()
+    const close = vi.fn(async () => ({ done: true as const, value: undefined }))
+    let nextCalls = 0
+    const controller = new AbortController()
+    const prepared = await prepareMockedConverterExport(
+      {
+        [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+          return {
+            next: () => {
+              nextCalls += 1
+              if (nextCalls === 1) {
+                return Promise.resolve({
+                  done: false,
+                  value: new TextEncoder().encode('first\n'),
+                })
+              }
+              return nextGate.promise
+            },
+            return: close,
+          }
+        },
+      },
+      '7',
+      controller.signal,
+    )
+    const iterator = prepared.result.bytes[Symbol.asyncIterator]()
+    expect((await iterator.next()).done).toBe(false)
+    expect(prepared.cache.evict(prepared.key)).toBe(false)
+
+    const pending = iterator.next()
+    await eventually(() => expect(nextCalls).toBe(2))
+    controller.abort(new DOMException('client disconnected', 'AbortError'))
+    await eventually(() => expect(close).toHaveBeenCalledOnce())
+    await nextEventLoopTurn()
+    expect(prepared.cache.usedBytes).toBeGreaterThan(0)
+
+    nextGate.resolve({ done: true, value: undefined })
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await eventually(() => expect(prepared.cache.usedBytes).toBe(0))
+  })
+
+  test('preserves a pending next rejection when abort cleanup also fails', async () => {
+    const nextGate = deferred<IteratorResult<Uint8Array>>()
+    const primary = new Error('converter next failed')
+    const cleanup = new Error('converter return failed')
+    let nextCalls = 0
+    const controller = new AbortController()
+    const prepared = await prepareMockedConverterExport(
+      {
+        [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+          return {
+            next: () => {
+              nextCalls += 1
+              if (nextCalls === 1) {
+                return Promise.resolve({
+                  done: false,
+                  value: new TextEncoder().encode('first\n'),
+                })
+              }
+              return nextGate.promise
+            },
+            return: async () => {
+              throw cleanup
+            },
+          }
+        },
+      },
+      '8',
+      controller.signal,
+    )
+    const iterator = prepared.result.bytes[Symbol.asyncIterator]()
+    expect((await iterator.next()).done).toBe(false)
+    expect(prepared.cache.evict(prepared.key)).toBe(false)
+
+    const pending = iterator.next()
+    await eventually(() => expect(nextCalls).toBe(2))
+    controller.abort(new DOMException('client disconnected', 'AbortError'))
+    await nextEventLoopTurn()
+    expect(prepared.cache.usedBytes).toBeGreaterThan(0)
+
+    nextGate.reject(primary)
+    await expect(pending).rejects.toBe(primary)
+    expect((primary as Error & { suppressed: unknown[] }).suppressed).toEqual([cleanup])
+    await eventually(() => expect(prepared.cache.usedBytes).toBe(0))
+  })
+
+  test('queues consumer return behind pending next before releasing the stream pin', async () => {
+    const nextGate = deferred<IteratorResult<Uint8Array>>()
+    const close = vi.fn(async () => ({ done: true as const, value: undefined }))
+    let nextCalls = 0
+    const prepared = await prepareMockedConverterExport(
+      {
+        [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+          return {
+            next: () => {
+              nextCalls += 1
+              if (nextCalls === 1) {
+                return Promise.resolve({
+                  done: false,
+                  value: new TextEncoder().encode('first\n'),
+                })
+              }
+              return nextGate.promise
+            },
+            return: close,
+          }
+        },
+      },
+      '9',
+    )
+    const iterator = prepared.result.bytes[Symbol.asyncIterator]()
+    expect((await iterator.next()).done).toBe(false)
+    expect(prepared.cache.evict(prepared.key)).toBe(false)
+
+    const pending = iterator.next()
+    await eventually(() => expect(nextCalls).toBe(2))
+    const returned = iterator.return?.()
+    await nextEventLoopTurn()
+    expect(prepared.cache.usedBytes).toBeGreaterThan(0)
+    expect(close).not.toHaveBeenCalled()
+
+    nextGate.resolve({ done: false, value: new TextEncoder().encode('second\n') })
+    await expect(pending).resolves.toMatchObject({ done: false })
+    await expect(returned).resolves.toMatchObject({ done: true })
+    expect(close).toHaveBeenCalledOnce()
+    await eventually(() => expect(prepared.cache.usedBytes).toBe(0))
+  })
+
+  test('queues consumer throw behind pending next and keeps cleanup secondary', async () => {
+    const nextGate = deferred<IteratorResult<Uint8Array>>()
+    const primary = new Error('consumer stopped export')
+    const cleanup = new Error('converter close failed')
+    let nextCalls = 0
+    const prepared = await prepareMockedConverterExport(
+      {
+        [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+          return {
+            next: () => {
+              nextCalls += 1
+              if (nextCalls === 1) {
+                return Promise.resolve({
+                  done: false,
+                  value: new TextEncoder().encode('first\n'),
+                })
+              }
+              return nextGate.promise
+            },
+            return: async () => {
+              throw cleanup
+            },
+          }
+        },
+      },
+      '0',
+    )
+    const iterator = prepared.result.bytes[Symbol.asyncIterator]()
+    expect((await iterator.next()).done).toBe(false)
+    expect(prepared.cache.evict(prepared.key)).toBe(false)
+
+    const pending = iterator.next()
+    await eventually(() => expect(nextCalls).toBe(2))
+    const thrown = iterator.throw?.(primary)
+    await nextEventLoopTurn()
+    expect(prepared.cache.usedBytes).toBeGreaterThan(0)
+
+    nextGate.resolve({ done: false, value: new TextEncoder().encode('second\n') })
+    await expect(pending).resolves.toMatchObject({ done: false })
+    await expect(thrown).rejects.toBe(primary)
+    expect((primary as Error & { suppressed: unknown[] }).suppressed).toEqual([cleanup])
+    await eventually(() => expect(prepared.cache.usedBytes).toBe(0))
+  })
+
+  test('rejects mutable refs for export before consulting Catalog', async () => {
+    const rig = createRig()
+    await expect(
+      rig.workspace.export('main', {
+        converter: 'canonical-jsonl',
+        options: {},
+        accepted_fidelity_digest: null,
+      }),
+    ).rejects.toBeDefined()
+    expect(rig.catalog.getRef).not.toHaveBeenCalled()
+    expect(rig.store.read).not.toHaveBeenCalled()
+  })
+})
+
 test('rejects undersized or cross-Workspace cache injection', () => {
   const events: string[] = []
   const catalog = new FakeCatalog(events)
@@ -1312,6 +1748,8 @@ interface TestRig {
 function createRig(
   transformLimits: Partial<V2TransformLimits> = {},
   transformRegistry?: V2TransformRegistry,
+  converterRegistry?: V2ConverterRegistry,
+  cache?: V2DatasetCache,
 ): TestRig {
   const events: string[] = []
   const store = new FakeStore(events)
@@ -1324,6 +1762,8 @@ function createRig(
     cursorSecret: CURSOR_SECRET,
     transformLimits,
     ...(transformRegistry === undefined ? {} : { transformRegistry }),
+    ...(converterRegistry === undefined ? {} : { converterRegistry }),
+    ...(cache === undefined ? {} : { cache }),
     onCleanupError: (error, primaryError) => cleanupErrors.push({ error, primaryError }),
   })
 
@@ -1367,6 +1807,41 @@ function noRef() {
   return { ref: null, expected_ref_version: null, message: null } as const
 }
 
+async function prepareMockedConverterExport(
+  source: AsyncIterable<Uint8Array>,
+  idDigit: string,
+  signal?: AbortSignal,
+) {
+  const requiredWeight = v2DatasetCacheRequiredWeight(DEFAULT_V2_DATASET_LIMITS)
+  const cache = new V2DatasetCache({
+    capacityBytes: requiredWeight,
+    maxEntryWeight: requiredWeight,
+  })
+  const registry = createDefaultV2ConverterRegistry()
+  vi.spyOn(registry, 'stream').mockReturnValue(source)
+  const rig = createRig({}, undefined, registry, cache)
+  const dataset = makeDataset(idDigit, 'controlled converter stream')
+  rig.seed(dataset)
+  const result = await rig.workspace.export(
+    dataset.version,
+    {
+      converter: 'canonical-jsonl',
+      options: {},
+      accepted_fidelity_digest: null,
+    },
+    signal === undefined ? {} : { signal },
+  )
+  return {
+    cache,
+    result,
+    key: {
+      dataset_version: dataset.version,
+      layout_version: 'record-json-v1',
+      artifact_digest: artifactDigest(dataset.version),
+    },
+  }
+}
+
 function makeDataset(idDigit: string, text: string): V2Dataset {
   return V2Dataset.fromRecords([makeRecord(idDigit, text)])
 }
@@ -1403,6 +1878,41 @@ function makeRecord(idDigit: string, text: string): PostTrainingRecordV2 {
   }
 }
 
+function makeSelectedSftRecord(idDigit: string): PostTrainingRecordV2 {
+  const record = makeRecord(idDigit, 'semantic loss prompt')
+  return {
+    ...record,
+    contents: record.contents.map((content) => ({ ...content, loss_weight: 1 })),
+    candidates: [
+      {
+        id: `cand_${idDigit.repeat(64)}`,
+        contents: [
+          {
+            role: 'ai',
+            parts: [
+              {
+                type: 'text',
+                text: 'selected answer',
+                thought: false,
+                thought_signature: null,
+                part_metadata: {},
+              },
+            ],
+            loss_weight: null,
+          },
+        ],
+        finish_reason: null,
+        rank: null,
+        selected: true,
+        signals: [],
+        generator: null,
+        token_count: null,
+        avg_logprobs: null,
+      },
+    ],
+  }
+}
+
 function refRow(name: string, version: string, message: string | null): CatalogRefRowV2 {
   return { namespaceId: NAMESPACE_ID, name, version, message, updatedAt: NOW }
 }
@@ -1433,4 +1943,8 @@ async function eventually(assertion: () => void): Promise<void> {
     }
   }
   assertion()
+}
+
+async function nextEventLoopTurn(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve))
 }

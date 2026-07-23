@@ -18,8 +18,17 @@ import {
   V2Dataset,
   type V2DatasetLimits,
 } from '@databench/engine'
-import { canonicalJsonV2, hashV2TransformCache, V2_IDENTITY_PROFILE } from '@databench/hashing'
-import { readCanonicalJsonlV2 } from '@databench/io'
+import {
+  canonicalJsonV2,
+  hashV2TransformCache,
+  V2_EXPORT_FIDELITY_PROFILE,
+  V2_IDENTITY_PROFILE,
+} from '@databench/hashing'
+import {
+  createDefaultV2ConverterRegistry,
+  readCanonicalJsonlV2,
+  type V2ConverterRegistry,
+} from '@databench/io'
 import {
   BUILTIN_V2_TRANSFORM_REGISTRY,
   createV2TransformContext,
@@ -31,9 +40,15 @@ import {
   AddRecordsV2OptionsSchema,
   type AuditResultV2,
   AuditResultV2Schema,
+  assertExportFidelityAcceptedV2,
   CapacityExceededError,
+  type ConverterAnalysisV2,
+  type ConverterDescriptorV2,
+  ConverterDescriptorV2Schema,
+  ConverterNameV2Schema,
   type CursorPageRequestV2,
   CursorPageRequestV2Schema,
+  createExportPlanV2,
   createRecordSummaryV2,
   type DatasetLayoutIdentityV2,
   type DatasetLineageV2,
@@ -41,10 +56,16 @@ import {
   type DatasetViewV2,
   DatasetViewV2Schema,
   DeterminismConflictErrorV2,
+  DigestHexV2Schema,
   datasetLayoutIdentityV2FromManifest,
   deriveRecordEligibilityV2,
+  type ExportPlanV2,
+  type ExportRequestV2,
+  ExportRequestV2Schema,
   type IngestResultV2,
   IngestResultV2Schema,
+  type InspectExportRequestV2,
+  InspectExportRequestV2Schema,
   IntegrityError,
   type JsonObjectV2,
   type LineagePageRequestV2,
@@ -57,6 +78,7 @@ import {
   RecordPageRequestV2Schema,
   type RecordPageV2,
   RecordPageV2Schema,
+  type RecordRevisionV2,
   type RecordViewV2,
   RecordViewV2Schema,
   type RefMetadataV2,
@@ -144,6 +166,7 @@ export interface V2WorkspaceOptions {
   readonly cache?: V2DatasetCache
   readonly datasetLimits?: V2DatasetLimits
   readonly transformRegistry?: V2TransformRegistry
+  readonly converterRegistry?: V2ConverterRegistry
   readonly transformLimits?: Partial<V2TransformLimits>
   readonly onCleanupError?: (error: unknown, primaryError: unknown | null) => void
 }
@@ -152,6 +175,11 @@ interface ResolvedLayoutV2 {
   readonly requestedRef: string
   readonly refName: string | null
   readonly identity: Readonly<DatasetLayoutIdentityV2>
+}
+
+export interface ExportStreamV2 {
+  readonly plan: Readonly<ExportPlanV2>
+  readonly bytes: AsyncIterable<Uint8Array>
 }
 
 type CleanupOutcomeV2 =
@@ -172,6 +200,7 @@ export class V2Workspace {
   readonly #cursor: V2CursorCodec
   readonly #datasetLimits: Readonly<V2DatasetLimits>
   readonly #transformRegistry: V2TransformRegistry
+  readonly #converterRegistry: V2ConverterRegistry
   readonly #transformLimits: Readonly<V2TransformLimits>
   readonly #transformSemaphore: V2TransformSemaphore
   readonly #onCleanupError: ((error: unknown, primaryError: unknown | null) => void) | undefined
@@ -192,6 +221,7 @@ export class V2Workspace {
     this.#cursor = new V2CursorCodec(options.cursorSecret)
     this.#datasetLimits = snapshotDatasetLimits(options.datasetLimits ?? DEFAULT_V2_DATASET_LIMITS)
     this.#transformRegistry = options.transformRegistry ?? BUILTIN_V2_TRANSFORM_REGISTRY
+    this.#converterRegistry = options.converterRegistry ?? createDefaultV2ConverterRegistry()
     this.#transformLimits = snapshotTransformLimits(
       options.transformLimits,
       this.#datasetLimits.max_canonical_bytes,
@@ -255,6 +285,85 @@ export class V2Workspace {
         .descriptors()
         .map((descriptor) => Object.freeze(TransformDescriptorV2Schema.parse(descriptor))),
     )
+  }
+
+  listConverters(): readonly Readonly<ConverterDescriptorV2>[] {
+    return Object.freeze(
+      this.#converterRegistry
+        .descriptors()
+        .map((descriptor) => deepFreeze(ConverterDescriptorV2Schema.parse(descriptor))),
+    )
+  }
+
+  getConverter(nameInput: string): Readonly<ConverterDescriptorV2> | null {
+    const name = ConverterNameV2Schema.safeParse(nameInput)
+    if (!name.success) return null
+    return this.listConverters().find((descriptor) => descriptor.name === name.data) ?? null
+  }
+
+  async inspectExport(
+    refOrVersionInput: string,
+    requestInput: InspectExportRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<Readonly<ExportPlanV2>> {
+    context.signal?.throwIfAborted()
+    const request = InspectExportRequestV2Schema.parse(requestInput)
+    const resolved = await this.#resolveLayout(refOrVersionInput, context.signal)
+    const lease = await this.#acquire(resolved.identity, context.signal)
+    try {
+      context.signal?.throwIfAborted()
+      return this.#createExportPlan(resolved.identity.dataset_version, lease.dataset, request).plan
+    } finally {
+      lease.release()
+    }
+  }
+
+  async export(
+    datasetVersionInput: string,
+    requestInput: ExportRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ExportStreamV2> {
+    context.signal?.throwIfAborted()
+    const datasetVersion = requireExactDatasetVersion(datasetVersionInput)
+    const request = ExportRequestV2Schema.parse(requestInput)
+    const resolved = await this.#resolveLayout(datasetVersion, context.signal)
+    const lease = await this.#acquire(resolved.identity, context.signal)
+    try {
+      context.signal?.throwIfAborted()
+      const inspected = this.#createExportPlan(datasetVersion, lease.dataset, request)
+      assertExportFidelityAcceptedV2(inspected.plan, request.accepted_fidelity_digest)
+      context.signal?.throwIfAborted()
+      lease.release()
+      return Object.freeze({
+        plan: inspected.plan,
+        bytes: singleUseLazyExportStream(async () => {
+          const streamLease = await this.#acquire(resolved.identity, context.signal)
+          try {
+            context.signal?.throwIfAborted()
+            if (streamLease.dataset.version !== datasetVersion) {
+              throw new IntegrityError('Loaded V2 dataset does not match the export stream', {
+                reason: 'export_stream_dataset_version_mismatch',
+                expected_dataset_version: datasetVersion,
+                actual_dataset_version: streamLease.dataset.version,
+              })
+            }
+            const source = this.#converterRegistry.stream(
+              request.converter,
+              stableConverterRecords(streamLease.dataset),
+              inspected.analysis.normalized_options,
+              inspected.analysis,
+            )
+            return { source, lease: streamLease }
+          } catch (error) {
+            streamLease.release()
+            throw error
+          }
+        }, context.signal),
+      })
+    } catch (error) {
+      lease.release()
+      throw error
+    }
   }
 
   async runTransform(
@@ -704,6 +813,43 @@ export class V2Workspace {
     }
     assertRefRow(row, namespaceId, name, request.new_version)
     return catalogRefMetadata(row)
+  }
+
+  #createExportPlan(
+    datasetVersion: string,
+    dataset: V2Dataset,
+    request: Pick<InspectExportRequestV2, 'converter' | 'options'>,
+  ): {
+    readonly plan: Readonly<ExportPlanV2>
+    readonly analysis: Readonly<ConverterAnalysisV2>
+  } {
+    if (dataset.version !== datasetVersion) {
+      throw new IntegrityError('Loaded V2 dataset does not match the export target', {
+        reason: 'export_dataset_version_mismatch',
+        expected_dataset_version: datasetVersion,
+        actual_dataset_version: dataset.version,
+      })
+    }
+    const converter = this.#converterRegistry.require(request.converter)
+    const records = stableConverterRecords(dataset)
+    const analysis = deepFreeze(
+      this.#converterRegistry.inspect(request.converter, records, request.options),
+    )
+    const plan = deepFreeze(
+      createExportPlanV2({
+        export_fidelity_profile: V2_EXPORT_FIDELITY_PROFILE,
+        dataset_version: datasetVersion,
+        converter: request.converter,
+        converter_version: converter.version,
+        normalized_options: analysis.normalized_options,
+        media_type: analysis.media_type,
+        suggested_filename: analysis.suggested_filename,
+        output_count: analysis.output_count,
+        config_hints: analysis.config_hints,
+        fidelity: analysis.fidelity,
+      }),
+    )
+    return Object.freeze({ plan, analysis })
   }
 
   async #executeTransform(
@@ -1267,6 +1413,175 @@ function cacheKey(identity: Readonly<DatasetLayoutIdentityV2>): V2DatasetCacheKe
     layout_version: identity.layout_version,
     artifact_digest: identity.artifact_digest,
   }
+}
+
+function requireExactDatasetVersion(input: string): string {
+  return DigestHexV2Schema.parse(input)
+}
+
+function stableConverterRecords(dataset: V2Dataset): readonly RecordRevisionV2[] {
+  const records = [...dataset.records()]
+  for (let index = 1; index < records.length; index += 1) {
+    const previous = records[index - 1]
+    const current = records[index]
+    if (previous && current && compareConverterRevisions(previous, current) >= 0) {
+      throw new IntegrityError('V2 dataset records are not strictly converter-sorted', {
+        reason: 'converter_record_order_invalid',
+        dataset_version: dataset.version,
+      })
+    }
+  }
+  return Object.freeze(records)
+}
+
+function compareConverterRevisions(left: RecordRevisionV2, right: RecordRevisionV2): number {
+  if (left.record_digest < right.record_digest) return -1
+  if (left.record_digest > right.record_digest) return 1
+  if (left.record.id < right.record.id) return -1
+  if (left.record.id > right.record.id) return 1
+  return 0
+}
+
+function singleUseLazyExportStream(
+  open: () => Promise<{
+    readonly source: AsyncIterable<Uint8Array>
+    readonly lease: V2DatasetLease
+  }>,
+  signal?: AbortSignal,
+): AsyncIterable<Uint8Array> {
+  let consumed = false
+  const consume = async function* (): AsyncIterableIterator<Uint8Array> {
+    let lease: V2DatasetLease | undefined
+    let sourceIterator: AsyncIterator<Uint8Array> | undefined
+    let inFlightNext: Promise<void> | undefined
+    let abortClose: Promise<void> | undefined
+    let primaryError: unknown
+    let hasPrimaryError = false
+    let cleanupError: unknown
+    let hasCleanupError = false
+    const closeOnAbort = (): void => {
+      if (abortClose !== undefined) return
+      const iteratorToClose = sourceIterator
+      const nextToSettle = inFlightNext
+      abortClose = Promise.resolve()
+        .then(async () => {
+          const closeResult = await Promise.resolve()
+            .then(async () => {
+              await iteratorToClose?.return?.()
+            })
+            .then(
+              () => ({ failed: false as const }),
+              (error: unknown) => ({ failed: true as const, error }),
+            )
+          // AsyncIterator.return() is optional and custom implementations may
+          // resolve it before an already-running next(). Do not release the
+          // cache pin until that work settles; otherwise a canceled converter
+          // can retain this dataset while the cache admits another full one.
+          await nextToSettle?.then(
+            () => undefined,
+            () => undefined,
+          )
+          if (closeResult.failed) throw closeResult.error
+        })
+        .finally(() => {
+          const currentLease = lease
+          lease = undefined
+          sourceIterator = undefined
+          currentLease?.release()
+        })
+      // The generator's finally observes the original promise when the caller
+      // resumes. This handler only prevents an abandoned response stream from
+      // creating an unhandled rejection after client disconnect.
+      void abortClose.catch(() => undefined)
+    }
+    try {
+      signal?.throwIfAborted()
+      let opened:
+        | {
+            readonly source: AsyncIterable<Uint8Array>
+            readonly lease: V2DatasetLease
+          }
+        | undefined = await open()
+      lease = opened.lease
+      sourceIterator = opened.source[Symbol.asyncIterator]()
+      opened = undefined
+      signal?.addEventListener('abort', closeOnAbort, { once: true })
+      while (true) {
+        signal?.throwIfAborted()
+        let settleNext = (): void => undefined
+        const nextSettlement = new Promise<void>((resolve) => {
+          settleNext = resolve
+        })
+        // Install the fence before calling next(): a custom iterator can
+        // synchronously trigger the caller's AbortController from next().
+        inFlightNext = nextSettlement
+        let result: IteratorResult<Uint8Array>
+        try {
+          result = await sourceIterator.next()
+        } finally {
+          settleNext()
+          if (inFlightNext === nextSettlement) inFlightNext = undefined
+        }
+        signal?.throwIfAborted()
+        if (result.done) break
+        const chunk = result.value
+        if (!(chunk instanceof Uint8Array)) {
+          throw new IntegrityError('V2 converter stream yielded an invalid byte chunk', {
+            reason: 'converter_stream_chunk_type',
+          })
+        }
+        yield chunk
+        signal?.throwIfAborted()
+      }
+    } catch (error) {
+      hasPrimaryError = true
+      primaryError = error
+      throw error
+    } finally {
+      signal?.removeEventListener('abort', closeOnAbort)
+      try {
+        try {
+          if (abortClose !== undefined) {
+            await abortClose
+          } else if (sourceIterator?.return !== undefined) {
+            await sourceIterator.return()
+          }
+        } catch (error) {
+          if (hasPrimaryError) {
+            attachSuppressed(primaryError, error)
+          } else {
+            hasCleanupError = true
+            cleanupError = error
+          }
+        }
+      } finally {
+        const currentLease = lease
+        lease = undefined
+        sourceIterator = undefined
+        currentLease?.release()
+      }
+    }
+    if (hasCleanupError) throw cleanupError
+  }
+  return Object.freeze({
+    [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+      if (consumed) {
+        throw new TypeError('V2 export byte stream can only be consumed once')
+      }
+      consumed = true
+      return consume()
+    },
+  })
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) {
+      deepFreeze(child)
+    }
+    Object.freeze(value)
+  }
+  return value
 }
 
 function operationContext(signal?: AbortSignal): V2OperationContext {

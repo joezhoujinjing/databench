@@ -58,6 +58,45 @@ export {
   V2_CURSOR_PAGE_MAX_LIMIT,
   V2_RECORD_PAGE_MAX_LIMIT,
 } from './contracts.js'
+export {
+  assertExportFidelityAcceptedV2,
+  type ConverterAnalysisV2,
+  ConverterAnalysisV2Schema,
+  type ConverterDescriptorV2,
+  ConverterDescriptorV2Schema,
+  type ConverterNameV2,
+  ConverterNameV2Schema,
+  type ConverterTaskViewV2,
+  ConverterTaskViewV2Schema,
+  ConverterVersionV2Schema,
+  createExportPlanV2,
+  type ExportFidelityIdentityV1,
+  ExportFidelityIdentityV1Schema,
+  type ExportPlanInputV2,
+  type ExportPlanV2,
+  ExportPlanV2Schema,
+  type ExportRequestV2,
+  ExportRequestV2Schema,
+  type FidelityActionV2,
+  FidelityActionV2Schema,
+  type FidelityChangeV2,
+  FidelityChangeV2Schema,
+  type FidelityErrorDetailV2,
+  FidelityErrorDetailV2Schema,
+  type FidelityErrorReasonV2,
+  FidelityErrorReasonV2Schema,
+  FidelityErrorV2,
+  type FidelityImpactV2,
+  FidelityImpactV2Schema,
+  type FidelityV2,
+  FidelityV2Schema,
+  hasSemanticFidelityLossV2,
+  type InspectExportRequestV2,
+  InspectExportRequestV2Schema,
+  normalizeExportFidelityIdentityV2,
+  V2_FIDELITY_MAX_CHANGES,
+  V2_FIDELITY_MAX_PRESERVED,
+} from './converter.js'
 export * from './identity.js'
 export {
   JsonObjectSchema as JsonObjectV2Schema,
@@ -158,6 +197,8 @@ export {
 } from './record.js'
 export {
   createRecordRevisionV2,
+  datasetVersionForSortedRecordRevisionsV2,
+  isRecordRevisionV2,
   type RecordRevisionV2,
 } from './revision.js'
 export {

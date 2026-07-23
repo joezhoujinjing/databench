@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V11
-last_completed_step: V10
+current_step: V12
+last_completed_step: V11
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V11 — Converter Registry 与 Fidelity
+- **下一步:** V12 — `/v2` API、OpenAPI 与 Generated Client
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -31,7 +31,7 @@ capability_enabled: false
 | V8 | Canonical JSONL与共享投影 | ✅ | 当前分支 | GV8 | fixed-byte golden、增量eager admission与资源/取消边界通过 |
 | V9 | Workspace publish/read cache/ref | ✅ | 当前分支 | GV9 | 发布顺序、恢复、cache/ref与真实依赖闸门通过 |
 | V10 | Transform、run cache与 lineage | ✅ | 当前分支 | GV10 | 五个最小operation、staged identity、run cache race与稳定lineage分页已过闸门 |
-| V11 | Converter registry与 fidelity | ⬜ | | GV11 | |
+| V11 | Converter registry与 fidelity | ✅ | 当前分支 | GV11 | 五种converter、strict inspect/stream、fidelity授权与真实依赖导出已过闸门 |
 | V12 | `/v2` API、OpenAPI与 generated client | ⬜ | | GV12 | |
 | V13 | `databench v2` CLI | ⬜ | | GV13 | |
 | V14 | Web foundation、refs与 record read | ⬜ | | GV14 | |
@@ -229,3 +229,25 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   `ENOENT`按已被并发清理安全跳过，Store 77 passed / 8 gated skipped；
 - `pnpm v2:status:check`、`git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、
   `pnpm test`、`pnpm openapi:check`、`pnpm peers check`全部通过。
+
+## V11 Gate 记录
+
+- converter registry固定`canonical-jsonl`、TRL SFT/DPO/GRPO-RLVR与ms-swift五种`1.0.0`
+  descriptor；options由strict Zod生成JSON Schema，构造时捕获parser并检测schema mutation；
+  inspect/stream绑定exact immutable analysis、normalized options、media type与稳定revision set；
+- trainer输入按`(record_digest, record_id)`排序；analysis binding使用与dataset identity精确等价的
+  incremental BLAKE3，避免保留完整revision signature；输出逐行lazy，不预缓存rows或完整bytes；
+- TRL保留tool call ID并按当前dataset contract输出结构化arguments object；ms-swift使用官方
+  `tool_call`/`tool_response` roles、JSON-string tools与message loss scale；双source all-fields golden
+  锁定五种converter的实际bytes、完整plan、fidelity与output count；
+- eligibility、selected/preference direction、loss mask、thought、file、call ID等无法表达的语义均
+  进入stable fidelity changes；整条不合格record使用root-level semantic drop，未提供精确
+  `fidelity_digest`时拒绝export；reason拒绝嵌入entity ID/digest；
+- Workspace提供converter list/get、ref或version inspect与exact-version export；未消费stream不pin
+  cache，首次读取才重新acquire exact layout；单次消费、abort/return/throw、pending`next()`、无或
+  失败`return()`及cleanup secondary error均保证lease安全释放且不覆盖primary；
+- Hashing 35 tests、Schema 201 tests、IO 49 tests、Workspace普通suite 95 passed / 3 gated skipped；
+  真实MinIO/Postgres Workspace suite 98/98通过，包含fresh Workspace对持久化dataset执行
+  inspect→fidelity授权→exact-version stream；双路独立review最终无剩余P0/P1/P2；
+- `pnpm v2:status:check`、`git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、
+  `pnpm test`、`pnpm openapi:check`、`pnpm peers check`全部通过；capability继续保持关闭。

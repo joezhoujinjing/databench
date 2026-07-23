@@ -11,6 +11,12 @@ export {
   writeCanonicalJsonlV2,
 } from './canonical-jsonl.js'
 export {
+  createDefaultV2ConverterRegistry,
+  type V2ConverterDefinition,
+  type V2ConverterOptionsSchema,
+  V2ConverterRegistry,
+} from './converter-registry.js'
+export {
   CanonicalJsonlBadInputErrorV2,
   type CanonicalJsonlErrorDetailV2,
   type CanonicalJsonlIssueV2,

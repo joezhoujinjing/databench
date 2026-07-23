@@ -1,4 +1,8 @@
-import { canonicalJsonV2, hashV2Record } from '@databench/hashing'
+import {
+  canonicalJsonV2,
+  hashV2DatasetIdentityFromSortedRecordDigests,
+  hashV2Record,
+} from '@databench/hashing'
 import type { PostTrainingRecordV2 } from './record.js'
 import { PostTrainingRecordV2Schema } from './record.js'
 
@@ -10,6 +14,8 @@ export type DeepReadonly<T> = T extends null | boolean | number | string
       ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
       : T
 
+const recordRevisionInstances = new WeakSet<object>()
+
 class RecordRevisionV2Value {
   readonly #brand = true
 
@@ -19,11 +25,16 @@ class RecordRevisionV2Value {
     readonly record_digest: string,
   ) {
     void this.#brand
+    recordRevisionInstances.add(this)
     Object.freeze(this)
   }
 }
 
 export type RecordRevisionV2 = RecordRevisionV2Value
+
+export function isRecordRevisionV2(value: unknown): value is RecordRevisionV2 {
+  return typeof value === 'object' && value !== null && recordRevisionInstances.has(value)
+}
 
 export function createRecordRevisionV2(input: unknown): RecordRevisionV2 {
   let cloned: unknown
@@ -39,6 +50,38 @@ export function createRecordRevisionV2(input: unknown): RecordRevisionV2 {
   const recordDigest = hashV2Record(record)
 
   return new RecordRevisionV2Value(record, recordJson, recordDigest)
+}
+
+/**
+ * Returns the canonical dataset identity for revisions already ordered by
+ * `(record_digest, record_id)`, using constant additional memory.
+ */
+export function datasetVersionForSortedRecordRevisionsV2(
+  revisions: readonly RecordRevisionV2[],
+): string {
+  function* recordDigests(): IterableIterator<string> {
+    let previous: RecordRevisionV2 | null = null
+    for (const revision of revisions) {
+      if (!isRecordRevisionV2(revision)) {
+        throw new TypeError('Dataset identity requires RecordRevisionV2 values')
+      }
+      if (previous !== null && compareRevisionIdentity(previous, revision) > 0) {
+        throw new TypeError('Dataset identity revisions must be sorted')
+      }
+      previous = revision
+      yield revision.record_digest
+    }
+  }
+
+  return hashV2DatasetIdentityFromSortedRecordDigests(recordDigests())
+}
+
+function compareRevisionIdentity(left: RecordRevisionV2, right: RecordRevisionV2): number {
+  if (left.record_digest !== right.record_digest) {
+    return left.record_digest < right.record_digest ? -1 : 1
+  }
+  if (left.record.id === right.record.id) return 0
+  return left.record.id < right.record.id ? -1 : 1
 }
 
 function deepFreeze<T>(value: T): DeepReadonly<T> {
