@@ -6,6 +6,7 @@ export { recipeCacheKey, transformCacheKey } from './cache-key.js'
 export { recipeFingerprint } from './fingerprint.js'
 export { mix, type RecipeFrame, sourceCount } from './mix.js'
 export { getTransform, listTransforms, TRANSFORMS, type TransformRegistry } from './transforms.js'
+export * from './v2/index.js'
 export {
   type AddJsonlOptions,
   type AddOptions,

@@ -281,6 +281,10 @@ importers:
       '@databench/store':
         specifier: workspace:*
         version: link:../store
+    devDependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1079.0
+        version: 3.1079.0
 
   tooling/openapi-export:
     dependencies:

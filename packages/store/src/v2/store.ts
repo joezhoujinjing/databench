@@ -115,6 +115,10 @@ export class FileBackedV2Store implements V2Store {
   readonly #datasetLimits: Readonly<V2DatasetLimits>
   readonly #owner = Object.freeze({})
 
+  get readDatasetLimits(): Readonly<V2DatasetLimits> {
+    return this.#datasetLimits
+  }
+
   constructor(config: FileBackedV2StoreConfig) {
     if (!config.objectStore || typeof config.objectStore !== 'object') {
       throw new TypeError('objectStore must implement ConditionalObjectStoreV2')

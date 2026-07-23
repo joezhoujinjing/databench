@@ -1,5 +1,5 @@
 import type { Readable, Writable } from 'node:stream'
-import type { V2Dataset } from '@databench/engine'
+import type { V2Dataset, V2DatasetLimits } from '@databench/engine'
 import type { DatasetLayoutIdentityV2, DatasetManifestV2 } from '@databench/schema'
 import { ConflictError, ServiceUnavailableError } from '@databench/schema'
 
@@ -22,6 +22,7 @@ export interface AuditResultV2 {
 }
 
 export interface V2Store {
+  readonly readDatasetLimits: Readonly<V2DatasetLimits>
   prepare(dataset: V2Dataset, context?: V2OperationContext): Promise<PreparedArtifactV2>
   commit(
     prepared: PreparedArtifactV2,

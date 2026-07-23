@@ -758,6 +758,66 @@ describe('V2Catalog', () => {
     ).resolves.toEqual({ rows: [], nextName: null })
   })
 
+  test('returns the row committed by each successful compare-and-set ref operation', async () => {
+    for (const [versionName, revisionName] of [
+      ['alpha', 'inputAlpha'],
+      ['beta', 'inputBeta'],
+      ['gamma', 'output'],
+    ] as const) {
+      await v2Catalog.registerCommittedLayout(
+        registration(versionName, [withParents(fixtureRevision(revisionName))]),
+      )
+    }
+
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const alphaVersion = fixtureVersion('alpha')
+    const betaVersion = fixtureVersion('beta')
+    const gammaVersion = fixtureVersion('gamma')
+    const created = await v2Catalog.compareAndSetRef({
+      namespaceId,
+      name: 'returning-row',
+      newVersion: alphaVersion,
+      expectedVersion: null,
+      message: 'created',
+    })
+
+    expect(created).toMatchObject({
+      namespaceId,
+      name: 'returning-row',
+      version: alphaVersion,
+      message: 'created',
+      updatedAt: expect.any(Date),
+    })
+
+    const moved = await v2Catalog.compareAndSetRef({
+      namespaceId,
+      name: 'returning-row',
+      newVersion: betaVersion,
+      expectedVersion: alphaVersion,
+      message: 'moved to beta',
+    })
+    await v2Catalog.compareAndSetRef({
+      namespaceId,
+      name: 'returning-row',
+      newVersion: gammaVersion,
+      expectedVersion: betaVersion,
+      message: 'moved to gamma',
+    })
+
+    expect(moved).toMatchObject({
+      namespaceId,
+      name: 'returning-row',
+      version: betaVersion,
+      message: 'moved to beta',
+      updatedAt: expect.any(Date),
+    })
+    expect(created).toMatchObject({ version: alphaVersion, message: 'created' })
+    expect(await v2Catalog.getRef(namespaceId, 'returning-row')).toMatchObject({
+      version: gammaVersion,
+      message: 'moved to gamma',
+    })
+  })
+
   test('rejects refs to snapshots without a committed layout', async () => {
     const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
     const version = fixtureVersion('delta')

@@ -259,7 +259,7 @@ export class V2Catalog {
     return (await this.getRef(namespaceId, nameOrVersion))?.version ?? nameOrVersion
   }
 
-  async compareAndSetRef(input: CompareAndSetRefV2): Promise<void> {
+  async compareAndSetRef(input: CompareAndSetRefV2): Promise<CatalogRefRowV2> {
     const changed =
       input.expectedVersion === null
         ? await this.#client.$queryRaw<RefSqlRow[]>`
@@ -297,7 +297,8 @@ export class V2Catalog {
               )
             RETURNING "namespace_id", "name", "version", "message", "updated_at"
           `
-    if (changed.length === 1) return
+    const committed = changed[0]
+    if (committed && changed.length === 1) return sqlRowToRef(committed)
 
     const targetLayout = await this.#client.v2DatasetLayout.findFirst({
       where: { datasetVersion: input.newVersion },

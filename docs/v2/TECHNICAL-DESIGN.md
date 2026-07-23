@@ -848,6 +848,7 @@ interface V2OperationContext {
 }
 
 interface V2Store {
+  readonly readDatasetLimits: Readonly<V2DatasetLimits>
   prepare(dataset: V2Dataset, context?: V2OperationContext): Promise<PreparedArtifactV2>
   commit(prepared: PreparedArtifactV2, context?: V2OperationContext): Promise<DatasetManifestV2>
   discard(prepared: PreparedArtifactV2, cleanupContext?: V2OperationContext): Promise<void>
@@ -1187,7 +1188,7 @@ interface V2Catalog {
   ): Promise<Array<{ position: number; parentRecordId: string; parentRecordDigest: string }>>
 
   resolveRef(namespaceId: string, nameOrVersion: string): Promise<string>
-  compareAndSetRef(input: CompareAndSetRefV2): Promise<void>
+  compareAndSetRef(input: CompareAndSetRefV2): Promise<CatalogRefRowV2>
   listRefs(
     namespaceId: string,
     afterName: string | null,
@@ -1315,6 +1316,10 @@ class V2Workspace {
   addRecords(records: Iterable<unknown>, options: AddRecordsV2Options): Promise<IngestResultV2>
   addJsonl(source: AsyncIterable<Uint8Array>, options: AddRecordsV2Options): Promise<IngestResultV2>
   get(refOrVersion: string): Promise<V2Dataset>
+  withDataset<T>(
+    refOrVersion: string,
+    consume: (dataset: V2Dataset, exactVersion: string) => T | Promise<T>,
+  ): Promise<T>
   describeDataset(refOrVersion: string): Promise<DatasetViewV2>
   getRecordPage(refOrVersion: string, offset: number, limit: number): Promise<RecordPageV2>
   getRecordView(refOrVersion: string, recordId: string): Promise<RecordViewV2 | null>
@@ -1339,7 +1344,9 @@ class V2Workspace {
 `LineagePageRequestV2` 固定包含 max depth/nodes/opaque cursor。Wire DTO虽在 §15定义，源码都由
 `@databench/schema` 导出，Workspace不手写第二份平行类型。`get()` 只供内部编排/CLI；API routes
 使用 describe/page/view方法，eligibility与summary在 Workspace/shared schema policy中计算，
-不能把领域规则下放到 Hono route。
+不能把领域规则下放到 Hono route。需要在一次调用中持有一个或多个 eager dataset 的内部编排
+必须使用 `withDataset()`（多输入时嵌套并叠加 aggregate working-set admission），在完整消费期间保持
+cache pin；`get()` 返回后的引用属于调用方 working set，不得用它绕过 V10 aggregate admission。
 
 ### 12.2 Persist sequence
 
@@ -1405,11 +1412,25 @@ Workspace 进程内维护 byte-weighted bounded `V2DatasetCache`，key固定为�
 
 - API auth/tenant检查必须在进入 cache前完成；cache entry 不跨 workspace tenant boundary共享;
 - 同 key load使用 promise coalescing，受全局 load semaphore、cancellation与 temp/heap admission约束;
+- distinct cold load/audit等待队列默认最多64项；超限立即返回 typed capacity error，同 key coalesced
+  waiter不重复占队列项；
 - entry只缓存完整验证过 digest/schema的 immutable `V2Dataset`；失败 promise立即移除;
 - LRU按 canonical bytes + decoded overhead权重逐出未 pin entries，不因 mutable ref命名缓存;
 - 当前请求 pin 的 entry不得逐出；没有容量接纳且无法逐出时返回 503
   `capacity_exceeded`，不能 OOM后重启;
 - exact-version entry immutable；artifact/layout发生 integrity冲突时 evict并告警，而不是覆盖。
+
+Workspace按 Store公开的 immutable `readDatasetLimits` 与
+`max_canonical_bytes + 256 × max_records`证明每次 cold load的 reservation上界；Workspace ingest
+limits不得高于Store read limits，注入的cache若 `maxEntryWeight`或总 capacity小于Store上界，构造时
+fail closed。一个 cache实例只能归属一个 trusted Workspace，禁止跨 tenant/workspace共享。取消可以
+立即结束 caller等待，但 load slot与byte reservation必须等底层 Store operation真正 settle后才释放，
+不能在后台 decode尚未结束时提前放行。
+
+`discard`固定在 optional ref CAS之后的 `finally`执行，不复用业务 signal，并对瞬时 cleanup失败有界
+重试一次。若逻辑发布/Ref CAS已经成功，持续 cleanup故障不得把成功改报为失败；它通过无 payload的
+warning或注入 telemetry hook报告，进程启动 stale-temp清理作为最终恢复。若已有 primary failure，
+cleanup故障作为 suppressed error附着且不得覆盖 primary。
 
 该 cache 是性能层，不改变 Store 每次 cold load 的完整 digest验证，也不成为 catalog truth。
 

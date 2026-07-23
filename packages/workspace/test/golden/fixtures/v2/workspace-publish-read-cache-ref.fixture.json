@@ -1,0 +1,9 @@
+{
+  "fixture_version": 1,
+  "publish_order": ["prepare", "commit", "register", "namespace", "cas", "discard"],
+  "cache_key_fields": ["dataset_version", "layout_version", "artifact_digest"],
+  "cache_record_overhead_bytes": 256,
+  "cache_max_pending_loads": 64,
+  "cursor_ttl_ms": 900000,
+  "ref_conflict_preserves_committed_dataset": true
+}

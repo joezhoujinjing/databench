@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V9
-last_completed_step: V8
+current_step: V10
+last_completed_step: V9
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V9 — Workspace Publish、Read Cache 与 Ref
+- **下一步:** V10 — Transform、Run Cache 与 Lineage
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -29,7 +29,7 @@ capability_enabled: false
 | V6 | Manifest与 file-backed Store | ✅ | 当前分支 | GV6 | strict manifest、conditional-create provider adapters、受控 temp与流式 file-backed Store已过闸门 |
 | V7 | Prisma与 v2 Catalog | ✅ | 当前分支 | GV7 | 九表迁移、并发 claim/lineage、immutable run与 Ref CAS 已过闸门 |
 | V8 | Canonical JSONL与共享投影 | ✅ | 当前分支 | GV8 | fixed-byte golden、增量eager admission与资源/取消边界通过 |
-| V9 | Workspace publish/read cache/ref | ⬜ | | GV9 | |
+| V9 | Workspace publish/read cache/ref | ✅ | 当前分支 | GV9 | 发布顺序、恢复、cache/ref与真实依赖闸门通过 |
 | V10 | Transform、run cache与 lineage | ⬜ | | GV10 | |
 | V11 | Converter registry与 fidelity | ⬜ | | GV11 | |
 | V12 | `/v2` API、OpenAPI与 generated client | ⬜ | | GV12 | |
@@ -187,3 +187,22 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   `git diff --check`、`pnpm lint`（334 files）、`pnpm build`（12 tasks）、`pnpm typecheck`
   （21 tasks）、`pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm peers check`
   与`pnpm v2:status:check`全部通过。
+
+## V9 Gate 记录
+
+- Workspace已实现`addRecords/addJsonl/get/withDataset/describeDataset/getRecordPage/`
+  `getRecordView/audit`及refs list/get/put；发布固定为prepare → conditional commit → Catalog
+  register → optional Ref CAS，Ref只解析一次并锁定exact version；
+- cache使用exact layout key、promise coalescing、lease/pin、byte-weighted LRU、共享cold-load/audit
+  semaphore、Store read上限对应的解码前预算及64项bounded pending queue；取消后等待底层操作真正
+  settle才释放预算和slot，cache不得跨Workspace复用；
+- recovery会严格校验manifest、HEAD、artifact digest、Parquet与dataset identity后补登记；Catalog
+  已登记但对象缺失按integrity error处理，cleanup独立于业务signal并重试一次，不掩盖primary error；
+- refs cursor使用HMAC-SHA256、namespace scope、canonical base64url、15分钟TTL与长度上限；Ref CAS
+  conflict detail明确新dataset已提交且旧Ref保持不变；两个独立Workspace writer真实并发只允许一个
+  CAS成功，两个exact version均可读；
+- Schema 184 tests、Workspace普通suite 58 passed / 1 real integration skipped；真实MinIO/Postgres
+  Workspace suite 59/59通过，每页/view不重复下载Parquet，audit独立cold read、恢复登记与唯一临时
+  bucket清理均通过；独立review无剩余P0/P1/P2；
+- `pnpm v2:status:check`、`git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、
+  `pnpm test`、`pnpm openapi:check`、`pnpm peers check`全部通过；capability继续保持关闭。
