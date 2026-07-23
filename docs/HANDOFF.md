@@ -9,6 +9,11 @@
 - **S0.1-S21 已完成,M5 parity & 切换收尾完成;D1 已由 owner 改为实现 vocabularies,S19 已补齐。** 进度以 `docs/migration/STATUS.md` 为准。
 - 后端核心、Hono API、确定性 `openapi.json`、React/Vite 前端主流程、S20 新旧端到端 parity 均已落地并过闸门。词表域已按最新旧后端 + 旧 UI 语义迁入,入口由 `features.vocabularies:true` 开启。
 - 下一步是 **D3 API 托管平台决策**;owner 拍板前不得进入 S22 部署/平台选择。旧实现 `~/Desktop/databench/`:Python 后端(`databench/`)+ 旧前端(`databench-ui/`)。**只读参考 + golden 源,默认保留,严禁修改。**
+- v2 设计 ADR 0009、ADR 0011 与 `docs/v2/TECHNICAL-DESIGN.md` 已接受；
+  `docs/v2/PLAN.md` 已按技术方案重写并待 owner 评审。实施计划接受前不得开始 v2 实现。
+- Processing ADR 0010 已接受；`docs/processing/TECHNICAL_DESIGN.md` 已完成第二轮必须项
+  修订。该新增 scope 独立按 TD→P1..P6 闸门推进；v1 只产出 sealed staging artifacts，
+  无 canonical finalizer。
 
 ## 2. 必读(按此顺序)
 1. **`/AGENTS.md`** — 总纲(规则 + 已锁决策 + do/don't)。
@@ -19,18 +24,29 @@
 6. `docs/migration/frontend-inventory.md`(+ `_frontend-pages.md`/`_frontend-shell.md`)— 前端逐功能 + 118 i18n key。
 7. `docs/decisions/0001..0006` — 决策依据(可行性 / Hono / 存储 / 工具链 / 基础设施 / 前端栈)。
 
+若任务属于 Processing，再额外先读 `docs/decisions/0010-python-processing-service-grpc.md`
+和 `docs/processing/TECHNICAL_DESIGN.md`，不得从 P1 跳到后续切片。
+
 ## 3. 执行方式(硬性)
 - **严格按 `STATUS.md` 的当前进度继续执行 `PLAN.md`;一个 Step ≈ 一个 PR;过该 Step 的闸门(`G*`/`FG*`)才进下一步。** 不要重做已完成 Step,除非当前 gate 暴露回归。
 - 每步对拍 **golden**(`~/Desktop/databench/databench/bench/` 的 catalog.db + store);M5 端到端新旧 parity 已由 S20 覆盖。
 - **Conventional Commits**(scope=包名);Biome;CI 全绿(lint/typecheck/vitest/golden/`openapi:check`)。
 - 落代码前对照 `directory-layout.md` 的文件落点 + `conventions.md`。
+- Processing 新增 scope 按其技术方案 P1..P6 独立 PR/gate 推进，不改写已完成 migration
+  Step，也不因本机实验绕过 Proto/Workspace 边界。
 
 ## 4. 绝对红线(违反 = 返工,细节见 AGENTS.md「硬规则」)
 1. **依赖 DAG**:`hashing←schema←{engine,io,catalog}←{ops,store}←workspace←apps/api`;**apps/api 只经 workspace+schema**;catalog 只依赖 Prisma;hashing/schema 保持纯;禁深 import。
-2. **确定性**(后端对拍命门):哈希输入**只走** `@databench/hashing.canonicalJson`,**禁裸 `JSON.stringify`**;blake3 固定;序列化**保留 null**;`bankersRound`(非 `Math.round`);`weight || 1.0`;空集 version=`hashText("empty")`。
+2. **确定性**(后端对拍命门):哈希输入只走 `@databench/hashing`；v1 使用
+   `canonicalJson` 与 `hashText("empty")` 保持 golden，v2 按 ADR 0011 使用 RFC 8785
+   `canonicalJsonV2`、显式 identity profile/schema envelope 与版本化 empty 公式；
+   **禁裸 `JSON.stringify`**；blake3 固定；序列化保留 null；`bankersRound`；
+   `weight || 1.0`。
 3. **契约优先**:wire 类型只在 `@databench/schema`(zod)定义一次 → `@hono/zod-openapi` 出 `openapi.json` → `openapi-typescript` 生成前端 client;**不手写 API 类型**(除前端 `ApiError`)。
 4. **样本数据绝不进 Postgres**(Parquet 在对象存储;PG 只存 catalog 元数据)。
 5. **绝不修改旧仓库 `~/Desktop/databench/`**。
+6. **Processing v1 不发布 canonical 数据**；apps/api 不接触 gRPC/generated/Catalog/Store，
+   Python 不接触 Postgres/长期对象存储凭据，Proto 不取代 Zod 领域模型。
 
 ## 5. 决策门(用默认值推进,除非 owner 另行指示)
 | 门 | 默认 | 行动 |
@@ -43,6 +59,13 @@
 - Node 22(`.nvmrc`);pnpm;`docker compose up -d` 起 `postgres` + `minio`(S0.2 建)。
 - **若需运行旧 Python 后端做 parity**:本机是 Rosetta x86-64 Python,**polars 会 SIGILL(exit 132),除非装 `polars[rtcompat]`;用 `.venv/bin/uvicorn` 启动,别用 `uv run`**。
   - S20 已通过 `apps/api/test/parity.golden.test.ts` 证明 `.venv/bin/uvicorn databench.service.app:create_app --factory` 可用于新旧并跑;多数包级 parity 仍可直接用**静态** golden(`bench/` 的 catalog.db + store),不必跑 Python。
+- 上一条只适用于只读旧仓库 parity。新的 `workers/processing-python` 在 Apple Silicon 上
+  必须同时使用原生 arm64 `uv` + Python 3.11；P1 preflight 拒绝 `/usr/local` Rosetta
+  工具，可由 `DATABENCH_PROCESSING_UV_BIN` 指向受控 native executable，但不得引用
+  另一个实验项目路径。
+  - 当前本机已安装 `/Users/hanlu/.local/bin/uv`（0.11.1 arm64）和
+    `/Users/hanlu/.local/bin/python3.11`（3.11.15 arm64）；该目录在 `/usr/local/bin`
+    之前。Processing 不得回退到旧 x86_64 executable。
 - golden 源路径:`~/Desktop/databench/databench/bench/`(catalog.db + store/objects);旧 UI 功能参考:`~/Desktop/databench/databench-ui/`。
 
 ## 7. 关键风险
@@ -52,6 +75,9 @@
 ## 8. Definition of Done
 - **当前已达成**:`S0..S21` 完成;S19 vocabularies 已补齐;所有已进入的 `G*`/`FG*` 闸门绿;**`G-parity` 通过**(新旧端到端 dataset version / lineage / export / 分页 等价);前端与旧 UI 主流程 parity。
 - **剩余 DoD**:M6/S22 在 D3 拍板后完成;若 D3 未定,停在 M5 完成态,不得擅自选择部署平台。
+- **Processing DoD**:按 `docs/processing/TECHNICAL_DESIGN.md` 逐切片满足 native toolchain、
+  双语言生成/import、stream 自动机、durable cleanup fence、真实 PG/Store 故障门；P6
+  顺序仍受 ADR 窄修订门约束。
 
 ## 9. 检查点协议(goal 模式)
 - **里程碑内自治**:按步实现、跑闸门、修失败、逐步提交,不必逐步请示。
@@ -80,8 +106,11 @@ GOAL:在 ~/Desktop/databench-ts 完成 databench 的完整 TS-monorepo 重写(�
   - 先看 STATUS.md,不要重做已完成 Step;从下一个未完成 Step 继续。
   - 当前 S0.1-S21 已完成;S19 vocabularies 已按 owner 新 D1 决策实现;S20 G-parity 已通过。
   - M6/S22 前必须先停下来询问 D3 API 托管平台,不要擅自决定 Cloud Run/GKE/Fly/Railway/ECS。
-  - 遵守红线:依赖 DAG(apps/api 只经 workspace)、确定性纪律(canonicalJson-only/blake3/保留 null/
-    bankersRound/weight||1.0)、契约优先(zod→openapi→openapi-typescript,不手写 API 类型)、样本不进 PG。
+  - v2 ADR 0009/0011 与 docs/v2/TECHNICAL-DESIGN.md 已接受;
+    docs/v2/PLAN.md 已重写并待 owner 评审。实施计划接受前不得开始 v2 实现。
+  - 遵守红线:依赖 DAG(apps/api 只经 workspace)、确定性纪律(哈希只经 hashing 包;
+    v1 canonicalJson/v2 JCS profile;blake3/保留 null/bankersRound/weight||1.0)、
+    契约优先(zod→openapi→openapi-typescript,不手写 API 类型)、样本不进 PG。
   - 决策门:D1 vocabularies 已实现(capabilities.vocabularies:true)、D2 TRL 照搬等价;
     D3 API 托管在 M6 部署前停下来问我。
   - Conventional Commits;Biome;CI 绿;绝不修改旧仓库 ~/Desktop/databench。

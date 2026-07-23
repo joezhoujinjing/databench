@@ -35,6 +35,7 @@
 | M2 synthesis | distilabel | **Vercel AI SDK / provider SDKs** over `Dataset`/`Workspace` | TS-native (capability, not the framework) |
 | M2 annotation | Argilla | external **Argilla server over REST** | stack-agnostic; integrate via HTTP |
 | Distributed scaling | Ray Data | **DuckDB out-of-core** covers the real need | Ray only as an *optional* `workers/python-*` sidecar if true cluster execution is ever mandated |
+| External data processing | Data-Juicer | Optional native Python 3.11 Processing Service behind internal gRPC | Authorized by ADR-0010; v1 sealed staging artifacts only, no canonical publication |
 
 ## Frontend — greenfield rewrite (React + Vite SPA, ADR-0006)
 
@@ -58,9 +59,11 @@ unchanged). The original `databench-ui` (React 18 + Vite + TS, at
 `~/Desktop/databench/databench-ui/`) is the **feature reference**, not the
 codebase being moved.
 
-## The only Python that can ever appear
+## Python boundary
 
-Zero for the product as specified. Python enters **only** if the owner later
-mandates reusing **distilabel** or **Ray Data** *the frameworks themselves* —
-as an optional sidecar behind the same `/v1` REST contract, never in the core
-path. See [architecture.md → Python boundary](architecture.md).
+Zero inside the core/domain/public API. ADR-0010 now authorizes one optional
+`workers/processing-python` service because the owner selected Data-Juicer the
+framework itself. TypeScript remains the public REST/domain/publication owner;
+the worker communicates only through internal Proto/gRPC and signed artifacts.
+distilabel, Ray Data, LLM processors, arbitrary Python modules and distributed
+runtimes remain deferred. See [architecture.md → Python boundary](architecture.md).

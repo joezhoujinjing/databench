@@ -1,6 +1,7 @@
 # ADR 0001 — Rebuild databench as an all-TypeScript monorepo
 
-- **Status:** Accepted
+- **Status:** Accepted; Python boundary amended by
+  [ADR-0010](0010-python-processing-service-grpc.md)
 - **Date:** 2026-06-29
 - **Deciders:** owner
 
@@ -57,12 +58,13 @@ an external HTTP service. M3 Lance is TS-native (`@lancedb/lancedb`).
 
 ## The one nuance both evaluators agreed on
 
-Python is required **only** if the owner later mandates reusing **distilabel** or
-**Ray Data** *the frameworks specifically* (not the capability they provide).
-That is an **optional sidecar** behind the same `/v1` REST contract, never a core
-dependency. The capabilities themselves — synthetic generation (provider SDKs /
-Vercel AI SDK) and larger-than-memory processing (DuckDB out-of-core) — are
-TS-native.
+At the time of this decision, Python was required **only** if the owner later
+mandated reusing a Python-native framework itself rather than its capability.
+ADR-0010 subsequently applies that escape hatch to Data-Juicer through an
+optional long-running internal gRPC Processing Service. It remains outside the
+TS core; Zod/public REST, versions, refs, runs, cache and lineage remain TS-owned.
+Other frameworks such as distilabel or Ray Data are still deferred and require
+separate adapter review.
 
 ## Consequences
 

@@ -34,6 +34,41 @@ Design and decision records for the all-TypeScript monorepo rebuild.
   — Supabase Postgres, GCS object storage (S3-compat), API host TBD. *Accepted.*
 - **[0006 — Frontend stack](decisions/0006-frontend-stack.md)**
   — React + Vite SPA, shadcn/ui + Tailwind, TanStack Router/Query/Virtual. *Accepted.*
+- **[0007 — Agent-facing CLI](decisions/0007-agent-cli.md)**
+  — thick, in-process CLI over the same Workspace boundary. *Accepted.*
+- **[0008 — Aliyun OSS production + MinIO local](decisions/0008-object-store-aliyun-oss.md)**
+  — native OSS in production and the S3 adapter for local MinIO. *Accepted.*
+- **[0009 — Canonical post-training record v2](decisions/0009-canonical-post-training-record-v2.md)**
+  — one canonical record with derived trainer/task views. *Accepted for v2.*
+- **[0010 — Python Processing Service over internal gRPC](decisions/0010-python-processing-service-grpc.md)**
+  — long-running Python execution plane, Proto transport, Postgres job leases,
+  and object-storage batch artifacts while Databench retains version/lineage
+  ownership. *Accepted.*
+- **[0011 — v2 identity, hashing, and versioning](decisions/0011-identity-hashing-versioning-v2.md)**
+  — separates stable logical IDs, canonical record digests, logical dataset versions,
+  and physical artifact digests. *Accepted for v2.*
+
+## v2 design references
+
+- **[v2 technical design](v2/TECHNICAL-DESIGN.md)**
+  — v2 package/runtime、Parquet/manifest/catalog、Workspace/API，以及完整 Web vertical
+  slice、exact-version cache、Unified Record renderer 与 fidelity workflow。*Proposed;
+  review before revising the implementation plan.*
+- **[v2 implementation plan](v2/PLAN.md)**
+  — additive v2 delivery sequence, package placement, physical layout, catalog/API rollout,
+  and gates V0-V15. *Review paused; must be revised after technical-design acceptance.*
+- **[Canonical Record v2 扩展设计参考](v2/canonical-record-extended-profile.md)**
+  — v2.0 最小 schema 暂不采用的候选字段、Part variants、适用边界与未来纳入条件。
+  *Non-normative reference.*
+
+## Processing
+
+- **[Processing Service 交接包](processing/HANDOFF.md)**
+  — 当前状态、权威文件顺序、锁定边界、P1–P6 切片、P1 首 PR 范围、验收清单与可直接
+  交给实现者的 kickoff prompt。**交接从这里开始。**
+- **[Processing Service 技术方案](processing/TECHNICAL_DESIGN.md)**
+  — 在当前 monorepo 中落地内部 gRPC Python worker、同步短任务、Postgres
+  batch job、OSS/MinIO 暂存工件和 Data-Juicer adapter 的分步设计。*Revised draft.*
 
 ## Deployment
 
@@ -77,5 +112,7 @@ Source material behind ADR-0001 — two independent evaluators + cross-review:
 - [01-eval-claude.md](feasibility/01-eval-claude.md) — Claude's report (+ Round 2)
 - [02-eval-codex.md](feasibility/02-eval-codex.md) — Codex's report (+ Round 2)
 
-Both converged on **`FEASIBLE-ALL-TS`**; required Python surface for the product
-as specified is **zero**.
+Both converged on **`FEASIBLE-ALL-TS`** for the core/domain/public API; that
+surface remains Python-free. ADR-0010 later authorizes a separate optional
+Python Processing Service for explicitly selected Python-native frameworks such
+as Data-Juicer, without importing Python into the TS core.

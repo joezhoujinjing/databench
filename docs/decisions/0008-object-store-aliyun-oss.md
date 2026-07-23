@@ -1,7 +1,8 @@
 # ADR 0008 — Object store: Aliyun OSS in production, MinIO/S3 for local development
 
 - **Status:** Accepted — amended 2026-07-06 to restore local MinIO while keeping
-  production on Aliyun OSS.
+  production on Aliyun OSS; amended by [ADR 0011](0011-identity-hashing-versioning-v2.md)
+  on 2026-07-23 for v2 object keys and conditional-create semantics.
 - **Date:** 2026-07-03
 - **Supersedes:** the object-store choice in [ADR-0003](0003-storage-postgres-object-store.md)
   for production. The Postgres-catalog + object-store-data-plane split from
@@ -58,9 +59,11 @@ through OSS's own S3-compatible endpoint independently of how the app writes.
 - **Lazy client.** `ali-oss`'s constructor validates credentials, so `OssStore`
   builds the client lazily — an unconfigured `Workspace.open()` does not throw;
   storage ops fail cleanly (and `meta doctor` reports `store: { ok: false }`).
-- **Object key layout unchanged** (`objects/<vv>/<version>.{parquet,manifest.json}`,
-  `vocabularies/<vv>/<id>.json`) — versions/ids are still content hashes, writes
-  idempotent, parquet-before-manifest so `exists` self-heals.
+- **v1 object key layout unchanged**
+  (`objects/<vv>/<version>.{parquet,manifest.json}`,
+  `vocabularies/<vv>/<id>.json`) — existing versions/ids and parity behavior remain
+  untouched. v2 uses artifact-digest-addressed Parquet, a dataset/layout manifest
+  commit point, and S3/MinIO/OSS conditional create exactly as specified by ADR 0011.
 - Production remains Aliyun-locked for the object store. Local MinIO is a
   development backend, not a production multi-cloud commitment. If a second
   production cloud is ever needed, revisit with a new ADR.

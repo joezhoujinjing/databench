@@ -13,6 +13,7 @@ coverage/
 .DS_Store
 .claude/
 .codex/
+.shareone_history.json
 .playwright-cli/
 output/
 design-qa.md

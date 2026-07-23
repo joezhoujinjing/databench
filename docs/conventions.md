@@ -40,17 +40,24 @@
 
 ## 3. 确定性纪律(直接关系 golden 闸门,**最高优先级**)
 
-迁移最大风险是「算出来的 id/version/cache_key 和 Python 对不上」。以下为硬约定:
+迁移最大风险是「算出来的 id/version/cache_key 和 Python 对不上」。v1 parity 与 v2
+identity 使用不同但并存的 profile，以下为硬约定:
 
-- **凡参与哈希的序列化,只能走 `@databench/hashing` 的 `canonicalJson`**;**任何地方都不许用裸 `JSON.stringify` 做哈希输入**(它不排序键、丢 `undefined`、对 `Date`/`BigInt` 行为不对)。Biome 加自定义/约定禁止在 `hashing` 外手写哈希。
+- **凡参与哈希的序列化只能走 `@databench/hashing`**：v1 使用 `canonicalJson` 保持
+  Python golden，v2 按 ADR 0011 使用 RFC 8785 `canonicalJsonV2` 与显式 identity
+  profile/domain；**任何地方都不许用裸 `JSON.stringify` 做哈希输入**。Biome
+  加自定义/约定禁止在 `hashing` 外手写哈希。
 - **blake3 固定**,不实现 blake2b 回退(既有 store 全 blake3)。
 - **银行家舍入**(half-to-even)用 `@databench/engine` 暴露的 `bankersRound`,**禁止裸 `Math.round`** 于 recipe 计数(`RECIPE-05`)。
 - 权重退化:`weight || 1.0`(0→1.0),**不要用 `?? 1.0`**(`RECIPE-05`)。
-- 空数据集 version = `hashText("empty")`,不是 `hashUnordered([])`(`DATASET-04`)。
+- v1 空数据集 version = `hashText("empty")`,不是 `hashUnordered([])`(`DATASET-04`)；
+  v2 empty version 由 ADR 0011 的 identity profile + 精确 record schema version +
+  空 digest 列表 envelope 计算，禁止复用 v1 或跨版本全局 empty 常量。
 - `word_len` 复刻 Python `str.split()`:`text.trim().split(/\s+/).filter(Boolean).length`,空文本→0(`OPS-04`)。
 - 采样确定性以 **G5 闸门**为准;若 nodejs-polars 与 Python 不一致,采样统一改走 DuckDB `REPEATABLE(seed)`(决策记进 ADR)。
 
-每条确定性约定**必须有对应 golden 测试**(见 §6)。
+每条确定性约定**必须有对应 golden 测试**(见 §6)；v2 还必须提供 ADR 0011 要求的 JCS、
+domain、empty version、lineage 与并发 artifact commit 固定向量。
 
 ## 4. 错误处理(域 → HTTP 的统一映射)
 
