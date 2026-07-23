@@ -1,0 +1,92 @@
+{
+  "inputs": {
+    "record_seed": {
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "source": { "name": "demo", "kind": "jsonl", "original_id": "row-7" }
+    },
+    "candidate_seed": {
+      "record_id": "rec_1111111111111111111111111111111111111111111111111111111111111111",
+      "generation_run_id": "run_2222222222222222222222222222222222222222222222222222222222222222",
+      "output_index": 0
+    },
+    "signal_seed": {
+      "owner_id": "cand_3333333333333333333333333333333333333333333333333333333333333333",
+      "producer": "judge-v1",
+      "producer_event_key": "event-42"
+    },
+    "preference_seed": {
+      "owner_id": "rec_1111111111111111111111111111111111111111111111111111111111111111",
+      "producer": "human-review-v1",
+      "producer_event_key": "pair-7"
+    },
+    "record": {
+      "schema_version": "2.0.0",
+      "id": "rec_1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "dataset": {
+      "identity_profile": "databench-v2-jcs-1",
+      "record_schema_version": "2.0.0",
+      "record_digests": ["4444444444444444444444444444444444444444444444444444444444444444"]
+    },
+    "cache": {
+      "identity_profile": "databench-v2-jcs-1",
+      "op": "filter",
+      "op_version": "1.0.0",
+      "input_dataset_versions": [
+        "5555555555555555555555555555555555555555555555555555555555555555"
+      ],
+      "params": { "keep": true }
+    },
+    "claim": {
+      "claim_profile": "databench-identity-claim-v1",
+      "identity_profile": "databench-v2-jcs-1",
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "entity_kind": "record",
+      "creation_profile": "source-root-v1",
+      "claim_material": {
+        "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+        "source": { "name": "demo", "kind": "jsonl", "original_id": "row-7" }
+      }
+    },
+    "request": {
+      "request_profile": "databench-identity-request-v1",
+      "identity_profile": "databench-v2-jcs-1",
+      "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+      "entity_kind": "record",
+      "creation_profile": "source-root-v1",
+      "normalized_request": {
+        "creation_profile": "source-root-v1",
+        "initial_record": { "schema_version": "2.0.0" },
+        "seed": {
+          "namespace": "018f0f3e-7b4a-7c12-8d33-123456789abc",
+          "source": { "name": "demo", "kind": "jsonl", "original_id": "row-7" }
+        }
+      }
+    },
+    "fidelity": {
+      "export_fidelity_profile": "databench-export-fidelity-1",
+      "identity_profile": "databench-v2-jcs-1",
+      "dataset_version": "5555555555555555555555555555555555555555555555555555555555555555",
+      "converter": "canonical-jsonl",
+      "converter_version": "1.0.0",
+      "normalized_options": {},
+      "media_type": "application/x-ndjson",
+      "output_count": 1,
+      "config_hints": {},
+      "fidelity": { "preserved": ["contents"], "changes": [] }
+    }
+  },
+  "expected": {
+    "record_id": "rec_76c2f46372ef055c194f3bb93208f4b76b27223ac90d17c78d2095f3f86d552e",
+    "candidate_id": "cand_f5d23d1d97c11056d0b57775b4e23cb10cc4e9cd3737f7bded980955b3999b10",
+    "signal_id": "sig_80ab2c262588f163c32d2ce2b935b0e07aa9d4d367ea96bf4fb948944f29bee7",
+    "preference_id": "pref_2e7aed32e9f5b16f5e776c1e89db7f5b93335cd95bc2a2f48e0f539734c9173f",
+    "record_digest": "350ac03180b355076d4a7d206b4a708ee0556e8e920f4b552940b079a2bf27e7",
+    "dataset_version": "58f2cfb4188fd908b4381e048ffe50fe8e29e4260393f83343c6ee6319899139",
+    "cache_key": "6c0324e4bcb09235b5f27af268c5d1caa37c634a651ff31357ac5a7b3b674154",
+    "claim_key_digest": "ed3f8c971273c0e275953c0f554fa0d6b99b8a22736fa48d1b9f0919e04d1482",
+    "request_digest": "8667569dc63db772ba7d322ff7a503a744d76fc1abddc52b15f3144d8307ceb4",
+    "fidelity_digest": "89c1ac279f137697e5c41301d4bf213c8cc0c1b637b7c887827599583ab3967b"
+  },
+  "independent_reference": "Python blake3 1.0.8 over RFC 8785-compatible ASCII preimages"
+}

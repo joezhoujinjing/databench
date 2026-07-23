@@ -12,7 +12,7 @@
       "path": "packages/hashing/test/golden/fixtures/v2/jcs-rfc8785-official.input.json",
       "assertion": "RFC 8785 official vectors produce exact UTF-8 bytes",
       "source": "ADR-0011-2",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "jcs-unicode-number-boundaries",
@@ -22,7 +22,7 @@
       "path": "packages/hashing/test/golden/fixtures/v2/jcs-unicode-number-boundaries.input.json",
       "assertion": "UTF-16 ordering, scalar validation and ECMAScript number formatting are exact",
       "source": "ADR-0011-2",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "jcs-invalid-values-and-duplicate-keys",
@@ -32,7 +32,7 @@
       "path": "packages/schema/test/golden/fixtures/v2/jcs-invalid-values-and-duplicate-keys.input.json",
       "assertion": "Duplicate keys, lone surrogates, invalid values, depth and byte overflow are rejected",
       "source": "TECHNICAL-DESIGN-6.2",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "hash-domain-separation",
@@ -42,7 +42,7 @@
       "path": "packages/hashing/test/golden/fixtures/v2/hash-domain-separation.expected.json",
       "assertion": "Entity, record, dataset, cache, claim, request and fidelity domains cannot collide",
       "source": "ADR-0011-1,3,4,8",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "record-all-fields",

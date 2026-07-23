@@ -1,0 +1,17 @@
+{
+  "property_order": {
+    "€": "Euro Sign",
+    "\r": "Carriage Return",
+    "דּ": "Hebrew Letter Dalet With Dagesh",
+    "1": "One",
+    "😀": "Emoji: Grinning Face",
+    "": "Control",
+    "ö": "Latin Small Letter O With Diaeresis"
+  },
+  "number_values": [-0, 1e-7, 0.000001, 100000000000000000000, 1e21, 9007199254740991],
+  "unicode_values": {
+    "decomposed": "é",
+    "precomposed": "é",
+    "separators": "  "
+  }
+}

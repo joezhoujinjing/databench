@@ -9,3 +9,4 @@ export {
   parseCanonicalJson,
 } from './canonical-json.js'
 export { hashBytes, hashObj, hashText, hashUnordered } from './digest.js'
+export * from './v2/index.js'

@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V1
-last_completed_step: V0
+current_step: V2
+last_completed_step: V1
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V1 — RFC 8785、raw JSON 与 Hashing API
+- **下一步:** V2 — Canonical Record 2.0.0 与 Tool Schema
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -21,7 +21,7 @@ capability_enabled: false
 | Step | 目标 | 状态 | PR / 提交 | Gate | 备注 |
 |---|---|---|---|---|---|
 | V0 | 状态、fixtures 与防误报门 | ✅ | 当前分支 | GV0 | ADR/技术方案/计划均已接受；fixture index和 CI check已建立 |
-| V1 | RFC 8785、raw JSON与 Hashing API | ⬜ | | GV1 | 下一步 |
+| V1 | RFC 8785、raw JSON与 Hashing API | ✅ | 当前分支 | GV1 | RFC/JCS、具名 domains、raw parser 与 fixtures已过闸门 |
 | V2 | Canonical Record与 Ajv | ⬜ | | GV2 | |
 | V3 | Identity、Claim与 Opaque Revision | ⬜ | | GV3 | |
 | V4 | Immutable `V2Dataset` | ⬜ | | GV4 | |
@@ -53,3 +53,13 @@ capability_enabled: false
 结果（2026-07-23）：status check通过并登记25组 fixtures；lint 243 files、build 12 tasks、
 typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次 test因本地 Postgres未启动
 在 migration前失败；按仓库标准执行 `docker compose up -d --wait postgres minio` 后完整重跑通过。
+
+## V1 Gate 记录
+
+- RFC 8785 official bytes、UTF-16 property order、Unicode/number boundaries与 Python `blake3`
+  独立生成的10组 domain hex fixed vectors通过；v1 hashing golden保持不变；
+- hashing 29 tests、schema 38 tests通过，覆盖交错 incremental hasher、duplicate key、BOM、
+  malformed UTF-8、lone surrogate、unsafe integer、byte/depth limits与 strict Zod body helper；
+- `pnpm v2:status:check`、`git diff --check`、`pnpm lint`（258 files）、`pnpm build`
+  （12 tasks）、`pnpm typecheck`（21 tasks）、`pnpm test`（21 tasks）、
+  `pnpm openapi:check`（11 tasks）全部通过。

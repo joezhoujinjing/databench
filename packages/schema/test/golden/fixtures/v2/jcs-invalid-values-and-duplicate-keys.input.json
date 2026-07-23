@@ -1,0 +1,30 @@
+{
+  "valid": [
+    { "name": "primitive", "raw": "null", "max_bytes": 4, "max_depth": 0 },
+    {
+      "name": "escaped-pair",
+      "raw": "{\"😀\":\"\\ud83d\\ude00\"}",
+      "max_bytes": 64,
+      "max_depth": 1
+    },
+    { "name": "rfc-number", "raw": "1e30", "max_bytes": 8, "max_depth": 0 }
+  ],
+  "invalid": [
+    { "name": "duplicate-key", "raw": "{\"a\":1,\"a\":2}", "reason": "duplicate_key" },
+    {
+      "name": "escaped-duplicate-key",
+      "raw": "{\"a\":1,\"\\u0061\":2}",
+      "reason": "duplicate_key"
+    },
+    { "name": "lone-high-surrogate", "raw": "\"\\ud800\"", "reason": "invalid_unicode" },
+    { "name": "lone-low-surrogate", "raw": "\"\\udfff\"", "reason": "invalid_unicode" },
+    { "name": "unsafe-integer", "raw": "9007199254740992", "reason": "invalid_number" },
+    { "name": "non-finite-exponent", "raw": "1e999", "reason": "invalid_number" },
+    { "name": "malformed", "raw": "[1,]", "reason": "malformed_json" },
+    { "name": "too-deep", "raw": "{\"a\":[{}]}", "reason": "depth_limit_exceeded", "max_depth": 2 },
+    { "name": "too-large", "raw": "{\"a\":1}", "reason": "byte_limit_exceeded", "max_bytes": 6 },
+    { "name": "utf8-bom", "bytes_hex": "efbbbf6e756c6c", "reason": "bom_not_allowed" },
+    { "name": "malformed-utf8", "bytes_hex": "c328", "reason": "malformed_utf8" }
+  ],
+  "javascript_invalid": ["undefined", "bigint", "date", "function", "symbol", "cycle"]
+}
