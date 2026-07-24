@@ -276,6 +276,8 @@ curl -fsS http://127.0.0.1/health
 curl -fsS http://127.0.0.1/version
 curl -fsS http://127.0.0.1/capabilities
 curl -fsS 'http://127.0.0.1/v2/refs?limit=1'
+curl -fsS -H 'Accept: application/json' 'http://127.0.0.1/v2/transforms'
+curl -fsS -H 'Accept: text/html' 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
 ```
 
 `/version` 中的 `service_version` 必须等于本次安装版本。
@@ -286,7 +288,9 @@ curl -fsS 'http://127.0.0.1/v2/refs?limit=1'
 http://<服务器IP或内部DNS>
 ```
 
-确认 SPA 能打开，并能完成一次实际业务查询。
+确认 SPA 能打开，并能完成一次实际业务查询。还需要直接打开
+`http://<服务器IP或内部DNS>/v2/datasets` 并刷新一次；刷新后必须仍显示 V2 页面，不能返回
+API 404 JSON。
 
 ### 7.3 端口检查
 

@@ -27,11 +27,7 @@ compose_for_release "$SCRIPT_DIR" run --rm --no-deps \
     test -s /tmp/offline-smoke-v2.jsonl
   '
 
-compose_for_release "$SCRIPT_DIR" exec -T api node -e "
-  const paths = ['/health', '/version', '/capabilities', '/v1/refs', '/v2/refs?limit=1'];
-  for (const path of paths) {
-    const response = await fetch('http://web' + path);
-    if (!response.ok) throw new Error(path + ' returned ' + response.status);
-  }
-"
+compose_for_release "$SCRIPT_DIR" run --rm --no-deps \
+  --volume "${SCRIPT_DIR}/smoke:/opt/databench/smoke:ro" \
+  --entrypoint node api /opt/databench/smoke/gateway.mjs
 log "lifecycle smoke passed"

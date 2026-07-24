@@ -15,6 +15,7 @@ fail() {
 while IFS= read -r script; do
   bash -n "$script"
 done < <(find "$SCRIPT_DIR" -type f \( -name '*.sh' -o -name databenchctl \) | LC_ALL=C sort)
+node --check "${SCRIPT_DIR}/smoke/gateway.mjs"
 
 if rg -n 'docker compose down -v|image:.*latest|build:' \
   "${SCRIPT_DIR}/compose.yml" "${SCRIPT_DIR}"/*.sh "${SCRIPT_DIR}/databenchctl"; then
@@ -28,6 +29,16 @@ fi
 grep -q 'pull_policy: never' "${SCRIPT_DIR}/compose.yml" || fail 'pull_policy is not disabled'
 grep -q '/v1/\*' "${SCRIPT_DIR}/Caddyfile" || fail 'Caddy does not proxy v1'
 grep -q '/v2/\*' "${SCRIPT_DIR}/Caddyfile" || fail 'Caddy does not proxy v2'
+grep -Fq '@v2SpaNavigation' "${SCRIPT_DIR}/Caddyfile" ||
+  fail 'Caddy does not distinguish v2 SPA navigation from API requests'
+grep -Fq 'header Accept *text/html*' "${SCRIPT_DIR}/Caddyfile" ||
+  fail 'Caddy v2 SPA navigation does not require an HTML accept header'
+spa_handle_line="$(grep -n 'handle @v2SpaNavigation' "${SCRIPT_DIR}/Caddyfile" | cut -d: -f1)"
+api_handle_line="$(grep -n 'handle @api' "${SCRIPT_DIR}/Caddyfile" | cut -d: -f1)"
+[ -n "$spa_handle_line" ] && [ -n "$api_handle_line" ] && [ "$spa_handle_line" -lt "$api_handle_line" ] ||
+  fail 'Caddy v2 SPA navigation must be handled before the v2 API proxy'
+grep -Fq '/v2/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
+  fail 'offline smoke does not cover the shared v2 SPA/API path'
 
 for document in README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md; do
   [ -f "${SCRIPT_DIR}/${document}" ] || fail "offline document is missing: $document"
