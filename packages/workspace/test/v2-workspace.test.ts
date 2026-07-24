@@ -2063,7 +2063,6 @@ function makeRecord(idDigit: string, text: string): PostTrainingRecordV2 {
   return {
     schema_version: '2.0.0',
     id: `rec_${idDigit.repeat(64)}`,
-    system_instruction: null,
     contents: [
       {
         role: 'user',

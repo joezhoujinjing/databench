@@ -1,8 +1,20 @@
 {
   "schema_version": "2.0.0",
   "id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "system_instruction": "Use the available evidence.",
   "contents": [
+    {
+      "role": "system",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Use the available evidence.",
+          "thought": false,
+          "thought_signature": null,
+          "part_metadata": {}
+        }
+      ],
+      "loss_weight": 0
+    },
     {
       "role": "user",
       "parts": [

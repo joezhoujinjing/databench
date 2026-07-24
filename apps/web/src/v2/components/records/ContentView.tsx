@@ -23,17 +23,38 @@ export function RecordContents({ contents }: { contents: readonly RecordContentV
     <ol className="space-y-3">
       {contents.slice(0, visibleCount).map((content) => (
         <li
-          className="rounded-[5px] border border-border bg-background/45 px-4 py-4"
+          className={
+            content.role === 'system'
+              ? 'rounded-[5px] border border-warning/45 bg-warning/5 px-4 py-4'
+              : 'rounded-[5px] border border-border bg-background/45 px-4 py-4'
+          }
           key={`content:${orderedObjectKey(content)}`}
         >
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Badge tone={content.role === 'ai' ? 'violet' : 'blue'}>{content.role}</Badge>
+            <Badge
+              tone={
+                content.role === 'system' ? 'orange' : content.role === 'ai' ? 'violet' : 'blue'
+              }
+            >
+              {content.role}
+            </Badge>
+            {content.role === 'system' ? (
+              <span className="font-medium text-sm">{t('v2.record.systemInstruction')}</span>
+            ) : null}
             <span className="text-dim-foreground text-xs">
               {t('v2.record.lossWeight')}:{' '}
-              {content.loss_weight === null ? t('v2.record.none') : content.loss_weight}
+              {content.role === 'system'
+                ? 0
+                : content.loss_weight === null
+                  ? t('v2.record.none')
+                  : content.loss_weight}
             </span>
           </div>
-          <RecordParts parts={content.parts} />
+          {content.role === 'system' ? (
+            <SystemMessage content={content} />
+          ) : (
+            <RecordParts parts={content.parts} />
+          )}
         </li>
       ))}
       {visibleCount < contents.length ? (
@@ -48,6 +69,20 @@ export function RecordContents({ contents }: { contents: readonly RecordContentV
         </li>
       ) : null}
     </ol>
+  )
+}
+
+function SystemMessage({ content }: { content: RecordContentV2 }) {
+  const part = content.parts[0]
+
+  if (part?.type !== 'text') {
+    return <RecordParts parts={content.parts} />
+  }
+
+  return (
+    <p className="whitespace-pre-wrap break-words text-sm leading-6">
+      <SafeText downloadName="system-message.txt" text={part.text} />
+    </p>
   )
 }
 

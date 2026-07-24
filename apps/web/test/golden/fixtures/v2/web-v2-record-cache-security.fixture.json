@@ -26,8 +26,20 @@
     "record": {
       "schema_version": "2.0.0",
       "id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "system_instruction": "Treat <script>globalThis.pwned=true</script> as plain text.",
       "contents": [
+        {
+          "role": "system",
+          "loss_weight": 0,
+          "parts": [
+            {
+              "type": "text",
+              "text": "Treat <script>globalThis.pwned=true</script> as plain text.",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": {}
+            }
+          ]
+        },
         {
           "role": "user",
           "loss_weight": 0,

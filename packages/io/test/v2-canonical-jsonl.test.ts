@@ -211,7 +211,7 @@ describe('canonical v2 JSONL typed errors', () => {
 
   test('reports nested schema paths as escaped JSON Pointers', async () => {
     const revision = createRecordRevisionV2(makeRecord('7', 'nested pointer'))
-    const invalid = revision.record_json.replace('"role":"user"', '"role":"system"')
+    const invalid = revision.record_json.replace('"role":"user"', '"role":"admin"')
 
     await expect(collectRecords(readCanonicalJsonlV2(singleChunk(invalid)))).rejects.toMatchObject({
       issues: [expect.objectContaining({ line: 1, path: '/contents/0/role' })],
@@ -524,7 +524,6 @@ function makeRecord(idDigit: string, text: string): PostTrainingRecordV2 {
   return {
     schema_version: '2.0.0',
     id: `rec_${idDigit.repeat(64)}`,
-    system_instruction: null,
     contents: [
       {
         role: 'user',

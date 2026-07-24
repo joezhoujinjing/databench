@@ -8,6 +8,7 @@ current_step: V16
 last_completed_step: V15
 capability_enabled: true
 capability_owner_decision: owner-approved-2026-07-24
+schema_amendment: system-content-2026-07-24
 -->
 
 ## 当前检查点
@@ -16,6 +17,8 @@ capability_owner_decision: owner-approved-2026-07-24
 - **下一步:** 按 owner 2026-07-24 决定暂停在 V15 完成态；V16/V17 暂不开始
 - **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
   不代表 V16、V17 或 GV-final 已完成
+- **Schema修订:** owner于2026-07-24确认删除顶层`system_instruction`，改为共享
+  `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
 ## Step 状态
@@ -328,3 +331,26 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   `pnpm v2:status:check`与`git diff --check`通过；此前V15全仓build、lint、OpenAPI、peers gate均已通过；
 - V15代码完成后按owner决定暂停，不进入V16/V17；owner随后于2026-07-24明确要求提前开启
   capability。运行时和Web入口已开启，但V16/V17仍保持未开始，GV16/GV-final不视为通过。
+
+## 2026-07-24 Schema 修订 Gate 记录
+
+- 顶层`system_instruction`已从strict schema、OpenAPI、generated client、转换器、operation投影与
+  Web renderer中删除；canonical role扩展为`system | user | ai`，其中`system`至多一条、只能位于
+  共享`contents[0]`、必须恰好一个text part且`loss_weight=0`，candidate contents禁止`system`；
+- canonical继续使用`ai`，TRL与MS-Swift导出边界统一映射成`assistant`；record preview跳过可选的
+  system content，仍优先展示实际用户/AI对话；全部受影响的JSONL、converter、record digest、
+  dataset、workspace、Web与8组raw Parquet固定向量已重建；
+- 通用迁移脚本`scripts/migrate-v2-system-content.mjs`采用新文件原子落盘，不覆盖输入或既有输出；
+  修订前实验性`2.0.0`数据必须迁移重导，record digest与dataset version按新canonical bytes重算；
+- 使用`/Users/hanlu/Desktop/电缆_DEMO_20260723.v2.jsonl`迁移并真实HTTP导入499条记录，新文件为
+  `/Users/hanlu/Desktop/电缆_DEMO_20260723.v2-system-content.jsonl`，Ref为
+  `cable-demo-system-content-20260724`，dataset version为
+  `241436cb5a2ee3104ae84c57171cbadceb017cc4ab02846b6e7c472381c715ea`；
+- 499条canonical export为1,149,726 bytes，SHA-256为
+  `7cb54307a8b2145f1bff42d7103c452f24ea82c68c755479431ee048a5a741bf`；export重新导入后dataset
+  version不变，再次export逐字节相同；20条sample Ref为`cable-demo-system-sample-20`，version为
+  `fe50d89dc84768d4ab676e3c517b587153c6214acc5eb81bc82dcbf6a1c6cf9e`；
+- Schema定向112 tests、Hashing 25 tests、Ops 10 tests、IO 41 tests、Engine 49 tests、
+  Workspace定向51 tests、Store 21 tests、API真实HTTP 13 tests与Web renderer 6 tests通过；
+  `pnpm typecheck`（21 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm v2:status:check`、
+  `pnpm lint`与`git diff --check`通过；V16/V17继续暂停，capability保持开启。

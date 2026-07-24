@@ -176,7 +176,6 @@ export const promptRewriteV2 = defineV2Transform<PromptRewriteV2Params>({
 
       const draft = structuredClone(parent.record) as unknown as Record<string, unknown>
       delete draft.id
-      draft.system_instruction = rewriteRevision.record.system_instruction
       draft.contents = structuredClone(rewriteRevision.record.contents)
       draft.tools = structuredClone(rewriteRevision.record.tools)
       draft.verification = structuredClone(rewriteRevision.record.verification)
@@ -297,15 +296,14 @@ function assertPromptOnlyRewrite(
     )
   }
   if (!jsonEqual(promptInvariantProjection(base), promptInvariantProjection(rewrite))) {
-    throw new ValidationError(
-      'prompt-rewrite input may only change system_instruction/contents/tools/verification',
-      { record_id: base.id },
-    )
+    throw new ValidationError('prompt-rewrite input may only change contents/tools/verification', {
+      record_id: base.id,
+    })
   }
   if (
     jsonEqual(
-      [base.system_instruction, base.contents, base.tools, base.verification],
-      [rewrite.system_instruction, rewrite.contents, rewrite.tools, rewrite.verification],
+      [base.contents, base.tools, base.verification],
+      [rewrite.contents, rewrite.tools, rewrite.verification],
     )
   ) {
     throw new ValidationError('prompt-rewrite input must change at least one prompt field')
@@ -330,7 +328,6 @@ function selectionInvariantProjection(record: CanonicalRecordViewV2): unknown {
 
 function promptInvariantProjection(record: CanonicalRecordViewV2): unknown {
   const projected = structuredClone(record) as unknown as PostTrainingRecordV2
-  projected.system_instruction = null
   projected.contents = []
   projected.tools = []
   projected.verification = null

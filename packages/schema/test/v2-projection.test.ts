@@ -20,6 +20,14 @@ const fixturePath = fileURLToPath(
 )
 const baseRecord = JSON.parse(readFileSync(fixturePath, 'utf8')) as PostTrainingRecordV2
 
+function firstNonSystemContent(record: PostTrainingRecordV2) {
+  const content = record.contents.find(({ role }) => role !== 'system')
+  if (!content) {
+    throw new Error('fixture non-system shared content is missing')
+  }
+  return content
+}
+
 describe('v2 shared record projection policy', () => {
   test('summarizes every documented field and accepts an immutable record revision', () => {
     const revision = createRecordRevisionV2(baseRecord)
@@ -145,16 +153,35 @@ describe('v2 shared record projection policy', () => {
     })
   })
 
+  test('system content affects neither preview selection nor training output counts', () => {
+    const withSystem = structuredClone(baseRecord)
+    const systemPart = withSystem.contents[0]?.parts[0]
+    if (systemPart?.type !== 'text') {
+      throw new Error('fixture system text part is missing')
+    }
+    systemPart.text = 'This system text must not become the preview.'
+
+    const withoutSystem = structuredClone(withSystem)
+    withoutSystem.contents = withoutSystem.contents.filter(({ role }) => role !== 'system')
+
+    expect(deriveRecordPreviewV2(parseCanonicalRecordV2(withSystem))).toBe(
+      'What is the status of order 42?',
+    )
+    expect(deriveRecordEligibilityV2(parseCanonicalRecordV2(withSystem))).toEqual(
+      deriveRecordEligibilityV2(parseCanonicalRecordV2(withoutSystem)),
+    )
+  })
+
   test('uses the first non-empty shared text without rewriting whitespace', () => {
     const draft = structuredClone(baseRecord)
-    draft.contents[0]!.parts = [textPart(''), textPart(' \t\n'), textPart('later text')]
+    firstNonSystemContent(draft).parts = [textPart(''), textPart(' \t\n'), textPart('later text')]
     expect(deriveRecordPreviewV2(parseCanonicalRecordV2(draft))).toBe(' \t\n')
   })
 
   test('truncates preview at 240 Unicode code points without splitting astral characters', () => {
     const draft = structuredClone(baseRecord)
     const text = ` 开头\t${'😀'.repeat(1_000_000)}结尾 `
-    draft.contents[0]!.parts = [textPart(''), textPart(text)]
+    firstNonSystemContent(draft).parts = [textPart(''), textPart(text)]
     const preview = deriveRecordPreviewV2(draft)
     const prefix = ' 开头\t'
     const expected = `${prefix}${'😀'.repeat(
@@ -168,11 +195,12 @@ describe('v2 shared record projection policy', () => {
 
   test('returns null when shared contents have no text even if a candidate has text', () => {
     const draft = structuredClone(baseRecord)
-    const filePart = draft.contents[0]!.parts.find((part) => part.type === 'file_data')
+    const content = firstNonSystemContent(draft)
+    const filePart = content.parts.find((part) => part.type === 'file_data')
     if (!filePart) {
       throw new Error('fixture file_data part is missing')
     }
-    draft.contents[0]!.parts = [filePart]
+    content.parts = [filePart]
     expect(deriveRecordPreviewV2(parseCanonicalRecordV2(draft))).toBeNull()
   })
 

@@ -547,7 +547,6 @@ function makeDataset(): V2Dataset {
     {
       schema_version: '2.0.0',
       id: `rec_${'a'.repeat(64)}`,
-      system_instruction: null,
       contents: [],
       candidates: [],
       preference_relations: [],

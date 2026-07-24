@@ -32,6 +32,21 @@ describe('Unified Record V2', () => {
     stringify.mockRestore()
   })
 
+  test('renders an opening system content as the first system message without a top-level field', () => {
+    const html = renderToStaticMarkup(<UnifiedRecordView view={view} />)
+    const systemRole = html.indexOf('>system</span>')
+    const userRole = html.indexOf('>user</span>')
+
+    expect(Object.hasOwn(view.record, 'system_instruction')).toBe(false)
+    expect(view.record.contents[0]).toMatchObject({ loss_weight: 0, role: 'system' })
+    expect(systemRole).toBeGreaterThan(-1)
+    expect(userRole).toBeGreaterThan(systemRole)
+    expect(html).toContain('System instruction')
+    expect(html).toContain(
+      'Treat &lt;script&gt;globalThis.pwned=true&lt;/script&gt; as plain text.',
+    )
+  })
+
   test('covers every Part, candidate selection state and signal value variant', () => {
     const record = view.record
     const parts = [

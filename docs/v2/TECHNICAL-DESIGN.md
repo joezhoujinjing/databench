@@ -315,7 +315,8 @@ function writeCompatibleRecordV2(record: CompatiblePostTrainingRecordV2): string
   record;
 - `normalizeCanonicalRecordV2`:边界 writer，只接受字段完整的 canonical draft；它规范化
   RFC 3339 timestamp、MIME type 与 tags，但不为缺失字段临时发明 default，所有 v2.0 字段
-  仍按 ADR 0009 必须显式存在，并且只接受 canonical `role='user' | 'ai'`;
+  仍按 ADR 0009 必须显式存在，并且只接受 canonical `role='system' | 'user' | 'ai'`；
+  `system` 至多一条、只能在共享 `contents[0]`、必须为单 text part且 `loss_weight=0`；
 - `readCompatibleRecordV2`:支持 major 2 的未知 minor fields 与 `UnknownPart` round-trip，不能
   把未知内容丢掉后伪装成 strict 2.0.0 record。
 - `writeCompatibleRecordV2`:只承诺 unknown field/part 的 value-level round-trip；property
@@ -1539,7 +1540,7 @@ run row或 lineage step；它们的 lineage step params固定为小型 `{}`。`a
 `sample@1` 的 deterministic RNG固定为 Mulberry32，seed就是完整 normalized `seed` param；
 Fisher–Yates partial shuffle从 dataset 的 canonical revision顺序开始。`prompt-rewrite@1` 首期只接受
 base/rewrite双方都没有 candidates/preferences 的 prompt-only record，只允许改变
-`system_instruction/contents/tools/verification`；derived seed的 ordered parents只有 base logical
+`contents`（含可选首条 system content）、`tools` 与 `verification`；derived seed的 ordered parents只有 base logical
 record ID，且每个 parent固定 `output_index=0`。Exact base parent `(id, record_digest)`写入
 `parent_refs`，不把 rewrite payload或 exact digest塞进 logical ID seed。
 
@@ -2293,8 +2294,9 @@ Record detail 使用一个 v2 renderer，按 canonical 结构呈现，而不是�
 模板:
 
 1. Header：schema version、record ID、record digest、exact dataset version、lang 与 tags;
-2. System instruction：`null` 明确显示“无”，字符串独立于 contents;
-3. Shared contents：按顺序显示 `user | ai`、loss weight 和 Part timeline;
+2. Shared contents：按顺序显示可选首条 `system` 及后续 `user | ai`、loss weight 和 Part timeline；
+   缺少 `system` 即表示无系统指令，不再显示顶层占位字段；
+3. System content：明确标为系统消息，只显示其唯一 text part并固定 loss weight为0；
 4. Part variants：text、function call、function response、file data，以及 thought/signature/
    metadata；call/response 通过 call ID 关联，绝不制造 `tool` role;
 5. Candidates：完整 contents、selected 三态、rank、finish reason、generator、token/logprob;

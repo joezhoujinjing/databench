@@ -5,6 +5,8 @@
 - **决策者:** owner
 - **修订:** [ADR 0011](0011-identity-hashing-versioning-v2.md) 固定 logical ID、digest、
   dataset version、artifact identity，并将 lineage parent 修订为精确 revision reference
+- **修订:** owner 于 2026-07-24 在 v2 正式发布前删除顶层 `system_instruction`，改为
+  `contents[0]` 中至多一条、纯文本的 canonical `system` content
 - **取代:** `docs/architecture.md`、`docs/migration/feature-inventory.md` 与
   `docs/migration/inventory-domain.md` 中的 v1 逻辑样本模型
   (`sft | preference | rl | trajectory`)
@@ -55,7 +57,6 @@ interface JsonObject {
 interface PostTrainingRecord {
   schema_version: '2.0.0'
   id: string
-  system_instruction: string | null
   contents: Content[]
   candidates: Candidate[]
   preference_relations: PreferenceRelation[]
@@ -83,29 +84,32 @@ preference relation 与 append-only signal 等核心模型。被移出首发契�
 
 ### 2. `Content` 与 `Part` 是对话的基本单元
 
-对话模型沿用 Gemini `Content` / `Part` 模式，但从 canonical 表达中移除无意义
-或有歧义的字段。v2 初版的 system instruction 刻意保持为普通字符串:
+对话模型沿用 Gemini `Content` / `Part` 模式，但把系统指令、用户输入与 AI 输出统一放入
+同一个有序 content 流：
 
 ```ts
 interface Content {
-  role: 'user' | 'ai'
+  role: 'system' | 'user' | 'ai'
   parts: Part[]
   loss_weight: number | null
 }
 ```
 
-- Canonical role 的精确值只有 `user` 与 `ai`，并且区分大小写。导入适配器可以
+- Canonical role 的精确值只有 `system`、`user` 与 `ai`，并且区分大小写。导入适配器可以
   接受 `assistant`、`model` 或 `AI` 等 provider 别名，但 canonical 输出必须统一
   归一化为 `ai`。
-- 不存在 `system` role。系统指令只存放在记录级
-  `system_instruction: string | null` 字段。
+- 顶层不再存在 `system_instruction`。系统指令缺失时不写占位字段；存在时必须是
+  `contents[0]` 的 `system` content。
+- 一条 record 至多有一个 `system` content；它只能出现在共享 `contents` 第一项，不能出现在
+  candidate contents，也不能在 user/ai 对话中间再次出现。
+- v2.0 的 `system` content 必须恰好包含一个 `text` part，且 `loss_weight` 必须为 `0`。
+  结构化、多 part 或多模态 system instruction 留给未来 schema 版本。
 - 不存在 `tool` role。工具结果是 `user` content 中的 `function_response` part。
-- `system_instruction` 不是 `Content`。强类型 canonical schema 不接受一个
-  “存在但 role 被忽略”的字段；Gemini/Vertex converter 在边界处把字符串包装成
-  目标格式。
-- 结构化或多模态 system instruction 不属于 v2.0。未来如需支持，必须新增字段
-  或提升 schema major，不能静默重新解释现有字符串。
 - 每个 `Content` 至少包含一个 part。
+
+这次修订发生在 v2 正式发布前，直接取代同 ADR 先前的实验性 `2.0.0` 草案。使用顶层
+`system_instruction` 的本地实验 artifact 不是修订后 canonical `2.0.0`，必须迁移并重新导入；
+不得在保留旧 record digest 或 dataset version 的同时静默改写。
 
 `Part` 使用显式 `type` 判别字段，确保 Zod、TypeScript 与 OpenAPI 对 exactly-one
 主体得出同一个结论:
@@ -522,9 +526,11 @@ minor fixture 做 round-trip 时必须保留未知字段、未知 Part 与 schem
 Strict v2 writer 至少强制以下规则:
 
 1. `schema_version` 是支持的 v2 语义化版本，`id` 非空。
-2. `system_instruction` 存在时必须是非空字符串。
+2. `system` content 至多一条，只能位于共享 `contents[0]`，必须恰好一个 text part且
+   `loss_weight=0`；candidate contents 禁止 `system`。
 3. 每个 content 至少有一个 part；canonical part 必须匹配且只匹配一个已知 `type`。
-4. 共享 contents 的 role 必须交替；存在 candidates 时必须以 `user` 结束。
+4. 忽略可选的首条 `system` 后，共享 contents 的 `user | ai` role 必须交替；存在
+   candidates 时必须以 `user` 结束。
 5. Candidate contents 非空、以 `ai` 开始且 role 交替。
 6. Function-call ID 在一条完整 trajectory 内唯一；response 引用更早出现的 call，且每个
    call 最多对应一个 response。

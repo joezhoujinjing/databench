@@ -22,6 +22,22 @@ const invalidFixture = readJson<{ mutations: string[] }>('record-cross-field-inv
 
 type Mutation = (record: PostTrainingRecordV2) => void
 
+function systemContent(record: PostTrainingRecordV2) {
+  const content = record.contents.find(({ role }) => role === 'system')
+  if (!content) {
+    throw new Error('fixture system content is missing')
+  }
+  return content
+}
+
+function sharedUserContent(record: PostTrainingRecordV2) {
+  const content = record.contents.find(({ role }) => role === 'user')
+  if (!content) {
+    throw new Error('fixture shared user content is missing')
+  }
+  return content
+}
+
 function callPart(record: PostTrainingRecordV2) {
   const part = record.candidates[0]?.contents[0]?.parts[0]
   if (part?.type !== 'function_call') {
@@ -44,25 +60,25 @@ const mutations: Record<string, Mutation> = {
     record.id = 'rec_INVALID'
   },
   'empty-system-instruction': (record) => {
-    record.system_instruction = ''
+    systemContent(record).loss_weight = null
   },
   'unknown-top-level-field': (record) => Reflect.set(record, 'future_field', true),
   'unknown-part-variant': (record) =>
-    Reflect.set(record.contents[0]?.parts[0] ?? {}, 'type', 'audio'),
+    Reflect.set(sharedUserContent(record).parts[0] ?? {}, 'type', 'audio'),
   'empty-content-parts': (record) => {
-    record.contents[0]!.parts = []
+    sharedUserContent(record).parts = []
   },
   'illegal-part-oneof-field': (record) => {
-    Reflect.set(record.contents[0]!.parts[0]!, 'function_call', {
+    Reflect.set(sharedUserContent(record).parts[0]!, 'function_call', {
       id: 'extra-call',
       name: 'lookup_order',
       args: { order_id: '42' },
     })
   },
   'shared-role-not-alternating': (record) =>
-    record.contents.push(structuredClone(record.contents[0]!)),
+    record.contents.push(structuredClone(sharedUserContent(record))),
   'shared-does-not-end-user': (record) => {
-    record.contents[0]!.role = 'ai'
+    sharedUserContent(record).role = 'ai'
   },
   'candidate-does-not-start-ai': (record) => {
     record.candidates[0]!.contents[0]!.role = 'user'
@@ -77,7 +93,7 @@ const mutations: Record<string, Mutation> = {
     responsePart(record).function_response.call_id = 'missing-call'
   },
   'response-before-call': (record) => {
-    record.contents[0]!.parts.push(structuredClone(responsePart(record)))
+    sharedUserContent(record).parts.push(structuredClone(responsePart(record)))
     record.candidates[0]!.contents[1]!.parts = [
       {
         type: 'text',
@@ -152,28 +168,28 @@ const mutations: Record<string, Mutation> = {
     record.candidates[0]!.rank = -1
   },
   'negative-loss-weight': (record) => {
-    record.contents[0]!.loss_weight = -1
+    sharedUserContent(record).loss_weight = -1
   },
   'invalid-file-digest': (record) => {
-    const part = record.contents[0]!.parts[1]
+    const part = sharedUserContent(record).parts[1]
     if (part?.type === 'file_data') {
       part.file_data.digest.value = 'BAD'
     }
   },
   'negative-file-size': (record) => {
-    const part = record.contents[0]!.parts[1]
+    const part = sharedUserContent(record).parts[1]
     if (part?.type === 'file_data') {
       part.file_data.size_bytes = -1
     }
   },
   'noncanonical-media-type': (record) => {
-    const part = record.contents[0]!.parts[1]
+    const part = sharedUserContent(record).parts[1]
     if (part?.type === 'file_data') {
       part.file_data.media_type = 'IMAGE/PNG; charset=binary'
     }
   },
   'signed-file-uri': (record) => {
-    const part = record.contents[0]!.parts[1]
+    const part = sharedUserContent(record).parts[1]
     if (part?.type === 'file_data') {
       part.file_data.uri = 'https://example.com/file?x-amz-signature=secret'
     }
@@ -251,6 +267,82 @@ describe('PostTrainingRecordV2 strict writer schema', () => {
     expect(() => parseCanonicalRecordV2(record)).toThrow()
   })
 
+  test('accepts records with or without one leading system content', () => {
+    expect(() => parseCanonicalRecordV2(baseRecord)).not.toThrow()
+
+    const withoutSystem = structuredClone(baseRecord)
+    withoutSystem.contents = withoutSystem.contents.filter(({ role }) => role !== 'system')
+    expect(() => parseCanonicalRecordV2(withoutSystem)).not.toThrow()
+  })
+
+  test.each([
+    [
+      'more than one system content',
+      (record: PostTrainingRecordV2) => {
+        record.contents.splice(1, 0, structuredClone(systemContent(record)))
+      },
+      'A record may contain at most one system content',
+    ],
+    [
+      'system content outside contents[0]',
+      (record: PostTrainingRecordV2) => {
+        const system = record.contents.shift()
+        if (!system) throw new Error('fixture system content is missing')
+        record.contents.push(system)
+      },
+      'System content must be contents[0]',
+    ],
+    [
+      'system content with multiple parts',
+      (record: PostTrainingRecordV2) => {
+        systemContent(record).parts.push(structuredClone(systemContent(record).parts[0]!))
+      },
+      'System content must contain exactly one text part',
+    ],
+    [
+      'system content with a non-text part',
+      (record: PostTrainingRecordV2) => {
+        systemContent(record).parts = [structuredClone(sharedUserContent(record).parts[1]!)]
+      },
+      'System content must contain exactly one text part',
+    ],
+    [
+      'system content with non-zero loss weight',
+      (record: PostTrainingRecordV2) => {
+        systemContent(record).loss_weight = 1
+      },
+      'System content loss_weight must be 0',
+    ],
+    [
+      'system content in a candidate',
+      (record: PostTrainingRecordV2) => {
+        record.candidates[0]!.contents[0] = structuredClone(systemContent(record))
+      },
+      'Candidate contents must not contain system content',
+    ],
+    [
+      'non-alternating user/ai contents after system',
+      (record: PostTrainingRecordV2) => {
+        record.contents.push(structuredClone(sharedUserContent(record)))
+      },
+      'Content roles must alternate',
+    ],
+  ] as const)('rejects %s', (_name, mutate, expectedMessage) => {
+    const record = structuredClone(baseRecord)
+    mutate(record)
+    const result = PostTrainingRecordV2Schema.safeParse(record)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.message)).toContain(expectedMessage)
+    }
+  })
+
+  test('rejects the removed top-level system_instruction field', () => {
+    const record = structuredClone(baseRecord)
+    Reflect.set(record, 'system_instruction', 'legacy instruction')
+    expect(() => parseCanonicalRecordV2(record)).toThrow()
+  })
+
   test('the response-before-call mutation reaches the intended trajectory invariant', () => {
     const record = structuredClone(baseRecord)
     mutations['response-before-call']!(record)
@@ -268,7 +360,7 @@ describe('PostTrainingRecordV2 strict writer schema', () => {
     draft.tags = ['工具', 'demo', 'demo']
     draft.candidates[0]!.signals[0]!.created_at = '2026-07-23T16:00:00+08:00'
     draft.tools[0]!.description = ''
-    const filePart = draft.contents[0]!.parts[1]
+    const filePart = sharedUserContent(draft).parts[1]
     if (filePart?.type !== 'file_data') {
       throw new Error('fixture file_data part is missing')
     }
@@ -279,7 +371,7 @@ describe('PostTrainingRecordV2 strict writer schema', () => {
     expect(normalized.tags).toEqual(['demo', '工具'])
     expect(normalized.candidates[0]!.signals[0]!.created_at).toBe('2026-07-23T08:00:00Z')
     expect(normalized.tools[0]!.description).toBeNull()
-    const normalizedFile = normalized.contents[0]!.parts[1]
+    const normalizedFile = sharedUserContent(normalized).parts[1]
     expect(normalizedFile?.type === 'file_data' && normalizedFile.file_data.media_type).toBe(
       'image/png',
     )
@@ -317,7 +409,7 @@ describe('PostTrainingRecordV2 strict writer schema', () => {
     'https://example.com/file?OSSAccessKeyId=secret',
   ])('rejects unstable or credential-bearing URI: %s', (uri) => {
     const record = structuredClone(baseRecord)
-    const part = record.contents[0]!.parts[1]
+    const part = sharedUserContent(record).parts[1]
     if (part?.type !== 'file_data') {
       throw new Error('fixture file_data part is missing')
     }
@@ -328,7 +420,7 @@ describe('PostTrainingRecordV2 strict writer schema', () => {
   test.each([
     [
       'part metadata',
-      (record: PostTrainingRecordV2) => record.contents[0]!.parts[0]!.part_metadata,
+      (record: PostTrainingRecordV2) => sharedUserContent(record).parts[0]!.part_metadata,
     ],
     [
       'function response',
@@ -389,11 +481,11 @@ describe('v2 compatible reader and writer', () => {
       part_metadata: { 'future.codec': 'pcm' },
       future_flag: true,
     }
-    Reflect.set(future.contents[0]!.parts, 0, futurePart)
+    Reflect.set(sharedUserContent(future).parts, 0, futurePart)
 
     expect(() => parseCanonicalRecordV2(future)).toThrow()
     const compatible = readCompatibleRecordV2(future)
-    const firstPart = compatible.contents[0]!.parts[0]
+    const firstPart = compatible.contents.find(({ role }) => role === 'user')?.parts[0]
     expect(firstPart?.type).toBe('unknown')
     if (firstPart?.type !== 'unknown') {
       throw new Error('future Part was not wrapped')
@@ -405,6 +497,18 @@ describe('v2 compatible reader and writer', () => {
     })
 
     expect(JSON.parse(writeCompatibleRecordV2(compatible))).toEqual(future)
+  })
+
+  test('round-trips a leading system content and rejects system content in candidates', () => {
+    const compatible = readCompatibleRecordV2(baseRecord)
+    expect(compatible.contents[0]?.role).toBe('system')
+    expect(JSON.parse(writeCompatibleRecordV2(compatible))).toEqual(baseRecord)
+
+    const candidateSystem = structuredClone(baseRecord)
+    candidateSystem.candidates[0]!.contents[0] = structuredClone(systemContent(candidateSystem))
+    expect(() => readCompatibleRecordV2(candidateSystem)).toThrow(
+      /Candidate contents must not contain system content/,
+    )
   })
 
   test('rejects an unknown schema major instead of pretending it is v2', () => {

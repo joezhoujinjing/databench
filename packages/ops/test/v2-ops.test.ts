@@ -97,7 +97,7 @@ const INPUT_ROLES_BY_OPERATION: Readonly<Record<string, readonly string[]>> = Ob
 
 type CanonicalRecordViewV2 = RecordRevisionV2['record']
 
-function textContent(role: 'user' | 'ai', text: string) {
+function textContent(role: 'system' | 'user' | 'ai', text: string) {
   return {
     role,
     parts: [
@@ -109,7 +109,7 @@ function textContent(role: 'user' | 'ai', text: string) {
         part_metadata: {},
       },
     ],
-    loss_weight: null,
+    loss_weight: role === 'system' ? 0 : null,
   }
 }
 
@@ -117,7 +117,6 @@ function record(id: string, prompt: string, withCandidates = false): PostTrainin
   return {
     schema_version: '2.0.0',
     id,
-    system_instruction: null,
     contents: [textContent('user', prompt)],
     candidates: withCandidates
       ? [
@@ -211,7 +210,7 @@ function selectionPatch(): V2Dataset {
 
 function promptPatch(): V2Dataset {
   const second = record(RECORD_2, 'new prompt')
-  second.system_instruction = 'Use terse answers.'
+  second.contents.unshift(textContent('system', 'Use terse answers.'))
   const third = record(RECORD_3, 'rewritten third prompt')
   return V2Dataset.fromRecords([second, third])
 }
@@ -541,6 +540,10 @@ describe('V2 built-in operations', () => {
       )
       expect(revision.record.lineage?.steps.at(-1)?.params).toEqual({})
     }
+    const systemRewrite = derived.find(
+      (revision) => revision.record.lineage?.parent_refs[0]?.id === RECORD_2,
+    )
+    expect(systemRewrite?.record.contents[0]).toEqual(textContent('system', 'Use terse answers.'))
 
     const repeated = await promptRewriteV2.run(
       [data, promptPatch()],
@@ -552,7 +555,7 @@ describe('V2 built-in operations', () => {
     const revisedBaseRecord = record(RECORD_2, 'old prompt')
     revisedBaseRecord.extra = { revision: 2 }
     const revisedRewriteRecord = record(RECORD_2, 'new prompt for revision two')
-    revisedRewriteRecord.system_instruction = 'Use terse answers.'
+    revisedRewriteRecord.contents.unshift(textContent('system', 'Use terse answers.'))
     revisedRewriteRecord.extra = { revision: 2 }
     const revisedOutput = await promptRewriteV2.run(
       [V2Dataset.fromRecords([revisedBaseRecord]), V2Dataset.fromRecords([revisedRewriteRecord])],
@@ -621,6 +624,23 @@ describe('V2 built-in operations', () => {
         ),
       ).rejects.toThrow(/only change/)
     }
+  })
+
+  test('prompt-rewrite treats adding system content as a prompt-only change', async () => {
+    const base = record(RECORD_2, 'unchanged user prompt')
+    const rewrite = structuredClone(base)
+    rewrite.contents.unshift(textContent('system', 'Use terse answers.'))
+
+    const output = await promptRewriteV2.run(
+      [V2Dataset.fromRecords([base]), V2Dataset.fromRecords([rewrite])],
+      PromptRewriteV2ParamsSchema.parse({}),
+      context(null, pureAllocator()),
+    )
+
+    const derived = [...output.records()][0]
+    expect(derived?.record.contents).toEqual(rewrite.contents)
+    expect(derived?.record.contents[0]?.role).toBe('system')
+    expect(derived?.record.lineage?.parent_refs[0]?.id).toBe(RECORD_2)
   })
 
   test('operations reject wrong input count and honor cancellation', async () => {

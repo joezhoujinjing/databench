@@ -45,22 +45,22 @@
     "source_root": {
       "entity_id": "rec_e226ce097de0099296ca1e07861fadb690b4a8f971380259425fac63f7231da0",
       "claim_key_digest": "dd496ec042af34f9caa79976cad59c8ba7c305c8592851321b01312225d36c10",
-      "request_digest": "2db6917c46f21116c087e8093dd5a02409251eb3b73daeb8b505ec3d121348bc"
+      "request_digest": "05471f0bf6e4d2bf4849f316fcb1746d6fc09dd1a9a3870ddb06764c945827fe"
     },
     "artifact_row": {
       "entity_id": "rec_0e322ba3d9070faa58de0dfb96434efa887bddce975bae96ee528bea7bef7316",
       "claim_key_digest": "37468d345d66af39ab1d34952677be162abcb87839552bc5c9a10ee317414d48",
-      "request_digest": "a9d487a3189ea7657825136a283b56d285e3a3f9155afe3d7824cf8e0b107f8a"
+      "request_digest": "478643328e4f38f740ddf3a298b2d043a0c5fd11f9ed9fb88a40078391786d29"
     },
     "direct_root": {
       "entity_id": "rec_93481bf82f102d1af94271bd2cd18b76e88a6a607e7eb356e527115bfc252da7",
       "claim_key_digest": "4c39882baa71b3e2dfbc2dc8fe07b1798e8f7b43903ad599cc445bfd0f0fa1fc",
-      "request_digest": "1c3b32bad9cd4be3d22237252268057d97a755a7af8d7113645741f01a1bcfd2"
+      "request_digest": "781f707e99e4812cfbc2e247ee077e0c2ee9082e79761f9abb1d01212ac4f0f2"
     },
     "derived_record": {
       "entity_id": "rec_ba70896f9bf767b49db5a6d9bc91fe781a5605b7a1c40843be30dedb7bcce847",
       "claim_key_digest": "262753a5160009688d45eceb55b0d0d311f98c4b3e2ac86d6d6c7cabd9444384",
-      "request_digest": "ad17d35c207c96e16e2c5da7607571f2117d7f67c86ccd9bbff84ce6eb0d6e41"
+      "request_digest": "53cbe099fe02657c4dda590f7fffa93c0485a6a0ba2d92aebe738c4c34f9f05b"
     },
     "candidate": {
       "entity_id": "cand_2c54466276910019fe869db78419c518de8d363ca8bec06783e1ab219a0814a1",
@@ -81,7 +81,7 @@
   "random_direct_expected": {
     "entity_id": "rec_c531ce1bb98fbadf1db2942a6d29662e722872db039ec2cf21ed98d358bb9107",
     "claim_key_digest": "ded3562d9b909c43a6742a81272d6f181031ecc4e6228f518013e40d90e58b86",
-    "request_digest": "5bd6bd6f88170a159cfbca35c7063b1420d58ebe7dbdbeb30c2ee8a7bd1215fa"
+    "request_digest": "8e1b6f60acab7ba76acfb73944d92dc72e7db3af81e4748d8a900bf9d1b3cc55"
   },
   "independent_reference": "Python blake3 over RFC 8785-compatible ASCII preimages"
 }

@@ -725,8 +725,20 @@ function canonicalRecord(id: string, text: string) {
   return {
     schema_version: '2.0.0',
     id,
-    system_instruction: 'Answer precisely.',
     contents: [
+      {
+        role: 'system',
+        parts: [
+          {
+            type: 'text',
+            text: 'Answer precisely.',
+            thought: false,
+            thought_signature: null,
+            part_metadata: {},
+          },
+        ],
+        loss_weight: 0,
+      },
       {
         role: 'user',
         parts: [

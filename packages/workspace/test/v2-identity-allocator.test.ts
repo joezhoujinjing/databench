@@ -300,7 +300,6 @@ function record(prompt: string): PostTrainingRecordV2 {
   return {
     schema_version: '2.0.0',
     id: RECORD_ID,
-    system_instruction: null,
     contents: [content('user', prompt)],
     candidates: [
       {

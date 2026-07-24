@@ -29,7 +29,6 @@ interface ExtendedPostTrainingRecord {
   // v2.0 核心字段
   schema_version: string
   id: string
-  system_instruction: string | null
   contents: Content[]
   candidates: Candidate[]
   preference_relations: PreferenceRelation[]
@@ -138,8 +137,8 @@ type ExtendedPart =
 首发收敛没有撤销以下设计:
 
 - 只有一个 `PostTrainingRecord`，不恢复 `sft | preference | rl | trajectory` 判别联合；
-- `system_instruction` 是 record 级 `string | null`；
-- canonical role 只有小写 `user | ai`；
+- 系统指令是共享 `contents[0]` 中至多一条、纯文本且 `loss_weight=0` 的 `system` content；
+- canonical role 只有小写 `system | user | ai`；
 - Candidate 保存完整 agentic 响应后缀；
 - function call ID 强制存在，response 必须引用先前唯一 call；
 - Signal 是带类型、append-only 的原始证据；

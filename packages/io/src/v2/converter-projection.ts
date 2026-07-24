@@ -17,7 +17,6 @@ type ReadonlyToolV2 = ReadonlyRecordV2['tools'][number]
 const CANONICAL_TOP_LEVEL_PATHS = [
   '/schema_version',
   '/id',
-  '/system_instruction',
   '/contents',
   '/candidates',
   '/preference_relations',
@@ -435,18 +434,7 @@ function renderMsSwiftPrompt(
   record: ReadonlyRecordV2,
   fidelity: FidelityCollectorV2,
 ): JsonObjectV2[] {
-  const messages: JsonObjectV2[] = []
-  if (record.system_instruction !== null) {
-    messages.push({ role: 'system', content: record.system_instruction })
-    fidelity.change(
-      '/system_instruction',
-      'transformed',
-      'none',
-      'system_instruction_to_system_message',
-    )
-  }
-  messages.push(...renderMsSwiftContents(record.contents, '/contents', fidelity))
-  return messages
+  return renderMsSwiftContents(record.contents, '/contents', fidelity)
 }
 
 function renderMsSwiftContents(
@@ -466,7 +454,7 @@ function renderMsSwiftContents(
     const flushText = (): void => {
       if (!hasPendingText) return
       messages.push({
-        role: content.role === 'ai' ? 'assistant' : 'user',
+        role: trainerMessageRole(content.role),
         content: pendingText,
         ...(content.role === 'ai' ? { loss_scale: lossScale } : {}),
       })
@@ -557,22 +545,7 @@ function renderPrompt(
   state: RenderStateV2,
   options: RenderOptionsV2,
 ): JsonObjectV2[] {
-  const messages: JsonObjectV2[] = []
-  if (record.system_instruction !== null) {
-    messages.push(
-      options.includeLossScale
-        ? { role: 'system', content: record.system_instruction, loss_scale: 0 }
-        : { role: 'system', content: record.system_instruction },
-    )
-    state.fidelity.change(
-      '/system_instruction',
-      'transformed',
-      'none',
-      'system_instruction_to_system_message',
-    )
-  }
-  messages.push(...renderContents(record.contents, state, options))
-  return messages
+  return renderContents(record.contents, state, options)
 }
 
 function renderContents(
@@ -590,7 +563,7 @@ function renderContents(
     const flushText = (): void => {
       if (!hasPendingText) return
       const message: JsonObjectV2 = {
-        role: content.role === 'ai' ? 'assistant' : 'user',
+        role: trainerMessageRole(content.role),
         content: pendingText,
         ...(options.includeLossScale ? { loss_scale: lossScale } : {}),
       }
@@ -812,14 +785,6 @@ function recordCommonTrainerChanges(record: ReadonlyRecordV2, fidelity: Fidelity
   if (record.tools.length > 0) {
     fidelity.change('/tools', 'transformed', 'none', 'canonical_tools_to_trainer_tools')
   }
-  if (record.system_instruction !== null) {
-    fidelity.change(
-      '/system_instruction',
-      'transformed',
-      'none',
-      'system_instruction_to_system_message',
-    )
-  }
 }
 
 function recordFieldHasInformation(
@@ -862,7 +827,11 @@ function candidateMetadataChanges(
 }
 
 function createTrainerFidelity(primaryPreserved: string): FidelityCollectorV2 {
-  return new FidelityCollectorV2(['/system_instruction', '/contents', primaryPreserved, '/tools'])
+  return new FidelityCollectorV2(['/contents', primaryPreserved, '/tools'])
+}
+
+function trainerMessageRole(role: ReadonlyContentV2['role']): 'assistant' | 'system' | 'user' {
+  return role === 'ai' ? 'assistant' : role
 }
 
 function createRenderState(fidelity: FidelityCollectorV2): RenderStateV2 {

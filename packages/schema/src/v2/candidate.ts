@@ -53,6 +53,15 @@ function validateCandidateContents(
   },
   context: z.RefinementCtx,
 ): void {
+  candidate.contents.forEach((content, index) => {
+    if (content.role === 'system') {
+      context.addIssue({
+        code: 'custom',
+        path: ['contents', index, 'role'],
+        message: 'Candidate contents must not contain system content',
+      })
+    }
+  })
   if (candidate.contents[0]?.role !== 'ai') {
     context.addIssue({
       code: 'custom',

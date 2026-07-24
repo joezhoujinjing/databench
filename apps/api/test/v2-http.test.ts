@@ -39,7 +39,6 @@ const wireFixture = JSON.parse(
 const record: PostTrainingRecordV2 = PostTrainingRecordV2Schema.parse({
   schema_version: '2.0.0',
   id: `rec_${'1'.repeat(64)}`,
-  system_instruction: null,
   contents: [
     {
       role: 'user',

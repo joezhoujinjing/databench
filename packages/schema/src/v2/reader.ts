@@ -19,7 +19,7 @@ import { JsonObjectSchema, JsonValueSchema } from './json-value.js'
 import { type CompatiblePartV2, UnknownPartSchema } from './part.js'
 
 export type CompatibleContentV2 = CanonicalJsonObject & {
-  readonly role: 'user' | 'ai'
+  readonly role: 'system' | 'user' | 'ai'
   readonly parts: readonly CompatiblePartV2[]
   readonly loss_weight: number | null
 }
@@ -96,32 +96,66 @@ const CompatiblePartInputSchema = JsonObjectSchema.superRefine((part, context) =
   }
 })
 
-const CompatibleContentSchema = z.looseObject({
-  role: ContentRoleSchema,
-  parts: z.array(CompatiblePartInputSchema).min(1),
-  loss_weight: z.number().finite().nonnegative().nullable(),
-})
+const CompatibleContentSchema = z
+  .looseObject({
+    role: ContentRoleSchema,
+    parts: z.array(CompatiblePartInputSchema).min(1),
+    loss_weight: z.number().finite().nonnegative().nullable(),
+  })
+  .superRefine((content, context) => {
+    if (content.role !== 'system') {
+      return
+    }
+    if (content.loss_weight !== 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['loss_weight'],
+        message: 'System content loss_weight must be 0',
+      })
+    }
+    if (content.parts.length !== 1 || content.parts[0]?.type !== 'text') {
+      context.addIssue({
+        code: 'custom',
+        path: ['parts'],
+        message: 'System content must contain exactly one text part',
+      })
+    }
+  })
 
-const CompatibleCandidateSchema = z.looseObject({
-  id: CandidateIdSchema,
-  contents: z.array(CompatibleContentSchema).min(1),
-})
+const CompatibleCandidateSchema = z
+  .looseObject({
+    id: CandidateIdSchema,
+    contents: z.array(CompatibleContentSchema).min(1),
+  })
+  .superRefine((candidate, context) => {
+    validateCompatibleConversation(candidate.contents, context, ['contents'], false)
+  })
 
-const CompatibleRecordShapeSchema = z.looseObject({
-  schema_version: z.string().regex(/^2\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/),
-  id: RecordIdSchema,
-  system_instruction: z.string().min(1).nullable(),
-  contents: z.array(CompatibleContentSchema),
-  candidates: z.array(CompatibleCandidateSchema),
-  preference_relations: z.array(JsonObjectSchema),
-  tools: z.array(JsonObjectSchema),
-  verification: JsonObjectSchema.nullable(),
-  source: JsonObjectSchema.nullable(),
-  lang: z.string().nullable(),
-  lineage: JsonObjectSchema.nullable(),
-  tags: z.array(z.string()),
-  extra: JsonObjectSchema,
-})
+const CompatibleRecordShapeSchema = z
+  .looseObject({
+    schema_version: z.string().regex(/^2\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/),
+    id: RecordIdSchema,
+    contents: z.array(CompatibleContentSchema),
+    candidates: z.array(CompatibleCandidateSchema),
+    preference_relations: z.array(JsonObjectSchema),
+    tools: z.array(JsonObjectSchema),
+    verification: JsonObjectSchema.nullable(),
+    source: JsonObjectSchema.nullable(),
+    lang: z.string().nullable(),
+    lineage: JsonObjectSchema.nullable(),
+    tags: z.array(z.string()),
+    extra: JsonObjectSchema,
+  })
+  .superRefine((record, context) => {
+    validateCompatibleConversation(record.contents, context, ['contents'], true)
+    if (record.candidates.length > 0 && record.contents.at(-1)?.role !== 'user') {
+      context.addIssue({
+        code: 'custom',
+        path: ['contents'],
+        message: 'Shared contents must end with user when candidates exist',
+      })
+    }
+  })
 
 export function readCompatibleRecordV2(input: unknown): CompatiblePostTrainingRecordV2 {
   canonicalJsonV2(input)
@@ -152,6 +186,61 @@ function transformRecordParts(
     }
   }
   return clone
+}
+
+function validateCompatibleConversation(
+  contents: readonly z.infer<typeof CompatibleContentSchema>[],
+  context: z.RefinementCtx,
+  path: PropertyKey[],
+  allowLeadingSystem: boolean,
+): void {
+  const systemIndices = contents.flatMap((content, index) =>
+    content.role === 'system' ? [index] : [],
+  )
+  if (!allowLeadingSystem && systemIndices.length > 0) {
+    for (const index of systemIndices) {
+      context.addIssue({
+        code: 'custom',
+        path: [...path, index, 'role'],
+        message: 'Candidate contents must not contain system content',
+      })
+    }
+  } else {
+    if (systemIndices.length > 1) {
+      context.addIssue({
+        code: 'custom',
+        path,
+        message: 'A record may contain at most one system content',
+      })
+    }
+    for (const index of systemIndices) {
+      if (index !== 0) {
+        context.addIssue({
+          code: 'custom',
+          path: [...path, index, 'role'],
+          message: 'System content must be contents[0]',
+        })
+      }
+    }
+  }
+
+  const start = allowLeadingSystem && contents[0]?.role === 'system' ? 1 : 0
+  if (!allowLeadingSystem && contents[0]?.role !== 'ai') {
+    context.addIssue({
+      code: 'custom',
+      path: [...path, 0, 'role'],
+      message: 'Candidate must start with ai',
+    })
+  }
+  for (let index = start + 1; index < contents.length; index += 1) {
+    if (contents[index]?.role === contents[index - 1]?.role) {
+      context.addIssue({
+        code: 'custom',
+        path: [...path, index, 'role'],
+        message: 'Content roles must alternate',
+      })
+    }
+  }
 }
 
 function transformContents(value: CanonicalJsonValue | undefined, direction: 'read' | 'write') {

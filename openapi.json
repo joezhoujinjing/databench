@@ -1861,6 +1861,7 @@
                       },
                       "role": {
                         "enum": [
+                          "system",
                           "user",
                           "ai"
                         ],
@@ -2393,6 +2394,7 @@
                 },
                 "role": {
                   "enum": [
+                    "system",
                     "user",
                     "ai"
                   ],
@@ -2635,11 +2637,6 @@
             ],
             "type": "object"
           },
-          "system_instruction": {
-            "minLength": 1,
-            "nullable": true,
-            "type": "string"
-          },
           "tags": {
             "items": {
               "minLength": 1,
@@ -2750,7 +2747,6 @@
         },
         "required": [
           "schema_version",
-          "system_instruction",
           "contents",
           "candidates",
           "preference_relations",

@@ -145,6 +145,9 @@ export function deriveRecordEligibilityV2(record: RecordProjectionSourceV2): Rec
 
 export function deriveRecordPreviewV2(record: RecordProjectionSourceV2): string | null {
   for (const content of record.contents) {
+    if (content.role === 'system') {
+      continue
+    }
     for (const part of content.parts) {
       if (part.type === 'text' && part.text.length > 0) {
         let preview = ''

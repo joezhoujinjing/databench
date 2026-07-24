@@ -430,6 +430,58 @@ describe('V2 converter registry and fidelity', () => {
     })
   })
 
+  test('exports canonical system content directly and maps canonical ai to assistant', async () => {
+    const record = readJson<PostTrainingRecordV2>(sourceFixtureUrl)
+    const system = record.contents[0]
+    const systemPart = system?.parts[0]
+    if (
+      (system?.role as string | undefined) !== 'system' ||
+      systemPart?.type !== 'text' ||
+      system.parts.length !== 1 ||
+      system.loss_weight !== 0
+    ) {
+      throw new TypeError('Converter source must begin with canonical system text content')
+    }
+
+    const revision = createRecordRevisionV2(record)
+    const registry = createDefaultV2ConverterRegistry()
+    const canonical = registry.inspect('canonical-jsonl', [revision], {})
+    expect(canonical.fidelity.preserved).toContain('/contents')
+    expect(canonical.fidelity.preserved).not.toContain('/system_instruction')
+    const projections = [
+      { name: 'trl-sft' as const, promptField: 'prompt', assistantField: 'completion' },
+      { name: 'trl-dpo' as const, promptField: 'prompt', assistantField: 'chosen' },
+      { name: 'trl-grpo-rlvr' as const, promptField: 'prompt', assistantField: null },
+      { name: 'ms-swift' as const, promptField: 'messages', assistantField: 'messages' },
+    ]
+
+    for (const projection of projections) {
+      const result = await inspectAndCollect(registry, projection.name, [revision])
+      const row = JSON.parse(nonEmptyLines(result.output)[0] ?? '{}') as JsonObjectV2
+      const messages = row[projection.promptField] as JsonObjectV2[]
+
+      expect(messages[0], projection.name).toEqual({
+        role: 'system',
+        content: systemPart.text,
+      })
+      if (projection.assistantField !== null) {
+        const assistantMessages = row[projection.assistantField] as JsonObjectV2[]
+        expect(
+          assistantMessages.some((message) => message.role === 'assistant'),
+          projection.name,
+        ).toBe(true)
+      }
+      expect(result.analysis.fidelity.preserved, projection.name).toContain('/contents')
+      expect(result.analysis.fidelity.preserved, projection.name).not.toContain(
+        '/system_instruction',
+      )
+      expect(
+        result.analysis.fidelity.changes.some((change) => change.path === '/system_instruction'),
+        projection.name,
+      ).toBe(false)
+    }
+  })
+
   test('reports non-binary ms-swift loss scale and writes it on assistant messages', async () => {
     const record = readJson<PostTrainingRecordV2>(sourceFixtureUrl)
     const finalContent = record.candidates[0]?.contents[2]

@@ -30,8 +30,20 @@ function recordFor(descriptor, index) {
     case 'unicode-single':
       return {
         ...record,
-        system_instruction: '请准确回答🙂',
         contents: [
+          {
+            role: 'system',
+            parts: [
+              {
+                type: 'text',
+                text: '请准确回答🙂',
+                thought: false,
+                thought_signature: null,
+                part_metadata: {},
+              },
+            ],
+            loss_weight: 0,
+          },
           {
             role: 'user',
             parts: [
@@ -90,7 +102,6 @@ function baseRecord(descriptor, index) {
   return {
     schema_version: '2.0.0',
     id: recordId(descriptor.ordinal, index),
-    system_instruction: null,
     contents: [],
     candidates: [],
     preference_relations: [],

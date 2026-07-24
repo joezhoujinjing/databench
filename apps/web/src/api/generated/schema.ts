@@ -1656,7 +1656,7 @@ export interface components {
               }
           )[]
           /** @enum {string} */
-          role: 'user' | 'ai'
+          role: 'system' | 'user' | 'ai'
         }[]
         finish_reason: string | null
         generator: {
@@ -1794,7 +1794,7 @@ export interface components {
             }
         )[]
         /** @enum {string} */
-        role: 'user' | 'ai'
+        role: 'system' | 'user' | 'ai'
       }[]
       extra: {
         [key: string]: unknown
@@ -1845,7 +1845,6 @@ export interface components {
         original_id: string | null
         url: string | null
       } | null
-      system_instruction: string | null
       tags: string[]
       tools: {
         description: string | null

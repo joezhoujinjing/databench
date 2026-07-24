@@ -27,7 +27,6 @@ import { VerificationSchema } from './verification.js'
 type FunctionCallPartV2 = z.infer<typeof FunctionCallPartSchema>
 const PostTrainingRecordV2PayloadShape = {
   schema_version: z.literal('2.0.0'),
-  system_instruction: z.string().min(1).nullable(),
   contents: z.array(ContentSchema),
   candidates: z.array(CandidateSchema),
   preference_relations: z.array(PreferenceRelationSchema),
@@ -79,6 +78,7 @@ function validateRecord(
   record: PostTrainingRecordV2Payload & { readonly id?: string },
   context: z.RefinementCtx,
 ) {
+  validateSystemContents(record.contents, context)
   validateAlternatingContents(record.contents, context, ['contents'])
   if (record.candidates.length > 0) {
     const lastShared = record.contents.at(-1)
@@ -128,12 +128,27 @@ function validateRecord(
   validateSensitivePayloads(record, context)
 }
 
+function validateSystemContents(contents: readonly ContentV2[], context: z.RefinementCtx): void {
+  const systemIndices = contents.flatMap((content, index) =>
+    content.role === 'system' ? [index] : [],
+  )
+  if (systemIndices.length > 1) {
+    addIssue(context, ['contents'], 'A record may contain at most one system content')
+  }
+  for (const index of systemIndices) {
+    if (index !== 0) {
+      addIssue(context, ['contents', index, 'role'], 'System content must be contents[0]')
+    }
+  }
+}
+
 function validateAlternatingContents(
   contents: readonly ContentV2[],
   context: z.RefinementCtx,
   path: PropertyKey[],
 ): void {
-  for (let index = 1; index < contents.length; index += 1) {
+  const start = contents[0]?.role === 'system' ? 1 : 0
+  for (let index = start + 1; index < contents.length; index += 1) {
     if (contents[index]?.role === contents[index - 1]?.role) {
       addIssue(context, [...path, index, 'role'], 'Content roles must alternate')
     }

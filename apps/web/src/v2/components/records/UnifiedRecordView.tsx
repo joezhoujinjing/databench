@@ -14,7 +14,6 @@ import { Field, RecordContents } from './ContentView.js'
 import { JsonValueView, WorkerJsonDocument } from './JsonValueView.js'
 import { LazySection } from './LazySection.js'
 import { PreferenceRelations } from './PreferenceRelations.js'
-import { SafeText } from './SafeText.js'
 
 export function UnifiedRecordView({ view }: { view: RecordViewV2 }) {
   const { t } = useTranslation()
@@ -51,24 +50,6 @@ export function UnifiedRecordView({ view }: { view: RecordViewV2 }) {
               </div>
             </KeyValueRow>
           </KeyValueGrid>
-        </SurfaceBody>
-      </Surface>
-
-      <Surface>
-        <SurfaceHeader>
-          <SurfaceTitle>{t('v2.record.systemInstruction')}</SurfaceTitle>
-        </SurfaceHeader>
-        <SurfaceBody>
-          {record.system_instruction === null ? (
-            <span className="text-dim-foreground">{t('v2.record.none')}</span>
-          ) : (
-            <p className="whitespace-pre-wrap break-words leading-7">
-              <SafeText
-                downloadName={`system-instruction-${record.id}.txt`}
-                text={record.system_instruction}
-              />
-            </p>
-          )}
         </SurfaceBody>
       </Surface>
 
