@@ -39,7 +39,7 @@ export function emitError(error: unknown, compact: boolean, options: EmitErrorOp
             code: classifyError(error),
             message: appendCleanupFailure(
               options.sanitizeUnexpected === true
-                ? 'V2 command failed without a safe diagnostic message'
+                ? 'Command failed without a safe diagnostic message'
                 : error instanceof Error
                   ? error.message
                   : String(error),

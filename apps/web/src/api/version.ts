@@ -1,7 +1,7 @@
 import type { Capabilities } from './types.js'
 
 export const CLIENT_VERSION = '0.1.0'
-export const SUPPORTED_API_MAJORS = [1] as const
+export const SUPPORTED_API_MAJORS = [2] as const
 
 export type Compatibility =
   | { status: 'api_unsupported'; apiVersion: string }

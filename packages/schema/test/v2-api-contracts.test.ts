@@ -102,25 +102,15 @@ const transformDescriptor = {
 } as const
 
 describe('V12 capability and registry wire contracts', () => {
-  test('adds an optional strict disabled v2 capability with every accepted profile and limit', () => {
+  test('requires the strict capability with every accepted profile and limit', () => {
     const capability = createPostTrainingV2Capability({
       enabled: false,
       converters: CONVERTERS,
       limits,
     })
     const response = CapabilitiesSchema.parse({
-      api_version: '1',
+      api_version: 'v2',
       min_client: '0.1.0',
-      features: {
-        transforms: true,
-        recipes: true,
-        lineage: true,
-        jsonl_ingest: true,
-        export: true,
-        synthesis: false,
-        annotation: false,
-        vocabularies: true,
-      },
       post_training_v2: capability,
     })
 
@@ -134,8 +124,9 @@ describe('V12 capability and registry wire contracts', () => {
       converters: CONVERTERS,
       limits,
     })
-    const { post_training_v2: _omittedCapability, ...legacyResponse } = response
-    expect(CapabilitiesSchema.parse(legacyResponse)).not.toHaveProperty('post_training_v2')
+    const { post_training_v2: _omittedCapability, ...incompleteResponse } = response
+    expect(CapabilitiesSchema.safeParse(incompleteResponse).success).toBe(false)
+    expect(CapabilitiesSchema.safeParse({ ...response, features: {} }).success).toBe(false)
     expect(
       PostTrainingV2CapabilitySchema.safeParse({ ...capability, enabled: undefined }).success,
     ).toBe(false)

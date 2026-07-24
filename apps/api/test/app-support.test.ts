@@ -1,4 +1,3 @@
-import { Workspace } from '@databench/workspace'
 import { describe, expect, test } from 'vitest'
 import { createApp, createOpenApiDocument } from '../src/app.js'
 import { createAppFromConfig, loadConfig } from '../src/index.js'
@@ -36,7 +35,7 @@ describe('api support', () => {
     expect(config.storeConfig).toMatchObject({ kind: 's3', bucket: 'v2-config-test' })
   })
 
-  test('meta routes expose Python-compatible health, version, and capabilities shapes', async () => {
+  test('meta routes expose the v2-only health, version, and capability contract', async () => {
     const app = createTestApp({ version: '1.2.3', workspaceRoot: './bench-test' })
 
     const health = await getJson<Record<string, unknown>>(app.fetch(request('/health')))
@@ -48,22 +47,22 @@ describe('api support', () => {
 
     const version = await getJson<Record<string, unknown>>(app.fetch(request('/version')))
     expect(version).toEqual({
-      api_version: 'v1',
+      api_version: 'v2',
       service_version: '1.2.3',
-      schema_version: '1',
+      schema_version: '2.0.0',
     })
 
-    const capabilities = await getJson<{
-      features: Record<string, boolean>
-    }>(app.fetch(request('/capabilities')))
-    expect(capabilities.features.transforms).toBe(true)
-    expect(capabilities.features.recipes).toBe(true)
-    expect(capabilities.features.lineage).toBe(true)
-    expect(capabilities.features.jsonl_ingest).toBe(true)
-    expect(capabilities.features.export).toBe(true)
-    expect(capabilities.features.synthesis).toBe(false)
-    expect(capabilities.features.annotation).toBe(false)
-    expect(capabilities.features.vocabularies).toBe(true)
+    const capabilities = await getJson<Record<string, unknown>>(app.fetch(request('/capabilities')))
+    expect(capabilities).toMatchObject({
+      api_version: 'v2',
+      min_client: '0.1.0',
+      post_training_v2: {
+        api_versions: ['2'],
+        enabled: true,
+        record_schema_versions: ['2.0.0'],
+      },
+    })
+    expect(capabilities).not.toHaveProperty('features')
   })
 
   test('does not register legacy unversioned domain routes', async () => {
@@ -71,22 +70,6 @@ describe('api support', () => {
 
     expect((await app.fetch(request('/datasets'))).status).toBe(404)
     expect((await app.fetch(request('/refs'))).status).toBe(404)
-  })
-
-  test('injects a shared workspace into versioned routes', async () => {
-    const app = createTestApp({ workspace: Workspace.open({ root: './bench-test' }) })
-
-    app.get('/v1/_test-workspace', (context) =>
-      context.json({
-        hasWorkspace: Boolean(context.get('workspace')),
-      }),
-    )
-
-    expect(
-      await getJson<{ hasWorkspace: boolean }>(app.fetch(request('/v1/_test-workspace'))),
-    ).toEqual({
-      hasWorkspace: true,
-    })
   })
 
   test('cors allows local dev and sets PNA only when requested', async () => {
@@ -194,33 +177,8 @@ describe('api support', () => {
     })
     expect(document.paths['/version']?.get.responses[200]).toBeDefined()
     expect(document.paths['/capabilities']?.get.responses[200]).toBeDefined()
-    expect(document.paths['/v1']?.get.responses[200]).toBeDefined()
-    expect(document.paths['/v1/vocabularies']?.get.responses[200]).toBeDefined()
-    expect(document.paths['/v1/vocabularies/{name}']?.put?.responses[200]).toBeDefined()
-  })
-
-  test('openapi document publishes concrete sample and lineage shapes', () => {
-    const document = createOpenApiDocument() as OpenApiDocument
-    const sample = schemaText(document, 'Sample')
-    const ingest = schemaText(document, 'IngestSamplesRequest')
-    const page = schemaText(document, 'SamplesPage')
-    const lineage = schemaText(document, 'LineageNode')
-    const vocabulary = schemaText(document, 'Vocabulary')
-    const validate = schemaText(document, 'ValidateResponse')
-    const validateSummary = schemaText(document, 'ValidateSummary')
-
-    expect(sample).toContain('"messages"')
-    expect(sample).toContain('"chosen"')
-    expect(sample).toContain('"rollouts"')
-    expect(ingest).toContain('"samples"')
-    expect(page).toContain('"items"')
-    expect(lineage).toContain('"produced_by"')
-    expect(lineage).toContain('"inputs"')
-    expect(lineage).toContain('#/components/schemas/LineageNode')
-    expect(vocabulary).toContain('"terms"')
-    expect(vocabulary).toContain('"dimension"')
-    expect(validate).toContain('#/components/schemas/ValidateSummary')
-    expect(validateSummary).toContain('"offending_values"')
+    expect(Object.keys(document.paths).some((path) => path.startsWith('/v1'))).toBe(false)
+    expect(document.paths['/v2/datasets/{ref_or_version}']?.get?.responses[200]).toBeDefined()
   })
 })
 
@@ -232,13 +190,6 @@ async function getJson<T>(responsePromise: Promise<Response>): Promise<T> {
   const response = await responsePromise
   expect(response.status).toBe(200)
   return (await response.json()) as T
-}
-
-function schemaText(document: OpenApiDocument, name: string): string {
-  const schema = document.components.schemas[name]
-  expect(schema, `${name} schema`).toBeDefined()
-
-  return JSON.stringify(schema)
 }
 
 interface OpenApiDocument {

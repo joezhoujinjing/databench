@@ -1,7 +1,7 @@
 {
   "fixture_version": 1,
   "record_source": "packages/engine/test/golden/fixtures/v2/dataset-permutation-and-limits.fixture.json",
-  "expected_dataset_version": "ad20d8f85630cb0c9902d23c10a2792a50b0d68fba91d80eccc5154013552ed3",
+  "expected_dataset_version": "8e3d6141d4c74c102cf52cbde258ce01c76ea4e02fc4b70c0e02f220913b14a8",
   "export": {
     "converter": "canonical-jsonl",
     "options": {},

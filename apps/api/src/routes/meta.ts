@@ -1,8 +1,9 @@
 import {
+  API_VERSION,
   CapabilitiesSchema,
   type HealthInfo,
   HealthInfoSchema,
-  SCHEMA_VERSION,
+  V2_RECORD_SCHEMA_VERSIONS,
   type VersionInfo,
   VersionInfoSchema,
 } from '@databench/schema'
@@ -52,9 +53,9 @@ export function registerMetaRoutes(app: OpenAPIHono<ApiEnv>, options: CreateAppO
 
   app.openapi(versionRoute, (context) => {
     const response: VersionInfo = {
-      api_version: 'v1',
+      api_version: API_VERSION,
       service_version: options.version ?? '0.0.0',
-      schema_version: SCHEMA_VERSION,
+      schema_version: V2_RECORD_SCHEMA_VERSIONS[0],
     }
 
     return context.json(response, 200)

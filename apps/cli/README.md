@@ -1,92 +1,57 @@
 # @databench/cli
 
-Agent-facing CLI over the databench `Workspace` core. It is the second thin
-adapter alongside `apps/api` (HTTP): both map to the same `@databench/workspace`
-methods, so they produce byte-identical version hashes and lineage. See
-[ADR-0007](../../docs/decisions/0007-agent-cli.md).
+Agent-facing CLI for the canonical Databench workspace. It is a thin in-process adapter alongside
+`apps/api`: both call the same `@databench/workspace` v2 lifecycle and therefore share identity,
+storage, lineage, fidelity, cancellation, and error semantics.
 
-- **In-process (Thick).** Opens its own Prisma + object-store connections via
-  `Workspace.open()`; no running API required.
-- **JSON by default.** Results → stdout as JSON; errors → stderr in the same
-  `{ error: { code, message, detail? } }` envelope the API uses. **One
-  documented exception:** `dataset export` without `--out` streams a raw
-  **NDJSON** dataset to stdout (with `--out` it writes the file and prints
-  `{ "path": ... }` JSON). Each verb declares its output kind in `help --json`.
-- **Exit codes** mirror the API status map: `0` ok · `1` internal · `2`
-  bad input / usage · `3` not found · `4` conflict · `5` validation.
-- **Boundary.** Depends only on `@databench/workspace` + `@databench/schema` —
-  never `store`/`catalog`/`engine`/`ops`/`io` directly — so it stays a thin
-  adapter over the same core the API uses, with no re-implemented logic.
+- **In-process.** Opens its own PostgreSQL and object-store connections; no running API is required.
+- **Machine-readable.** Results go to stdout as JSON. Errors use the API error envelope on stderr.
+  Binary/NDJSON export bytes are the deliberate exception.
+- **Stable exit codes.** `0` ok · `1` internal · `2` bad input · `3` not found · `4` conflict ·
+  `5` validation.
+- **Dependency boundary.** Depends only on `@databench/workspace` and `@databench/schema`.
 
 ## Configuration
 
-`Workspace.open()` reads env directly — `DATABASE_URL` plus the object-store
-env selected by `DATABENCH_OBJECT_STORE` (`OSS_*` for production Aliyun OSS,
-`S3_*` for local MinIO). On startup `databench` also loads the monorepo-root
-`.env` if present (`cp .env.example .env` and fill it in), so local dev doesn't
-have to export these; real environment variables take precedence over `.env`.
-Global flags: `--database-url <url>` (overrides the catalog DB; the object store
-is configured only via env) and `--compact` (single-line JSON). Both may
-appear anywhere in the command line.
+The CLI reads `DATABASE_URL`, `DATABENCH_V2_CURSOR_SECRET`, `DATABENCH_ROOT`, and the object-store
+environment selected by `DATABENCH_OBJECT_STORE` (`OSS_*` for Aliyun OSS or `S3_*` for S3/MinIO).
+Local development also loads the monorepo-root `.env` when present.
 
-## Usage
+Global flags are `--database-url <url>` and `--compact`; both may appear anywhere in the command.
+
+## Commands
 
 ```bash
 pnpm --filter @databench/cli build
-databench help --compact            # machine-readable command catalog
+databench help --compact
 
-databench dataset add ./samples.jsonl --name demo
+databench dataset ingest ./canonical.jsonl --ref demo --message "initial import"
 databench dataset show demo
-databench dataset samples demo --limit 5
-databench dataset export demo --fmt sft -o out.jsonl
+databench dataset records demo --limit 20
+databench dataset audit demo
+databench dataset export demo --inspect --converter canonical-jsonl
+databench dataset export demo --output ./demo.jsonl --converter canonical-jsonl
+
+databench converter list
+databench converter show canonical-jsonl
 
 databench transform list
-databench transform run sample_n --input demo --params '{"n":5}' --ref demo_small
-
-databench recipe materialize ./recipe.json --ref mixed   # reproducible mixture
+databench transform run subset --input demo --params '{"count":5}' --ref demo-small
 
 databench ref list
-databench ref resolve demo          # → { name, version }
+databench ref show demo
+databench ref move demo <new-version> --expected-version <old-version>
 
-databench vocab derive brand --dataset demo --dimension brand
-databench vocab list
-databench vocab show brand
-databench vocab curate brand --file ./brand.json
-databench vocab normalize brand --dataset demo --ref demo_norm
-databench vocab validate brand --dataset demo
-
-databench lineage demo_small
-databench meta capabilities
-databench meta doctor               # probe DB + object store connectivity
-databench help --compact            # full machine-readable command contract
+databench lineage show demo
 ```
 
-### `dataset add --samples`
+`dataset export` always inspects the exact resolved version first. A converter that reports semantic
+loss requires `--accept-fidelity <digest>`. `--output/-o` writes through a mode-`0600` temporary file,
+fsyncs it, and atomically renames it; without `--output`, export bytes stream to stdout and binary TTY
+output is rejected.
 
-`databench dataset add --samples file.json` ingests samples from a JSON file
-(instead of JSONL). The file may be **either** a bare samples array `[ {…}, … ]`
-**or** the API request body shape `{ "samples": [ … ], "name": …, "message": … }`
-— the same body `POST /v1/datasets` accepts.
+During development, run without building:
 
-Samples must be **canonical** (each carries an explicit `kind`, e.g.
-`{ "kind": "sft", "messages": [ … ] }`), exactly like the API body — this path
-does **not** auto-detect kind (only the JSONL path does). It uses the
-lexeme-preserving parse path for hash parity. If the body carries
-`name`/`message` they are used; `--name`/`--message` flags **override** them.
-
-### `vocab` extractors
-
-`derive`/`normalize`/`validate` need an extractor. Resolution order: `--extractor`
-(inline JSON) → the extractor recorded on the vocabulary at derive time → a
-built-in preset matching the dimension (`brand`, `unit`). If none applies, the
-command errors. This mirrors the API's resolution (single-sourced in
-`@databench/schema`).
-
-### `meta doctor`
-
-Probes the two stateful backends and prints `{ database, store }`, each
-`{ ok, error? }`. It exits `0` on a successful probe run — inspect the report to
-tell an unhealthy environment (DB unreachable, migrations not applied, bucket
-missing) apart from an ordinary not-found ref.
-
-During development, run without building: `pnpm --filter @databench/cli dev -- <args>`.
+```bash
+pnpm --filter @databench/cli dev -- <args>
+```

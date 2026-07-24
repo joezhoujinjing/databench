@@ -6,7 +6,7 @@ import type { V2Workspace } from '@databench/workspace'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { EXIT } from '../src/exit.js'
 import { run } from '../src/main.js'
-import { setV2WorkspaceForTest } from '../src/runtime.js'
+import { setWorkspaceForTest } from '../src/runtime.js'
 import { writeCliFileAtomically, writeCliStdout } from '../src/streaming.js'
 
 const VERSION = 'a'.repeat(64)
@@ -32,18 +32,16 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  setV2WorkspaceForTest(null)
+  setWorkspaceForTest(null)
   vi.restoreAllMocks()
 })
 
-describe('v2 nested router', () => {
-  test('publishes the complete v2 command catalog without changing the v1 catalog', async () => {
-    expect(await run(['v2', 'help', '--compact'])).toBe(EXIT.ok)
+describe('product command router', () => {
+  test('publishes only the complete canonical command catalog', async () => {
+    expect(await run(['help', '--compact'])).toBe(EXIT.ok)
     const catalog = outputJson<{
-      version: string
       commands: Array<{ name: string; verbs: Array<{ name: string }> }>
     }>()
-    expect(catalog.version).toBe('v2')
     expect(catalog.commands.map(({ name }) => name)).toEqual([
       'dataset',
       'converter',
@@ -69,19 +67,17 @@ describe('v2 nested router', () => {
       'lineage show',
     ])
 
-    stdout.length = 0
-    expect(await run(['help', '--compact'])).toBe(EXIT.ok)
     expect(
-      outputJson<{ commands: Array<{ name: string }> }>().commands.map(({ name }) => name),
-    ).toEqual(['dataset', 'transform', 'recipe', 'ref', 'lineage', 'vocab', 'meta'])
+      catalog.commands.some(({ name }) => ['recipe', 'vocab', 'meta', 'v2'].includes(name)),
+    ).toBe(false)
   })
 
   test('routes dataset reads through V2Workspace with schema-coerced pagination', async () => {
     const workspace = fakeWorkspace()
-    injectV2Workspace(workspace)
+    injectWorkspace(workspace)
 
     expect(
-      await run(['v2', 'dataset', 'records', 'main', '--offset', '2', '--limit', '7', '--compact']),
+      await run(['dataset', 'records', 'main', '--offset', '2', '--limit', '7', '--compact']),
     ).toBe(EXIT.ok)
     expect(workspace.getRecordPage).toHaveBeenCalledWith(
       'main',
@@ -93,10 +89,10 @@ describe('v2 nested router', () => {
 
   test('always inspects first and exports the exact inspected version', async () => {
     const workspace = fakeWorkspace()
-    injectV2Workspace(workspace)
+    injectWorkspace(workspace)
 
     expect(
-      await run(['v2', 'dataset', 'export', 'main', '--converter', 'canonical-jsonl', '--compact']),
+      await run(['dataset', 'export', 'main', '--converter', 'canonical-jsonl', '--compact']),
     ).toBe(EXIT.ok)
     expect(workspace.inspectExport.mock.invocationCallOrder[0]).toBeLessThan(
       workspace.export.mock.invocationCallOrder[0] as number,
@@ -112,8 +108,8 @@ describe('v2 nested router', () => {
 
   test('prints inspect plan as JSON and does not create an export stream', async () => {
     const workspace = fakeWorkspace()
-    injectV2Workspace(workspace)
-    expect(await run(['v2', 'dataset', 'export', 'main', '--inspect', '--compact'])).toBe(EXIT.ok)
+    injectWorkspace(workspace)
+    expect(await run(['dataset', 'export', 'main', '--inspect', '--compact'])).toBe(EXIT.ok)
     expect(outputJson<{ dataset_version: string }>().dataset_version).toBe(VERSION)
     expect(workspace.export).not.toHaveBeenCalled()
   })
@@ -121,39 +117,32 @@ describe('v2 nested router', () => {
   test('rejects semantic export until the exact inspected fidelity digest is supplied', async () => {
     const semanticPlan = exportPlan(true)
     const workspace = fakeWorkspace({ plan: semanticPlan })
-    injectV2Workspace(workspace)
+    injectWorkspace(workspace)
 
-    expect(await run(['v2', 'dataset', 'export', 'main', '--compact'])).toBe(EXIT.validation)
+    expect(await run(['dataset', 'export', 'main', '--compact'])).toBe(EXIT.validation)
     expect(outputError().code).toBe('fidelity_error')
     expect(workspace.export).not.toHaveBeenCalled()
 
     stdout.length = 0
     stderr.length = 0
     expect(
-      await run([
-        'v2',
-        'dataset',
-        'export',
-        'main',
-        '--accept-fidelity',
-        semanticPlan.fidelity_digest,
-      ]),
+      await run(['dataset', 'export', 'main', '--accept-fidelity', semanticPlan.fidelity_digest]),
     ).toBe(EXIT.ok)
     expect(workspace.export).toHaveBeenCalledTimes(1)
   })
 
-  test('does not expose native paths or credential-shaped URLs in v2 diagnostics', async () => {
+  test('does not expose native paths or credential-shaped URLs in diagnostics', async () => {
     const workspace = fakeWorkspace()
     workspace.inspectExport.mockRejectedValueOnce(
       new Error(
         'dependency failed at https://alice:secret@example.invalid/object?signature=token /Users/alice/private.jsonl',
       ),
     )
-    injectV2Workspace(workspace)
+    injectWorkspace(workspace)
 
-    expect(await run(['v2', 'dataset', 'export', 'main', '--inspect'])).not.toBe(EXIT.ok)
+    expect(await run(['dataset', 'export', 'main', '--inspect'])).not.toBe(EXIT.ok)
     const diagnostic = new TextDecoder().decode(joinBytes(stderr))
-    expect(diagnostic).toContain('V2 command failed without a safe diagnostic message')
+    expect(diagnostic).toContain('Command failed without a safe diagnostic message')
     expect(diagnostic).not.toContain('alice')
     expect(diagnostic).not.toContain('secret')
     expect(diagnostic).not.toContain('signature')
@@ -167,9 +156,7 @@ describe('v2 nested router', () => {
       }
       return {}
     })
-    expect(await run(['v2', 'dataset', 'ingest', '/Users/alice/private/missing.jsonl'])).not.toBe(
-      EXIT.ok,
-    )
+    expect(await run(['dataset', 'ingest', '/Users/alice/private/missing.jsonl'])).not.toBe(EXIT.ok)
     const missingFileDiagnostic = new TextDecoder().decode(joinBytes(stderr))
     expect(missingFileDiagnostic).not.toContain('/Users/')
     expect(missingFileDiagnostic).not.toContain('missing.jsonl')
@@ -177,15 +164,15 @@ describe('v2 nested router', () => {
 
   test('ref move requires CAS intent and --use-current reads before moving', async () => {
     const workspace = fakeWorkspace()
-    injectV2Workspace(workspace)
+    injectWorkspace(workspace)
 
-    expect(await run(['v2', 'ref', 'move', 'main', NEXT_VERSION])).toBe(EXIT.badInput)
+    expect(await run(['ref', 'move', 'main', NEXT_VERSION])).toBe(EXIT.badInput)
     expect(workspace.putRef).not.toHaveBeenCalled()
 
     stderr.length = 0
-    expect(
-      await run(['v2', 'ref', 'move', 'main', NEXT_VERSION, '--use-current', '--compact']),
-    ).toBe(EXIT.ok)
+    expect(await run(['ref', 'move', 'main', NEXT_VERSION, '--use-current', '--compact'])).toBe(
+      EXIT.ok,
+    )
     expect(workspace.getRef.mock.invocationCallOrder[0]).toBeLessThan(
       workspace.putRef.mock.invocationCallOrder[0] as number,
     )
@@ -197,7 +184,7 @@ describe('v2 nested router', () => {
   })
 })
 
-describe('v2 export transport', () => {
+describe('export transport', () => {
   test('writes mode 0600 in the destination directory and removes failed temp files', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'databench-v2-cli-'))
     try {
@@ -305,8 +292,8 @@ function fakeWorkspace(options: { plan?: ExportPlanV2 } = {}) {
   }
 }
 
-function injectV2Workspace(workspace: ReturnType<typeof fakeWorkspace>): void {
-  setV2WorkspaceForTest(workspace as unknown as V2Workspace)
+function injectWorkspace(workspace: ReturnType<typeof fakeWorkspace>): void {
+  setWorkspaceForTest(workspace as unknown as V2Workspace)
 }
 
 function exportPlan(semantic: boolean): ExportPlanV2 {

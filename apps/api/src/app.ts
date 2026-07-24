@@ -1,4 +1,4 @@
-import type { Workspace, WorkspaceOpenOptions } from '@databench/workspace'
+import type { V2WorkspaceOpenOptions } from '@databench/workspace'
 import { OpenAPIHono } from '@hono/zod-openapi'
 import type { ApiEnv, ApiV2Workspace } from './context.js'
 import { createCorsMiddleware } from './middleware/cors.js'
@@ -11,9 +11,7 @@ import {
   createV2WorkspaceMiddleware,
   type V2WorkspaceMiddlewareOptions,
 } from './middleware/v2-workspace.js'
-import { createWorkspaceMiddleware } from './middleware/workspace.js'
 import { openApiConfig } from './openapi.js'
-import { registerV1Routes } from './routes/index.js'
 import { registerMetaRoutes } from './routes/meta.js'
 import { registerV2Routes } from './routes/v2/index.js'
 
@@ -22,10 +20,9 @@ export interface CreateAppOptions {
   readonly corsOrigins?: readonly string[]
   readonly databaseUrl?: string
   readonly openApiServerUrl?: string
-  readonly storeConfig?: WorkspaceOpenOptions['storeConfig']
+  readonly storeConfig?: V2WorkspaceOpenOptions['storeConfig']
   readonly v2CursorSecret?: Uint8Array | string
   readonly v2Workspace?: ApiV2Workspace
-  readonly workspace?: Workspace
   readonly workspaceRoot?: string
 }
 
@@ -55,16 +52,7 @@ function createRoutedApp(
   if (v2Runtime !== undefined) {
     app.use('/v2/*', createV2WorkspaceMiddleware(v2Runtime))
   }
-  app.use(
-    '/v1/*',
-    createWorkspaceMiddleware({
-      ...(options.workspace !== undefined ? { workspace: options.workspace } : {}),
-      workspaceOptions: workspaceOptions(options),
-    }),
-  )
-
   registerMetaRoutes(app, options)
-  registerV1Routes(app)
   registerV2Routes(app)
 
   return app
@@ -88,13 +76,5 @@ function v2RuntimeOptions(options: CreateAppOptions): V2WorkspaceMiddlewareOptio
       ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
       ...(options.storeConfig === undefined ? {} : { storeConfig: options.storeConfig }),
     },
-  }
-}
-
-function workspaceOptions(options: CreateAppOptions): WorkspaceOpenOptions {
-  return {
-    root: options.workspaceRoot ?? './bench',
-    ...(options.databaseUrl !== undefined ? { databaseUrl: options.databaseUrl } : {}),
-    ...(options.storeConfig !== undefined ? { storeConfig: options.storeConfig } : {}),
   }
 }

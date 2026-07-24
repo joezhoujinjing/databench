@@ -165,7 +165,7 @@ function attachCleanupFailure(primaryError: unknown, cleanupError: unknown): voi
   }
   throw new AggregateError(
     [primaryError, cleanupError],
-    'V2 export failed and temporary export cleanup also failed',
+    'Export failed and temporary export cleanup also failed',
   )
 }
 

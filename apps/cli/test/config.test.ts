@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { v2WorkspaceOptions } from '../src/config.js'
+import { workspaceOptions } from '../src/config.js'
 
-describe('v2WorkspaceOptions', () => {
+describe('workspaceOptions', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
   })
 
-  test('uses DATABENCH_ROOT for writable v2 temporary artifacts', () => {
+  test('uses DATABENCH_ROOT for writable temporary artifacts', () => {
     vi.stubEnv('DATABENCH_V2_CURSOR_SECRET', '0123456789abcdef')
     vi.stubEnv('DATABENCH_ROOT', '/var/lib/databench')
 
-    expect(v2WorkspaceOptions({ compact: false })).toEqual({
+    expect(workspaceOptions({ compact: false })).toEqual({
       cursorSecret: '0123456789abcdef',
       root: '/var/lib/databench',
     })
@@ -20,7 +20,7 @@ describe('v2WorkspaceOptions', () => {
     vi.stubEnv('DATABENCH_V2_CURSOR_SECRET', '0123456789abcdef')
     vi.stubEnv('DATABENCH_ROOT', undefined)
 
-    expect(v2WorkspaceOptions({ compact: false })).toEqual({
+    expect(workspaceOptions({ compact: false })).toEqual({
       cursorSecret: '0123456789abcdef',
     })
   })

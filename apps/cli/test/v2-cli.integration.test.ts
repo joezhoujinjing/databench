@@ -7,7 +7,7 @@ import { V2Workspace } from '@databench/workspace'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { EXIT } from '../src/exit.js'
 import { run } from '../src/main.js'
-import { setV2WorkspaceForTest } from '../src/runtime.js'
+import { setWorkspaceForTest } from '../src/runtime.js'
 
 const runIntegration = process.env.RUN_MINIO_STORE_TESTS === 'true'
 let integrationStdout: Uint8Array[] = []
@@ -65,11 +65,11 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
         forcePathStyle: true,
       },
     })
-    setV2WorkspaceForTest(workspace)
+    setWorkspaceForTest(workspace)
   })
 
   afterAll(async () => {
-    setV2WorkspaceForTest(null)
+    setWorkspaceForTest(null)
     await workspace?.close()
     if (temporaryRoot) await rm(temporaryRoot, { force: true, recursive: true })
   })
@@ -97,7 +97,6 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
   test('CLI and Workspace return the same fixed version, manifest, and export plan', async () => {
     expect(
       await run([
-        'v2',
         'dataset',
         'ingest',
         inputPath,
@@ -119,43 +118,33 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
     expect(directView.dataset_version).toBe(fixture.expected_dataset_version)
 
     integrationStdout.length = 0
-    expect(await run(['v2', 'dataset', 'show', refName, '--compact'])).toBe(EXIT.ok)
+    expect(await run(['dataset', 'show', refName, '--compact'])).toBe(EXIT.ok)
     expect(outputJson()).toEqual(directView)
 
     const directRecords = await workspace.getRecordPage(refName, { offset: 0, limit: 2 })
     integrationStdout.length = 0
     expect(
-      await run([
-        'v2',
-        'dataset',
-        'records',
-        refName,
-        '--offset',
-        '0',
-        '--limit',
-        '2',
-        '--compact',
-      ]),
+      await run(['dataset', 'records', refName, '--offset', '0', '--limit', '2', '--compact']),
     ).toBe(EXIT.ok)
     expect(outputJson()).toEqual(directRecords)
 
     const directAudit = await workspace.audit(refName)
     integrationStdout.length = 0
-    expect(await run(['v2', 'dataset', 'audit', refName, '--compact'])).toBe(EXIT.ok)
+    expect(await run(['dataset', 'audit', refName, '--compact'])).toBe(EXIT.ok)
     expect(outputJson()).toEqual(directAudit)
 
     integrationStdout.length = 0
-    expect(await run(['v2', 'converter', 'list', '--compact'])).toBe(EXIT.ok)
+    expect(await run(['converter', 'list', '--compact'])).toBe(EXIT.ok)
     expect(outputJson<{ items: unknown[]; total: number }>()).toEqual({
       items: [...workspace.listConverters()],
       total: workspace.listConverters().length,
     })
     integrationStdout.length = 0
-    expect(await run(['v2', 'converter', 'show', 'canonical-jsonl', '--compact'])).toBe(EXIT.ok)
+    expect(await run(['converter', 'show', 'canonical-jsonl', '--compact'])).toBe(EXIT.ok)
     expect(outputJson()).toEqual(workspace.getConverter('canonical-jsonl'))
 
     integrationStdout.length = 0
-    expect(await run(['v2', 'transform', 'list', '--compact'])).toBe(EXIT.ok)
+    expect(await run(['transform', 'list', '--compact'])).toBe(EXIT.ok)
     expect(outputJson<{ items: unknown[]; total: number }>()).toEqual({
       items: [...workspace.listTransforms()],
       total: workspace.listTransforms().length,
@@ -168,7 +157,6 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
     integrationStdout.length = 0
     expect(
       await run([
-        'v2',
         'dataset',
         'export',
         refName,
@@ -190,9 +178,9 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
 
     const outputPath = join(temporaryRoot, 'exported.jsonl')
     integrationStdout.length = 0
-    expect(
-      await run(['v2', 'dataset', 'export', refName, '--output', outputPath, '--compact']),
-    ).toBe(EXIT.ok)
+    expect(await run(['dataset', 'export', refName, '--output', outputPath, '--compact'])).toBe(
+      EXIT.ok,
+    )
     const exported = outputJson<{ path: string; plan: ExportPlanV2 }>()
     expect(exported).toEqual({ path: outputPath, plan: directPlan })
     expect((await readFile(outputPath, 'utf8')).trim().split('\n')).toHaveLength(
@@ -203,7 +191,6 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
     integrationStdout.length = 0
     expect(
       await run([
-        'v2',
         'transform',
         'run',
         'subset',
@@ -232,7 +219,6 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
     integrationStdout.length = 0
     expect(
       await run([
-        'v2',
         'lineage',
         'show',
         transformed.run.output_dataset_version,
@@ -246,11 +232,11 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
     expect(outputJson()).toEqual(directLineage)
 
     integrationStdout.length = 0
-    expect(await run(['v2', 'ref', 'show', transformedRef, '--compact'])).toBe(EXIT.ok)
+    expect(await run(['ref', 'show', transformedRef, '--compact'])).toBe(EXIT.ok)
     expect(outputJson()).toEqual(await workspace.getRef(transformedRef))
 
     integrationStdout.length = 0
-    expect(await run(['v2', 'ref', 'list', '--limit', '500', '--compact'])).toBe(EXIT.ok)
+    expect(await run(['ref', 'list', '--limit', '500', '--compact'])).toBe(EXIT.ok)
     expect(outputJson<{ items: Array<{ name: string }> }>().items.map(({ name }) => name)).toEqual(
       expect.arrayContaining([refName, transformedRef]),
     )
@@ -258,7 +244,6 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
     integrationStdout.length = 0
     expect(
       await run([
-        'v2',
         'ref',
         'move',
         refName,

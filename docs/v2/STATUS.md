@@ -15,8 +15,8 @@ offline_production_release_authorized: true
 ## 当前检查点
 
 - **当前分支:** `feat/v2-product-cutover`
-- **下一步:** 产品切换 R1 已完成并过闸门；按 [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 进入 R2，
-  删除 v1 API/CLI 可达面并保持 v2 lifecycle 全绿；V16/V17 仍不开始
+- **下一步:** 产品切换 R2 已完成并过闸门；按 [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 进入 R3，
+  从 Workspace 向下删除无 v2 调用方的 v1 领域实现；V16/V17 仍不开始
 - **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
   不代表 V16、V17 或 GV-final 已完成
 - **离线发布:** owner于2026-07-24明确授权当前`main`直接生成production离线包；V16/V17
@@ -25,7 +25,7 @@ offline_production_release_authorized: true
   `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 - **产品切换:** ADR 0013、产品切换技术方案与第三版视觉稿已于 2026-07-24 接受；
-  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0、R1 已完成，下一步为 R2
+  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0、R1、R2 已完成，下一步为 R3
 
 ## Step 状态
 
@@ -390,3 +390,21 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - Web 52/52 tests、production build与typecheck通过；`pnpm v2:status:check`、
   `pnpm openapi:check`、离线脚本测试、`pnpm typecheck`、`pnpm test`（21/21 tasks）、
   `pnpm lint`（396 files）和`git diff --check`全部通过；仅保留既存的Vite大bundle P3 warning。
+
+## 2026-07-24 产品切换 R2 Gate 记录
+
+- API 已删除 `/v1` middleware、routes 与对应 lifecycle/parity tests；`CreateAppOptions` 和
+  `ApiEnv` 不再暴露 v1 `Workspace`，`apps/api` 直接 Prisma 依赖同时移除；
+- `/version` 现在报告 `api_version: v2` 与 `schema_version: 2.0.0`；Capabilities 删除旧
+  `features` 并要求完整 `post_training_v2`，Web compatibility 更新为 API major 2；
+- OpenAPI 仅含3条meta与14条`/v2` paths，`/v1` path和Sample/Recipe/Vocabulary等旧wire components
+  均为0；`openapi.json`与Web generated client已重建；
+- CLI 已把现有v2 handlers提升为唯一默认命令，删除旧router、`add/samples/recipe/vocab/meta`
+  handlers及测试；实际build后的help只含5组、13条目标命令，用户可见help/错误不再带版本前缀；
+- 真实Postgres+MinIO API lifecycle 59/59、CLI/Workspace lifecycle 13/13通过，覆盖ingest、read、
+  audit、transform、lineage、inspect与export；测试同时发现main既存CLI fixture未跟随system-content
+  修订更新，其expected version已与同一Engine fixed vector的`8e3d6141…913b14a8`对齐，identity实现未改；
+- 真实浏览器重新打开`/datasets`后保持已连接并加载实际refs，console无warning/error；
+  `pnpm lint`（377 files）、全仓build（12/12）、typecheck（21/21）、test（21/21）、
+  `pnpm openapi:check`（11/11）、`pnpm v2:status:check`与`git diff --check`全部通过；仅保留既存
+  Vite大bundle P3 warning。

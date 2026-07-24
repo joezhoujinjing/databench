@@ -1,31 +1,14 @@
 import { LineagePageRequestV2Schema } from '@databench/schema'
 import { optString, requireExactPositionals, requirePositional } from '../args.js'
-import { withV2Workspace, withWorkspace } from '../runtime.js'
+import { withWorkspace } from '../runtime.js'
 import type { CommandGroup } from '../types.js'
 
 export const lineageCommands: CommandGroup = {
-  summary: 'Show the provenance DAG for a dataset',
+  summary: 'Show bounded exact dataset lineage',
   defaultVerb: 'show',
   verbs: {
     show: {
-      summary: 'Print the provenance DAG for a ref or version',
-      positionals: [{ name: 'ref', required: true }],
-      output: 'json',
-      options: {},
-      run: ({ positionals, flags }) => {
-        const ref = requirePositional(positionals, 0, 'lineage: <ref>')
-        return withWorkspace(flags, (workspace) => workspace.lineage(ref))
-      },
-    },
-  },
-}
-
-export const v2LineageCommands: CommandGroup = {
-  summary: 'Show bounded exact v2 dataset lineage',
-  defaultVerb: 'show',
-  verbs: {
-    show: {
-      summary: 'Show one bounded lineage page for a v2 ref or exact version',
+      summary: 'Show one bounded lineage page for a ref or exact version',
       positionals: [{ name: 'ref-or-version', required: true }],
       output: 'json',
       options: {
@@ -34,8 +17,8 @@ export const v2LineageCommands: CommandGroup = {
         cursor: { type: 'string' },
       },
       run: ({ positionals, values, flags }) => {
-        requireExactPositionals(positionals, 1, 'v2 lineage show <ref-or-version>')
-        const target = requirePositional(positionals, 0, 'v2 lineage show: <ref-or-version>')
+        requireExactPositionals(positionals, 1, 'lineage show <ref-or-version>')
+        const target = requirePositional(positionals, 0, 'lineage show: <ref-or-version>')
         const request = LineagePageRequestV2Schema.parse({
           ...(optString(values, 'max-depth') === undefined
             ? {}
@@ -47,7 +30,7 @@ export const v2LineageCommands: CommandGroup = {
             ? {}
             : { cursor: optString(values, 'cursor') }),
         })
-        return withV2Workspace(flags, (workspace, operation) =>
+        return withWorkspace(flags, (workspace, operation) =>
           workspace.lineage(target, request, { signal: operation.signal }),
         )
       },

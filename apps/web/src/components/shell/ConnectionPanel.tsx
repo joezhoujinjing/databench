@@ -8,7 +8,6 @@ import { isApiError } from '@/api/errors.js'
 import { StatusDot } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
 import { TextInput } from '@/components/ui/input.js'
-import { cn } from '@/lib/utils.js'
 
 export function ConnectionPanel() {
   const { t } = useTranslation()
@@ -89,22 +88,6 @@ export function ConnectionPanel() {
               <div>health {health?.status ?? 'unknown'}</div>
               {isError ? <div className="mt-1 text-danger">{errorLabel(error)}</div> : null}
             </div>
-
-            {capabilities !== undefined ? (
-              <div className="flex flex-wrap gap-1">
-                {Object.entries(capabilities.features).map(([name, enabled]) => (
-                  <span
-                    className={cn(
-                      'rounded border border-border px-1.5 py-0.5 text-xs',
-                      enabled ? 'text-foreground' : 'text-muted-foreground line-through',
-                    )}
-                    key={name}
-                  >
-                    {name}
-                  </span>
-                ))}
-              </div>
-            ) : null}
 
             <div className="flex justify-between gap-2">
               <Button

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { storeConfigFromEnv, type WorkspaceOpenOptions } from '@databench/workspace'
+import { storeConfigFromEnv, type V2WorkspaceOpenOptions } from '@databench/workspace'
 import { z } from 'zod'
 
 // Read the service version from the monorepo root package.json rather than
@@ -31,7 +31,7 @@ export interface ApiConfig {
   readonly databaseUrl?: string
   readonly openApiServerUrl?: string
   readonly port: number
-  readonly storeConfig: NonNullable<WorkspaceOpenOptions['storeConfig']>
+  readonly storeConfig: NonNullable<V2WorkspaceOpenOptions['storeConfig']>
   readonly v2CursorSecret: string
   readonly version: string
   readonly workspaceRoot: string

@@ -1,25 +1,20 @@
 import { parseArgs } from 'node:util'
 import { BadInputError } from '@databench/schema'
+import { converterCommands } from './commands/converter.js'
 import { datasetCommands } from './commands/dataset.js'
 import { lineageCommands } from './commands/lineage.js'
-import { metaCommands } from './commands/meta.js'
-import { recipeCommands } from './commands/recipe.js'
 import { refCommands } from './commands/ref.js'
 import { transformCommands } from './commands/transform.js'
-import { vocabCommands } from './commands/vocab.js'
 import type { GlobalFlags } from './config.js'
 import { emitResult } from './output.js'
 import { type CommandGroup, STREAMED, type Values } from './types.js'
-import { dispatchV2 } from './v2-router.js'
 
 const COMMANDS: Record<string, CommandGroup> = {
   dataset: datasetCommands,
+  converter: converterCommands,
   transform: transformCommands,
-  recipe: recipeCommands,
   ref: refCommands,
   lineage: lineageCommands,
-  vocab: vocabCommands,
-  meta: metaCommands,
 }
 
 const GLOBAL_STRING = new Set(['--database-url'])
@@ -98,11 +93,6 @@ export async function dispatch(rest: readonly string[], flags: GlobalFlags): Pro
   const head = rest[0]
   if (head === undefined || HELP_TOKENS.has(head)) {
     emitHelp(rest[1], flags)
-    return
-  }
-
-  if (head === 'v2') {
-    await dispatchV2(rest.slice(1), flags)
     return
   }
 

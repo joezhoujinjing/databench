@@ -4,39 +4,39 @@ import {
   NotFoundError,
 } from '@databench/schema'
 import { requireExactPositionals, requirePositional } from '../args.js'
-import { withV2Workspace } from '../runtime.js'
+import { withWorkspace } from '../runtime.js'
 import type { CommandGroup } from '../types.js'
 
-export const v2ConverterCommands: CommandGroup = {
-  summary: 'Inspect the complete v2 export converter registry',
+export const converterCommands: CommandGroup = {
+  summary: 'Inspect the export converter registry',
   verbs: {
     list: {
-      summary: 'List all v2 converters',
+      summary: 'List all converters',
       positionals: [],
       output: 'json',
       options: {},
       run: ({ positionals, flags }) => {
-        requireExactPositionals(positionals, 0, 'v2 converter list')
-        return withV2Workspace(flags, async (workspace) => {
+        requireExactPositionals(positionals, 0, 'converter list')
+        return withWorkspace(flags, async (workspace) => {
           const items = [...workspace.listConverters()]
           return ConverterRegistryPageV2Schema.parse({ items, total: items.length })
         })
       },
     },
     show: {
-      summary: 'Show one v2 converter descriptor',
+      summary: 'Show one converter descriptor',
       positionals: [{ name: 'name', required: true }],
       output: 'json',
       options: {},
       run: ({ positionals, flags }) => {
-        requireExactPositionals(positionals, 1, 'v2 converter show <name>')
+        requireExactPositionals(positionals, 1, 'converter show <name>')
         const { name } = ConverterParamsV2Schema.parse({
-          name: requirePositional(positionals, 0, 'v2 converter show: <name>'),
+          name: requirePositional(positionals, 0, 'converter show: <name>'),
         })
-        return withV2Workspace(flags, async (workspace) => {
+        return withWorkspace(flags, async (workspace) => {
           const descriptor = workspace.getConverter(name)
           if (descriptor === null) {
-            throw new NotFoundError(`V2 converter was not found: ${name}`, { converter: name })
+            throw new NotFoundError(`converter was not found: ${name}`, { converter: name })
           }
           return descriptor
         })

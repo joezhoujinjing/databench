@@ -1,9 +1,4 @@
-import {
-  BadInputError,
-  JsonObjectV2Schema,
-  PaginationQuerySchema,
-  parseRawJsonV2,
-} from '@databench/schema'
+import { BadInputError, JsonObjectV2Schema, parseRawJsonV2 } from '@databench/schema'
 import type { Values } from './types.js'
 
 export function optString(values: Values, key: string): string | undefined {
@@ -23,19 +18,6 @@ export function stringList(values: Values, key: string): string[] {
   return typeof value === 'string' ? [value] : []
 }
 
-// Parse --limit/--offset through the same schema the HTTP API uses, so the CLI
-// enforces the identical bounds (limit ∈ [1, MAX_PAGE_LIMIT], offset ≥ 0) and
-// rejects the same bad values (a ZodError → validation exit code), instead of
-// silently accepting limit=0, negative offsets, or garbage like "20x".
-export function pagination(values: Values): { limit: number; offset: number } {
-  const limit = optString(values, 'limit')
-  const offset = optString(values, 'offset')
-  return PaginationQuerySchema.parse({
-    ...(limit !== undefined ? { limit } : {}),
-    ...(offset !== undefined ? { offset } : {}),
-  })
-}
-
 export function requirePositional(
   positionals: readonly string[],
   index: number,
@@ -46,22 +28,6 @@ export function requirePositional(
     throw new BadInputError(`${label} is required`)
   }
   return value
-}
-
-export function requireString(values: Values, key: string, label: string): string {
-  const value = optString(values, key)
-  if (value === undefined) {
-    throw new BadInputError(`${label} is required`)
-  }
-  return value
-}
-
-export function parseJsonFlag(text: string, label: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    throw new BadInputError(`${label}: invalid JSON`)
-  }
 }
 
 export function requireExactPositionals(

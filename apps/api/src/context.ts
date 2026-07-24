@@ -1,4 +1,4 @@
-import type { V2Workspace, Workspace } from '@databench/workspace'
+import type { V2Workspace } from '@databench/workspace'
 import type { Context } from 'hono'
 
 export type ApiV2Workspace = Pick<
@@ -24,15 +24,10 @@ export type ApiV2Workspace = Pick<
 export interface ApiVariables {
   requestId: string
   v2Workspace: ApiV2Workspace
-  workspace: Workspace
 }
 
 export interface ApiEnv {
   Variables: ApiVariables
-}
-
-export function getWorkspace(context: Context<ApiEnv>): Workspace {
-  return context.get('workspace')
 }
 
 export function getV2Workspace(context: Context<ApiEnv>): ApiV2Workspace {

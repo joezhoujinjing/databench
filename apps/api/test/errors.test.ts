@@ -19,7 +19,7 @@ import { createTestApp } from './test-app.js'
 
 const validationRoute = createRoute({
   method: 'get',
-  path: '/v1/_test-validation',
+  path: '/_test-validation',
   request: {
     query: z.object({
       limit: z.coerce.number().int().max(MAX_PAGE_LIMIT),
@@ -47,7 +47,7 @@ describe('api error envelope', () => {
     const app = createTestApp()
     app.openapi(validationRoute, (context) => context.json({ ok: true }, 200))
 
-    const response = await app.fetch(request('/v1/_test-validation?limit=5000'))
+    const response = await app.fetch(request('/_test-validation?limit=5000'))
     const body = (await response.json()) as ErrorResponse
 
     expect(response.status).toBe(422)
@@ -66,28 +66,28 @@ describe('api error envelope', () => {
     const app = createTestApp()
     installThrowRoutes(app)
 
-    await expectError(app, '/v1/_test-error/not-found', 404, 'not_found', 'missing dataset')
-    await expectError(app, '/v1/_test-error/conflict', 409, 'conflict', 'ref already exists')
+    await expectError(app, '/_test-error/not-found', 404, 'not_found', 'missing dataset')
+    await expectError(app, '/_test-error/conflict', 409, 'conflict', 'ref already exists')
     await expectError(
       app,
-      '/v1/_test-error/validation',
+      '/_test-error/validation',
       422,
       'validation_error',
       'payload validation failed',
     )
-    await expectError(app, '/v1/_test-error/resource', 413, 'resource_limit', 'too large')
+    await expectError(app, '/_test-error/resource', 413, 'resource_limit', 'too large')
     await expectError(
       app,
-      '/v1/_test-error/unsupported-profile',
+      '/_test-error/unsupported-profile',
       422,
       'unsupported_profile',
       'unsupported record schema',
     )
-    await expectError(app, '/v1/_test-error/capacity', 503, 'capacity_exceeded', 'busy')
-    await expectError(app, '/v1/_test-error/integrity', 500, 'integrity_error', 'corrupt')
+    await expectError(app, '/_test-error/capacity', 503, 'capacity_exceeded', 'busy')
+    await expectError(app, '/_test-error/integrity', 500, 'integrity_error', 'corrupt')
     await expectError(
       app,
-      '/v1/_test-error/service-unavailable',
+      '/_test-error/service-unavailable',
       503,
       'service_unavailable',
       'object store unavailable',
@@ -100,57 +100,33 @@ describe('api error envelope', () => {
 
     await expectError(
       app,
-      '/v1/_test-error/http-not-found',
+      '/_test-error/http-not-found',
       404,
       'not_found',
       'unknown transform: nope',
     )
-    await expectError(
-      app,
-      '/v1/_test-error/http-method',
-      405,
-      'method_not_allowed',
-      'method blocked',
-    )
+    await expectError(app, '/_test-error/http-method', 405, 'method_not_allowed', 'method blocked')
   })
 
-  test('bad input, TypeError, and plain Error map to bad_request', async () => {
+  test('typed bad input is exposed while untyped errors are sanitized', async () => {
     const app = createTestApp()
     installThrowRoutes(app)
 
-    await expectError(app, '/v1/_test-error/bad-input', 400, 'bad_request', 'invalid JSON')
-    await expectError(
-      app,
-      '/v1/_test-error/type',
-      400,
-      'bad_request',
-      "transform 'dedup' takes no params",
-    )
-    await expectError(
-      app,
-      '/v1/_test-error/error',
-      400,
-      'bad_request',
-      'frame is missing required columns',
-    )
+    await expectError(app, '/_test-error/bad-input', 400, 'bad_request', 'invalid JSON')
+    await expectError(app, '/_test-error/type', 500, 'internal_error', 'internal server error')
+    await expectError(app, '/_test-error/error', 500, 'internal_error', 'internal server error')
   })
 
   test('unclassified throws fall back to internal_error envelope', async () => {
     const app = createTestApp()
     installThrowRoutes(app)
 
-    await expectError(
-      app,
-      '/v1/_test-error/unknown',
-      500,
-      'internal_error',
-      'internal server error',
-    )
+    await expectError(app, '/_test-error/unknown', 500, 'internal_error', 'internal server error')
   })
 })
 
 function installThrowRoutes(app: ReturnType<typeof createApp>): void {
-  app.get('/v1/_test-error/:kind', (context) => {
+  app.get('/_test-error/:kind', (context) => {
     const kind = context.req.param('kind')
 
     if (kind === 'not-found') {

@@ -28,17 +28,7 @@ const readyCapability = {
 } satisfies PostTrainingV2Capability
 
 const capabilities = {
-  api_version: 'v1',
-  features: {
-    annotation: false,
-    export: true,
-    jsonl_ingest: true,
-    lineage: true,
-    recipes: true,
-    synthesis: false,
-    transforms: true,
-    vocabularies: true,
-  },
+  api_version: 'v2',
   min_client: '0.1.0',
   post_training_v2: readyCapability,
 } satisfies CapabilitiesV2Envelope
@@ -61,9 +51,8 @@ describe('Post-training V2 capability state', () => {
       state({
         capabilities: {
           api_version: capabilities.api_version,
-          features: capabilities.features,
           min_client: capabilities.min_client,
-        },
+        } as CapabilitiesV2Envelope,
       }).status,
     ).toBe('absent')
     expect(

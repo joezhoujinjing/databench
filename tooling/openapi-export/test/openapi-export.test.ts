@@ -11,10 +11,10 @@ describe('openapi export', () => {
 
     const document = JSON.parse(first) as OpenApiDocument
     expect(Object.keys(document)).toEqual(['components', 'info', 'openapi', 'paths'])
-    expect(document.paths['/v1/datasets']).toBeDefined()
-    expect(document.paths['/v1/datasets/{ref}/export']?.get.responses[200].content).toHaveProperty(
-      'application/x-ndjson',
-    )
+    expect(Object.keys(document.paths).some((path) => path.startsWith('/v1'))).toBe(false)
+    expect(
+      document.paths['/v2/datasets/{dataset_version}:export']?.post?.responses[200].content,
+    ).toHaveProperty('application/x-ndjson')
     expect(document.components.schemas.ErrorResponse).toBeDefined()
   })
 })
@@ -26,7 +26,7 @@ interface OpenApiDocument {
   readonly paths: Record<
     string,
     {
-      readonly get: {
+      readonly post?: {
         readonly responses: Record<
           number,
           {

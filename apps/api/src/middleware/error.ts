@@ -140,34 +140,12 @@ export const errorHandler: ErrorHandler<ApiEnv> = (error, context) => {
     })
   }
 
-  // V2 only exposes explicitly typed domain/HTTP/Zod failures. Legacy
-  // classifyError intentionally treats some plain Error/TypeError messages as
-  // bad input for v1 parity; applying that heuristic here could leak SDK,
-  // absolute-path, or configuration details from an untyped V2 failure.
-  if (isV2Request(context)) {
-    return errorResponse(context, {
-      status: STATUS_CODES.internalError,
-      code: 'internal_error',
-      message: 'internal server error',
-    })
-  }
-
-  const errorClass = classifyError(error)
-  const status = STATUS_FOR[errorClass]
-
-  if (errorClass === 'internal_error') {
-    // Don't leak internal failure messages over HTTP.
-    return errorResponse(context, {
-      status,
-      code: 'internal_error',
-      message: 'internal server error',
-    })
-  }
-
+  // Only explicitly typed domain, HTTP, and Zod failures may expose their
+  // message. Untyped dependency/runtime failures are always sanitized.
   return errorResponse(context, {
-    status,
-    code: errorClass,
-    message: error instanceof Error ? error.message : 'error',
+    status: STATUS_CODES.internalError,
+    code: 'internal_error',
+    message: 'internal server error',
   })
 }
 
