@@ -264,7 +264,22 @@ docker inspect --format '{{.State.Status}}' databench-offline-api
 - 502：通常是 API 未运行或尚未 healthy；
 - SPA 能打开但 API 请求失败：检查 `/v1/*`、`/v2/*`、`/version` 是否经同一地址访问。
 
-### 7.3 v2 records/export 报只读文件系统
+### 7.3 V2 页面直接打开或刷新后返回 404 JSON
+
+V2 SPA 页面和 V2 API 共用 `/v2` 路径。正确的 Caddy 配置会按 `Accept` 请求头区分浏览器
+页面导航和 API 请求：`text/html` 返回 SPA，JSON/API 请求转发到 API 容器。
+
+```bash
+curl -fsS -H 'Accept: text/html' 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
+curl -fsS -H 'Accept: application/json' 'http://127.0.0.1/v2/transforms'
+docker inspect --format '{{.Config.Image}}' databench-offline-web
+```
+
+第一条若返回 API 404，说明仍在运行旧 Web 镜像或当前 release 的 Caddy 配置不匹配。不要
+把 `/v2/*` 整体改成静态路由，否则真实 V2 API 会失效；应重新安装或升级到包含该修复的完整
+离线发布包。
+
+### 7.4 v2 records/export 报只读文件系统
 
 当前镜像会把 `DATABENCH_ROOT=/var/lib/databench` 传给 API 和 CLI，并挂载可写 workspace。检查：
 

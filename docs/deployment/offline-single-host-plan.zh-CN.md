@@ -105,8 +105,8 @@ V16/V17 的状态不阻断本离线通道生成 production 包；这是 owner �
 ┌───────────────────────────────┐
 │ Web Gateway                   │
 │ Caddy + apps/web 静态产物     │
-│ /v1、/v2、meta → api:8000     │
-│ 其他路径 → SPA index.html     │
+│ /v1、/v2 API、meta → api:8000 │
+│ V2 HTML 导航/其他路径 → SPA   │
 └──────────────┬────────────────┘
                ▼
 ┌───────────────────────────────┐
@@ -601,7 +601,8 @@ deploy/ecs/**
 - [x] Compose 不含 `build:`、`latest`，所有服务 `pull_policy: never`；
 - [x] Compose 只发布 Web 80，API/PG/MinIO 不发布宿主机端口；
 - [x] 本地 amd64 集成环境的 migration、readiness 和 v1/v2 ingest→query→export 全通过；
-- [x] 本地集成环境中 Caddy 正确代理 `/v1/*`、`/v2/*` 与全部 meta paths；
+- [x] 本地集成环境中 Caddy 正确代理 `/v1/*`、`/v2/*` 与全部 meta paths，并按 `Accept`
+  区分共用 `/v2` 路径的 SPA 页面刷新与 API 请求；
 - [ ] 宿主机重启后服务与数据恢复；
 - [ ] 上一版本应用可回滚；
 - [ ] 同一 generation 的 PG + MinIO + release bundle 可在干净环境恢复；
