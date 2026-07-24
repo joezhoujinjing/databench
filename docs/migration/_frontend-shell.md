@@ -173,11 +173,11 @@
 - **功能ID**：`FAPI-03`
 - **名称**：HTTP URL、query、body 与鉴权传输层；**作用**：以运行时 base 构建绝对/相对 URL，附加 bearer token，统一发送 JSON、FormData 和 raw streaming 请求。
 - **现位置**：`databench-ui/src/api/http.ts:buildUrl/rawRequest/request/authHeaders`
-- **行为与边界**：`buildUrl` 接收已带 `/v1` 或 meta path 的路径；base 为空则 same-origin；query 忽略 undefined/null，其他值 String 化；token 存在时加 `Authorization: Bearer ${token}`；JSON body 加 `Content-Type: application/json`；FormData 不手动设置 Content-Type；网络/CORS/DNS fetch 失败抛 `ApiError(0,'unreachable')`；`rawRequest` 返回原始 `Response` 供下载。
+- **行为与边界**：`buildUrl` 接收已带 `/v1` 或 meta path 的路径；base 为空则 same-origin，也支持 `/api` 这类 same-origin path base 和带 path 的绝对 base；query 忽略 undefined/null，其他值 String 化；token 存在时加 `Authorization: Bearer ${token}`；JSON body 加 `Content-Type: application/json`；FormData 不手动设置 Content-Type；网络/CORS/DNS fetch 失败抛 `ApiError(0,'unreachable')`；`rawRequest` 返回原始 `Response` 供下载。
 - **依赖后端端点/能力**：所有 REST 端点；鉴权 header 由部署环境决定。
 - **重写目标(新栈落点)**：`apps/web/src/api/client.ts`；用 `openapi-fetch` `baseUrl`/middleware 或 wrapper 注入 token、query 和 error handling；streaming export 仍需要 raw fetch。
-- **验收点**：same-origin 与 `http://127.0.0.1:8000` 两种 base 生成正确 URL；multipart 上传有 boundary；token header 随 base token 变化。
-- **备注/疑点**：API base 必须是 origin only，不能包含 `/v1`。
+- **验收点**：same-origin、`/api` 与 `http://127.0.0.1:8000/gateway` 三种 base 生成正确 URL；multipart 上传有 boundary；token header 随 base token 变化。
+- **备注/疑点**：API base 可以包含部署网关 path prefix，但不能包含 `/v1` 或 `/v2` 资源前缀。
 
 ### FAPI-04
 
@@ -195,7 +195,7 @@
 - **功能ID**：`FAPI-05`
 - **名称**：运行时 backend base 与 per-base token 存储；**作用**：让用户在 UI 中切换不同后端，并隔离各后端凭据。
 - **现位置**：`databench-ui/src/api/config.ts`
-- **行为与边界**：`DEFAULT_API_BASE=''` 表示当前 origin；base 存 localStorage key `databench.api_base`，空值删除；`normalizeBase` trim 并去尾 slash；token key 为 `databench.token:${base || '(origin)'}`；token trim 后为空则删除；localStorage 不可用时静默忽略。
+- **行为与边界**：`DEFAULT_API_BASE` 来自构建时 `VITE_DATABENCH_API_BASE_URL`，未设置时为当前 origin；离线镜像固定注入 `/api`；base 存 localStorage key `databench.api_base`，空值删除；`normalizeBase` trim 并去尾 slash；token key 为 `databench.token:${base || '(origin)'}`；token trim 后为空则删除；localStorage 不可用时静默忽略。
 - **依赖后端端点/能力**：无直接端点；影响所有请求。
 - **重写目标(新栈落点)**：`apps/web/src/api/backend-config.ts`；继续 runtime editable，不使用 build-time env 固化唯一后端。
 - **验收点**：`http://a///` 存为 `http://a`；切到 backend B 时不会带 backend A token；隐私模式 localStorage 抛错不崩。

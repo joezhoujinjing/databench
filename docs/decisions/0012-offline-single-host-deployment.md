@@ -24,8 +24,12 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
    内网单机 production 数据面。业务代码仍只通过 `Store` 接口和
    `DATABENCH_OBJECT_STORE=s3` 选择后端。MinIO bucket 不启用 versioning，API 使用
    bucket-scoped app access key。
-4. 宿主机只暴露 Web 入口，Caddy 必须代理 `/v1/*`、`/v2/*` 和 meta paths。API、PG、
-   MinIO 不发布宿主机端口。首版不实现应用鉴权，只允许防火墙限定的受控内网访问。
+4. 宿主机只暴露 Web 入口。离线 Web 的后端 base 固定为 `/api`，Caddy 使用
+   `handle_path /api/*` 去掉此前缀后转发到 API；因此外部 API 是 `/api/health`、
+   `/api/v1/*`、`/api/v2/*` 等，Hono 内部路由与 OpenAPI paths 保持不变。网关裸
+   `/v1/*`、`/v2/*` 不再解释为 API，其中 `/v2/*` 可稳定作为 SPA 页面路径；不再通过
+   `Accept` 头复用同一 URL，避免 HTML/JSON 浏览器缓存冲突。API、PG、MinIO 不发布
+   宿主机端口。首版不实现应用鉴权，只允许防火墙限定的受控内网访问。
 5. PostgreSQL、MinIO 与 API workspace 使用 `/srv/databench` 下的持久目录；secret 位于
    `/etc/databench/databench.env`，首次安装由 CSPRNG 生成，升级不得覆盖。
 6. 每个版本交付完整镜像集合、精确平台/digest 锁、release manifest 与双层 SHA-256。

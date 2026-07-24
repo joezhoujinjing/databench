@@ -10,6 +10,9 @@ COPY deploy/offline/web-build-package.json ./package.json
 COPY pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps/web ./apps/web
 
+ARG VITE_DATABENCH_API_BASE_URL=/api
+ENV VITE_DATABENCH_API_BASE_URL=${VITE_DATABENCH_API_BASE_URL}
+
 RUN --mount=type=cache,id=databench-pnpm-web-amd64,target=/pnpm/store \
   pnpm config set store-dir /pnpm/store \
   && cd apps/web \

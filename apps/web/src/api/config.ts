@@ -1,4 +1,3 @@
-export const DEFAULT_API_BASE = ''
 export const API_BASE_STORAGE_KEY = 'databench.api_base'
 export const ORIGIN_TOKEN_NAMESPACE = '(origin)'
 
@@ -11,6 +10,8 @@ export interface StorageLike {
 export function normalizeApiBase(base: string | null | undefined): string {
   return (base ?? '').trim().replace(/\/+$/u, '')
 }
+
+export const DEFAULT_API_BASE = normalizeApiBase(import.meta.env.VITE_DATABENCH_API_BASE_URL ?? '')
 
 export function tokenStorageKey(base: string | null | undefined): string {
   return `databench.token:${normalizeApiBase(base) || ORIGIN_TOKEN_NAMESPACE}`

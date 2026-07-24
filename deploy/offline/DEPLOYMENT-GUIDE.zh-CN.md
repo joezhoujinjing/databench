@@ -272,15 +272,17 @@ doctor 成功的精确输出为：
 在服务器本机执行：
 
 ```bash
-curl -fsS http://127.0.0.1/health
-curl -fsS http://127.0.0.1/version
-curl -fsS http://127.0.0.1/capabilities
-curl -fsS 'http://127.0.0.1/v2/refs?limit=1'
-curl -fsS -H 'Accept: application/json' 'http://127.0.0.1/v2/transforms'
-curl -fsS -H 'Accept: text/html' 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
+curl -fsS http://127.0.0.1/api/health
+curl -fsS http://127.0.0.1/api/version
+curl -fsS http://127.0.0.1/api/capabilities
+curl -fsS 'http://127.0.0.1/api/v1/refs?limit=1'
+curl -fsS 'http://127.0.0.1/api/v2/refs?limit=1'
+curl -fsS 'http://127.0.0.1/api/v2/transforms'
+curl -fsS 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
 ```
 
-`/version` 中的 `service_version` 必须等于本次安装版本。
+`/api/version` 中的 `service_version` 必须等于本次安装版本。离线部署的浏览器页面仍保持
+`/v2/...`，只有 API 调用增加 `/api` 前缀；Caddy 转发时会去掉该前缀，后端内部契约不变。
 
 从获准内网客户端访问：
 
@@ -289,8 +291,9 @@ http://<服务器IP或内部DNS>
 ```
 
 确认 SPA 能打开，并能完成一次实际业务查询。还需要直接打开
-`http://<服务器IP或内部DNS>/v2/datasets` 并刷新一次；刷新后必须仍显示 V2 页面，不能返回
-API 404 JSON。
+`http://<服务器IP或内部DNS>/v2/datasets` 并刷新一次；刷新后必须仍显示 V2 页面。打开浏览器
+Network 面板，API Request URL 应以 `/api/` 开头，响应 `Content-Type` 应为
+`application/json`，不能是 `text/html`。
 
 ### 7.3 端口检查
 
@@ -461,7 +464,7 @@ sudo ./upgrade.sh
 sudo databenchctl version
 sudo databenchctl status
 sudo databenchctl doctor
-curl -fsS http://127.0.0.1/version
+curl -fsS http://127.0.0.1/api/version
 ```
 
 实际容器镜像与版本必须一致：
@@ -482,7 +485,7 @@ docker inspect --format '{{.Config.Image}}' databench-offline-api databench-offl
 sudo databenchctl version
 sudo databenchctl status
 sudo databenchctl doctor
-curl -fsS http://127.0.0.1/version
+curl -fsS http://127.0.0.1/api/version
 ```
 
 若输出提示 `automatic recovery failed`，不要继续尝试新升级；保留终端输出、两个 release 和
@@ -566,7 +569,7 @@ sudo reboot
 sudo systemctl is-active docker
 sudo databenchctl status
 sudo databenchctl doctor
-curl -fsS http://127.0.0.1/version
+curl -fsS http://127.0.0.1/api/version
 ```
 
 再从获准内网客户端访问 Web，抽查已有 v1/v2 数据仍可读取。重启验收不应执行重新安装。
@@ -579,7 +582,7 @@ curl -fsS http://127.0.0.1/version
 - [ ] `sudo ./install.sh` 一次成功；
 - [ ] `databenchctl version` 与发布版本一致；
 - [ ] `databenchctl doctor` 的 database/store 均为 true；
-- [ ] `/version` 的 `service_version` 正确；
+- [ ] `/api/version` 的 `service_version` 正确；
 - [ ] Web 能从获准网段访问；
 - [ ] 未获准网段不能访问 TCP 80；
 - [ ] 5432、8000、9000、9001 未发布到宿主机；

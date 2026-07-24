@@ -1,22 +1,40 @@
 const origin = 'http://web'
-const apiPaths = ['/health', '/version', '/capabilities', '/v1/refs', '/v2/refs?limit=1']
+const apiPaths = [
+  '/api/health',
+  '/api/version',
+  '/api/capabilities',
+  '/api/openapi.json',
+  '/api/v1/refs',
+  '/api/v2/refs?limit=1',
+]
 
 for (const path of apiPaths) {
   const response = await fetch(origin + path)
   if (!response.ok) throw new Error(`${path} returned ${response.status}`)
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    throw new Error(`${path} did not return JSON`)
+  }
 }
 
-const sharedPath = '/v2/datasets/system-offline-smoke-v2'
-const apiResponse = await fetch(origin + sharedPath, {
-  headers: { Accept: 'application/json' },
-})
-if (!apiResponse.ok) throw new Error(`${sharedPath} API returned ${apiResponse.status}`)
+const pagePath = '/v2/datasets/system-offline-smoke-v2'
+const apiPath = '/api/v2/datasets/system-offline-smoke-v2'
+const pageResponse = await fetch(origin + pagePath, { headers: { Accept: 'text/html' } })
+if (!pageResponse.ok) throw new Error(`${pagePath} SPA navigation returned ${pageResponse.status}`)
+if (!pageResponse.headers.get('content-type')?.includes('text/html')) {
+  throw new Error(`${pagePath} SPA navigation did not return HTML`)
+}
+if (!(await pageResponse.text()).includes('<div id="root"></div>')) {
+  throw new Error(`${pagePath} SPA navigation did not return the Web entry point`)
+}
+
+const apiResponse = await fetch(origin + apiPath)
+if (!apiResponse.ok) throw new Error(`${apiPath} API returned ${apiResponse.status}`)
 if (!apiResponse.headers.get('content-type')?.includes('application/json')) {
-  throw new Error(`${sharedPath} API did not return JSON`)
+  throw new Error(`${apiPath} API did not return JSON`)
 }
 
-for (const path of ['/v2/datasets', sharedPath, '/v2/transforms']) {
-  const response = await fetch(origin + path, { headers: { Accept: 'text/html' } })
+for (const path of ['/v2/datasets', '/v2/transforms']) {
+  const response = await fetch(origin + path)
   if (!response.ok) throw new Error(`${path} SPA navigation returned ${response.status}`)
   if (!response.headers.get('content-type')?.includes('text/html')) {
     throw new Error(`${path} SPA navigation did not return HTML`)

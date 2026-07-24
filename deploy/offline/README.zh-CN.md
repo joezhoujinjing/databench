@@ -63,6 +63,10 @@ MinIO 和 v2 cursor secret，直接写入 `/etc/databench/databench.env`，权�
 
 安装后只开放宿主机 TCP 80。必须由现场防火墙限制允许访问的内网网段。
 
+页面地址保持 `http://<服务器地址>/v2/...`；浏览器调用的后端地址统一为同源
+`http://<服务器地址>/api/...`。Caddy 会去掉 `/api` 再转发，因此后端 Hono 路由本身不变，
+页面与 JSON API 也不会再因相同 URL 的浏览器缓存发生冲突。
+
 ## 日常运维
 
 ```bash

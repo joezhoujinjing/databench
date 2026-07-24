@@ -87,9 +87,9 @@ npm registry 或其他公网服务。
 | API 启动 | `node apps/api/dist/index.js` | 由 production Dockerfile 固定 |
 | 数据库 | PostgreSQL 17 + Prisma | `prisma migrate deploy`，升级按第 9 节停写 |
 | 对象存储 | `DATABENCH_OBJECT_STORE=s3` + MinIO | on-prem production 例外由 ADR 0012 接受 |
-| 健康检查 | `/health` 仅 liveness | readiness 使用 `databench meta doctor` + lifecycle smoke |
-| Web API base | 同源空 base | 当前 Web 已支持 |
-| OpenAPI/业务路径 | `/v1/*`、`/v2/*` + meta paths | Caddy 必须全部代理到 API |
+| 健康检查 | API 内部 `/health` 仅 liveness | 外部 `/api/health`；readiness 使用 `databench meta doctor` + lifecycle smoke |
+| Web API base | 同源 `/api` | 仅离线 Web 镜像在 Vite 构建时注入，不影响 ECS/OSS 发布 |
+| OpenAPI/业务路径 | API 内部 `/v1/*`、`/v2/*` + meta paths | 外部统一加 `/api`；Caddy 去前缀后代理 |
 | 临时空间 | `/var/lib/databench/.databench-v2-temp` | `/var/lib/databench` 必须挂载数据盘 |
 
 如果后续重构改变以上任一项，只调整应用镜像和契约适配层，不改变离线包总体流程。v2
@@ -105,8 +105,8 @@ V16/V17 的状态不阻断本离线通道生成 production 包；这是 owner �
 ┌───────────────────────────────┐
 │ Web Gateway                   │
 │ Caddy + apps/web 静态产物     │
-│ /v1、/v2 API、meta → api:8000 │
-│ V2 HTML 导航/其他路径 → SPA   │
+│ /api/*（去前缀）→ api:8000    │
+│ /v2/... 等页面路径 → SPA      │
 └──────────────┬────────────────┘
                ▼
 ┌───────────────────────────────┐
@@ -458,7 +458,9 @@ Web 与 SSH 入口。后续增加内部 CA/OIDC 时作为独立安全变更，�
 
 ### 12.1 健康检查
 
-当前 `/health` 仅能作为进程 liveness。最终部署契约还需要 readiness，至少验证：
+API 容器内部的 `/health` 仅能作为进程 liveness；经 Web 网关检查时必须使用
+`/api/health`，否则 SPA fallback 返回的 `index.html` 也可能被误判为成功。最终部署契约还需要
+readiness，至少验证：
 
 - Prisma 能连接 Postgres 且 migration 已应用；
 - MinIO endpoint 可达且 bucket 存在；
@@ -544,7 +546,7 @@ deploy/ecs/**
 
 ### P0：冻结部署契约（已完成）
 
-- 以 Ubuntu 22.04 amd64、API 8000、同源 Web、`/v1`+`/v2`、PG17+MinIO 固定部署契约；
+- 以 Ubuntu 22.04 amd64、API 8000、同源 Web、外部 `/api` 前缀、PG17+MinIO 固定部署契约；
 - ADR 0012 允许 MinIO 作为 on-prem production 数据面；
 - owner 已授权当前 `main` 直接构建 production 包，V16/V17 不作为离线发布阻断门；
 - 固定 release manifest、升级兼容性和一致性备份契约。
@@ -601,8 +603,8 @@ deploy/ecs/**
 - [x] Compose 不含 `build:`、`latest`，所有服务 `pull_policy: never`；
 - [x] Compose 只发布 Web 80，API/PG/MinIO 不发布宿主机端口；
 - [x] 本地 amd64 集成环境的 migration、readiness 和 v1/v2 ingest→query→export 全通过；
-- [x] 本地集成环境中 Caddy 正确代理 `/v1/*`、`/v2/*` 与全部 meta paths，并按 `Accept`
-  区分共用 `/v2` 路径的 SPA 页面刷新与 API 请求；
+- [x] 本地集成环境中 Caddy 将外部 `/api/*` 去前缀后代理到 API；`/v2/datasets/<ref>`
+  固定返回 SPA HTML，`/api/v2/datasets/<ref>` 固定返回 API JSON，不依赖 `Accept` 分流或禁止缓存；
 - [ ] 宿主机重启后服务与数据恢复；
 - [ ] 上一版本应用可回滚；
 - [ ] 同一 generation 的 PG + MinIO + release bundle 可在干净环境恢复；
@@ -612,7 +614,7 @@ deploy/ecs/**
 
 Owner 已接受：Ubuntu 22.04 amd64、本地 Mac Buildx、完整离线包、`/srv/databench`、小规模
 首发、允许维护停机、保留当前版+上一版+稳定版、首版无应用鉴权、无 Docker bootstrap、无
-Processing Worker，并采用本文的 v2 代理、必填 secret、停写升级和一致性备份建议。
+Processing Worker，并采用本文的 `/api` 独立代理、必填 secret、停写升级和一致性备份建议。
 
 实现不再等待产品选型；现场安装前只需提供允许访问的内网 CIDR、服务器地址以及异机/NAS
 备份目标。未提供备份目标时可以测试安装，但不得标记为 production-ready。

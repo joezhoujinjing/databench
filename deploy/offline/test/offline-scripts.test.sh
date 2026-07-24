@@ -27,22 +27,33 @@ if rg -n 'docker image inspect --platform' "${SCRIPT_DIR}/lib" "${SCRIPT_DIR}"/{
 fi
 
 grep -q 'pull_policy: never' "${SCRIPT_DIR}/compose.yml" || fail 'pull_policy is not disabled'
-grep -q '/v1/\*' "${SCRIPT_DIR}/Caddyfile" || fail 'Caddy does not proxy v1'
-grep -q '/v2/\*' "${SCRIPT_DIR}/Caddyfile" || fail 'Caddy does not proxy v2'
-grep -Fq '@v2SpaNavigation' "${SCRIPT_DIR}/Caddyfile" ||
-  fail 'Caddy does not distinguish v2 SPA navigation from API requests'
-grep -Fq 'header Accept *text/html*' "${SCRIPT_DIR}/Caddyfile" ||
-  fail 'Caddy v2 SPA navigation does not require an HTML accept header'
-spa_handle_line="$(grep -n 'handle @v2SpaNavigation' "${SCRIPT_DIR}/Caddyfile" | cut -d: -f1)"
-api_handle_line="$(grep -n 'handle @api' "${SCRIPT_DIR}/Caddyfile" | cut -d: -f1)"
-[ -n "$spa_handle_line" ] && [ -n "$api_handle_line" ] && [ "$spa_handle_line" -lt "$api_handle_line" ] ||
-  fail 'Caddy v2 SPA navigation must be handled before the v2 API proxy'
+grep -Fq 'handle_path /api/*' "${SCRIPT_DIR}/Caddyfile" ||
+  fail 'Caddy does not proxy and strip the dedicated /api prefix'
+if rg -n '@v2SpaNavigation|header Accept|@api path .* /v[12]/\*' "${SCRIPT_DIR}/Caddyfile"; then
+  fail 'Caddy still multiplexes SPA and API requests by Accept'
+fi
+grep -Fq 'VITE_DATABENCH_API_BASE_URL=/api' "${SCRIPT_DIR}/Dockerfile.web" ||
+  fail 'offline Web image does not default the API base to /api'
+grep -Fq 'VITE_DATABENCH_API_BASE_URL=/api' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not pin the Web API base to /api'
+grep -Fq "fetch('http://web/api/health')" "${SCRIPT_DIR}/lib/health.sh" ||
+  fail 'gateway readiness does not check the prefixed API health endpoint'
 grep -Fq '/v2/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
-  fail 'offline smoke does not cover the shared v2 SPA/API path'
+  fail 'offline smoke does not cover the v2 SPA page path'
+grep -Fq '/api/v2/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
+  fail 'offline smoke does not cover the distinct v2 API path'
 
 for document in README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md; do
   [ -f "${SCRIPT_DIR}/${document}" ] || fail "offline document is missing: $document"
 done
+if rg -n 'http://127\.0\.0\.1/(health|version|capabilities|openapi\.json|v1/)' \
+  "${SCRIPT_DIR}/DEPLOYMENT-GUIDE.zh-CN.md" "${SCRIPT_DIR}/TROUBLESHOOTING.zh-CN.md"; then
+  fail 'offline documentation still uses an unprefixed external API URL'
+fi
+grep -Fq 'http://127.0.0.1/api/version' "${SCRIPT_DIR}/DEPLOYMENT-GUIDE.zh-CN.md" ||
+  fail 'deployment guide does not verify the prefixed version endpoint'
+grep -Fq '默认 API base 应为 `/api`' "${SCRIPT_DIR}/TROUBLESHOOTING.zh-CN.md" ||
+  fail 'troubleshooting guide does not explain the offline API base'
 grep -Fq '(DEPLOYMENT-GUIDE.zh-CN.md)' "${SCRIPT_DIR}/README.zh-CN.md" ||
   fail 'README does not link the deployment guide'
 grep -Fq '(TROUBLESHOOTING.zh-CN.md)' "${SCRIPT_DIR}/README.zh-CN.md" ||

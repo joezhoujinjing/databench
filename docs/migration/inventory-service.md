@@ -849,7 +849,8 @@
 
 前端 HTTP 细节：
 
-- `buildUrl` 只拼 origin 和 path；API base 不应包含 path。
+- `buildUrl` 拼接 API base 和资源 path；base 可为 origin、同源 `/api` 或绝对 URL 的网关
+  path prefix，但不应包含 `/v1`、`/v2` 等资源前缀。
 - bearer token 放 `Authorization: Bearer ...` header；后端当前没有鉴权逻辑，但 CORS 声明“tokens go in headers”。
 - JSON 请求设置 `Content-Type: application/json`；multipart 请求不手写 content-type。
 - `request` 对非 2xx 解析统一 envelope，也兼容 legacy FastAPI `{detail}`。

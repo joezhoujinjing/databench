@@ -38,7 +38,7 @@ wait_gateway() {
   local elapsed=0
   while [ "$elapsed" -lt "$timeout" ]; do
     if compose_for_release "$release_dir" exec -T api node -e \
-      "fetch('http://web/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))"; then
+      "fetch('http://web/api/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))"; then
       return 0
     fi
     sleep 2

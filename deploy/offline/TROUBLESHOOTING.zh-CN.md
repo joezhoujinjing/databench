@@ -245,7 +245,7 @@ sudo databenchctl doctor
 
 ```bash
 docker inspect --format '{{.Config.Image}}' databench-offline-api
-curl -fsS http://127.0.0.1/version
+curl -fsS http://127.0.0.1/api/version
 sudo databenchctl version
 ```
 
@@ -255,29 +255,38 @@ sudo databenchctl version
 
 ```bash
 docker logs --tail 200 databench-offline-web
-curl -v http://127.0.0.1/health
+curl -v http://127.0.0.1/api/health
 docker inspect --format '{{.State.Status}}' databench-offline-api
 ```
 
 - 本机正常、客户端失败：检查现场防火墙、路由和允许 CIDR；
 - 本机也失败且 Web running：检查 Caddy 日志和 API 状态；
 - 502：通常是 API 未运行或尚未 healthy；
-- SPA 能打开但 API 请求失败：检查 `/v1/*`、`/v2/*`、`/version` 是否经同一地址访问。
+- SPA 能打开但 API 请求失败：检查请求 URL 是否为 `/api/v1/*`、`/api/v2/*`、
+  `/api/version`，且响应 `Content-Type` 是 JSON。
 
-### 7.3 V2 页面直接打开或刷新后返回 404 JSON
+### 7.3 页面正常，但 API 返回 HTML 或显示“后端不可达”
 
-V2 SPA 页面和 V2 API 共用 `/v2` 路径。正确的 Caddy 配置会按 `Accept` 请求头区分浏览器
-页面导航和 API 请求：`text/html` 返回 SPA，JSON/API 请求转发到 API 容器。
+离线部署已经把页面和 API 分成不同 URL：页面保持 `/v2/...`，API 统一使用 `/api/...`。
+Caddy 去掉 `/api` 后再转给后端，不再按 `Accept` 分流，也不要求全站禁止缓存。
 
 ```bash
-curl -fsS -H 'Accept: text/html' 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
-curl -fsS -H 'Accept: application/json' 'http://127.0.0.1/v2/transforms'
+curl -fsS 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
+curl -fsS -D- 'http://127.0.0.1/api/v2/transforms' -o /tmp/databench-api-response.json
+head -c 200 /tmp/databench-api-response.json
 docker inspect --format '{{.Config.Image}}' databench-offline-web
 ```
 
-第一条若返回 API 404，说明仍在运行旧 Web 镜像或当前 release 的 Caddy 配置不匹配。不要
-把 `/v2/*` 整体改成静态路由，否则真实 V2 API 会失效；应重新安装或升级到包含该修复的完整
-离线发布包。
+第一条必须是 SPA HTML；第二条必须包含 JSON `Content-Type`，正文不能是 `index.html`。
+
+- 浏览器 Network 中 Request URL 仍是 `/v2/...`：旧页面标签页或旧 Web 资源仍在运行，先做一次
+  强制刷新；再打开连接设置，点击 Reset 后 Apply，默认 API base 应为 `/api`。
+- `/api/v2/...` 返回 HTML：当前 Web 镜像或 Caddy 配置仍是旧版本，确认容器镜像后使用更高版本
+  的完整离线包升级，不要手工编辑已安装 release。
+- `/api/v2/...` 返回 502：API 容器未健康，按 7.1 检查。
+
+这次修复不依赖关闭浏览器缓存。页面 URL 与 API URL 不同后，浏览器缓存键天然隔离；升级时
+已有打开的旧标签页仍需刷新一次，之后不需要长期禁用缓存。
 
 ### 7.4 v2 records/export 报只读文件系统
 
@@ -379,7 +388,7 @@ previous release <version> is serving again
 ```bash
 sudo databenchctl version
 sudo databenchctl doctor
-curl -fsS http://127.0.0.1/version
+curl -fsS http://127.0.0.1/api/version
 ```
 
 保留失败目标包和 pre-upgrade backup，修复发布问题后生成更高的新版本；不要用相同版本覆盖。
@@ -411,7 +420,7 @@ sudo docker compose --project-name databench-offline \
 
 不要调用 `<previous-version>/rollback.sh <previous-version>`：此时 `current` 尚未切到失败目标，
 本来就指向 previous release，该命令会报 `target is already current`。服务启动后检查
-`databenchctl status`、`databenchctl doctor` 和 `/version`；不能确认 contract 或 restore 失败时，
+`databenchctl status`、`databenchctl doctor` 和 `/api/version`；不能确认 contract 或 restore 失败时，
 停止操作并交由发布/数据库负责人处理。
 
 ### 10.4 回滚要求 `--backup`

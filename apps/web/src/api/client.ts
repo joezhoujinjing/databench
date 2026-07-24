@@ -137,8 +137,14 @@ export function buildUrl(base: string, path: string, query?: Record<string, unkn
     return `${pathname}${suffix}`
   }
 
-  const url = new URL(pathname, `${normalizedBase}/`)
+  if (normalizedBase.startsWith('/')) {
+    return `${normalizedBase}${pathname}${suffix}`
+  }
+
+  const url = new URL(normalizedBase)
+  url.pathname = `${url.pathname.replace(/\/+$/u, '')}${pathname}`
   url.search = queryString
+  url.hash = ''
   return url.toString()
 }
 

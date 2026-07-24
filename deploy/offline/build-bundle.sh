@@ -88,6 +88,7 @@ docker buildx build \
   --load \
   --label "org.opencontainers.image.revision=${GIT_SHA}" \
   --label "org.opencontainers.image.version=${VERSION}" \
+  --build-arg "VITE_DATABENCH_API_BASE_URL=/api" \
   --file deploy/offline/Dockerfile.web \
   --tag "$WEB_IMAGE" \
   .

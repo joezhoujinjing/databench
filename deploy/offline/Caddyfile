@@ -6,21 +6,7 @@
 :80 {
 	encode gzip
 
-	# The v2 SPA and API intentionally share the /v2 namespace. Browser document
-	# navigations must reach index.html, while fetch/curl API requests still proxy.
-	@v2SpaNavigation {
-		method GET
-		path /v2 /v2/*
-		header Accept *text/html*
-	}
-	handle @v2SpaNavigation {
-		root * /srv
-		try_files {path} /index.html
-		file_server
-	}
-
-	@api path /health /version /capabilities /openapi.json /v1/* /v2/*
-	handle @api {
+	handle_path /api/* {
 		reverse_proxy api:8000
 	}
 
