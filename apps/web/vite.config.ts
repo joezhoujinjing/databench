@@ -17,7 +17,12 @@ export default defineConfig({
       '/health': 'http://127.0.0.1:8000',
       '/openapi.json': 'http://127.0.0.1:8000',
       '/v1': 'http://127.0.0.1:8000',
-      '/v2': 'http://127.0.0.1:8000',
+      '/v2': {
+        target: 'http://127.0.0.1:8000',
+        bypass(request) {
+          if (request.headers.accept?.includes('text/html')) return '/index.html'
+        },
+      },
       '/version': 'http://127.0.0.1:8000',
     },
   },

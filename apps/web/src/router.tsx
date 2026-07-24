@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter, Navigate } from '@tanstack/react-router'
 import { RootLayout } from './routes/__root.js'
 import { DatasetDetailPage } from './routes/datasets.$ref.js'
 import { DatasetsPage } from './routes/datasets.index.js'
@@ -15,8 +15,12 @@ import { VocabulariesPage } from './routes/vocabularies.index.js'
 import { VocabularyCreatePage } from './routes/vocabularies.new.js'
 import { V2DatasetDetailPage } from './v2/routes/dataset-detail.js'
 import { V2DatasetsPage } from './v2/routes/datasets.js'
+import { V2ExportPage } from './v2/routes/export.js'
+import { V2IngestPage } from './v2/routes/ingest.js'
 import { V2Layout } from './v2/routes/layout.js'
+import { V2LineagePage } from './v2/routes/lineage.js'
 import { V2RecordDetailPage } from './v2/routes/record-detail.js'
+import { V2TransformsPage } from './v2/routes/transforms.js'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -107,6 +111,12 @@ const v2DatasetsRoute = createRoute({
   component: V2DatasetsPage,
 })
 
+const v2IndexRoute = createRoute({
+  getParentRoute: () => v2Route,
+  path: '/',
+  component: V2IndexRedirect,
+})
+
 const v2DatasetDetailRoute = createRoute({
   getParentRoute: () => v2Route,
   path: '/datasets/$ref',
@@ -119,11 +129,44 @@ const v2RecordDetailRoute = createRoute({
   component: V2RecordDetailPage,
 })
 
+const v2IngestRoute = createRoute({
+  getParentRoute: () => v2Route,
+  path: '/ingest',
+  component: V2IngestPage,
+})
+
+const v2TransformsRoute = createRoute({
+  getParentRoute: () => v2Route,
+  path: '/transforms',
+  component: V2TransformsPage,
+})
+
+const v2LineageRoute = createRoute({
+  getParentRoute: () => v2Route,
+  path: '/lineage/$ref',
+  component: V2LineagePage,
+})
+
+const v2ExportRoute = createRoute({
+  getParentRoute: () => v2Route,
+  path: '/export/$ref',
+  component: V2ExportPage,
+})
+
 const v2RouteTree = v2Route.addChildren([
+  v2IndexRoute,
   v2DatasetsRoute,
   v2DatasetDetailRoute,
   v2RecordDetailRoute,
+  v2IngestRoute,
+  v2TransformsRoute,
+  v2LineageRoute,
+  v2ExportRoute,
 ])
+
+function V2IndexRedirect() {
+  return <Navigate replace to="/v2/datasets" />
+}
 
 const routeTree = rootRoute.addChildren([
   indexRoute,

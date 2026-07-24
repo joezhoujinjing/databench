@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { ShieldAlert } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isApiError } from '@/api/errors.js'
 import { CopyTextButton } from '@/components/common/CopyTextButton.js'
@@ -30,6 +31,8 @@ export function V2ReadErrorState({
   const audit = useV2Audit(identifier)
   const kind = classifyV2ReadError(error)
   const requestId = isApiError(error) ? error.requestId : undefined
+  const controllerRef = useRef<AbortController | null>(null)
+  useEffect(() => () => controllerRef.current?.abort(), [])
 
   if (kind !== 'integrity') {
     return (
@@ -73,7 +76,17 @@ export function V2ReadErrorState({
       <div className="flex flex-wrap gap-2">
         <Button
           disabled={audit.isPending}
-          onClick={() => audit.mutate()}
+          onClick={() => {
+            controllerRef.current?.abort()
+            const controller = new AbortController()
+            controllerRef.current = controller
+            audit.mutate(controller.signal, {
+              onSettled: () => {
+                if (controllerRef.current === controller) controllerRef.current = null
+                if (controller.signal.aborted) audit.reset()
+              },
+            })
+          }}
           type="button"
           variant="outline"
         >

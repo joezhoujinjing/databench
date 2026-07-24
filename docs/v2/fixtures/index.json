@@ -242,7 +242,7 @@
       "path": "apps/web/test/golden/fixtures/v2/web-v2-mutations-export.fixture.json",
       "assertion": "Ingest, transform, lineage, fidelity review and bounded download complete safely",
       "source": "TECHNICAL-DESIGN-17.2.5-17.2.7",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "v2-fault-security-capacity-matrix",

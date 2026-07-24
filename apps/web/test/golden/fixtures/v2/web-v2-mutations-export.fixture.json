@@ -1,0 +1,119 @@
+{
+  "versions": {
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "output": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "current": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "manifest": {
+    "manifest_version": "2.0.0",
+    "dataset_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "record_schema_version": "2.0.0",
+    "identity_profile": "databench-v2-jcs-1",
+    "layout_version": "record-json-v1",
+    "hash_algorithm": "blake3",
+    "artifact_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "artifact_size_bytes": 128,
+    "num_records": 1,
+    "columns": ["record_id", "record_digest", "record_json"]
+  },
+  "ingest_result": {
+    "dataset_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "manifest": {
+      "manifest_version": "2.0.0",
+      "dataset_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "record_schema_version": "2.0.0",
+      "identity_profile": "databench-v2-jcs-1",
+      "layout_version": "record-json-v1",
+      "hash_algorithm": "blake3",
+      "artifact_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "artifact_size_bytes": 96,
+      "num_records": 1,
+      "columns": ["record_id", "record_digest", "record_json"]
+    },
+    "ref_update": {
+      "status": "updated",
+      "ref_name": "main",
+      "previous_version": null,
+      "current_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "transform": {
+    "name": "sample_n",
+    "version": "1",
+    "identity_mode": "preserve",
+    "params_schema": {
+      "type": "object",
+      "properties": { "n": { "type": "integer", "minimum": 1 } },
+      "required": ["n"],
+      "additionalProperties": false
+    }
+  },
+  "ref_conflict": {
+    "error": {
+      "code": "ref_conflict",
+      "message": "ref moved",
+      "detail": {
+        "ref_name": "main",
+        "expected_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "current_version": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "new_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "new_dataset_committed": true
+      }
+    }
+  },
+  "lineage": {
+    "root_dataset_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "nodes": [
+      {
+        "dataset_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "manifest": {
+          "manifest_version": "2.0.0",
+          "dataset_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "record_schema_version": "2.0.0",
+          "identity_profile": "databench-v2-jcs-1",
+          "layout_version": "record-json-v1",
+          "hash_algorithm": "blake3",
+          "artifact_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "artifact_size_bytes": 128,
+          "num_records": 1,
+          "columns": ["record_id", "record_digest", "record_json"]
+        }
+      }
+    ],
+    "edges": [
+      {
+        "run_id": "run_fixture",
+        "input_dataset_versions": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "output_dataset_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "truncated": true,
+    "next_cursor": "cursor-2"
+  },
+  "converter": {
+    "name": "canonical-jsonl",
+    "version": "1",
+    "task_views": ["canonical"],
+    "options_schema": { "type": "object", "additionalProperties": false },
+    "media_type": "application/x-ndjson",
+    "export_fidelity_profile": "databench-export-fidelity-1"
+  },
+  "export_plan": {
+    "dataset_version": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "converter": "canonical-jsonl",
+    "converter_version": "1",
+    "normalized_options": {},
+    "export_fidelity_profile": "databench-export-fidelity-1",
+    "fidelity": {
+      "preserved": ["record"],
+      "changes": []
+    },
+    "fidelity_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "config_hints": {},
+    "output_count": 1,
+    "media_type": "application/x-ndjson",
+    "suggested_filename": "dataset.jsonl"
+  }
+}

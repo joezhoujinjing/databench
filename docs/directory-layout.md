@@ -101,10 +101,10 @@ apps/web/
    │  ├─ config.ts             # 连接配置(API base)
    │  └─ hooks.ts              # 每端点的 TanStack Query hooks
    ├─ v2/                       # Post-training V2 独立 vertical slice
-   │  ├─ api/                   # generated aliases、exact-version query keys与只读 hooks
-   │  ├─ components/records/    # Unified Record、四类 Part、候选/信号/关系与安全 raw JSON
-   │  ├─ features/datasets/     # refs、锁定快照与虚拟化 record summaries
-   │  └─ routes/                # 仅包裹 /v2 的 capability gate与 read routes
+   │  ├─ api/                   # generated aliases、session query keys、V2 client/hooks与受控流式 export
+   │  ├─ components/            # Unified Record、Ref冲突恢复、fidelity review与错误状态
+   │  ├─ features/              # datasets/ingest/transforms/lineage/export 独立页面实现
+   │  └─ routes/                # 仅包裹 /v2 的 capability gate与全部 V2 routes
    ├─ components/
    │  ├─ ui/                   # shadcn/ui 生成的基础组件(button/dialog/table/...)
    │  ├─ samples/              # VirtualizedSamples、SampleView(TanStack Virtual)

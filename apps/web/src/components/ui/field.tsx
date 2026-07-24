@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils.js'
 
 export function Field({
@@ -22,5 +22,16 @@ export function Field({
 }
 
 export function FormError({ children }: { children: ReactNode }) {
-  return <div className="text-danger text-sm leading-6">{children}</div>
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => ref.current?.focus(), [])
+  return (
+    <div
+      className="text-danger text-sm leading-6 outline-none"
+      ref={ref}
+      role="alert"
+      tabIndex={-1}
+    >
+      {children}
+    </div>
+  )
 }

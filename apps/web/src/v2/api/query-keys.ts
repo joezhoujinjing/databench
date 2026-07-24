@@ -6,7 +6,12 @@ export const v2QueryKeys = {
     [scope, base, 'v2', 'dataset', version, 'record', recordId] as const,
   records: (scope: string, base: string, version: string, limit: number) =>
     [scope, base, 'v2', 'dataset', version, 'records', limit] as const,
+  converters: (scope: string, base: string) => [scope, base, 'v2', 'converters'] as const,
+  lineage: (scope: string, base: string, version: string, maxDepth: number, maxNodes: number) =>
+    [scope, base, 'v2', 'lineage', version, maxDepth, maxNodes] as const,
+  refsRoot: (scope: string, base: string) => [scope, base, 'v2', 'refs'] as const,
   refs: (scope: string, base: string, limit: number) => [scope, base, 'v2', 'refs', limit] as const,
   resolution: (scope: string, base: string, ref: string) =>
     [scope, base, 'v2', 'resolution', ref] as const,
+  transforms: (scope: string, base: string) => [scope, base, 'v2', 'transforms'] as const,
 } as const

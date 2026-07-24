@@ -1,5 +1,6 @@
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { Layers3 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FEATURES, useModuleEnabled } from '@/api/capabilities.js'
 import { CapabilityGate } from '@/components/shell/CapabilityGate.js'
@@ -17,9 +18,13 @@ export function RootLayout() {
   const transformsEnabled = useModuleEnabled(FEATURES.transforms)
   const vocabulariesEnabled = useModuleEnabled(FEATURES.vocabularies)
   const v2State = usePostTrainingV2State()
-  const isV2Route = useRouterState({
-    select: (state) => isV2RoutePath(state.location.pathname),
-  })
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const isV2Route = isV2RoutePath(pathname)
+  const mainRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    void pathname
+    mainRef.current?.focus()
+  }, [pathname])
 
   return (
     <div className="min-h-dvh bg-background/95 text-foreground">
@@ -51,7 +56,7 @@ export function RootLayout() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[100rem] px-6 py-8">
+      <main className="mx-auto max-w-[100rem] px-6 py-8 outline-none" ref={mainRef} tabIndex={-1}>
         {isV2Route ? (
           <Outlet />
         ) : (

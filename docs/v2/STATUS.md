@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V15
-last_completed_step: V14
+current_step: V16
+last_completed_step: V15
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V15 — Web ingest/transform/lineage/export
+- **下一步:** 按 owner 2026-07-24 决定暂停在 V15 完成态；V16/V17 暂不开始
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -35,7 +35,7 @@ capability_enabled: false
 | V12 | `/v2` API、OpenAPI与 generated client | ✅ | 当前分支 | GV12 | 15个operation、流式multipart、typed errors与真实HTTP lifecycle均已过闸门 |
 | V13 | `databench v2` CLI | ✅ | 当前分支 | GV13 | 完整命令面、流式输出、原子文件写入与取消边界已过闸门 |
 | V14 | Web foundation、refs与 record read | ✅ | 当前分支 | GV14 | capability gate、session隔离、exact-version读取与完整Unified Record renderer已过闸门 |
-| V15 | Web ingest/transform/lineage/export | ⬜ | | GV15 | |
+| V15 | Web ingest/transform/lineage/export | ✅ | 当前分支 | GV15 | 桌面真实电缆 JSONL 浏览器 E2E 通过 |
 | V16 | Recovery、安全与容量 | ⬜ | | GV16 | |
 | V17 | Final gate与 capability发布准备 | ⬜ | | GV-final | |
 
@@ -306,3 +306,22 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - `pnpm lint`（427 files）、`pnpm build`（12 tasks）、`pnpm typecheck`（21 tasks）、`pnpm test`、
   `pnpm openapi:check`、`pnpm peers check`、`pnpm v2:status:check`与`git diff --check`全部通过；
   capability继续保持关闭。
+
+## V15 Gate 记录
+
+- canonical JSONL上传、可选Ref CAS、五种transform registry与ordered inputs、参数编辑、identity mode、
+  Ref 409三种显式恢复、有界lineage及文本等价视图、fidelity inspect/确认和exact-version export均已落地；
+- Blob fallback按累计字节限制256 MiB；File System Access流式写入、响应头校验、取消及失败清理均有
+  回归；中英文、route focus、表单错误焦点与ARIA名称已覆盖；
+- 使用`/Users/hanlu/Desktop/电缆_DEMO_20260723.v2.jsonl`在真实浏览器、本地Postgres与MinIO完成
+  ingest→499条records→record detail→sample transform→Ref conflict/recovery→lineage→inspect→export；
+  原始数据集版本为`861e37750c029dac5c63eb4222cf43e426c4a720def7183dbedf41f5dde26909`；
+- 499条canonical export为1,096,832 bytes，与只读源文件逐字节相同，SHA-256均为
+  `2306f60410a478043eaf1263c0e728cda4dd51c6f69a96974e4d9d6105f7d374`；真实浏览器中的
+  File System Access写入同样完成1,096,832 bytes并正常close、无abort；11条sample export逐record
+  与源文件对应记录完全相同；
+- E2E暴露并修复ordered input change handler延迟读取React event导致页面崩溃，以及Vite `/v2`
+  proxy吞掉SPA直接刷新；浏览器已验证精确V2 URL刷新返回SPA且API请求仍正确代理；
+- 最终Web build通过；Web typecheck通过，suite 39 files、86/86 tests通过；定向Biome检查64 files、
+  `pnpm v2:status:check`与`git diff --check`通过；此前V15全仓build、lint、OpenAPI、peers gate均已通过；
+- V15代码完成后按owner决定暂停，不进入V16/V17；capability继续保持关闭。

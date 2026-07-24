@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useBackend } from '@/api/backend.js'
 import { ApiError } from '@/api/errors.js'
 import { checkCompatibility } from '@/api/version.js'
@@ -8,11 +8,18 @@ import {
   describeDatasetV2,
   getCapabilitiesV2,
   getDatasetRecordV2,
+  getLineageV2,
+  ingestCanonicalDatasetV2,
+  inspectExportV2,
+  listConvertersV2,
   listDatasetRecordsV2,
   listRefsV2,
+  listTransformsV2,
+  putRefV2,
+  runTransformV2,
 } from './client.js'
 import { v2QueryKeys } from './query-keys.js'
-import type { RecordPageV2, RefPageV2 } from './types.js'
+import type { DatasetLineageV2, RecordPageV2, RefPageV2 } from './types.js'
 
 const IMMUTABLE_QUERY = {
   gcTime: 30 * 60 * 1000,
@@ -118,7 +125,115 @@ export function useV2Audit(refOrVersion: string) {
   const { base, token } = useBackend()
 
   return useMutation({
-    mutationFn: () => auditDatasetV2({ base, refOrVersion, token }),
+    mutationFn: (signal?: AbortSignal) =>
+      auditDatasetV2({
+        base,
+        refOrVersion,
+        token,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+  })
+}
+
+export function useV2Ingest() {
+  const { base, connectionScope, token } = useBackend()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (
+      variables: Omit<Parameters<typeof ingestCanonicalDatasetV2>[0], 'base' | 'token'>,
+    ) => ingestCanonicalDatasetV2({ ...variables, base, token }),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: v2QueryKeys.refsRoot(connectionScope, base) })
+      if (result.ref_update.status === 'updated') {
+        await queryClient.invalidateQueries({
+          queryKey: v2QueryKeys.resolution(connectionScope, base, result.ref_update.ref_name),
+        })
+      }
+    },
+  })
+}
+
+export function useV2Transforms() {
+  const { base, connectionScope, token } = useBackend()
+  return useQuery({
+    queryFn: ({ signal }) => listTransformsV2({ base, signal, token }),
+    queryKey: v2QueryKeys.transforms(connectionScope, base),
+    staleTime: Number.POSITIVE_INFINITY,
+  })
+}
+
+export function useV2RunTransform() {
+  const { base, connectionScope, token } = useBackend()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (variables: Omit<Parameters<typeof runTransformV2>[0], 'base' | 'token'>) =>
+      runTransformV2({ ...variables, base, token }),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: v2QueryKeys.refsRoot(connectionScope, base) })
+      if (result.ref_update.status === 'updated') {
+        await queryClient.invalidateQueries({
+          queryKey: v2QueryKeys.resolution(connectionScope, base, result.ref_update.ref_name),
+        })
+      }
+    },
+  })
+}
+
+export function useV2PutRef() {
+  const { base, connectionScope, token } = useBackend()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (variables: Omit<Parameters<typeof putRefV2>[0], 'base' | 'token'>) =>
+      putRefV2({ ...variables, base, token }),
+    onSuccess: async (ref) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: v2QueryKeys.refsRoot(connectionScope, base) }),
+        queryClient.invalidateQueries({
+          queryKey: v2QueryKeys.resolution(connectionScope, base, ref.name),
+        }),
+      ])
+    },
+  })
+}
+
+export function useV2Lineage(version: string, maxDepth = 8, maxNodes = 100) {
+  const { base, connectionScope, token } = useBackend()
+  return useInfiniteQuery({
+    ...IMMUTABLE_QUERY,
+    enabled: version.trim() !== '',
+    getNextPageParam: nextLineageCursor,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      getLineageV2({
+        base,
+        cursor: pageParam,
+        maxDepth,
+        maxNodes,
+        refOrVersion: version,
+        signal,
+        token,
+      }),
+    queryKey: v2QueryKeys.lineage(connectionScope, base, version, maxDepth, maxNodes),
+  })
+}
+
+export function useV2Converters() {
+  const { base, connectionScope, token } = useBackend()
+  return useQuery({
+    queryFn: ({ signal }) => listConvertersV2({ base, signal, token }),
+    queryKey: v2QueryKeys.converters(connectionScope, base),
+    staleTime: Number.POSITIVE_INFINITY,
+  })
+}
+
+export function useV2InspectExport() {
+  const { base, token } = useBackend()
+  return useMutation({
+    mutationFn: (variables: Omit<Parameters<typeof inspectExportV2>[0], 'base' | 'token'>) =>
+      inspectExportV2({ ...variables, base, token }),
   })
 }
 
@@ -137,4 +252,13 @@ export function nextRecordOffset(lastPage: RecordPageV2): number | undefined {
   if (lastPage.items.length === 0) return undefined
   const next = lastPage.offset + lastPage.items.length
   return next < lastPage.total ? next : undefined
+}
+
+export function nextLineageCursor(
+  lastPage: DatasetLineageV2,
+  pages: readonly DatasetLineageV2[],
+): string | undefined {
+  const cursor = lastPage.next_cursor
+  if (cursor === null) return undefined
+  return pages.slice(0, -1).some((page) => page.next_cursor === cursor) ? undefined : cursor
 }

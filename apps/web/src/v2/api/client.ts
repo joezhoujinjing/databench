@@ -1,12 +1,29 @@
-import { createApiClient, type OpenApiFetchLike, unwrapOpenApiResponse } from '@/api/client.js'
-import { ApiError } from '@/api/errors.js'
+import {
+  buildUrl,
+  createApiClient,
+  createAuthorizedFetch,
+  type OpenApiFetchLike,
+  unwrapOpenApiResponse,
+} from '@/api/client.js'
+import { ApiError, ensureJsonResponse } from '@/api/errors.js'
 import type {
   AuditResultV2,
   CapabilitiesV2Envelope,
+  ConverterRegistryPageV2,
+  DatasetLineageV2,
   DatasetViewV2,
+  ExportPlanV2,
+  ExportRequestV2,
+  IngestResultV2,
+  InspectExportRequestV2,
+  PutRefRequestV2,
   RecordPageV2,
   RecordViewV2,
+  RefMetadataV2,
   RefPageV2,
+  RunTransformRequestV2,
+  RunTransformResultV2,
+  TransformRegistryPageV2,
 } from './types.js'
 
 export interface V2ReadOptions {
@@ -32,6 +49,38 @@ export interface V2RecordsOptions extends V2DatasetOptions {
 
 export interface V2RecordOptions extends V2DatasetOptions {
   readonly recordId: string
+}
+
+export interface V2IngestOptions extends V2ReadOptions {
+  readonly expectedRefVersion: string | null
+  readonly file: File
+  readonly message: string | null
+  readonly ref: string | null
+}
+
+export interface V2LineageOptions extends V2DatasetOptions {
+  readonly cursor: string | null
+  readonly maxDepth: number
+  readonly maxNodes: number
+}
+
+export interface V2RunTransformOptions extends V2ReadOptions {
+  readonly name: string
+  readonly request: RunTransformRequestV2
+}
+
+export interface V2PutRefOptions extends V2ReadOptions {
+  readonly name: string
+  readonly request: PutRefRequestV2
+}
+
+export interface V2InspectExportOptions extends V2DatasetOptions {
+  readonly request: InspectExportRequestV2
+}
+
+export interface V2ExportOptions extends V2ReadOptions {
+  readonly datasetVersion: string
+  readonly request: ExportRequestV2
 }
 
 export function getCapabilitiesV2(options: V2ReadOptions): Promise<CapabilitiesV2Envelope> {
@@ -69,6 +118,114 @@ export function auditDatasetV2(options: V2DatasetOptions): Promise<AuditResultV2
       ...requestOptions(options.signal),
       params: { path: { ref_or_version: options.refOrVersion } },
     }),
+  )
+}
+
+export async function ingestCanonicalDatasetV2(options: V2IngestOptions): Promise<IngestResultV2> {
+  const form = new FormData()
+  form.append('file', options.file, options.file.name)
+  if (options.ref !== null) form.append('ref', options.ref)
+  if (options.expectedRefVersion !== null) {
+    form.append('expected_ref_version', options.expectedRefVersion)
+  }
+  if (options.message !== null) form.append('message', options.message)
+
+  const response = await authorizedFetch(options)(
+    new Request(buildUrl(options.base, '/v2/datasets:ingest-jsonl'), {
+      body: form,
+      method: 'POST',
+      ...requestOptions(options.signal),
+    }),
+  )
+  await ensureJsonResponse(response)
+  return (await response.json()) as IngestResultV2
+}
+
+export function listTransformsV2(options: V2ReadOptions): Promise<TransformRegistryPageV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).GET('/v2/transforms', requestOptions(options.signal)),
+  )
+}
+
+export function runTransformV2(options: V2RunTransformOptions): Promise<RunTransformResultV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).POST('/v2/transforms/{name}/run', {
+      ...requestOptions(options.signal),
+      body: options.request,
+      params: { path: { name: options.name } },
+    }),
+  )
+}
+
+export function putRefV2(options: V2PutRefOptions): Promise<RefMetadataV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).PUT('/v2/refs/{name}', {
+      ...requestOptions(options.signal),
+      body: options.request,
+      params: { path: { name: options.name } },
+    }),
+  )
+}
+
+export async function getLineageV2(options: V2LineageOptions): Promise<DatasetLineageV2> {
+  const page = await unwrapOpenApiResponse<DatasetLineageV2>(
+    createApiClient(options).GET('/v2/lineage/{ref_or_version}', {
+      ...requestOptions(options.signal),
+      params: {
+        path: { ref_or_version: options.refOrVersion },
+        query: {
+          cursor: options.cursor,
+          max_depth: options.maxDepth,
+          max_nodes: options.maxNodes,
+        },
+      },
+    }),
+  )
+  if (page.root_dataset_version !== options.refOrVersion) {
+    throw new ApiError({
+      code: 'integrity_error',
+      message: 'The lineage page does not match the requested immutable dataset version.',
+      status: 500,
+    })
+  }
+  return page
+}
+
+export function listConvertersV2(options: V2ReadOptions): Promise<ConverterRegistryPageV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).GET('/v2/converters', requestOptions(options.signal)),
+  )
+}
+
+export async function inspectExportV2(options: V2InspectExportOptions): Promise<ExportPlanV2> {
+  const plan = await unwrapOpenApiResponse<ExportPlanV2>(
+    createApiClient(options).POST('/v2/datasets/{ref_or_version}:inspect-export', {
+      ...requestOptions(options.signal),
+      body: options.request,
+      params: { path: { ref_or_version: options.refOrVersion } },
+    }),
+  )
+  if (plan.dataset_version !== options.refOrVersion) {
+    throw new ApiError({
+      code: 'integrity_error',
+      message: 'The export plan does not match the requested immutable dataset version.',
+      status: 500,
+    })
+  }
+  return plan
+}
+
+export function exportDatasetV2Response(options: V2ExportOptions): Promise<Response> {
+  return authorizedFetch(options)(
+    new Request(
+      buildUrl(options.base, `/v2/datasets/${encodeURIComponent(options.datasetVersion)}:export`),
+      {
+        body: JSON.stringify(options.request),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        ...requestOptions(options.signal),
+      },
+    ),
   )
 }
 
@@ -120,4 +277,8 @@ export async function getDatasetRecordV2(options: V2RecordOptions): Promise<Reco
 
 function requestOptions(signal: AbortSignal | undefined): { signal?: AbortSignal } {
   return signal === undefined ? {} : { signal }
+}
+
+function authorizedFetch(options: V2ReadOptions): OpenApiFetchLike {
+  return createAuthorizedFetch(options.token, options.fetch)
 }
