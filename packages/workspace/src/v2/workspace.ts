@@ -2059,7 +2059,7 @@ function runtimeCapability(
 ): PostTrainingV2RuntimeCapability {
   return deepFreeze(
     createPostTrainingV2Capability({
-      enabled: false,
+      enabled: true,
       converters: converterNames,
       limits: {
         max_record_bytes: datasetLimits.max_record_bytes,

@@ -163,7 +163,7 @@ describe('V2 HTTP API', () => {
     expect(JSON.stringify(putRefConflict)).not.toContain('DeterminismConflictErrorResponseV2')
   })
 
-  test('reports disabled V2 capability diagnostics without opening dependencies', async () => {
+  test('reports enabled V2 capability diagnostics without opening dependencies', async () => {
     const fake = createFakeWorkspace()
     const response = await createTestApp({ v2Workspace: fake.workspace }).fetch(
       request('/capabilities'),
@@ -177,7 +177,7 @@ describe('V2 HTTP API', () => {
       }
     }>(response)
 
-    expect(body.post_training_v2.enabled).toBe(false)
+    expect(body.post_training_v2.enabled).toBe(true)
     expect(body.post_training_v2.api_versions).toEqual(['2'])
     expect(body.post_training_v2.converters).toContain('canonical-jsonl')
     expect(body.post_training_v2.limits.max_request_bytes).toBe(1024 * 1024 * 1024)

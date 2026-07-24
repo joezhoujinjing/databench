@@ -78,8 +78,14 @@ if (metadata.last_completed_step !== lastCompleted) {
 if (metadata.current_step !== expectedCurrent) {
   fail(`current_step must be ${expectedCurrent}`)
 }
-if (metadata.capability_enabled !== 'false') {
-  fail('v2 capability must remain false until a separate post-GV-final owner decision')
+if (!['false', 'true'].includes(metadata.capability_enabled)) {
+  fail('capability_enabled must be either false or true')
+}
+if (
+  metadata.capability_enabled === 'true' &&
+  !/^owner-approved-\d{4}-\d{2}-\d{2}$/.test(metadata.capability_owner_decision ?? '')
+) {
+  fail('enabled v2 capability requires a dated capability_owner_decision')
 }
 
 let fixtureIndex

@@ -6,14 +6,16 @@
 <!-- v2-status
 current_step: V16
 last_completed_step: V15
-capability_enabled: false
+capability_enabled: true
+capability_owner_decision: owner-approved-2026-07-24
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
 - **下一步:** 按 owner 2026-07-24 决定暂停在 V15 完成态；V16/V17 暂不开始
-- **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
+- **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
+  不代表 V16、V17 或 GV-final 已完成
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
 ## Step 状态
@@ -324,4 +326,5 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   proxy吞掉SPA直接刷新；浏览器已验证精确V2 URL刷新返回SPA且API请求仍正确代理；
 - 最终Web build通过；Web typecheck通过，suite 39 files、86/86 tests通过；定向Biome检查64 files、
   `pnpm v2:status:check`与`git diff --check`通过；此前V15全仓build、lint、OpenAPI、peers gate均已通过；
-- V15代码完成后按owner决定暂停，不进入V16/V17；capability继续保持关闭。
+- V15代码完成后按owner决定暂停，不进入V16/V17；owner随后于2026-07-24明确要求提前开启
+  capability。运行时和Web入口已开启，但V16/V17仍保持未开始，GV16/GV-final不视为通过。

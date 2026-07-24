@@ -457,7 +457,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         dataset_version: ingested.dataset_version,
         manifest: ingested.manifest,
       })
-      expect(runtime.postTrainingV2Capability().enabled).toBe(false)
+      expect(runtime.postTrainingV2Capability().enabled).toBe(true)
     } finally {
       await Promise.all([runtime.close(), runtime.close()])
     }

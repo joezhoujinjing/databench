@@ -1629,7 +1629,7 @@ describe('V2Workspace production runtime', () => {
 
     const capability = workspace.postTrainingV2Capability()
     expect(capability).toMatchObject({
-      enabled: false,
+      enabled: true,
       api_versions: ['2'],
       record_schema_versions: ['2.0.0'],
       identity_profiles: ['databench-v2-jcs-1'],
