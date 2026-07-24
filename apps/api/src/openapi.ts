@@ -25,5 +25,8 @@ export function openApiConfig(options: CreateAppOptions = {}) {
       version: options.version ?? '0.0.0',
       description: 'Post-training dataset control plane API.',
     },
+    ...(options.openApiServerUrl === undefined
+      ? {}
+      : { servers: [{ url: options.openApiServerUrl }] }),
   }
 }

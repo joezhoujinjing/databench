@@ -36,12 +36,20 @@ grep -Fq 'VITE_DATABENCH_API_BASE_URL=/api' "${SCRIPT_DIR}/Dockerfile.web" ||
   fail 'offline Web image does not default the API base to /api'
 grep -Fq 'VITE_DATABENCH_API_BASE_URL=/api' "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not pin the Web API base to /api'
-grep -Fq "fetch('http://web/api/health')" "${SCRIPT_DIR}/lib/health.sh" ||
+grep -Fq 'fetch("http://web/api/health")' "${SCRIPT_DIR}/lib/health.sh" ||
   fail 'gateway readiness does not check the prefixed API health endpoint'
+grep -Fq 'includes("application/json")' "${SCRIPT_DIR}/lib/health.sh" ||
+  fail 'gateway readiness does not require a JSON response'
+grep -Fq 'body?.status === "ok"' "${SCRIPT_DIR}/lib/health.sh" ||
+  fail 'gateway readiness does not validate the health payload'
+grep -Fq 'DATABENCH_OPENAPI_SERVER_URL: "/api"' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline API does not advertise the external /api OpenAPI server URL'
 grep -Fq '/v2/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
   fail 'offline smoke does not cover the v2 SPA page path'
 grep -Fq '/api/v2/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
   fail 'offline smoke does not cover the distinct v2 API path'
+grep -Fq "document.servers[0]?.url !== '/api'" "${SCRIPT_DIR}/smoke/gateway.mjs" ||
+  fail 'offline smoke does not verify the external OpenAPI server URL'
 
 for document in README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md; do
   [ -f "${SCRIPT_DIR}/${document}" ] || fail "offline document is missing: $document"

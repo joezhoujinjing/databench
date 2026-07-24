@@ -20,6 +20,7 @@ function readVersion(): string {
 const EnvSchema = z.object({
   DATABASE_URL: z.string().optional(),
   DATABENCH_CORS_ORIGINS: z.string().default(''),
+  DATABENCH_OPENAPI_SERVER_URL: z.string().trim().min(1).optional(),
   DATABENCH_ROOT: z.string().default('./bench'),
   DATABENCH_V2_CURSOR_SECRET: z.string().min(16),
   PORT: z.coerce.number().int().positive().default(8000),
@@ -28,6 +29,7 @@ const EnvSchema = z.object({
 export interface ApiConfig {
   readonly corsOrigins: readonly string[]
   readonly databaseUrl?: string
+  readonly openApiServerUrl?: string
   readonly port: number
   readonly storeConfig: NonNullable<WorkspaceOpenOptions['storeConfig']>
   readonly v2CursorSecret: string
@@ -49,12 +51,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     workspaceRoot: parsed.DATABENCH_ROOT,
   }
 
+  const configured =
+    parsed.DATABENCH_OPENAPI_SERVER_URL === undefined
+      ? config
+      : { ...config, openApiServerUrl: parsed.DATABENCH_OPENAPI_SERVER_URL }
+
   if (parsed.DATABASE_URL !== undefined) {
     return {
-      ...config,
+      ...configured,
       databaseUrl: parsed.DATABASE_URL,
     }
   }
 
-  return config
+  return configured
 }

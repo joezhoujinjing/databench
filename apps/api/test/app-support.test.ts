@@ -25,12 +25,14 @@ describe('api support', () => {
     const config = loadConfig({
       DATABENCH_CORS_ORIGINS: ' https://one.example,https://two.example ',
       DATABENCH_OBJECT_STORE: 's3',
+      DATABENCH_OPENAPI_SERVER_URL: ' /api ',
       DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
       S3_BUCKET: 'v2-config-test',
     })
 
     expect(config.v2CursorSecret).toBe('databench-api-v2-config-secret')
     expect(config.corsOrigins).toEqual(['https://one.example', 'https://two.example'])
+    expect(config.openApiServerUrl).toBe('/api')
     expect(config.storeConfig).toMatchObject({ kind: 's3', bucket: 'v2-config-test' })
   })
 
@@ -146,6 +148,7 @@ describe('api support', () => {
   test('entrypoint config is passed into app creation', async () => {
     const app = createAppFromConfig({
       corsOrigins: ['https://web.example.test'],
+      openApiServerUrl: '/api',
       port: 8000,
       storeConfig: {
         bucket: 'databench-test',
@@ -172,12 +175,19 @@ describe('api support', () => {
       }),
     )
     expect(allowed.headers.get('access-control-allow-origin')).toBe('https://web.example.test')
+
+    const openApi = await getJson<OpenApiDocument>(app.fetch(request('/openapi.json')))
+    expect(openApi.servers).toEqual([{ url: '/api' }])
   })
 
   test('openapi document is generated from registered zod routes with error responses', () => {
-    const document = createOpenApiDocument({ version: '1.2.3' }) as OpenApiDocument
+    const document = createOpenApiDocument({
+      openApiServerUrl: '/api',
+      version: '1.2.3',
+    }) as OpenApiDocument
 
     expect(document.info.title).toBe('databench service')
+    expect(document.servers).toEqual([{ url: '/api' }])
     expect(document.components.schemas.ErrorResponse).toBeDefined()
     expect(document.paths['/health']?.get.responses.default).toMatchObject({
       description: 'Error response',
@@ -249,4 +259,5 @@ interface OpenApiDocument {
       }
     }
   >
+  readonly servers?: readonly { readonly url: string }[]
 }

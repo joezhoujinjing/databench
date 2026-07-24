@@ -20,6 +20,7 @@ function loadRootEnv(): void {
 export function createAppFromConfig(config: ApiConfig) {
   return createApp({
     ...(config.databaseUrl !== undefined ? { databaseUrl: config.databaseUrl } : {}),
+    ...(config.openApiServerUrl !== undefined ? { openApiServerUrl: config.openApiServerUrl } : {}),
     corsOrigins: config.corsOrigins,
     storeConfig: config.storeConfig,
     v2CursorSecret: config.v2CursorSecret,

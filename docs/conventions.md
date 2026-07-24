@@ -98,6 +98,7 @@ domain、empty version、lineage 与并发 artifact commit 固定向量。
 | `S3_REGION` `S3_BUCKET` | 本地 MinIO bucket 与区域 |
 | `S3_ACCESS_KEY_ID` `S3_SECRET_ACCESS_KEY` `S3_FORCE_PATH_STYLE` | 本地 MinIO 凭据与 path-style 访问 |
 | `DATABENCH_CORS_ORIGINS` | 逗号分隔精确 allowlist(`SVC-02`) |
+| `DATABENCH_OPENAPI_SERVER_URL` | 可选的部署侧 OpenAPI server URL；离线网关固定为 `/api`，直连 API 默认不设置 |
 | `DATABENCH_ROOT` | Workspace 本地根目录 |
 | `PORT` | API 端口 |
 

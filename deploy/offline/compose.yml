@@ -92,6 +92,7 @@ services:
     env_file:
       - /etc/databench/databench.env
     environment:
+      DATABENCH_OPENAPI_SERVER_URL: "/api"
       NODE_ENV: production
       PORT: "8000"
     depends_on:

@@ -89,7 +89,7 @@ npm registry 或其他公网服务。
 | 对象存储 | `DATABENCH_OBJECT_STORE=s3` + MinIO | on-prem production 例外由 ADR 0012 接受 |
 | 健康检查 | API 内部 `/health` 仅 liveness | 外部 `/api/health`；readiness 使用 `databench meta doctor` + lifecycle smoke |
 | Web API base | 同源 `/api` | 仅离线 Web 镜像在 Vite 构建时注入，不影响 ECS/OSS 发布 |
-| OpenAPI/业务路径 | API 内部 `/v1/*`、`/v2/*` + meta paths | 外部统一加 `/api`；Caddy 去前缀后代理 |
+| OpenAPI/业务路径 | API 内部 `/v1/*`、`/v2/*` + meta paths | 外部统一加 `/api`；Caddy 去前缀后代理，文档 `servers.url=/api` |
 | 临时空间 | `/var/lib/databench/.databench-v2-temp` | `/var/lib/databench` 必须挂载数据盘 |
 
 如果后续重构改变以上任一项，只调整应用镜像和契约适配层，不改变离线包总体流程。v2

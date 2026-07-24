@@ -14,6 +14,16 @@ for (const path of apiPaths) {
   if (!response.headers.get('content-type')?.includes('application/json')) {
     throw new Error(`${path} did not return JSON`)
   }
+  if (path === '/api/openapi.json') {
+    const document = await response.json()
+    if (
+      !Array.isArray(document.servers) ||
+      document.servers.length !== 1 ||
+      document.servers[0]?.url !== '/api'
+    ) {
+      throw new Error(`${path} did not advertise /api as its server URL`)
+    }
+  }
 }
 
 const pagePath = '/v2/datasets/system-offline-smoke-v2'

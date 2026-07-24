@@ -21,6 +21,7 @@ export interface CreateAppOptions {
   readonly version?: string
   readonly corsOrigins?: readonly string[]
   readonly databaseUrl?: string
+  readonly openApiServerUrl?: string
   readonly storeConfig?: WorkspaceOpenOptions['storeConfig']
   readonly v2CursorSecret?: Uint8Array | string
   readonly v2Workspace?: ApiV2Workspace

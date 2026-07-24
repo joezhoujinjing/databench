@@ -37,8 +37,17 @@ wait_gateway() {
   local timeout="${2:-120}"
   local elapsed=0
   while [ "$elapsed" -lt "$timeout" ]; do
-    if compose_for_release "$release_dir" exec -T api node -e \
-      "fetch('http://web/api/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))"; then
+    if compose_for_release "$release_dir" exec -T api node -e '
+      fetch("http://web/api/health")
+        .then(async (response) => {
+          if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) {
+            process.exit(1)
+          }
+          const body = await response.json()
+          process.exit(body?.status === "ok" ? 0 : 1)
+        })
+        .catch(() => process.exit(1))
+    '; then
       return 0
     fi
     sleep 2

@@ -283,6 +283,8 @@ curl -fsS 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
 
 `/api/version` 中的 `service_version` 必须等于本次安装版本。离线部署的浏览器页面仍保持
 `/v2/...`，只有 API 调用增加 `/api` 前缀；Caddy 转发时会去掉该前缀，后端内部契约不变。
+`/api/openapi.json` 会声明相对 server URL `/api`，使用该文档生成的客户端也会走正确的网关
+前缀。
 
 从获准内网客户端访问：
 
