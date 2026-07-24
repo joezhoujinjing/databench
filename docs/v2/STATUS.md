@@ -14,8 +14,9 @@ offline_production_release_authorized: true
 
 ## 当前检查点
 
-- **当前分支:** `feat/v2-implementation`
-- **下一步:** 按 owner 2026-07-24 决定暂停在 V15 完成态；V16/V17 暂不开始
+- **当前分支:** `feat/v2-product-cutover`
+- **下一步:** 产品切换 R1 已完成并过闸门；按 [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 进入 R2，
+  删除 v1 API/CLI 可达面并保持 v2 lifecycle 全绿；V16/V17 仍不开始
 - **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
   不代表 V16、V17 或 GV-final 已完成
 - **离线发布:** owner于2026-07-24明确授权当前`main`直接生成production离线包；V16/V17
@@ -24,7 +25,7 @@ offline_production_release_authorized: true
   `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 - **产品切换:** ADR 0013、产品切换技术方案与第三版视觉稿已于 2026-07-24 接受；
-  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0 已完成，R1 Web 单壳切换进行中
+  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0、R1 已完成，下一步为 R2
 
 ## Step 状态
 
@@ -374,3 +375,18 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   build、`pnpm v2:status:check`、`pnpm lint`（455 files）、`pnpm typecheck`（21 tasks）、
   `pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm peers check`与
   `git diff --check`全部通过。
+
+## 2026-07-24 产品切换 R1 Gate 记录
+
+- Web 已改为单层产品壳；一级导航仅保留“数据集 / 导入 / 转换”，无版本产品路由直接复用
+  已验证的 v2 页面；旧 v1 route、页面、专用 hooks、Recipe 与 Vocabularies 产品入口已删除；
+- `/v2` 继续只作为 REST API 与内部协议边界；Vite 不再把 `/v2` HTML 请求回退到 SPA，
+  无版本数据集详情、record、lineage 与 export URL 均可直接刷新；
+- 第三版视觉稿已落地并完成两轮真实浏览器设计 QA，`design-qa.md` 最终为 `passed`；桌面
+  数据加载、11→1 搜索过滤、详情、20条record、record详情、lineage、export、ingest 与 transform
+  均通过，`/recipe` 返回产品404，`/v2/datasets` HTML请求返回API JSON 404；
+- 390×844 CSS viewport 下 `scrollWidth === clientWidth === 381`，console 无 warning/error；
+  对照图与桌面、窄屏证据保存在 `artifacts/design-qa-*.png`；
+- Web 52/52 tests、production build与typecheck通过；`pnpm v2:status:check`、
+  `pnpm openapi:check`、离线脚本测试、`pnpm typecheck`、`pnpm test`（21/21 tasks）、
+  `pnpm lint`（396 files）和`git diff --check`全部通过；仅保留既存的Vite大bundle P3 warning。

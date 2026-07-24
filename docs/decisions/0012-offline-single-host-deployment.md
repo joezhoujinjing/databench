@@ -6,6 +6,7 @@
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
   [ADR 0008](0008-object-store-aliyun-oss.md)、
   [ADR 0011](0011-identity-hashing-versioning-v2.md)
+- **产品路由修订:** [ADR 0013](0013-v2-product-cutover-and-v1-retirement.md) 将 SPA 改为无版本路径
 - **详细方案:**
   [内网单机离线发布方案](../deployment/offline-single-host-plan.zh-CN.md)
 
@@ -26,8 +27,9 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
    bucket-scoped app access key。
 4. 宿主机只暴露 Web 入口。离线 Web 的后端 base 固定为 `/api`，Caddy 使用
    `handle_path /api/*` 去掉此前缀后转发到 API；因此外部 API 是 `/api/health`、
-   `/api/v1/*`、`/api/v2/*` 等，Hono 内部路由与 OpenAPI paths 保持不变。网关裸
-   `/v1/*`、`/v2/*` 不再解释为 API，其中 `/v2/*` 可稳定作为 SPA 页面路径；不再通过
+   `/api/v1/*`、`/api/v2/*` 等，Hono 内部路由与 OpenAPI paths 保持不变。产品页面使用
+   `/datasets`、`/ingest`、`/transforms` 等无版本路径；网关裸 `/v1/*`、`/v2/*` 不解释为
+   SPA 或外部 API。不再通过
    `Accept` 头复用同一 URL，避免 HTML/JSON 浏览器缓存冲突。离线 API 通过部署环境仅在
    运行时 OpenAPI 文档中声明 `servers: [{url: "/api"}]`，仓库确定性 OpenAPI 和其他发布
    环境保持不变。API、PG、MinIO 不发布宿主机端口。首版不实现应用鉴权，只允许防火墙

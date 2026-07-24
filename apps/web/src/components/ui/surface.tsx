@@ -19,16 +19,16 @@ export function PageHeader({
   title: ReactNode
 }) {
   return (
-    <div className={cn('flex flex-wrap items-end justify-between gap-5 pb-2', className)}>
+    <div className={cn('flex flex-wrap items-start justify-between gap-5 pb-2', className)}>
       <div className="min-w-0 space-y-2">
         {eyebrow ? (
           <div className="text-muted-foreground text-sm leading-none">{eyebrow}</div>
         ) : null}
-        <h1 className="text-balance font-semibold text-[2rem] leading-[1.08] tracking-normal">
+        <h1 className="text-balance font-semibold text-[2.25rem] leading-[1.08] tracking-normal">
           {title}
         </h1>
         {description ? (
-          <p className="max-w-3xl text-muted-foreground text-[0.95rem] leading-6">{description}</p>
+          <p className="max-w-3xl text-muted-foreground text-[1.05rem] leading-7">{description}</p>
         ) : null}
       </div>
       {actions ? (

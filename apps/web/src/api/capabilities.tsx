@@ -1,21 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
 import { useBackend } from './backend.js'
-import { queryKeys } from './hooks.js'
 import { getCapabilities, getHealth, getVersion } from './meta.js'
 import type { Capabilities, HealthInfo, VersionInfo } from './types.js'
 import { type Compatibility, checkCompatibility } from './version.js'
 
-export const FEATURES = {
-  export: 'export',
-  jsonlIngest: 'jsonl_ingest',
-  lineage: 'lineage',
-  recipes: 'recipes',
-  transforms: 'transforms',
-  vocabularies: 'vocabularies',
+const metaQueryKeys = {
+  capabilities: (scope: string, base: string) => [scope, base, 'capabilities'] as const,
+  health: (scope: string, base: string) => [scope, base, 'health'] as const,
+  version: (scope: string, base: string) => [scope, base, 'version'] as const,
 } as const
-
-export type FeatureName = (typeof FEATURES)[keyof typeof FEATURES]
 
 interface CapabilitiesContextValue {
   capabilities: Capabilities | undefined
@@ -38,19 +32,19 @@ export function CapabilitiesProvider({ children }: { children: ReactNode }) {
   const { base, connectionScope, token } = useBackend()
   const healthQuery = useQuery({
     queryFn: ({ signal }) => getHealth({ base, signal, token }),
-    queryKey: queryKeys.health(connectionScope, base),
+    queryKey: metaQueryKeys.health(connectionScope, base),
     refetchInterval: 15_000,
     retry: false,
   })
   const capabilitiesQuery = useQuery({
     queryFn: ({ signal }) => getCapabilities({ base, signal, token }),
-    queryKey: queryKeys.capabilities(connectionScope, base),
+    queryKey: metaQueryKeys.capabilities(connectionScope, base),
     refetchInterval: 30_000,
     retry: false,
   })
   const versionQuery = useQuery({
     queryFn: ({ signal }) => getVersion({ base, signal, token }),
-    queryKey: queryKeys.version(connectionScope, base),
+    queryKey: metaQueryKeys.version(connectionScope, base),
     retry: false,
   })
   const compatibility = checkCompatibility(capabilitiesQuery.data)
@@ -90,30 +84,4 @@ export function useCapabilities(): CapabilitiesContextValue {
   }
 
   return value
-}
-
-export function useFeature(feature: FeatureName): boolean {
-  return isFeatureEnabled(useCapabilities().capabilities, feature)
-}
-
-export function useModuleEnabled(feature: FeatureName): boolean {
-  return isModuleEnabled(useCapabilities().capabilities, feature)
-}
-
-export function isFeatureEnabled(
-  capabilities: Capabilities | undefined,
-  feature: FeatureName,
-): boolean {
-  return capabilities?.features[feature] ?? false
-}
-
-export function isModuleEnabled(
-  capabilities: Capabilities | undefined,
-  feature: FeatureName,
-): boolean {
-  if (capabilities === undefined) {
-    return true
-  }
-
-  return capabilities.features[feature] !== false
 }

@@ -26,7 +26,7 @@ for (const path of apiPaths) {
   }
 }
 
-const pagePath = '/v2/datasets/system-offline-smoke-v2'
+const pagePath = '/datasets/system-offline-smoke-v2'
 const apiPath = '/api/v2/datasets/system-offline-smoke-v2'
 const pageResponse = await fetch(origin + pagePath, { headers: { Accept: 'text/html' } })
 if (!pageResponse.ok) throw new Error(`${pagePath} SPA navigation returned ${pageResponse.status}`)
@@ -43,7 +43,7 @@ if (!apiResponse.headers.get('content-type')?.includes('application/json')) {
   throw new Error(`${apiPath} API did not return JSON`)
 }
 
-for (const path of ['/v2/datasets', '/v2/transforms']) {
+for (const path of ['/datasets', '/transforms']) {
   const response = await fetch(origin + path)
   if (!response.ok) throw new Error(`${path} SPA navigation returned ${response.status}`)
   if (!response.headers.get('content-type')?.includes('text/html')) {

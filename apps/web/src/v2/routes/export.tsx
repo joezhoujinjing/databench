@@ -30,5 +30,5 @@ function PinnedExport({ requestedRef }: { requestedRef: string }) {
     )
   }
   if (exactVersion === null) return <Spinner />
-  return <V2ExportPageView exactVersion={exactVersion} requestedRef={requestedRef} />
+  return <V2ExportPageView exactVersion={exactVersion} />
 }

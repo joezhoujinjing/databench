@@ -13,13 +13,12 @@ export function V2RecordDetailView({ view }: { view: RecordViewV2 }) {
       <PageHeader
         actions={
           <Button asChild variant="outline">
-            <Link params={{ ref: view.dataset_version }} to="/v2/datasets/$ref">
+            <Link params={{ ref: view.dataset_version }} to="/datasets/$ref">
               {t('v2.record.back')}
             </Link>
           </Button>
         }
         description={t('v2.record.description')}
-        eyebrow="V2 / record"
         title={view.record.id}
       />
       <RecordView view={view} />

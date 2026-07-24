@@ -127,11 +127,7 @@ export function V2IngestPageView() {
 
   return (
     <PageShell>
-      <PageHeader
-        description={t('v2.ingest.description')}
-        eyebrow={t('v2.ingest.eyebrow')}
-        title={t('v2.ingest.title')}
-      />
+      <PageHeader description={t('v2.ingest.description')} title={t('v2.ingest.title')} />
       <Surface>
         <SurfaceHeader>
           <SurfaceTitle>{t('v2.ingest.upload')}</SurfaceTitle>
@@ -198,7 +194,7 @@ export function V2IngestPageView() {
         error={ingest.error}
         isError={ingest.isError}
         onResolved={(version) => {
-          void navigate({ params: { ref: version }, to: '/v2/datasets/$ref' })
+          void navigate({ params: { ref: version }, to: '/datasets/$ref' })
         }}
         result={ingest.data}
       />
@@ -318,7 +314,7 @@ function JsonArrayCreatePanel() {
         error={create.error}
         isError={create.isError}
         onResolved={(version) => {
-          void navigate({ params: { ref: version }, to: '/v2/datasets/$ref' })
+          void navigate({ params: { ref: version }, to: '/datasets/$ref' })
         }}
         result={create.data}
       />
@@ -357,7 +353,7 @@ function IngestOutcome({
               <KeyValueRow label={t('v2.detail.records')} value={result.manifest.num_records} />
             </KeyValueGrid>
             <Button asChild variant="outline">
-              <Link params={{ ref: result.dataset_version }} to="/v2/datasets/$ref">
+              <Link params={{ ref: result.dataset_version }} to="/datasets/$ref">
                 {t('v2.ingest.openDataset')}
               </Link>
             </Button>

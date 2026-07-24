@@ -47,7 +47,7 @@ export function V2ReadErrorState({
             </Button>
           ) : null}
           <Button asChild variant="outline">
-            <Link to="/v2/datasets">{t('v2.readError.back')}</Link>
+            <Link to="/datasets">{t('v2.readError.back')}</Link>
           </Button>
         </div>
       </section>
@@ -93,7 +93,7 @@ export function V2ReadErrorState({
           {audit.isPending ? t('v2.readError.auditing') : t('v2.readError.audit')}
         </Button>
         <Button asChild variant="outline">
-          <Link to="/v2/datasets">{t('v2.readError.back')}</Link>
+          <Link to="/datasets">{t('v2.readError.back')}</Link>
         </Button>
       </div>
       {audit.isError ? <ErrorState error={audit.error} /> : null}

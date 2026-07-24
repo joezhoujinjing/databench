@@ -8,15 +8,16 @@ describe('i18n resources', () => {
     const enKeys = flattenKeys(en)
     const zhKeys = flattenKeys(zh)
 
-    expect(enKeys).toHaveLength(539)
+    expect(enKeys).toHaveLength(357)
     expect(zhKeys).toEqual(enKeys)
     expect(enKeys).toEqual(
       expect.arrayContaining([
         'health.connected',
         'health.disconnected',
         'health.checking',
-        'vocab.status.draft',
-        'vocab.status.curated',
+        'v2.datasets.title',
+        'v2.transforms.title',
+        'v2.export.title',
       ]),
     )
   })

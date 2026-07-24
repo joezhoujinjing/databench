@@ -17,7 +17,7 @@ export function RecordSummaryRow({
     <Link
       className="grid min-h-24 grid-cols-[minmax(13rem,1.3fr)_minmax(14rem,2fr)_minmax(12rem,1fr)] items-center gap-5 border-border border-b px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none max-md:grid-cols-1"
       params={{ recordId: record.record_id, ref: datasetVersion }}
-      to="/v2/datasets/$ref/records/$recordId"
+      to="/datasets/$ref/records/$recordId"
     >
       <div className="min-w-0">
         <div className="font-mono text-sm" title={record.record_id}>

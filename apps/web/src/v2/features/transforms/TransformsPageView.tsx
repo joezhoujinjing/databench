@@ -46,11 +46,7 @@ export function V2TransformsPageView() {
 
   return (
     <PageShell>
-      <PageHeader
-        description={t('v2.transforms.description')}
-        eyebrow={t('v2.transforms.eyebrow')}
-        title={t('v2.transforms.title')}
-      />
+      <PageHeader description={t('v2.transforms.description')} title={t('v2.transforms.title')} />
       <div className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
         <Surface className="h-fit overflow-hidden">
           <SurfaceHeader>
@@ -76,7 +72,7 @@ export function V2TransformsPageView() {
             >
               <span className="font-medium">{item.name}</span>
               <span className="flex items-center gap-2 text-muted-foreground text-xs">
-                <span>v{item.version}</span>
+                <span>{t('v2.transforms.version', { version: item.version })}</span>
                 <Badge>
                   {item.identity_mode === 'preserve'
                     ? t('v2.transforms.preserve')
@@ -162,7 +158,7 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
           if (controller.signal.aborted) return
           void navigate({
             params: { ref: result.manifest.dataset_version },
-            to: '/v2/datasets/$ref',
+            to: '/datasets/$ref',
           })
         },
         onSettled: () => {
@@ -178,7 +174,7 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
       <SurfaceHeader>
         <div className="flex flex-wrap items-center gap-3">
           <SurfaceTitle>{transform.name}</SurfaceTitle>
-          <Badge>v{transform.version}</Badge>
+          <Badge>{t('v2.transforms.version', { version: transform.version })}</Badge>
           <Badge>
             {transform.identity_mode === 'preserve'
               ? t('v2.transforms.preserve')
@@ -332,7 +328,7 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
             <RefConflictRecovery
               error={run.error}
               onResolved={(version) => {
-                void navigate({ params: { ref: version }, to: '/v2/datasets/$ref' })
+                void navigate({ params: { ref: version }, to: '/datasets/$ref' })
               }}
             />
           ) : (

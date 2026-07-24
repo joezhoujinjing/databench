@@ -55,14 +55,14 @@ export function RefConflictRecovery({
       <div className="flex flex-wrap gap-2">
         {detail.current_version === null ? null : (
           <Button asChild size="sm" variant="outline">
-            <Link params={{ ref: detail.current_version }} to="/v2/datasets/$ref">
+            <Link params={{ ref: detail.current_version }} to="/datasets/$ref">
               {t('v2.conflict.viewCurrent')}
             </Link>
           </Button>
         )}
         {detail.new_dataset_committed ? (
           <Button asChild size="sm" variant="outline">
-            <Link params={{ ref: detail.new_version }} to="/v2/datasets/$ref">
+            <Link params={{ ref: detail.new_version }} to="/datasets/$ref">
               {t('v2.conflict.keepGenerated')}
             </Link>
           </Button>

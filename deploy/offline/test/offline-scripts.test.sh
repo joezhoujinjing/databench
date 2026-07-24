@@ -44,8 +44,8 @@ grep -Fq 'body?.status === "ok"' "${SCRIPT_DIR}/lib/health.sh" ||
   fail 'gateway readiness does not validate the health payload'
 grep -Fq 'DATABENCH_OPENAPI_SERVER_URL: "/api"' "${SCRIPT_DIR}/compose.yml" ||
   fail 'offline API does not advertise the external /api OpenAPI server URL'
-grep -Fq '/v2/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
-  fail 'offline smoke does not cover the v2 SPA page path'
+grep -Fq '/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
+  fail 'offline smoke does not cover the dataset SPA page path'
 grep -Fq '/api/v2/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
   fail 'offline smoke does not cover the distinct v2 API path'
 grep -Fq "document.servers[0]?.url !== '/api'" "${SCRIPT_DIR}/smoke/gateway.mjs" ||

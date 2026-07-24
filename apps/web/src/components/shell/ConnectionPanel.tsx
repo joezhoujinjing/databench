@@ -36,7 +36,7 @@ export function ConnectionPanel() {
       <Button
         aria-label={t('connection.configure')}
         aria-expanded={open}
-        className="px-2.5"
+        className="h-10 px-3 text-base"
         onClick={() => setOpen((value) => !value)}
         size="sm"
         type="button"

@@ -267,11 +267,11 @@ docker inspect --format '{{.State.Status}}' databench-offline-api
 
 ### 7.3 页面正常，但 API 返回 HTML 或显示“后端不可达”
 
-离线部署已经把页面和 API 分成不同 URL：页面保持 `/v2/...`，API 统一使用 `/api/...`。
+离线部署已经把页面和 API 分成不同 URL：页面使用 `/datasets` 等无版本路径，API 统一使用 `/api/...`。
 Caddy 去掉 `/api` 后再转给后端，不再按 `Accept` 分流，也不要求全站禁止缓存。
 
 ```bash
-curl -fsS 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
+curl -fsS 'http://127.0.0.1/datasets' | grep -F '<div id="root"></div>'
 curl -fsS -D- 'http://127.0.0.1/api/v2/transforms' -o /tmp/databench-api-response.json
 head -c 200 /tmp/databench-api-response.json
 docker inspect --format '{{.Config.Image}}' databench-offline-web

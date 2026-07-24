@@ -37,7 +37,7 @@ export function V2LineagePageView({
   function submit(event: FormEvent) {
     event.preventDefault()
     const next = input.trim()
-    if (next !== '') void navigate({ params: { ref: next }, to: '/v2/lineage/$ref' })
+    if (next !== '') void navigate({ params: { ref: next }, to: '/lineage/$ref' })
   }
 
   return (
@@ -45,13 +45,12 @@ export function V2LineagePageView({
       <PageHeader
         actions={
           <Button asChild variant="outline">
-            <Link params={{ ref: exactVersion }} to="/v2/datasets/$ref">
+            <Link params={{ ref: exactVersion }} to="/datasets/$ref">
               {t('v2.lineage.openDataset')}
             </Link>
           </Button>
         }
         description={t('v2.lineage.description')}
-        eyebrow={`V2 / ${requestedRef}`}
         title={t('v2.lineage.title')}
       />
       <Surface>

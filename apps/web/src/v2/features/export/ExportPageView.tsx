@@ -25,13 +25,7 @@ type DownloadState =
   | { cliCommand?: string; error: unknown; kind: 'failed' }
   | { kind: 'cancelled' }
 
-export function V2ExportPageView({
-  exactVersion,
-  requestedRef,
-}: {
-  exactVersion: string
-  requestedRef: string
-}) {
+export function V2ExportPageView({ exactVersion }: { exactVersion: string }) {
   const { t } = useTranslation()
   const backend = useBackend()
   const converters = useV2Converters()
@@ -170,11 +164,7 @@ export function V2ExportPageView({
 
   return (
     <PageShell>
-      <PageHeader
-        description={t('v2.export.description')}
-        eyebrow={`V2 / ${requestedRef}`}
-        title={t('v2.export.title')}
-      />
+      <PageHeader description={t('v2.export.description')} title={t('v2.export.title')} />
       <Surface>
         <SurfaceBody>
           {converters.isLoading ? <Spinner /> : null}

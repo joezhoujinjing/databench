@@ -44,22 +44,21 @@ export function V2DatasetDetailView({
         actions={
           <>
             <Button asChild variant="outline">
-              <Link params={{ ref: pinnedVersion }} to="/v2/lineage/$ref">
+              <Link params={{ ref: pinnedVersion }} to="/lineage/$ref">
                 {t('v2.detail.lineage')}
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link params={{ ref: pinnedVersion }} to="/v2/export/$ref">
+              <Link params={{ ref: pinnedVersion }} to="/export/$ref">
                 {t('v2.detail.export')}
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link to="/v2/datasets">{t('v2.detail.back')}</Link>
+              <Link to="/datasets">{t('v2.detail.back')}</Link>
             </Button>
           </>
         }
         description={t('v2.detail.description')}
-        eyebrow={`V2 / ${requestedRef}`}
         title={requestedRef}
       />
 

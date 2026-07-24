@@ -53,8 +53,7 @@ export function PostTrainingV2Gate({ children }: { children: ReactNode }) {
 function GateBlock({ children, title }: { children: ReactNode; title: string }) {
   return (
     <section className="mx-auto max-w-3xl border-border border-y py-12">
-      <div className="font-medium text-primary text-xs uppercase tracking-[0.16em]">V2</div>
-      <h1 className="mt-3 font-semibold text-2xl">{title}</h1>
+      <h1 className="font-semibold text-2xl">{title}</h1>
       <div className="mt-3 text-muted-foreground text-sm leading-6">{children}</div>
     </section>
   )

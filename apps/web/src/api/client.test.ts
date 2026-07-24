@@ -13,37 +13,21 @@ describe('api client transport', () => {
     expect(serializeQuery({ a: 1, b: null, c: undefined, d: 'x y' })).toBe('a=1&d=x+y')
     expect(buildUrl('', '/health', { ok: true })).toBe('/health?ok=true')
     expect(buildUrl('/api///', '/health', { ok: true })).toBe('/api/health?ok=true')
-    expect(buildUrl('http://api.example.test///', 'v1/refs', { limit: 20 })).toBe(
-      'http://api.example.test/v1/refs?limit=20',
-    )
     expect(buildUrl('http://api.example.test/gateway///', '/v2/refs')).toBe(
       'http://api.example.test/gateway/v2/refs',
     )
   })
 
-  test('raw requests attach per-backend bearer tokens', async () => {
-    const response = await rawRequest('/v1/refs', {
-      base: 'http://api.example.test',
-      fetch(input, init) {
-        expect(String(input)).toBe('http://api.example.test/v1/refs?limit=20')
-        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer token-a')
-        return Promise.resolve(Response.json({ items: [], limit: 20, offset: 0, total: 0 }))
-      },
-      query: { limit: 20, offset: null },
-      token: ' token-a ',
-    })
-
-    expect(response.ok).toBe(true)
-  })
-
-  test('raw requests preserve a same-origin path base', async () => {
+  test('raw requests preserve a same-origin path base and attach bearer tokens', async () => {
     const response = await rawRequest('/v2/refs', {
       base: '/api',
-      fetch(input) {
+      fetch(input, init) {
         expect(String(input)).toBe('/api/v2/refs?limit=1')
+        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer token-a')
         return Promise.resolve(Response.json({ items: [], limit: 1, offset: 0, total: 0 }))
       },
       query: { limit: 1 },
+      token: ' token-a ',
     })
 
     expect(response.ok).toBe(true)

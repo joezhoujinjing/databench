@@ -278,11 +278,11 @@ curl -fsS http://127.0.0.1/api/capabilities
 curl -fsS 'http://127.0.0.1/api/v1/refs?limit=1'
 curl -fsS 'http://127.0.0.1/api/v2/refs?limit=1'
 curl -fsS 'http://127.0.0.1/api/v2/transforms'
-curl -fsS 'http://127.0.0.1/v2/datasets' | grep -F '<div id="root"></div>'
+curl -fsS 'http://127.0.0.1/datasets' | grep -F '<div id="root"></div>'
 ```
 
 `/api/version` 中的 `service_version` 必须等于本次安装版本。离线部署的浏览器页面仍保持
-`/v2/...`，只有 API 调用增加 `/api` 前缀；Caddy 转发时会去掉该前缀，后端内部契约不变。
+无版本产品路径，只有 API 调用使用 `/api/v2/...`；Caddy 转发时会去掉 `/api` 前缀，后端内部契约不变。
 `/api/openapi.json` 会声明相对 server URL `/api`，使用该文档生成的客户端也会走正确的网关
 前缀。
 
@@ -293,7 +293,7 @@ http://<服务器IP或内部DNS>
 ```
 
 确认 SPA 能打开，并能完成一次实际业务查询。还需要直接打开
-`http://<服务器IP或内部DNS>/v2/datasets` 并刷新一次；刷新后必须仍显示 V2 页面。打开浏览器
+`http://<服务器IP或内部DNS>/datasets` 并刷新一次；刷新后必须仍显示数据集页面。打开浏览器
 Network 面板，API Request URL 应以 `/api/` 开头，响应 `Content-Type` 应为
 `application/json`，不能是 `text/html`。
 
