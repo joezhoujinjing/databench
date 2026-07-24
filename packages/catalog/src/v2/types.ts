@@ -120,6 +120,7 @@ export interface CatalogRefRowV2 {
   readonly namespaceId: string
   readonly name: string
   readonly version: string
+  readonly numRecords: bigint
   readonly message: string | null
   readonly updatedAt: Date
 }

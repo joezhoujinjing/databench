@@ -135,6 +135,8 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
 
     const ref = await workspace.getRef(REF_NAME)
     const refs = await workspace.listRefs({ cursor: null, limit: 1 })
+    expect(ref?.num_records).toBe(1)
+    expect(refs.items[0]?.num_records).toBe(1)
     expect(refs.items).toEqual([ref])
     expect(refs.next_cursor).toBeNull()
     await expect(

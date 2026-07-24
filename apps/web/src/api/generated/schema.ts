@@ -1962,6 +1962,7 @@ export interface components {
     RefMetadataV2: {
       message: string | null
       name: string
+      num_records: number
       updated_at: string
       version: string
     }

@@ -111,6 +111,7 @@ export function refMetadataFromCatalog(row: CatalogRefRowV2): RefMetadataV2 {
   return RefMetadataV2Schema.parse({
     name: row.name,
     version: row.version,
+    num_records: storedBigIntToSafeNumber(row.numRecords, 'num_records'),
     message: row.message,
     updated_at: row.updatedAt.toISOString(),
   })

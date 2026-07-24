@@ -141,6 +141,10 @@ describe('V2 HTTP API', () => {
         next_cursor: { maxLength: 1536, nullable: true, type: 'string' },
       },
     })
+    expect(document.components.schemas.RefMetadataV2).toMatchObject({
+      required: expect.arrayContaining(['num_records']),
+      properties: { num_records: { minimum: 0, type: 'integer' } },
+    })
     expect(document.components.schemas.TransformRegistryPageV2).toMatchObject({
       properties: { items: { maxItems: 128 }, total: { maximum: 128 } },
     })
@@ -648,6 +652,7 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
   const ref = {
     name: 'main',
     version: VERSION,
+    num_records: 1,
     message: null,
     updated_at: '2026-07-24T00:00:00.000Z',
   }
@@ -783,6 +788,7 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
       return {
         name,
         version: put.new_version,
+        num_records: 1,
         message: put.message,
         updated_at: '2026-07-24T00:00:00.000Z',
       }

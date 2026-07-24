@@ -303,6 +303,7 @@ describe('V9 audit and ref DTO contracts', () => {
   const ref = {
     name: 'main',
     version: DATASET_VERSION,
+    num_records: 12,
     message: 'publish',
     updated_at: '2026-07-23T08:00:00Z',
   }

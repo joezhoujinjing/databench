@@ -388,6 +388,7 @@ export const RefMetadataV2Schema = z
   .strictObject({
     name: RefNameV2Schema,
     version: DigestHexSchema,
+    num_records: z.number().int().safe().min(0),
     message: z.string().nullable(),
     updated_at: Rfc3339UtcSchema,
   })

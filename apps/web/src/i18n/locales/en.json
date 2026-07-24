@@ -272,7 +272,9 @@
       "filter": "Filter refs or exact versions…",
       "ref": "Ref",
       "version": "Exact version",
+      "records": "Records",
       "updated": "Updated",
+      "newDataset": "New dataset",
       "empty": "No V2 refs are visible to this connection.",
       "loadMore": "Load more refs",
       "loadingMore": "Loading refs…"
@@ -339,7 +341,15 @@
       "uploading": "Uploading…",
       "cancel": "Cancel upload",
       "complete": "Ingest complete",
-      "openDataset": "Open exact dataset"
+      "openDataset": "Open exact dataset",
+      "createTitle": "Create from JSON records",
+      "createDescription": "Paste a JSON array of complete PostTrainingRecord 2.0.0 records. V2 uses one canonical format, so there is no type selector.",
+      "recordsJson": "Records (JSON array)",
+      "jsonArrayRequired": "Records must be a JSON array.",
+      "jsonInvalid": "Records are not valid JSON: {{message}}",
+      "createAction": "Create dataset",
+      "creating": "Creating…",
+      "cancelCreate": "Cancel creation"
     },
     "transforms": {
       "eyebrow": "V2 / Transform registry",

@@ -613,6 +613,7 @@ describe('V2Workspace refs facade', () => {
         {
           name: 'z-ref',
           version: gammaVersion,
+          num_records: 0,
           message: null,
           updated_at: NOW.toISOString(),
         },
@@ -632,6 +633,7 @@ describe('V2Workspace refs facade', () => {
     ).resolves.toEqual({
       name: 'release',
       version: gammaVersion,
+      num_records: 0,
       message: 'promote',
       updated_at: NOW.toISOString(),
     })
@@ -2126,7 +2128,7 @@ function makeSelectedSftRecord(idDigit: string): PostTrainingRecordV2 {
 }
 
 function refRow(name: string, version: string, message: string | null): CatalogRefRowV2 {
-  return { namespaceId: NAMESPACE_ID, name, version, message, updatedAt: NOW }
+  return { namespaceId: NAMESPACE_ID, name, version, numRecords: 0n, message, updatedAt: NOW }
 }
 
 function artifactDigest(datasetVersion: string): string {

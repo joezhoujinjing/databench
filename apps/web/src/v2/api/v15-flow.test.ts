@@ -44,6 +44,7 @@ describe('V15 browser API lifecycle', () => {
         return json({
           message: null,
           name: 'main',
+          num_records: 1,
           updated_at: '2026-07-24T00:00:00Z',
           version: output,
         })

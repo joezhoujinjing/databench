@@ -272,7 +272,9 @@
       "filter": "按引用或精确版本筛选…",
       "ref": "引用",
       "version": "精确版本",
+      "records": "记录数",
       "updated": "更新时间",
+      "newDataset": "新建数据集",
       "empty": "当前连接看不到任何 V2 引用。",
       "loadMore": "加载更多引用",
       "loadingMore": "正在加载引用…"
@@ -339,7 +341,15 @@
       "uploading": "正在上传…",
       "cancel": "取消上传",
       "complete": "导入完成",
-      "openDataset": "打开精确数据集"
+      "openDataset": "打开精确数据集",
+      "createTitle": "从 JSON 记录创建",
+      "createDescription": "粘贴完整 PostTrainingRecord 2.0.0 记录组成的 JSON 数组。V2 只有一种 canonical 标准格式，因此无需选择类型。",
+      "recordsJson": "记录（JSON 数组）",
+      "jsonArrayRequired": "记录必须是 JSON 数组。",
+      "jsonInvalid": "记录不是有效 JSON：{{message}}",
+      "createAction": "创建数据集",
+      "creating": "正在创建…",
+      "cancelCreate": "取消创建"
     },
     "transforms": {
       "eyebrow": "V2 / 转换注册表",

@@ -453,7 +453,7 @@ databench v2 lineage show
 
 交付：
 
-- canonical JSONL上传和可选 ref CAS；
+- canonical JSONL上传、标准 Record JSON 数组粘贴创建和可选 ref CAS；
 - transform registry、ordered inputs、params editor与 identity-mode提示；
 - ref conflict三种显式恢复动作，不自动 overwrite；
 - 有界 lineage graph与 truncation/continuation；

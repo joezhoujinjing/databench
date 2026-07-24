@@ -58,6 +58,7 @@ interface RefSqlRow {
   readonly namespace_id: string
   readonly name: string
   readonly version: string
+  readonly num_records: bigint
   readonly message: string | null
   readonly updated_at: Date
 }
@@ -338,6 +339,7 @@ export class V2Catalog {
   async getRef(namespaceId: string, name: string): Promise<CatalogRefRowV2 | null> {
     const row = await this.#client.v2Ref.findUnique({
       where: { namespaceId_name: { namespaceId, name } },
+      include: { dataset: { select: { numRecords: true } } },
     })
     return row ? prismaRowToRef(row) : null
   }
@@ -351,39 +353,51 @@ export class V2Catalog {
     const changed =
       input.expectedVersion === null
         ? await this.#client.$queryRaw<RefSqlRow[]>`
-            INSERT INTO "refs_v2" (
-              "namespace_id", "name", "version", "message", "updated_at"
-            )
-            SELECT
-              ${input.namespaceId}::uuid,
-              ${input.name},
-              ${input.newVersion},
-              ${input.message},
-              transaction_timestamp()
-            WHERE EXISTS (
-              SELECT 1
-              FROM "dataset_layouts_v2"
-              WHERE "dataset_version" = ${input.newVersion}
-            )
-            ON CONFLICT DO NOTHING
-            RETURNING "namespace_id", "name", "version", "message", "updated_at"
-          `
-        : await this.#client.$queryRaw<RefSqlRow[]>`
-            UPDATE "refs_v2"
-            SET
-              "version" = ${input.newVersion},
-              "message" = ${input.message},
-              "updated_at" = transaction_timestamp()
-            WHERE
-              "namespace_id" = ${input.namespaceId}::uuid AND
-              "name" = ${input.name} AND
-              "version" = ${input.expectedVersion} AND
-              EXISTS (
+            WITH changed AS (
+              INSERT INTO "refs_v2" (
+                "namespace_id", "name", "version", "message", "updated_at"
+              )
+              SELECT
+                ${input.namespaceId}::uuid,
+                ${input.name},
+                ${input.newVersion},
+                ${input.message},
+                transaction_timestamp()
+              WHERE EXISTS (
                 SELECT 1
                 FROM "dataset_layouts_v2"
                 WHERE "dataset_version" = ${input.newVersion}
               )
-            RETURNING "namespace_id", "name", "version", "message", "updated_at"
+              ON CONFLICT DO NOTHING
+              RETURNING "namespace_id", "name", "version", "message", "updated_at"
+            )
+            SELECT changed.*, snapshots."num_records"
+            FROM changed
+            JOIN "dataset_snapshots_v2" AS snapshots
+              ON snapshots."version" = changed."version"
+          `
+        : await this.#client.$queryRaw<RefSqlRow[]>`
+            WITH changed AS (
+              UPDATE "refs_v2"
+              SET
+                "version" = ${input.newVersion},
+                "message" = ${input.message},
+                "updated_at" = transaction_timestamp()
+              WHERE
+                "namespace_id" = ${input.namespaceId}::uuid AND
+                "name" = ${input.name} AND
+                "version" = ${input.expectedVersion} AND
+                EXISTS (
+                  SELECT 1
+                  FROM "dataset_layouts_v2"
+                  WHERE "dataset_version" = ${input.newVersion}
+                )
+              RETURNING "namespace_id", "name", "version", "message", "updated_at"
+            )
+            SELECT changed.*, snapshots."num_records"
+            FROM changed
+            JOIN "dataset_snapshots_v2" AS snapshots
+              ON snapshots."version" = changed."version"
           `
     const committed = changed[0]
     if (committed && changed.length === 1) return sqlRowToRef(committed)
@@ -413,19 +427,23 @@ export class V2Catalog {
     const rows =
       afterName === null
         ? await this.#client.$queryRaw<RefSqlRow[]>`
-            SELECT "namespace_id", "name", "version", "message", "updated_at"
-            FROM "refs_v2"
-            WHERE "namespace_id" = ${namespaceId}::uuid
-            ORDER BY "name" COLLATE "C" ASC
+            SELECT refs."namespace_id", refs."name", refs."version", snapshots."num_records",
+              refs."message", refs."updated_at"
+            FROM "refs_v2" AS refs
+            JOIN "dataset_snapshots_v2" AS snapshots ON snapshots."version" = refs."version"
+            WHERE refs."namespace_id" = ${namespaceId}::uuid
+            ORDER BY refs."name" COLLATE "C" ASC
             LIMIT ${fetchLimit}
           `
         : await this.#client.$queryRaw<RefSqlRow[]>`
-            SELECT "namespace_id", "name", "version", "message", "updated_at"
-            FROM "refs_v2"
+            SELECT refs."namespace_id", refs."name", refs."version", snapshots."num_records",
+              refs."message", refs."updated_at"
+            FROM "refs_v2" AS refs
+            JOIN "dataset_snapshots_v2" AS snapshots ON snapshots."version" = refs."version"
             WHERE
-              "namespace_id" = ${namespaceId}::uuid AND
-              "name" COLLATE "C" > ${afterName}
-            ORDER BY "name" COLLATE "C" ASC
+              refs."namespace_id" = ${namespaceId}::uuid AND
+              refs."name" COLLATE "C" > ${afterName}
+            ORDER BY refs."name" COLLATE "C" ASC
             LIMIT ${fetchLimit}
           `
     const hasMore = rows.length > limit
@@ -896,6 +914,7 @@ function prismaRowToRef(row: {
   namespaceId: string
   name: string
   version: string
+  dataset: { numRecords: bigint }
   message: string | null
   updatedAt: Date
 }): CatalogRefRowV2 {
@@ -903,6 +922,7 @@ function prismaRowToRef(row: {
     namespaceId: row.namespaceId,
     name: row.name,
     version: row.version,
+    numRecords: row.dataset.numRecords,
     message: row.message,
     updatedAt: row.updatedAt,
   }
@@ -913,6 +933,7 @@ function sqlRowToRef(row: RefSqlRow): CatalogRefRowV2 {
     namespaceId: row.namespace_id,
     name: row.name,
     version: row.version,
+    numRecords: row.num_records,
     message: row.message,
     updatedAt: row.updated_at,
   }

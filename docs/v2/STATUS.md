@@ -357,3 +357,18 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   Workspace定向51 tests、Store 21 tests、API真实HTTP 13 tests与Web renderer 6 tests通过；
   `pnpm typecheck`（21 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm v2:status:check`、
   `pnpm lint`与`git diff --check`通过；V16/V17继续暂停，capability保持开启。
+
+## 2026-07-24 Web 创建体验增补
+
+- Owner 要求 v2 refs 列表像 v1 一样直接显示数据规模；`RefMetadataV2` 增加必填
+  `num_records`，Catalog 通过 snapshot 联表一次返回，Web 不为每行追加详情请求；
+- v2 导入页增加标准 Record JSON 数组粘贴创建，不提供类型选择；前端保留每个顶层元素的原始
+  JSON 切片并转为 JSONL，复用既有 strict multipart ingest，服务端 duplicate-key/schema/identity/
+  resource gate不变；
+- 本增补不启动 V16/V17，不改变 capability 已开启的 owner 决策，也不增加新的 canonical 格式或
+  API 写入端点。
+- Gate：Schema 219、Catalog 27、Workspace普通 103 passed / 4 gated skipped、真实
+  MinIO/Postgres Workspace 107/107、API 68 passed / 1 gated skipped、Web 91 tests通过；Web production
+  build、`pnpm v2:status:check`、`pnpm lint`（455 files）、`pnpm typecheck`（21 tasks）、
+  `pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm peers check`与
+  `git diff --check`全部通过。

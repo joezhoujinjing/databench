@@ -2034,6 +2034,7 @@ GET /v2/lineage/{ref_or_version}
 interface RefMetadataV2 {
   name: string
   version: string
+  num_records: number
   message: string | null
   updated_at: string
 }
@@ -2064,6 +2065,10 @@ interface DatasetLineageV2 {
 root depth为0的 BFS；同一 output 的 producing runs按 `cache_key COLLATE "C"` seek顺序；每个 run
 的 exact inputs保持 Catalog `position`顺序；dataset node按首次发现顺序。Dataset version和run ID
 分别去重，self-output、共享祖先与环不能造成无限遍历。
+
+`RefMetadataV2.num_records` 是 ref 当前 exact snapshot 的不可变记录数；Catalog 查询 refs 时与
+`dataset_snapshots_v2` 联表返回，Workspace证明 bigint 可安全映射为 JSON number。Web 列表不得为
+每条 ref 额外发起 dataset detail 请求来补这个值。
 
 `max_nodes` 同时限制单页发出的 nodes和 edges；页预算到界且仍有 traversal work时设置
 `truncated=true`并给 continuation cursor。为保证后续 GET query可以穿过常见浏览器/代理，cursor
@@ -2223,7 +2228,7 @@ apps/web/src/v2/
 | `/v2/datasets` | v2 refs入口与版本摘要；不声称列出 detached snapshots |
 | `/v2/datasets/$ref` | 解析 ref、锁定 exact version、显示 manifest 与虚拟化 record 列表 |
 | `/v2/datasets/$ref/records/$recordId` | 延迟读取并展示一条完整 Unified Record |
-| `/v2/ingest` | canonical JSONL 上传、可选 ref CAS 与失败恢复 |
+| `/v2/ingest` | canonical JSONL 上传、标准 Record JSON 数组粘贴创建、可选 ref CAS 与失败恢复 |
 | `/v2/transforms` | registry、strict params、ordered inputs 与运行结果 |
 | `/v2/lineage/$ref` | exact dataset-version lineage 图 |
 | `/v2/export/$ref` | converter options、fidelity review 与下载 |
@@ -2234,6 +2239,11 @@ apps/web/src/v2/
 failure和“enabled但协议不兼容”是不同状态；401/403不能显示成“v2未启用”，协议不兼容也不能
 继续进入页面。任何状态都不能让全局 `CapabilityGate` 阻断 `/datasets`、`/ingest` 等 v1页面。
 v2 final gate前默认关闭，打开 capability是独立发布动作。
+
+JSON 数组粘贴创建只是 canonical JSONL ingest 的 Web 便捷入口：输入必须是完整
+`PostTrainingRecord 2.0.0` 数组，不提供 `kind`/`type` 选择；浏览器按顶层数组元素保留原始 JSON
+切片并组成带尾换行的 JSONL，再提交既有 `/v2/datasets:ingest-jsonl`。服务端 duplicate-key、strict
+schema、identity 与资源门保持唯一真相，前端不得用解析后重新序列化的对象绕过这些校验。
 
 #### 17.2.3 Ref 解析与 Query cache
 

@@ -1,12 +1,12 @@
 import { Link } from '@tanstack/react-router'
-import { Database, Search } from 'lucide-react'
+import { Database, Plus, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState, ErrorState, Spinner } from '@/components/common/State.js'
 import { Badge } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
 import { TextInput } from '@/components/ui/input.js'
 import { PageHeader, PageShell, Surface } from '@/components/ui/surface.js'
-import { ellipsizeMiddle } from '@/lib/format.js'
+import { ellipsizeMiddle, formatInteger } from '@/lib/format.js'
 import type { RefMetadataV2 } from '../../api/types.js'
 
 export function V2DatasetsPageView({
@@ -35,6 +35,14 @@ export function V2DatasetsPageView({
   return (
     <PageShell>
       <PageHeader
+        actions={
+          <Button asChild variant="outline">
+            <Link to="/v2/ingest">
+              <Plus aria-hidden="true" size={16} />
+              {t('v2.datasets.newDataset')}
+            </Link>
+          </Button>
+        }
         description={t('v2.datasets.description')}
         eyebrow="V2 / refs"
         title={t('v2.datasets.title')}
@@ -56,9 +64,10 @@ export function V2DatasetsPageView({
       </div>
 
       <Surface className="overflow-hidden">
-        <div className="grid grid-cols-[minmax(14rem,1.2fr)_minmax(20rem,2fr)_minmax(12rem,1fr)] border-border border-b px-5 py-3 text-muted-foreground text-sm max-md:hidden">
+        <div className="grid grid-cols-[minmax(12rem,1.2fr)_minmax(16rem,1.7fr)_minmax(7rem,0.65fr)_minmax(12rem,1fr)] border-border border-b px-5 py-3 text-muted-foreground text-sm max-md:hidden">
           <span>{t('v2.datasets.ref')}</span>
           <span>{t('v2.datasets.version')}</span>
+          <span>{t('v2.datasets.records')}</span>
           <span>{t('v2.datasets.updated')}</span>
         </div>
         {isLoading ? <Spinner /> : null}
@@ -68,7 +77,7 @@ export function V2DatasetsPageView({
         ) : null}
         {rows.map((row) => (
           <Link
-            className="grid min-h-20 grid-cols-[minmax(14rem,1.2fr)_minmax(20rem,2fr)_minmax(12rem,1fr)] items-center gap-5 border-border border-b px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-hover max-md:grid-cols-1"
+            className="grid min-h-20 grid-cols-[minmax(12rem,1.2fr)_minmax(16rem,1.7fr)_minmax(7rem,0.65fr)_minmax(12rem,1fr)] items-center gap-5 border-border border-b px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-hover max-md:grid-cols-1"
             key={row.name}
             params={{ ref: row.name }}
             to="/v2/datasets/$ref"
@@ -80,6 +89,7 @@ export function V2DatasetsPageView({
             <span className="min-w-0 font-mono text-dim-foreground text-xs" title={row.version}>
               {ellipsizeMiddle(row.version, 16)}
             </span>
+            <span className="tabular-nums text-sm">{formatInteger(row.num_records)}</span>
             <span className="text-muted-foreground text-sm">
               {row.updated_at}
               {row.message ? <Badge className="ml-2">{row.message}</Badge> : null}

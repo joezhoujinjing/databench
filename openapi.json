@@ -3168,6 +3168,10 @@
             "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
             "type": "string"
           },
+          "num_records": {
+            "minimum": 0,
+            "type": "integer"
+          },
           "updated_at": {
             "type": "string"
           },
@@ -3179,6 +3183,7 @@
         "required": [
           "name",
           "version",
+          "num_records",
           "message",
           "updated_at"
         ],

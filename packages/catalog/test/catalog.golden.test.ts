@@ -940,6 +940,7 @@ describe('V2Catalog', () => {
       namespaceId,
       name: 'main',
       version: alphaVersion,
+      numRecords: 1n,
       message: 'initial',
     })
     expect(await v2Catalog.resolveRef(namespaceId, 'main')).toBe(alphaVersion)
@@ -1074,6 +1075,7 @@ describe('V2Catalog', () => {
       namespaceId,
       name: 'returning-row',
       version: alphaVersion,
+      numRecords: 1n,
       message: 'created',
       updatedAt: expect.any(Date),
     })
@@ -1097,12 +1099,14 @@ describe('V2Catalog', () => {
       namespaceId,
       name: 'returning-row',
       version: betaVersion,
+      numRecords: 1n,
       message: 'moved to beta',
       updatedAt: expect.any(Date),
     })
     expect(created).toMatchObject({ version: alphaVersion, message: 'created' })
     expect(await v2Catalog.getRef(namespaceId, 'returning-row')).toMatchObject({
       version: gammaVersion,
+      numRecords: 1n,
       message: 'moved to gamma',
     })
   })
