@@ -2,7 +2,9 @@
 
 - **Status:** Accepted — amended 2026-07-06 to restore local MinIO while keeping
   production on Aliyun OSS; amended by [ADR 0011](0011-identity-hashing-versioning-v2.md)
-  on 2026-07-23 for v2 object keys and conditional-create semantics.
+  on 2026-07-23 for v2 object keys and conditional-create semantics; narrowly amended by
+  [ADR 0012](0012-offline-single-host-deployment.md) on 2026-07-24 to allow MinIO as the
+  production data plane for the isolated single-host offline deployment only.
 - **Date:** 2026-07-03
 - **Supersedes:** the object-store choice in [ADR-0003](0003-storage-postgres-object-store.md)
   for production. The Postgres-catalog + object-store-data-plane split from
@@ -28,6 +30,8 @@ through OSS's own S3-compatible endpoint independently of how the app writes.
   SDK through `OssStore`.
 - **Local development object store = MinIO**, accessed through the
   S3-compatible `S3Store` (`@aws-sdk/client-s3`).
+- **Offline single-host production object store = MinIO**, under ADR 0012's narrow deployment,
+  credential, network, backup and no-versioning constraints.
 - The `Store` interface remains unchanged. Callers choose a backend only through
   `StoreConfig` / env, not by branching business logic.
 - Config is env-driven:
@@ -64,6 +68,6 @@ through OSS's own S3-compatible endpoint independently of how the app writes.
   `vocabularies/<vv>/<id>.json`) — existing versions/ids and parity behavior remain
   untouched. v2 uses artifact-digest-addressed Parquet, a dataset/layout manifest
   commit point, and S3/MinIO/OSS conditional create exactly as specified by ADR 0011.
-- Production remains Aliyun-locked for the object store. Local MinIO is a
-  development backend, not a production multi-cloud commitment. If a second
-  production cloud is ever needed, revisit with a new ADR.
+- Hosted production remains Aliyun-locked for the object store. MinIO is allowed in production
+  only for ADR 0012's isolated single-host offline target; this is not a general production
+  multi-cloud commitment. If a second hosted production cloud is needed, revisit with a new ADR.

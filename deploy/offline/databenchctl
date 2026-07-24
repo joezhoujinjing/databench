@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/health.sh
+source "${SCRIPT_DIR}/lib/health.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: databenchctl <command> [arguments]
+
+Commands:
+  status                         Show container status
+  logs [service]                 Follow recent logs
+  doctor                         Check PostgreSQL and object storage
+  restart                        Restart API and Web, then run doctor
+  backup                         Create a consistent backup generation
+  restore <generation> --confirm Restore a backup generation
+  upgrade <extracted-bundle>     Upgrade using a new offline bundle
+  rollback <version> [options]   Roll back to an installed release
+  version                        Print the installed application version
+EOF
+}
+
+require_root
+RELEASE_DIR="$(current_release_dir)"
+COMMAND="${1:-}"
+case "$COMMAND" in
+  status)
+    compose_for_release "$RELEASE_DIR" ps
+    ;;
+  logs)
+    shift
+    compose_for_release "$RELEASE_DIR" logs --tail 200 --follow "$@"
+    ;;
+  doctor)
+    run_doctor "$RELEASE_DIR"
+    ;;
+  restart)
+    compose_for_release "$RELEASE_DIR" restart api web
+    wait_container_healthy databench-offline-api 180
+    wait_container_healthy databench-offline-web 120
+    run_doctor "$RELEASE_DIR"
+    ;;
+  backup)
+    exec "${RELEASE_DIR}/backup.sh"
+    ;;
+  restore)
+    shift
+    exec "${RELEASE_DIR}/restore.sh" "$@"
+    ;;
+  upgrade)
+    [ "$#" -eq 2 ] || die "usage: databenchctl upgrade <extracted-bundle>"
+    BUNDLE_DIR="$(cd "$2" && pwd)"
+    exec "${BUNDLE_DIR}/upgrade.sh"
+    ;;
+  rollback)
+    shift
+    exec "${RELEASE_DIR}/rollback.sh" "$@"
+    ;;
+  version)
+    current_version
+    ;;
+  help|-h|--help|'')
+    usage
+    ;;
+  *)
+    usage >&2
+    die "unknown command: $COMMAND"
+    ;;
+esac

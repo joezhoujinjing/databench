@@ -9,6 +9,7 @@ last_completed_step: V15
 capability_enabled: true
 capability_owner_decision: owner-approved-2026-07-24
 schema_amendment: system-content-2026-07-24
+offline_production_release_authorized: true
 -->
 
 ## 当前检查点
@@ -17,6 +18,8 @@ schema_amendment: system-content-2026-07-24
 - **下一步:** 按 owner 2026-07-24 决定暂停在 V15 完成态；V16/V17 暂不开始
 - **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
   不代表 V16、V17 或 GV-final 已完成
+- **离线发布:** owner于2026-07-24明确授权当前`main`直接生成production离线包；V16/V17
+  不阻断该离线发布通道，但其未开始状态与gate记录保持真实
 - **Schema修订:** owner于2026-07-24确认删除顶层`system_instruction`，改为共享
   `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`

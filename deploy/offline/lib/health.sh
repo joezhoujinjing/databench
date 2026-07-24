@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+wait_container_healthy() {
+  local container="$1"
+  local timeout="${2:-180}"
+  local elapsed=0 status
+  while [ "$elapsed" -lt "$timeout" ]; do
+    status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)"
+    case "$status" in
+      healthy|running) return 0 ;;
+      unhealthy|exited|dead) docker logs --tail 100 "$container" >&2 || true; return 1 ;;
+    esac
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  docker logs --tail 100 "$container" >&2 || true
+  return 1
+}
+
+doctor_report() {
+  local release_dir="$1"
+  compose_for_release "$release_dir" run --rm --no-deps api databench meta doctor --compact
+}
+
+run_doctor() {
+  local release_dir="$1"
+  local report
+  report="$(doctor_report "$release_dir")" || return 1
+  printf '%s\n' "$report"
+  [ "$report" = '{"database":{"ok":true},"store":{"ok":true}}' ]
+}
+
+wait_gateway() {
+  local release_dir="$1"
+  local timeout="${2:-120}"
+  local elapsed=0
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if compose_for_release "$release_dir" exec -T api node -e \
+      "fetch('http://web/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))"; then
+      return 0
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  return 1
+}
