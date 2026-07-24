@@ -1,0 +1,138 @@
+name: databench-offline
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+x-service-defaults: &service-defaults
+  platform: linux/amd64
+  pull_policy: never
+  logging: *default-logging
+  networks:
+    - databench
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  postgres:
+    <<: *service-defaults
+    image: ${DATABENCH_POSTGRES_IMAGE:?missing DATABENCH_POSTGRES_IMAGE}
+    container_name: databench-offline-postgres
+    restart: unless-stopped
+    env_file:
+      - /etc/databench/databench.env
+    volumes:
+      - /srv/databench/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  minio:
+    <<: *service-defaults
+    image: ${DATABENCH_MINIO_IMAGE:?missing DATABENCH_MINIO_IMAGE}
+    container_name: databench-offline-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    env_file:
+      - /etc/databench/databench.env
+    volumes:
+      - /srv/databench/minio:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  minio-init:
+    <<: *service-defaults
+    image: ${DATABENCH_MINIO_MC_IMAGE:?missing DATABENCH_MINIO_MC_IMAGE}
+    container_name: databench-offline-minio-init
+    env_file:
+      - /etc/databench/databench.env
+    depends_on:
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./minio/app-policy.json:/config/app-policy.json:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing "local/$${S3_BUCKET}"
+        mc admin user add local "$${S3_ACCESS_KEY_ID}" "$${S3_SECRET_ACCESS_KEY}" || \
+          mc admin user enable local "$${S3_ACCESS_KEY_ID}"
+        mc admin policy create local databench-app /config/app-policy.json || true
+        mc admin policy attach local databench-app --user "$${S3_ACCESS_KEY_ID}"
+        mc anonymous set none "local/$${S3_BUCKET}"
+    restart: "no"
+
+  migrate:
+    <<: *service-defaults
+    image: ${DATABENCH_API_IMAGE:?missing DATABENCH_API_IMAGE}
+    container_name: databench-offline-migrate
+    env_file:
+      - /etc/databench/databench.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["/app/node_modules/.bin/prisma", "migrate", "deploy"]
+    restart: "no"
+
+  api:
+    <<: *service-defaults
+    image: ${DATABENCH_API_IMAGE:?missing DATABENCH_API_IMAGE}
+    container_name: databench-offline-api
+    restart: unless-stopped
+    env_file:
+      - /etc/databench/databench.env
+    environment:
+      NODE_ENV: production
+      PORT: "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - /srv/databench/workspace:/var/lib/databench
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+    read_only: true
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8000/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  web:
+    <<: *service-defaults
+    image: ${DATABENCH_WEB_IMAGE:?missing DATABENCH_WEB_IMAGE}
+    container_name: databench-offline-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    read_only: true
+    tmpfs:
+      - /config:size=16m,mode=0700
+      - /data:size=16m,mode=0700
+
+networks:
+  databench:
+    name: databench-offline
+    driver: bridge

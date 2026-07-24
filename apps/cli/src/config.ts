@@ -25,6 +25,7 @@ export function v2WorkspaceOptions(flags: GlobalFlags): V2WorkspaceOpenOptions {
   }
   return {
     cursorSecret,
+    ...(process.env.DATABENCH_ROOT === undefined ? {} : { root: process.env.DATABENCH_ROOT }),
     ...(flags.databaseUrl !== undefined ? { databaseUrl: flags.databaseUrl } : {}),
   }
 }

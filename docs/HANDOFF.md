@@ -8,7 +8,10 @@
 ## 1. 现状(你接手时)
 - **S0.1-S21 已完成,M5 parity & 切换收尾完成;D1 已由 owner 改为实现 vocabularies,S19 已补齐。** 进度以 `docs/migration/STATUS.md` 为准。
 - 后端核心、Hono API、确定性 `openapi.json`、React/Vite 前端主流程、S20 新旧端到端 parity 均已落地并过闸门。词表域已按最新旧后端 + 旧 UI 语义迁入,入口由 `features.vocabularies:true` 开启。
-- 下一步是 **D3 API 托管平台决策**;owner 拍板前不得进入 S22 部署/平台选择。旧实现 `~/Desktop/databench/`:Python 后端(`databench/`)+ 旧前端(`databench-ui/`)。**只读参考 + golden 源,默认保留,严禁修改。**
+- 下一步是 **D3 API 托管平台决策**;owner 拍板前不得进入 S22 公共云部署/平台选择。
+  ADR 0012 已独立接受 Ubuntu 单机离线发布目标，但不解决 D3，也不修改现有 ECS/OSS 发布。
+  旧实现 `~/Desktop/databench/`:Python 后端(`databench/`)+ 旧前端(`databench-ui/`)。
+  **只读参考 + golden 源,默认保留,严禁修改。**
 - v2 设计 ADR 0009、ADR 0011 与 `docs/v2/TECHNICAL-DESIGN.md` 已接受；
   `docs/v2/PLAN.md` 已接受；当前从 V0 开始，一个 Step一个 PR并过对应 GV gate。
 - Processing ADR 0010 已接受；`docs/processing/TECHNICAL_DESIGN.md` 已完成第二轮必须项

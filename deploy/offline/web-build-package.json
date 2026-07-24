@@ -1,0 +1,5 @@
+{
+  "name": "databench-offline-web-build",
+  "private": true,
+  "packageManager": "pnpm@11.7.0"
+}

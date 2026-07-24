@@ -1,0 +1,41 @@
+name: Build offline bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Application version (for example 1.0.0)
+        required: true
+        type: string
+      min_upgrade_from:
+        description: Oldest supported source version
+        required: true
+        default: 0.0.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build complete linux/amd64 bundle
+        env:
+          MIN_UPGRADE_FROM: ${{ inputs.min_upgrade_from }}
+        run: deploy/offline/build-bundle.sh "${{ inputs.version }}"
+
+      - name: Upload bundle and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: databench-offline-${{ inputs.version }}-linux-amd64
+          path: |
+            output/offline/databench-offline-${{ inputs.version }}-linux-amd64.tar.gz
+            output/offline/databench-offline-${{ inputs.version }}-linux-amd64.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 30

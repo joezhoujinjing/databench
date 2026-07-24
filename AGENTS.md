@@ -5,7 +5,7 @@
 ## 这是什么 / 现状
 **databench** = LLM post-training 数据基础设施(版本化数据集、自动血缘、可复现混合)。本仓库是它的 **全 TS monorepo 全新重写**(后端 + 前端都重写)。
 
-**现状:S0.1-S21 已完成,M5 parity & 切换收尾完成;D1 已由 owner 改为实现 vocabularies,S19 已补齐。** 后端、前端主流程、OpenAPI、S20 新旧端到端 parity 均已落地并过闸门;词表域已按最新旧后端 + 旧 UI 语义迁入。下一步是 **D3 API 托管平台决策**,拍板前不得进入 S22 部署。旧实现在 `~/Desktop/databench/`(Python 后端 + 旧 UI),**只读参考 + golden 源,默认保留,严禁修改**。
+**现状:S0.1-S21 已完成,M5 parity & 切换收尾完成;D1 已由 owner 改为实现 vocabularies,S19 已补齐。** 后端、前端主流程、OpenAPI、S20 新旧端到端 parity 均已落地并过闸门;词表域已按最新旧后端 + 旧 UI 语义迁入。下一步是 **D3 API 托管平台决策**,拍板前不得进入 S22 公共云部署；ADR 0012 的 Ubuntu 单机离线发布是已接受的独立通道，不受公共云 D3 阻断。旧实现在 `~/Desktop/databench/`(Python 后端 + 旧 UI),**只读参考 + golden 源,默认保留,严禁修改**。
 
 **v2 设计状态:ADR 0009、ADR 0011 与 `docs/v2/TECHNICAL-DESIGN.md` 已接受；
 `docs/v2/PLAN.md` 已接受。当前从 V0 开始，一个 Step 一个 PR，过对应 GV gate后再进入下一步。**
@@ -42,7 +42,7 @@ staging artifacts，不得发布 Dataset/ref/run/lineage。**
 | 校验/契约 | zod(单一来源)→ OpenAPI → openapi-typescript |
 | ORM | **Prisma**(Rust-free;递归 lineage 用 TypedSQL/`$queryRaw`) |
 | 数据库 | **Supabase** Postgres(catalog 控制面) |
-| 对象存储 | **Aliyun OSS**(native `ali-oss`);本地 MinIO/S3 adapter = 数据面 |
+| 对象存储 | **Aliyun OSS**(hosted production);MinIO/S3 adapter = 本地开发 + ADR 0012 离线单机 production |
 | 引擎 | **nodejs-polars** 主力 + **DuckDB**(out-of-core / 兜底) |
 | 前端 | React 19 + Vite SPA + shadcn/ui + Tailwind + TanStack Router/Query/Virtual + openapi-fetch(ADR-0006) |
 | Python Processing | TS Workspace gRPC client → 原生 Python 3.11 worker；内部 transport 仅 Proto，领域/公共模型仍归 Zod；本机/可信私网 [ADR-0010] |
