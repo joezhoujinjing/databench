@@ -3,7 +3,6 @@ import {
   CapacityExceededError,
   ConflictError,
   IntegrityError,
-  MAX_PAGE_LIMIT,
   NotFoundError,
   ResourceLimitError,
   ServiceUnavailableError,
@@ -22,7 +21,7 @@ const validationRoute = createRoute({
   path: '/_test-validation',
   request: {
     query: z.object({
-      limit: z.coerce.number().int().max(MAX_PAGE_LIMIT),
+      limit: z.coerce.number().int().max(500),
     }),
   },
   responses: {
@@ -163,10 +162,10 @@ function installThrowRoutes(app: ReturnType<typeof createApp>): void {
       throw new BadInputError('invalid JSON')
     }
     if (kind === 'type') {
-      throw new TypeError("transform 'dedup' takes no params")
+      throw new TypeError('invalid runtime input')
     }
     if (kind === 'error') {
-      throw new Error('frame is missing required columns')
+      throw new Error('invalid runtime state')
     }
 
     throw new UnexpectedFailure()

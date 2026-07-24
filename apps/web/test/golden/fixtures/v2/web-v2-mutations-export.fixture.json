@@ -38,13 +38,13 @@
     }
   },
   "transform": {
-    "name": "sample_n",
+    "name": "append-evidence",
     "version": "1",
     "identity_mode": "preserve",
     "params_schema": {
       "type": "object",
-      "properties": { "n": { "type": "integer", "minimum": 1 } },
-      "required": ["n"],
+      "properties": {},
+      "required": [],
       "additionalProperties": false
     }
   },

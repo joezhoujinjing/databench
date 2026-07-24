@@ -39,7 +39,9 @@ describe('V15 browser API lifecycle', () => {
       if (url.pathname === '/v2/transforms' && request.method === 'GET') {
         return json({ items: [fixture.transform], total: 1 })
       }
-      if (url.pathname === '/v2/transforms/sample_n/run') return json(fixture.ref_conflict, 409)
+      if (url.pathname === '/v2/transforms/append-evidence/run') {
+        return json(fixture.ref_conflict, 409)
+      }
       if (url.pathname === '/v2/refs/main') {
         return json({
           message: null,
@@ -72,12 +74,12 @@ describe('V15 browser API lifecycle', () => {
     try {
       await runTransformV2({
         ...connection,
-        name: 'sample_n',
+        name: 'append-evidence',
         request: {
           expected_ref_version: input,
           inputs: [input, current],
           message: null,
-          params: { n: 1 },
+          params: {},
           ref: 'main',
         },
       })
@@ -114,7 +116,7 @@ describe('V15 browser API lifecycle', () => {
     expect(plan).toEqual(fixture.export_plan as ExportPlanV2)
 
     const runRequest = requests.find((request) =>
-      request.url.endsWith('/v2/transforms/sample_n/run'),
+      request.url.endsWith('/v2/transforms/append-evidence/run'),
     )
     expect(await runRequest?.json()).toMatchObject({ inputs: [input, current] })
     const refRequest = requests.find((request) => request.url.endsWith('/v2/refs/main'))

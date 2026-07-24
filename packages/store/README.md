@@ -1,13 +1,12 @@
 # @databench/store
 
-Content-addressed Parquet object storage for databench datasets.
+Conditional-create object storage for immutable v2 dataset artifacts and manifests.
 
 Public API:
 
-- `Store`: async `exists(version)`, `write(dataset)`, and `read(version)`.
-- `createStore(config)`: creates the selected object store.
-  - `kind: "oss"` uses Aliyun OSS through `ali-oss` and is the production path.
-  - `kind: "s3"` uses the S3-compatible adapter for local MinIO.
-- `storeConfigFromEnv()`: reads `DATABENCH_OBJECT_STORE`; defaults to `oss`, while
+- `FileBackedV2Store`: bounded local staging plus immutable artifact publication.
+- `OssConditionalObjectStoreV2`: Aliyun OSS production adapter.
+- `S3ConditionalObjectStoreV2`: S3-compatible local MinIO adapter.
+- `v2ObjectStoreConfigFromEnv()`: reads `DATABENCH_OBJECT_STORE`; defaults to `oss`, while
   local `.env` should set `DATABENCH_OBJECT_STORE=s3`.
-- `storeObjectKeys(version)`: returns the legacy-compatible Parquet and manifest keys.
+- `v2ObjectKeys(identity)`: returns the stable `objects/v2/` artifact and manifest keys.

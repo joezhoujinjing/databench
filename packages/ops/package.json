@@ -22,7 +22,6 @@
   "dependencies": {
     "@databench/engine": "workspace:*",
     "@databench/schema": "workspace:*",
-    "nodejs-polars": "0.25.1",
     "zod": "^4.4.3"
   }
 }

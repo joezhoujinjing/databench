@@ -15,8 +15,8 @@ offline_production_release_authorized: true
 ## 当前检查点
 
 - **当前分支:** `feat/v2-product-cutover`
-- **下一步:** 产品切换 R2 已完成并过闸门；按 [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 进入 R3，
-  从 Workspace 向下删除无 v2 调用方的 v1 领域实现；V16/V17 仍不开始
+- **下一步:** 产品切换 R3 已完成并过闸门；按 [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 进入 R4，
+  仅准备带dry-run清单、digest与operator确认的持久化清理；未确认前不删除任何数据，V16/V17仍不开始
 - **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
   不代表 V16、V17 或 GV-final 已完成
 - **离线发布:** owner于2026-07-24明确授权当前`main`直接生成production离线包；V16/V17
@@ -25,7 +25,7 @@ offline_production_release_authorized: true
   `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 - **产品切换:** ADR 0013、产品切换技术方案与第三版视觉稿已于 2026-07-24 接受；
-  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0、R1、R2 已完成，下一步为 R3
+  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0、R1、R2、R3 已完成，下一步为 R4
 
 ## Step 状态
 
@@ -408,3 +408,24 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   `pnpm lint`（377 files）、全仓build（12/12）、typecheck（21/21）、test（21/21）、
   `pnpm openapi:check`（11/11）、`pnpm v2:status:check`与`git diff --check`全部通过；仅保留既存
   Vite大bundle P3 warning。
+
+## 2026-07-24 产品切换 R3 Gate 记录
+
+- 按调用方向删除Workspace、Ops、IO、Store、Catalog、Schema、Engine与Hashing的v1领域实现、
+  根导出及Python parity/golden测试；Recipe、Vocabulary、旧Sample/Dataset/Store/Catalog/Workspace
+  已无运行时实现或package export；旧S1 Python/Polars spike及其`nodejs-polars`原生依赖也已删除；
+  同时删除Web `/v1`开发代理与FastAPI旧错误格式兼容；
+- Store环境配置迁入明确的v2配置模块，`V2Workspace.open()`继续组合OSS或S3 conditional adapter；
+  新增配置测试覆盖OSS默认值、S3/MinIO配置、partial credentials与未知provider fail-closed；
+- `src/v2`、`V2*`、`*_v2`、`objects/v2/`、`record-json-v1`、identity creation profile `*-v1`
+  与`databench-v2-temp-v1`均作为已发布v2协议/持久化标识原样保留；Processing第一版artifact-only
+  边界也不属于本次产品v1退役范围；
+- Prisma旧models、现有数据库表/行及对象存储legacy keys均未删除或修改，明确留给R4的dry-run清单、
+  digest与operator确认流程；本Step没有执行任何持久化清理；
+- v2定向suite通过：Hashing 25、Schema 198、Engine 46、Parquet raw-byte matrix 8、IO 41、Ops 10、
+  Catalog 21；真实Postgres+MinIO Store 81、Workspace 98、API 59、CLI 13全部通过；
+- 真实浏览器刷新`/datasets`后保持已连接，唯一主导航仍为“数据集 / 导入 / 转换”，实际refs正常加载，
+  console无warning/error；
+- `pnpm lint`（332 files）、全仓build（12/12）、typecheck（21/21）、test（21/21）、
+  `pnpm openapi:check`（11/11）、`pnpm peers check`、`pnpm v2:status:check`与`git diff --check`
+  全部通过；V16/V17状态不变。

@@ -1,10 +1,10 @@
 # @databench/workspace
 
-Workspace orchestration for ingest, transforms, recipes, lineage, refs, and export.
+Trusted orchestration boundary for canonical post-training datasets.
 
-Public API:
+`V2Workspace` owns the catalog namespace, immutable object layout, cache, identity allocation,
+transform concurrency, refs, lineage, audit, and converter/export lifecycle. Applications depend on
+this package plus `@databench/schema`; they do not import Catalog, Store, Engine, Ops, or IO directly.
 
-- `Workspace`: async orchestration over `@databench/store` and `@databench/catalog`.
-- `V2Workspace`: immutable publish/read/transform/lineage orchestration plus
-  exact-version converter inspect and fidelity-authorized streaming export.
-- `mix`, `recipeFingerprint`, `transformCacheKey`, and `recipeCacheKey`: deterministic recipe/run helpers used by the workspace and tests.
+The `V2` names are stable protocol and persistence identifiers. Product UI and CLI routes are
+unversioned, but these internal names remain explicit to protect stored data compatibility.

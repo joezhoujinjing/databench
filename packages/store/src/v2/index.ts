@@ -1,3 +1,8 @@
+export {
+  type V2ObjectStoreConfig,
+  type V2ObjectStoreKind,
+  v2ObjectStoreConfigFromEnv,
+} from './config.js'
 export * from './contracts.js'
 export { type V2ObjectKeys, v2ObjectKeys } from './keys.js'
 export {

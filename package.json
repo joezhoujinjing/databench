@@ -17,7 +17,6 @@
     "v2:status:check": "node scripts/check-v2-status.mjs",
     "openapi:check": "turbo run openapi:check",
     "offline:check": "bash deploy/offline/test/offline-scripts.test.sh",
-    "spike:s1": "node scripts/spikes/s1-determinism.mjs --write",
     "prepare": "lefthook install"
   },
   "devDependencies": {
@@ -25,9 +24,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@types/node": "^24.0.0",
-    "hash-wasm": "4.12.0",
     "lefthook": "^1.11.0",
-    "nodejs-polars": "0.25.1",
     "pg": "^8.22.0",
     "prisma": "^7.8.0",
     "tsup": "^8.3.0",

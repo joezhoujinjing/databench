@@ -17,20 +17,6 @@ describe('ApiError parsing', () => {
     expect(error.detail).toEqual([{ msg: 'missing' }])
   })
 
-  test('keeps legacy FastAPI detail compatibility', async () => {
-    const stringDetail = await responseToApiError(
-      Response.json({ detail: 'legacy missing' }, { status: 404 }),
-    )
-    const arrayDetail = await responseToApiError(
-      Response.json({ detail: [{ msg: 'field required' }] }, { status: 422 }),
-    )
-
-    expect(stringDetail.code).toBe('not_found')
-    expect(stringDetail.message).toBe('legacy missing')
-    expect(arrayDetail.code).toBe('validation_error')
-    expect(arrayDetail.message).toBe('field required')
-  })
-
   test('rejects 2xx non-json responses as not_databench', async () => {
     await expect(
       ensureJsonResponse(

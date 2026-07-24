@@ -94,13 +94,12 @@ export function apiErrorFromBody(status: number, body: unknown, requestId?: stri
     })
   }
 
-  const legacyDetail = readLegacyDetail(body)
   const code = errorCodeForStatus(status)
 
   return new ApiError({
     status,
     code,
-    message: legacyDetail ?? messageForStatus(status),
+    message: messageForStatus(status),
     body,
     ...(requestId === undefined ? {} : { requestId }),
   })
@@ -184,28 +183,6 @@ function readErrorEnvelope(
   }
 
   return { code, message }
-}
-
-function readLegacyDetail(body: unknown): string | null {
-  if (!isRecord(body) || !('detail' in body)) {
-    return null
-  }
-
-  const { detail } = body
-
-  if (typeof detail === 'string') {
-    return detail
-  }
-
-  if (Array.isArray(detail)) {
-    return (
-      detail
-        .map((item) => (isRecord(item) && typeof item.msg === 'string' ? item.msg : null))
-        .find(Boolean) ?? null
-    )
-  }
-
-  return null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

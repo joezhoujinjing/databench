@@ -117,12 +117,11 @@ import {
   OssConditionalObjectStoreV2,
   type PreparedArtifactV2,
   S3ConditionalObjectStoreV2,
-  type StoreConfig,
-  storeConfigFromEnv,
+  type V2ObjectStoreConfig,
   type V2OperationContext,
   type V2Store,
+  v2ObjectStoreConfigFromEnv,
 } from '@databench/store'
-import type { WorkspaceOpenOptions } from '../workspace.js'
 import {
   V2DatasetCache,
   type V2DatasetCacheKey,
@@ -211,8 +210,10 @@ export interface V2WorkspaceOptions {
   readonly onCleanupError?: (error: unknown, primaryError: unknown | null) => void
 }
 
-export interface V2WorkspaceOpenOptions
-  extends Pick<WorkspaceOpenOptions, 'root' | 'databaseUrl' | 'storeConfig'> {
+export interface V2WorkspaceOpenOptions {
+  readonly root?: string
+  readonly databaseUrl?: string
+  readonly storeConfig?: V2ObjectStoreConfig
   readonly cursorSecret: Uint8Array | string
   readonly datasetLimits?: V2DatasetLimits
   readonly transformLimits?: Partial<V2TransformLimits>
@@ -265,7 +266,7 @@ export class V2Workspace {
     )
     try {
       const objectStore = createConditionalObjectStoreV2(
-        options.storeConfig ?? storeConfigFromEnv(),
+        options.storeConfig ?? v2ObjectStoreConfigFromEnv(),
       )
       const store = new FileBackedV2Store({
         objectStore,
@@ -1988,7 +1989,7 @@ function snapshotV2WorkspaceOpenOptions(
   })
 }
 
-function createConditionalObjectStoreV2(config: StoreConfig): ConditionalObjectStoreV2 {
+function createConditionalObjectStoreV2(config: V2ObjectStoreConfig): ConditionalObjectStoreV2 {
   if (config.kind === 's3') {
     return new S3ConditionalObjectStoreV2({
       bucket: config.bucket,

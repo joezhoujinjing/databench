@@ -1,3 +1,4 @@
 # @databench/schema
 
-Zod schemas and shared wire/domain contracts live here as the single source of truth.
+V2 Zod schemas, shared wire/domain contracts, and the transport-neutral error
+taxonomy live here as the single source of truth.

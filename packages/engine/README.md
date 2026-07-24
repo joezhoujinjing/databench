@@ -1,3 +1,4 @@
 # @databench/engine
 
-Dataset, frame, transform, Parquet, and deterministic engine helpers will live here.
+Immutable `V2Dataset` admission, resource accounting, and deterministic
+`record-json-v1` Parquet artifact encoding and decoding.
