@@ -33,9 +33,9 @@ import {
 } from './vocabularies.js'
 
 export const queryKeys = {
-  capabilities: (base: string) => [base, 'capabilities'] as const,
+  capabilities: (scope: string, base: string) => [scope, base, 'capabilities'] as const,
   dataset: (base: string, ref: string) => [base, 'dataset', ref] as const,
-  health: (base: string) => [base, 'health'] as const,
+  health: (scope: string, base: string) => [scope, base, 'health'] as const,
   lineage: (base: string, ref: string) => [base, 'lineage', ref] as const,
   refs: (base: string, limit?: number) =>
     limit === undefined ? ([base, 'refs'] as const) : ([base, 'refs', limit] as const),
@@ -45,7 +45,7 @@ export const queryKeys = {
     [base, 'samples', ref, limit, 'infinite'] as const,
   transforms: (base: string, limit?: number) =>
     limit === undefined ? ([base, 'transforms'] as const) : ([base, 'transforms', limit] as const),
-  version: (base: string) => [base, 'version'] as const,
+  version: (scope: string, base: string) => [scope, base, 'version'] as const,
   vocabularies: (base: string, limit?: number) =>
     limit === undefined
       ? ([base, 'vocabularies'] as const)
@@ -54,11 +54,11 @@ export const queryKeys = {
 } as const
 
 export function useHealth() {
-  const { base, token } = useBackend()
+  const { base, connectionScope, token } = useBackend()
 
   return useQuery({
-    queryFn: () => getHealth({ base, token }),
-    queryKey: queryKeys.health(base),
+    queryFn: ({ signal }) => getHealth({ base, signal, token }),
+    queryKey: queryKeys.health(connectionScope, base),
     refetchInterval: 15_000,
     retry: false,
   })

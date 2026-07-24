@@ -86,7 +86,11 @@ export async function unwrapOpenApiResponse<T>(
   }
 
   if (settled.error !== undefined) {
-    throw apiErrorFromBody(settled.response.status, settled.error)
+    throw apiErrorFromBody(
+      settled.response.status,
+      settled.error,
+      settled.response.headers.get('X-Request-ID') ?? undefined,
+    )
   }
 
   return settled.data as T

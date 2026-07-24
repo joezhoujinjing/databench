@@ -35,22 +35,22 @@ interface CapabilitiesContextValue {
 const CapabilitiesContext = createContext<CapabilitiesContextValue | null>(null)
 
 export function CapabilitiesProvider({ children }: { children: ReactNode }) {
-  const { base, token } = useBackend()
+  const { base, connectionScope, token } = useBackend()
   const healthQuery = useQuery({
-    queryFn: () => getHealth({ base, token }),
-    queryKey: queryKeys.health(base),
+    queryFn: ({ signal }) => getHealth({ base, signal, token }),
+    queryKey: queryKeys.health(connectionScope, base),
     refetchInterval: 15_000,
     retry: false,
   })
   const capabilitiesQuery = useQuery({
-    queryFn: () => getCapabilities({ base, token }),
-    queryKey: queryKeys.capabilities(base),
+    queryFn: ({ signal }) => getCapabilities({ base, signal, token }),
+    queryKey: queryKeys.capabilities(connectionScope, base),
     refetchInterval: 30_000,
     retry: false,
   })
   const versionQuery = useQuery({
-    queryFn: () => getVersion({ base, token }),
-    queryKey: queryKeys.version(base),
+    queryFn: ({ signal }) => getVersion({ base, signal, token }),
+    queryKey: queryKeys.version(connectionScope, base),
     retry: false,
   })
   const compatibility = checkCompatibility(capabilitiesQuery.data)

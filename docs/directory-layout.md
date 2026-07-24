@@ -72,7 +72,7 @@ v2 命令继续落在上述 domain command 文件内，以 `databench v2 ...` �
 
 ## `apps/web`(前端,**全新重写** — React+Vite SPA + shadcn/ui,见 ADR-0006)
 
-纯 REST 客户端;只通过 `openapi-fetch` 消费 `/v1`,**不 import 任何后端包**。旧 `databench-ui`(`~/Desktop/databench/databench-ui/`)作功能参考。
+纯 REST 客户端;只通过 `openapi-fetch` 消费 `/v1`与`/v2`,**不 import 任何后端包**。旧 `databench-ui`(`~/Desktop/databench/databench-ui/`)作功能参考。
 
 ```
 apps/web/
@@ -100,6 +100,11 @@ apps/web/
    │  ├─ client.ts             # openapi-fetch 客户端(baseURL + Bearer header)
    │  ├─ config.ts             # 连接配置(API base)
    │  └─ hooks.ts              # 每端点的 TanStack Query hooks
+   ├─ v2/                       # Post-training V2 独立 vertical slice
+   │  ├─ api/                   # generated aliases、exact-version query keys与只读 hooks
+   │  ├─ components/records/    # Unified Record、四类 Part、候选/信号/关系与安全 raw JSON
+   │  ├─ features/datasets/     # refs、锁定快照与虚拟化 record summaries
+   │  └─ routes/                # 仅包裹 /v2 的 capability gate与 read routes
    ├─ components/
    │  ├─ ui/                   # shadcn/ui 生成的基础组件(button/dialog/table/...)
    │  ├─ samples/              # VirtualizedSamples、SampleView(TanStack Virtual)

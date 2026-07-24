@@ -1,4 +1,4 @@
-import { Link, Outlet } from '@tanstack/react-router'
+import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { Layers3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FEATURES, useModuleEnabled } from '@/api/capabilities.js'
@@ -6,6 +6,9 @@ import { CapabilityGate } from '@/components/shell/CapabilityGate.js'
 import { ConnectionPanel } from '@/components/shell/ConnectionPanel.js'
 import { LanguageSwitcher } from '@/components/shell/LanguageSwitcher.js'
 import { cn } from '@/lib/utils.js'
+import { shouldShowPostTrainingV2Navigation } from '@/v2/api/capability.js'
+import { usePostTrainingV2State } from '@/v2/api/hooks.js'
+import { isV2RoutePath } from '@/v2/routes/match.js'
 
 export function RootLayout() {
   const { t } = useTranslation()
@@ -13,6 +16,10 @@ export function RootLayout() {
   const recipesEnabled = useModuleEnabled(FEATURES.recipes)
   const transformsEnabled = useModuleEnabled(FEATURES.transforms)
   const vocabulariesEnabled = useModuleEnabled(FEATURES.vocabularies)
+  const v2State = usePostTrainingV2State()
+  const isV2Route = useRouterState({
+    select: (state) => isV2RoutePath(state.location.pathname),
+  })
 
   return (
     <div className="min-h-dvh bg-background/95 text-foreground">
@@ -34,6 +41,9 @@ export function RootLayout() {
             {vocabulariesEnabled ? (
               <NavLink to="/vocabularies">{t('nav.vocabularies')}</NavLink>
             ) : null}
+            {shouldShowPostTrainingV2Navigation(v2State) ? (
+              <NavLink to="/v2/datasets">{t('nav.v2Datasets')}</NavLink>
+            ) : null}
           </nav>
           <div className="ml-auto flex shrink-0 items-center gap-4">
             <LanguageSwitcher />
@@ -42,9 +52,13 @@ export function RootLayout() {
         </div>
       </header>
       <main className="mx-auto max-w-[100rem] px-6 py-8">
-        <CapabilityGate>
+        {isV2Route ? (
           <Outlet />
-        </CapabilityGate>
+        ) : (
+          <CapabilityGate>
+            <Outlet />
+          </CapabilityGate>
+        )}
       </main>
     </div>
   )
@@ -55,7 +69,14 @@ function NavLink({
   to,
 }: {
   children: string
-  to: '/datasets' | '/ingest' | '/transforms' | '/recipe' | '/lineage' | '/vocabularies'
+  to:
+    | '/datasets'
+    | '/ingest'
+    | '/transforms'
+    | '/recipe'
+    | '/lineage'
+    | '/vocabularies'
+    | '/v2/datasets'
 }) {
   return (
     <Link

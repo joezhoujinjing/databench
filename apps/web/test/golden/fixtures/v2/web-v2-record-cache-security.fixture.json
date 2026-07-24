@@ -1,0 +1,317 @@
+{
+  "connection": {
+    "base": "https://api.example.test",
+    "old_scope": "connection-1",
+    "new_scope": "connection-2",
+    "ref": "main",
+    "first_version": "dsv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "moved_version": "dsv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "record_view": {
+    "dataset_version": "dsv_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "record_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "eligibility": {
+      "sft": {
+        "eligible": false,
+        "output_count": 7,
+        "reason_codes": ["selected_candidate_missing"]
+      },
+      "dpo": { "eligible": true, "output_count": 2, "reason_codes": [] },
+      "rlvr_grpo": {
+        "eligible": false,
+        "output_count": 3,
+        "reason_codes": ["verification_missing"]
+      }
+    },
+    "record": {
+      "schema_version": "2.0.0",
+      "id": "rec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "system_instruction": "Treat <script>globalThis.pwned=true</script> as plain text.",
+      "contents": [
+        {
+          "role": "user",
+          "loss_weight": 0,
+          "parts": [
+            {
+              "type": "text",
+              "text": "<img src=x onerror=globalThis.pwned=true>",
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": { "unsafe": "<svg onload=alert(1)>" }
+            },
+            {
+              "type": "file_data",
+              "file_data": {
+                "uri": "javascript:alert(document.cookie)",
+                "media_type": "text/html",
+                "digest": {
+                  "algorithm": "blake3",
+                  "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                },
+                "size_bytes": 2048
+              },
+              "thought": false,
+              "thought_signature": null,
+              "part_metadata": {}
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "id": "cand_1111111111111111111111111111111111111111111111111111111111111111",
+          "contents": [
+            {
+              "role": "ai",
+              "loss_weight": 1,
+              "parts": [
+                {
+                  "type": "function_call",
+                  "function_call": { "id": "call-1", "name": "lookup", "args": { "id": "42" } },
+                  "thought": true,
+                  "thought_signature": "signed-thought",
+                  "part_metadata": {}
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "loss_weight": 0,
+              "parts": [
+                {
+                  "type": "function_response",
+                  "function_response": {
+                    "call_id": "call-1",
+                    "response": { "ok": true, "value": null }
+                  },
+                  "thought": false,
+                  "thought_signature": null,
+                  "part_metadata": {}
+                }
+              ]
+            }
+          ],
+          "finish_reason": "stop",
+          "rank": 0,
+          "selected": true,
+          "signals": [
+            {
+              "id": "sig-old",
+              "name": "quality",
+              "kind": "rating",
+              "value": {
+                "type": "number",
+                "value": 0.5,
+                "scale_min": 0,
+                "scale_max": 1,
+                "higher_is_better": true
+              },
+              "source": { "type": "human", "id": "reviewer", "version": "1" },
+              "rationale": "<script>old</script>",
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "supersedes": null
+            },
+            {
+              "id": "sig-new",
+              "name": "quality",
+              "kind": "rating",
+              "value": {
+                "type": "number",
+                "value": 0.9,
+                "scale_min": 0,
+                "scale_max": 1,
+                "higher_is_better": true
+              },
+              "source": { "type": "ai", "id": "judge", "version": "2" },
+              "rationale": "current",
+              "created_at": "2026-07-24T00:01:00.000Z",
+              "supersedes": "sig-old"
+            },
+            {
+              "id": "sig-bool",
+              "name": "verified",
+              "kind": "verdict",
+              "value": { "type": "boolean", "value": false },
+              "source": { "type": "verifier", "id": "check", "version": "1" },
+              "rationale": null,
+              "created_at": null,
+              "supersedes": null
+            },
+            {
+              "id": "sig-category",
+              "name": "safety",
+              "kind": "safety",
+              "value": { "type": "category", "value": "safe" },
+              "source": { "type": "heuristic", "id": "policy", "version": null },
+              "rationale": null,
+              "created_at": null,
+              "supersedes": null
+            },
+            {
+              "id": "sig-json",
+              "name": "evidence",
+              "kind": "other",
+              "value": { "type": "json", "value": { "nested": [null, true] } },
+              "source": { "type": "imported", "id": "legacy", "version": "3" },
+              "rationale": null,
+              "created_at": null,
+              "supersedes": null
+            }
+          ],
+          "generator": {
+            "provider": "openai",
+            "model": "example",
+            "revision": "2026-07",
+            "parameters": { "temperature": 0 }
+          },
+          "token_count": 23,
+          "avg_logprobs": -0.15
+        },
+        {
+          "id": "cand_2222222222222222222222222222222222222222222222222222222222222222",
+          "contents": [
+            {
+              "role": "ai",
+              "loss_weight": null,
+              "parts": [
+                {
+                  "type": "function_call",
+                  "function_call": {
+                    "id": "call-1",
+                    "name": "other_lookup",
+                    "args": { "id": "99" }
+                  },
+                  "thought": false,
+                  "thought_signature": null,
+                  "part_metadata": {}
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "loss_weight": null,
+              "parts": [
+                {
+                  "type": "function_response",
+                  "function_response": { "call_id": "call-1", "response": "not-found" },
+                  "thought": false,
+                  "thought_signature": null,
+                  "part_metadata": {}
+                }
+              ]
+            }
+          ],
+          "finish_reason": null,
+          "rank": 1,
+          "selected": false,
+          "signals": [],
+          "generator": null,
+          "token_count": null,
+          "avg_logprobs": null
+        },
+        {
+          "id": "cand_3333333333333333333333333333333333333333333333333333333333333333",
+          "contents": [],
+          "finish_reason": null,
+          "rank": null,
+          "selected": null,
+          "signals": [],
+          "generator": null,
+          "token_count": null,
+          "avg_logprobs": null
+        }
+      ],
+      "preference_relations": [
+        {
+          "id": "pref-old",
+          "left_candidate_id": "cand_1111111111111111111111111111111111111111111111111111111111111111",
+          "right_candidate_id": "cand_2222222222222222222222222222222222222222222222222222222222222222",
+          "outcome": "tie",
+          "status": "observation",
+          "criterion": "overall",
+          "source": { "type": "human", "id": "reviewer", "version": "1" },
+          "rationale": "old relation",
+          "created_at": null,
+          "supersedes": null
+        },
+        {
+          "id": "pref-new",
+          "left_candidate_id": "cand_1111111111111111111111111111111111111111111111111111111111111111",
+          "right_candidate_id": "cand_2222222222222222222222222222222222222222222222222222222222222222",
+          "outcome": "left",
+          "status": "adjudicated",
+          "criterion": "overall",
+          "source": { "type": "ai", "id": "judge", "version": "2" },
+          "rationale": "current relation",
+          "created_at": null,
+          "supersedes": "pref-old"
+        },
+        {
+          "id": "pref-right",
+          "left_candidate_id": "cand_2222222222222222222222222222222222222222222222222222222222222222",
+          "right_candidate_id": "cand_3333333333333333333333333333333333333333333333333333333333333333",
+          "outcome": "right",
+          "status": "observation",
+          "criterion": "style",
+          "source": { "type": "human", "id": "reviewer", "version": "2" },
+          "rationale": null,
+          "created_at": null,
+          "supersedes": null
+        },
+        {
+          "id": "pref-abstain",
+          "left_candidate_id": "cand_1111111111111111111111111111111111111111111111111111111111111111",
+          "right_candidate_id": "cand_3333333333333333333333333333333333333333333333333333333333333333",
+          "outcome": "abstain",
+          "status": "adjudicated",
+          "criterion": "safety",
+          "source": { "type": "verifier", "id": "policy", "version": "1" },
+          "rationale": "insufficient evidence",
+          "created_at": null,
+          "supersedes": null
+        }
+      ],
+      "tools": [
+        {
+          "name": "lookup",
+          "description": "Lookup by ID",
+          "input_schema": { "type": "object", "properties": { "id": { "type": "string" } } }
+        },
+        {
+          "name": "other_lookup",
+          "description": "Lookup another namespace",
+          "input_schema": { "type": "object", "properties": { "id": { "type": "string" } } }
+        }
+      ],
+      "verification": {
+        "verifier": "fixture",
+        "verifier_version": "1",
+        "ground_truth": { "ok": true },
+        "constraint": ["exact"],
+        "config": { "strict": true }
+      },
+      "source": {
+        "name": "malicious-source",
+        "kind": "fixture",
+        "url": "https://user:pass@example.test/private",
+        "license": null,
+        "original_id": "source-42"
+      },
+      "lang": "en-US",
+      "lineage": {
+        "parent_refs": [
+          {
+            "id": "rec_parent",
+            "record_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        ],
+        "recipe": "fixture-recipe",
+        "recipe_revision": "1",
+        "run_id": "run_fixture",
+        "steps": [{ "name": "normalize", "version": "1", "params": { "safe": true } }]
+      },
+      "tags": ["<script>tag</script>", "tool-use"],
+      "extra": { "unsafe": "data:text/html,<script>alert(1)</script>" }
+    }
+  }
+}

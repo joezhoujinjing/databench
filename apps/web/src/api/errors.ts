@@ -7,12 +7,14 @@ export interface ApiErrorInit {
   detail?: unknown
   body?: unknown
   cause?: unknown
+  requestId?: string
 }
 
 export class ApiError extends Error {
   readonly body?: unknown
   readonly code: string
   readonly detail?: unknown
+  readonly requestId?: string
   readonly status: number
 
   constructor(init: ApiErrorInit) {
@@ -27,6 +29,10 @@ export class ApiError extends Error {
 
     if ('body' in init) {
       this.body = init.body
+    }
+
+    if ('requestId' in init) {
+      this.requestId = init.requestId
     }
   }
 }
@@ -67,10 +73,14 @@ export async function ensureJsonResponse(response: Response): Promise<Response> 
 }
 
 export async function responseToApiError(response: Response): Promise<ApiError> {
-  return apiErrorFromBody(response.status, await safeReadBody(response))
+  return apiErrorFromBody(
+    response.status,
+    await safeReadBody(response),
+    response.headers.get('X-Request-ID') ?? undefined,
+  )
 }
 
-export function apiErrorFromBody(status: number, body: unknown): ApiError {
+export function apiErrorFromBody(status: number, body: unknown, requestId?: string): ApiError {
   const envelope = readErrorEnvelope(body)
 
   if (envelope !== null) {
@@ -80,6 +90,7 @@ export function apiErrorFromBody(status: number, body: unknown): ApiError {
       message: envelope.message,
       detail: envelope.detail,
       body,
+      ...(requestId === undefined ? {} : { requestId }),
     })
   }
 
@@ -91,6 +102,7 @@ export function apiErrorFromBody(status: number, body: unknown): ApiError {
     code,
     message: legacyDetail ?? messageForStatus(status),
     body,
+    ...(requestId === undefined ? {} : { requestId }),
   })
 }
 

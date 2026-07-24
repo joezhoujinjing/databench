@@ -1,0 +1,115 @@
+import { Link } from '@tanstack/react-router'
+import { RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { CopyTextButton } from '@/components/common/CopyTextButton.js'
+import { JsonBlock } from '@/components/common/JsonBlock.js'
+import { Badge } from '@/components/ui/badge.js'
+import { Button } from '@/components/ui/button.js'
+import {
+  KeyValueGrid,
+  KeyValueRow,
+  MetricItem,
+  MetricStrip,
+  PageHeader,
+  PageShell,
+  Surface,
+  SurfaceBody,
+  SurfaceHeader,
+  SurfaceTitle,
+} from '@/components/ui/surface.js'
+import { formatInteger } from '@/lib/format.js'
+import type { DatasetViewV2 } from '../../api/types.js'
+import { VirtualizedRecords } from '../../components/records/VirtualizedRecords.js'
+
+export function V2DatasetDetailView({
+  latestVersion,
+  onAdoptLatest,
+  pinnedVersion,
+  requestedRef,
+  view,
+}: {
+  latestVersion: string | null
+  onAdoptLatest(): void
+  pinnedVersion: string
+  requestedRef: string
+  view: DatasetViewV2
+}) {
+  const { t } = useTranslation()
+  const { manifest } = view
+  const moved = latestVersion !== null && latestVersion !== pinnedVersion
+
+  return (
+    <PageShell>
+      <PageHeader
+        actions={
+          <Button asChild variant="outline">
+            <Link to="/v2/datasets">{t('v2.detail.back')}</Link>
+          </Button>
+        }
+        description={t('v2.detail.description')}
+        eyebrow={`V2 / ${requestedRef}`}
+        title={requestedRef}
+      />
+
+      {moved ? (
+        <div className="flex flex-wrap items-center justify-between gap-4 border-warning/35 border-y bg-warning/5 px-4 py-3 text-sm">
+          <span>{t('v2.detail.newVersion', { version: latestVersion })}</span>
+          <Button onClick={onAdoptLatest} size="sm" type="button" variant="outline">
+            <RefreshCw aria-hidden="true" size={14} />
+            {t('v2.detail.openNewVersion')}
+          </Button>
+        </div>
+      ) : null}
+
+      <MetricStrip>
+        <MetricItem label={t('v2.detail.records')} value={formatInteger(manifest.num_records)} />
+        <MetricItem label={t('v2.detail.layout')} value={manifest.layout_version} />
+        <MetricItem label={t('v2.detail.schema')} value={manifest.record_schema_version} />
+        <MetricItem
+          label={t('v2.detail.size')}
+          value={formatInteger(manifest.artifact_size_bytes)}
+        />
+        <MetricItem label={t('v2.detail.hash')} value={manifest.hash_algorithm} />
+      </MetricStrip>
+
+      <Surface>
+        <SurfaceHeader>
+          <SurfaceTitle>{t('v2.detail.snapshot')}</SurfaceTitle>
+        </SurfaceHeader>
+        <SurfaceBody>
+          <KeyValueGrid>
+            <KeyValueRow label={t('v2.datasets.ref')} value={requestedRef} />
+            <KeyValueRow label={t('v2.detail.requested')} value={requestedRef} />
+            <KeyValueRow label={t('v2.datasets.version')}>
+              <span className="break-all font-mono text-xs">{pinnedVersion}</span>
+              <CopyTextButton label={t('v2.record.copy')} text={pinnedVersion} />
+            </KeyValueRow>
+            <KeyValueRow label={t('v2.detail.identity')} value={manifest.identity_profile} />
+            <KeyValueRow label={t('v2.detail.columns')}>
+              <div className="flex flex-wrap gap-1.5">
+                {manifest.columns.map((column) => (
+                  <Badge key={column}>{column}</Badge>
+                ))}
+              </div>
+            </KeyValueRow>
+          </KeyValueGrid>
+          <details className="mt-5 border-border border-t pt-4">
+            <summary className="cursor-pointer text-muted-foreground text-sm">
+              {t('v2.detail.manifest')}
+            </summary>
+            <div className="mt-3">
+              <JsonBlock value={manifest} />
+            </div>
+          </details>
+        </SurfaceBody>
+      </Surface>
+
+      <Surface className="overflow-hidden">
+        <SurfaceHeader>
+          <SurfaceTitle>{t('v2.detail.records')}</SurfaceTitle>
+        </SurfaceHeader>
+        <VirtualizedRecords datasetVersion={pinnedVersion} />
+      </Surface>
+    </PageShell>
+  )
+}

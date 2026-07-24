@@ -4,15 +4,15 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V14
-last_completed_step: V13
+current_step: V15
+last_completed_step: V14
 capability_enabled: false
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/v2-implementation`
-- **下一步:** V14 — Web foundation、refs 与 record read
+- **下一步:** V15 — Web ingest/transform/lineage/export
 - **Capability:** 保持关闭；GV-final 后仍需 owner 单独确认开启
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 
@@ -34,7 +34,7 @@ capability_enabled: false
 | V11 | Converter registry与 fidelity | ✅ | 当前分支 | GV11 | 五种converter、strict inspect/stream、fidelity授权与真实依赖导出已过闸门 |
 | V12 | `/v2` API、OpenAPI与 generated client | ✅ | 当前分支 | GV12 | 15个operation、流式multipart、typed errors与真实HTTP lifecycle均已过闸门 |
 | V13 | `databench v2` CLI | ✅ | 当前分支 | GV13 | 完整命令面、流式输出、原子文件写入与取消边界已过闸门 |
-| V14 | Web foundation、refs与 record read | ⬜ | | GV14 | |
+| V14 | Web foundation、refs与 record read | ✅ | 当前分支 | GV14 | capability gate、session隔离、exact-version读取与完整Unified Record renderer已过闸门 |
 | V15 | Web ingest/transform/lineage/export | ⬜ | | GV15 | |
 | V16 | Recovery、安全与容量 | ⬜ | | GV16 | |
 | V17 | Final gate与 capability发布准备 | ⬜ | | GV-final | |
@@ -289,3 +289,20 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - `pnpm v2:status:check`、`git diff --check`、`pnpm lint`（389 files）、`pnpm build`（12 tasks）、
   `pnpm typecheck`（21 tasks）、`pnpm test`（21 tasks）、`pnpm openapi:check`（11 tasks）与
   `pnpm peers check`全部通过；capability继续保持关闭。
+
+## V14 Gate 记录
+
+- `/v2`独立路由与capability gate已落地，不影响v1；capability状态区分loading、absent、
+  disabled、401、403、network与incompatible；连接身份切换会取消并移除旧私有查询，组件本地
+  snapshot锁定状态也随`connectionScope`重置；
+- refs列表、exact-version数据集详情、虚拟化record摘要与完整record详情已落地；mutable ref首次
+  解析后锁定exact version，后台移动只提示，不会把新snapshot混入当前视图；
+- Unified Record renderer覆盖所有Part、candidate三态、signal、relation、tools、verification、
+  lineage与eligibility；HTML/URI只作纯文本；大JSON走Worker，16 MiB大文本与大型集合采用有界预览、
+  渐进挂载及受控下载；tool call coverage按trajectory隔离；integrity error可触发服务端audit并复制
+  `X-Request-ID`；
+- 独立并行review的问题已集中修复，最终无剩余P0/P1/P2；V14 fixture已标记verified；Web suite
+  33 files、74/74 tests通过；
+- `pnpm lint`（427 files）、`pnpm build`（12 tasks）、`pnpm typecheck`（21 tasks）、`pnpm test`、
+  `pnpm openapi:check`、`pnpm peers check`、`pnpm v2:status:check`与`git diff --check`全部通过；
+  capability继续保持关闭。

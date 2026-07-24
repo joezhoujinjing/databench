@@ -13,6 +13,10 @@ import { VocabularyDetailPage } from './routes/vocabularies.$name.js'
 import { VocabularyDerivePage } from './routes/vocabularies.derive.js'
 import { VocabulariesPage } from './routes/vocabularies.index.js'
 import { VocabularyCreatePage } from './routes/vocabularies.new.js'
+import { V2DatasetDetailPage } from './v2/routes/dataset-detail.js'
+import { V2DatasetsPage } from './v2/routes/datasets.js'
+import { V2Layout } from './v2/routes/layout.js'
+import { V2RecordDetailPage } from './v2/routes/record-detail.js'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -91,6 +95,36 @@ const vocabularyDetailRoute = createRoute({
   component: VocabularyDetailPage,
 })
 
+const v2Route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/v2',
+  component: V2Layout,
+})
+
+const v2DatasetsRoute = createRoute({
+  getParentRoute: () => v2Route,
+  path: '/datasets',
+  component: V2DatasetsPage,
+})
+
+const v2DatasetDetailRoute = createRoute({
+  getParentRoute: () => v2Route,
+  path: '/datasets/$ref',
+  component: V2DatasetDetailPage,
+})
+
+const v2RecordDetailRoute = createRoute({
+  getParentRoute: () => v2Route,
+  path: '/datasets/$ref/records/$recordId',
+  component: V2RecordDetailPage,
+})
+
+const v2RouteTree = v2Route.addChildren([
+  v2DatasetsRoute,
+  v2DatasetDetailRoute,
+  v2RecordDetailRoute,
+])
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   datasetsRoute,
@@ -104,6 +138,7 @@ const routeTree = rootRoute.addChildren([
   vocabularyDeriveRoute,
   vocabularyCreateRoute,
   vocabularyDetailRoute,
+  v2RouteTree,
 ])
 
 export const router = createRouter({ routeTree })

@@ -232,7 +232,7 @@
       "path": "apps/web/test/golden/fixtures/v2/web-v2-record-cache-security.fixture.json",
       "assertion": "Session-scoped cache and Unified Record rendering do not leak or execute content",
       "source": "TECHNICAL-DESIGN-17.2.1-17.2.4",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "web-v2-mutations-export",

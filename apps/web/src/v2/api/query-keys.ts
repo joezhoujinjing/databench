@@ -1,0 +1,12 @@
+export const v2QueryKeys = {
+  capability: (scope: string, base: string) => [scope, base, 'v2', 'capability'] as const,
+  dataset: (scope: string, base: string, version: string) =>
+    [scope, base, 'v2', 'dataset', version] as const,
+  record: (scope: string, base: string, version: string, recordId: string) =>
+    [scope, base, 'v2', 'dataset', version, 'record', recordId] as const,
+  records: (scope: string, base: string, version: string, limit: number) =>
+    [scope, base, 'v2', 'dataset', version, 'records', limit] as const,
+  refs: (scope: string, base: string, limit: number) => [scope, base, 'v2', 'refs', limit] as const,
+  resolution: (scope: string, base: string, ref: string) =>
+    [scope, base, 'v2', 'resolution', ref] as const,
+} as const
