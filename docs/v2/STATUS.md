@@ -23,6 +23,8 @@ offline_production_release_authorized: true
 - **Schema修订:** owner于2026-07-24确认删除顶层`system_instruction`，改为共享
   `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
+- **产品切换:** ADR 0013、产品切换技术方案与第三版视觉稿已于 2026-07-24 接受；
+  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0 已完成，R1 Web 单壳切换进行中
 
 ## Step 状态
 
