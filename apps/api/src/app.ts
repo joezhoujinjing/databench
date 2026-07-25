@@ -24,6 +24,7 @@ export interface CreateAppOptions {
   readonly v2CursorSecret?: Uint8Array | string
   readonly v2Workspace?: ApiV2Workspace
   readonly workspaceRoot?: string
+  readonly workerJobsAvailable?: boolean
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -53,7 +54,7 @@ function createRoutedApp(
     app.use('/v2/*', createV2WorkspaceMiddleware(v2Runtime))
   }
   registerMetaRoutes(app, options)
-  registerV2Routes(app)
+  registerV2Routes(app, { workerJobsAvailable: options.workerJobsAvailable ?? false })
 
   return app
 }

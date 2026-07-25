@@ -17,6 +17,10 @@ export type {
 } from './internal/worker/client.js'
 export { WorkerProtocolError, WorkerTransportError } from './internal/worker/client.js'
 export {
+  BASIC_CLEAN_OPERATION_V1,
+  DATA_JUICER_BATCH_CAPABILITY_V1,
+} from './internal/worker/data-juicer.js'
+export {
   IncompleteWorkerJobFinalizer,
   type PreparedWorkerRunJob,
   UnavailableWorkerJobPreparer,

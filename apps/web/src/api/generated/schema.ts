@@ -316,6 +316,70 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v2/transform-jobs': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['listTransformJobsV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/transform-jobs/{job_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['getTransformJobV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/transform-jobs/{job_id}:cancel': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['cancelTransformJobV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/transform-jobs/{job_id}:retry': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['retryTransformJobV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v2/transforms': {
     parameters: {
       query?: never
@@ -342,6 +406,22 @@ export interface paths {
     get?: never
     put?: never
     post: operations['runTransformV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/transforms/basic-clean/jobs': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['createBasicCleanJobV2']
     delete?: never
     options?: never
     head?: never
@@ -472,6 +552,9 @@ export interface components {
     ConverterRegistryPageV2: {
       items: components['schemas']['ConverterDescriptorV2'][]
       total: number
+    }
+    CreateBasicCleanJobRequestV2: {
+      inputs: string[]
     }
     DatasetLineageV2: {
       edges: {
@@ -1200,7 +1283,7 @@ export interface components {
     }
     ServiceUnavailableDetailV2: {
       /** @enum {string} */
-      dependency: 'postgres' | 'object_store' | 'unknown'
+      dependency: 'postgres' | 'object_store' | 'worker' | 'unknown'
       /** @enum {boolean} */
       retryable: true
     }
@@ -1240,6 +1323,41 @@ export interface components {
         [key: string]: unknown
       }
       version: string
+    }
+    TransformJobErrorV2: {
+      code: string
+      message: string
+      retryable: boolean
+    } | null
+    TransformJobPageV2: {
+      items: components['schemas']['TransformJobV2'][]
+      next_cursor: string | null
+    }
+    TransformJobProgressV2: {
+      completed_units: number
+      phase: string
+      total_units: number | null
+    } | null
+    TransformJobV2: {
+      attempt: number
+      cache_hit: boolean
+      cache_key: string
+      created_at: string
+      error: components['schemas']['TransformJobErrorV2']
+      finished_at: string | null
+      id: string
+      input_count: number
+      input_dataset_versions: string[]
+      operation: {
+        name: string
+        version: string
+      }
+      output_count: number | null
+      output_dataset_version: string | null
+      progress: components['schemas']['TransformJobProgressV2']
+      started_at: string | null
+      /** @enum {string} */
+      status: 'queued' | 'leased' | 'running' | 'finalizing' | 'completed' | 'failed' | 'cancelled'
     }
     TransformRegistryPageV2: {
       items: components['schemas']['TransformDescriptorV2'][]
@@ -3233,6 +3351,455 @@ export interface operations {
       }
     }
   }
+  listTransformJobsV2: {
+    parameters: {
+      query?: {
+        cursor?: string | null
+        limit?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Recent transform jobs */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransformJobPageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Invalid transform job page request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  getTransformJobV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        job_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Transform job */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransformJobV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Transform job was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Invalid transform job identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  cancelTransformJobV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        job_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Cancelled or terminal transform job */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransformJobV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Transform job was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Transform job state conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description Invalid transform job identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  retryTransformJobV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        job_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Transform job requeued for explicit retry */
+      202: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransformJobV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Transform job was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Transform job state conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description Invalid transform job identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
   listTransformsV2: {
     parameters: {
       query?: never
@@ -3329,6 +3896,153 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['RunTransformResultV2']
+        }
+      }
+      /** @description Malformed transform request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Transform or input dataset was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Determinism, identity, layout, or Ref conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid transform request or unsupported profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  createBasicCleanJobV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateBasicCleanJobRequestV2']
+      }
+    }
+    responses: {
+      /** @description Accepted fixed basic-clean transform job */
+      202: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TransformJobV2']
         }
       }
       /** @description Malformed transform request */

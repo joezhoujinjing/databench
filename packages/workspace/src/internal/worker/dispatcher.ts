@@ -169,6 +169,10 @@ export class WorkerDispatcher {
     await (this.#loopPromise ?? Promise.resolve())
   }
 
+  supportsCapability(name: string, version: string): boolean {
+    return this.#hasCapability(name, version)
+  }
+
   async #loop(): Promise<void> {
     while (!this.#stopping) {
       const handled = await this.#runOnce().catch(() => false)

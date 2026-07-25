@@ -12,11 +12,16 @@
     "GET /v2/refs",
     "GET /v2/refs/{name}",
     "GET /v2/transforms",
+    "GET /v2/transform-jobs",
+    "GET /v2/transform-jobs/{job_id}",
     "POST /v2/datasets/{dataset_version}:export",
     "POST /v2/datasets/{ref_or_version}:audit",
     "POST /v2/datasets/{ref_or_version}:inspect-export",
     "POST /v2/datasets:ingest-jsonl",
     "POST /v2/refs/{name}:restore",
+    "POST /v2/transform-jobs/{job_id}:cancel",
+    "POST /v2/transform-jobs/{job_id}:retry",
+    "POST /v2/transforms/basic-clean/jobs",
     "POST /v2/transforms/{name}/run",
     "PUT /v2/refs/{name}"
   ],
@@ -39,6 +44,8 @@
     "RestoreRefResultV2",
     "RunTransformResultV2",
     "TransformDescriptorV2",
+    "TransformJobPageV2",
+    "TransformJobV2",
     "TransformRegistryPageV2"
   ],
   "typed_error_detail_components": [

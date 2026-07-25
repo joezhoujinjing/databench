@@ -5,24 +5,29 @@ import { checkCompatibility } from '@/api/version.js'
 import { classifyPostTrainingV2 } from './capability.js'
 import {
   auditDatasetV2,
+  cancelTransformJobV2,
+  createBasicCleanJobV2,
   deleteRefV2,
   describeDatasetV2,
   getCapabilitiesV2,
   getDatasetRecordV2,
   getLineageV2,
+  getTransformJobV2,
   ingestCanonicalDatasetV2,
   inspectExportV2,
   listConvertersV2,
   listDatasetRecordsV2,
   listDeletedRefsV2,
   listRefsV2,
+  listTransformJobsV2,
   listTransformsV2,
   putRefV2,
   restoreRefV2,
+  retryTransformJobV2,
   runTransformV2,
 } from './client.js'
 import { v2QueryKeys } from './query-keys.js'
-import type { DatasetLineageV2, RecordPageV2, RefPageV2 } from './types.js'
+import type { DatasetLineageV2, RecordPageV2, RefPageV2, TransformJobV2 } from './types.js'
 
 const IMMUTABLE_QUERY = {
   gcTime: 30 * 60 * 1000,
@@ -176,6 +181,68 @@ export function useV2Transforms() {
     queryKey: v2QueryKeys.transforms(connectionScope, base),
     staleTime: Number.POSITIVE_INFINITY,
   })
+}
+
+export function useV2TransformJobs(limit = 20) {
+  const { base, connectionScope, token } = useBackend()
+  return useQuery({
+    queryFn: ({ signal }) => listTransformJobsV2({ base, cursor: null, limit, signal, token }),
+    queryKey: v2QueryKeys.transformJobs(connectionScope, base, limit),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((job) => !isTerminalTransformJob(job)) ? 1_000 : 10_000,
+  })
+}
+
+export function useV2TransformJob(jobId: string) {
+  const { base, connectionScope, token } = useBackend()
+  return useQuery({
+    enabled: jobId.trim() !== '',
+    queryFn: ({ signal }) => getTransformJobV2({ base, jobId, signal, token }),
+    queryKey: v2QueryKeys.transformJob(connectionScope, base, jobId),
+    refetchInterval: (query) =>
+      query.state.data && !isTerminalTransformJob(query.state.data) ? 1_000 : false,
+  })
+}
+
+export function useV2CreateBasicCleanJob() {
+  const { base, connectionScope, token } = useBackend()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: string) =>
+      createBasicCleanJobV2({ base, request: { inputs: [input] }, token }),
+    onSuccess: async (job) => {
+      queryClient.setQueryData(v2QueryKeys.transformJob(connectionScope, base, job.id), job)
+      await queryClient.invalidateQueries({
+        queryKey: v2QueryKeys.transformJobsRoot(connectionScope, base),
+      })
+    },
+  })
+}
+
+export function useV2CancelTransformJob() {
+  return useV2TransformJobAction(cancelTransformJobV2)
+}
+
+export function useV2RetryTransformJob() {
+  return useV2TransformJobAction(retryTransformJobV2)
+}
+
+function useV2TransformJobAction(action: typeof cancelTransformJobV2 | typeof retryTransformJobV2) {
+  const { base, connectionScope, token } = useBackend()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (jobId: string) => action({ base, jobId, token }),
+    onSuccess: async (job) => {
+      queryClient.setQueryData(v2QueryKeys.transformJob(connectionScope, base, job.id), job)
+      await queryClient.invalidateQueries({
+        queryKey: v2QueryKeys.transformJobsRoot(connectionScope, base),
+      })
+    },
+  })
+}
+
+export function isTerminalTransformJob(job: TransformJobV2): boolean {
+  return job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled'
 }
 
 export function useV2RunTransform() {

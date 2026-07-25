@@ -5,6 +5,8 @@ export type ApiV2Workspace = Pick<
   V2Workspace,
   | 'addJsonl'
   | 'audit'
+  | 'cancelTransformJob'
+  | 'createBasicCleanJob'
   | 'deleteRef'
   | 'describeDataset'
   | 'export'
@@ -12,6 +14,7 @@ export type ApiV2Workspace = Pick<
   | 'getDeletedRef'
   | 'getRecordPage'
   | 'getRecordView'
+  | 'getTransformJob'
   | 'getRef'
   | 'inspectExport'
   | 'lineage'
@@ -19,10 +22,12 @@ export type ApiV2Workspace = Pick<
   | 'listDeletedRefs'
   | 'listRefs'
   | 'listTransforms'
+  | 'listTransformJobs'
   | 'postTrainingV2Capability'
   | 'putRef'
   | 'runTransform'
   | 'restoreRef'
+  | 'retryTransformJob'
 >
 
 export interface ApiVariables {

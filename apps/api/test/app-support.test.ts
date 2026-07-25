@@ -234,6 +234,9 @@ describe('api support', () => {
       }),
     } as unknown as V2Workspace
     const worker: WorkerRuntime = {
+      supportsCapability(name, version) {
+        return name === 'data_juicer.batch' && version === '1'
+      },
       async start() {
         events.push('worker:start')
       },

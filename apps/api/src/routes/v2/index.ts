@@ -3,9 +3,15 @@ import type { ApiEnv } from '../../context.js'
 import { registerV2DatasetRoutes } from './datasets.js'
 import { registerV2RefRoutes } from './refs.js'
 import { registerV2RegistryRoutes } from './registries.js'
+import { registerV2TransformJobRoutes } from './transform-jobs.js'
 
-export function registerV2Routes(app: OpenAPIHono<ApiEnv>): void {
+export interface RegisterV2RoutesOptions {
+  readonly workerJobsAvailable: boolean
+}
+
+export function registerV2Routes(app: OpenAPIHono<ApiEnv>, options: RegisterV2RoutesOptions): void {
   registerV2DatasetRoutes(app)
   registerV2RegistryRoutes(app)
   registerV2RefRoutes(app)
+  registerV2TransformJobRoutes(app, options)
 }

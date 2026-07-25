@@ -28,7 +28,9 @@ import type {
   CatalogRunRowV2,
   CatalogSnapshotInputV2,
   CatalogSnapshotRowV2,
+  CatalogTransformJobCursorV2,
   CatalogTransformJobErrorV2,
+  CatalogTransformJobPageV2,
   CatalogTransformJobProgressV2,
   CatalogTransformJobRowV2,
   CatalogTransformJobStatusV2,
@@ -485,6 +487,42 @@ export class V2Catalog {
     validateJobId(id)
     const row = await this.#client.v2TransformJob.findUnique({ where: { id } })
     return row ? prismaRowToTransformJob(row) : null
+  }
+
+  async listTransformJobs(
+    before: CatalogTransformJobCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogTransformJobPageV2> {
+    const fetchLimit = checkedPageFetchLimit(limit, 'Transform job page limit')
+    if (before !== null) validateTransformJobCursor(before)
+    const rows = await this.#client.$queryRaw<TransformJobSqlRow[]>(Prisma.sql`
+      SELECT ${TRANSFORM_JOB_COLUMNS}
+      FROM "transform_jobs_v2"
+      WHERE
+        ${
+          before === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`
+              date_trunc('milliseconds', "created_at") < ${before.createdAt} OR
+              (
+                date_trunc('milliseconds', "created_at") = ${before.createdAt} AND
+                "id" COLLATE "C" < ${before.id}
+              )
+            `
+        }
+      ORDER BY date_trunc('milliseconds', "created_at") DESC, "id" COLLATE "C" DESC
+      LIMIT ${fetchLimit}
+    `)
+    const hasMore = rows.length > limit
+    const pageRows = rows.slice(0, limit).map(sqlRowToTransformJob)
+    const last = hasMore ? pageRows.at(-1) : undefined
+    return {
+      rows: Object.freeze(pageRows),
+      nextCursor:
+        last === undefined
+          ? null
+          : Object.freeze({ createdAt: truncateDateToMilliseconds(last.createdAt), id: last.id }),
+    }
   }
 
   async claimNextTransformJob(
@@ -1801,6 +1839,20 @@ function validateJobId(id: string): void {
   }
 }
 
+function validateTransformJobCursor(cursor: CatalogTransformJobCursorV2): void {
+  if (!(cursor.createdAt instanceof Date) || !Number.isFinite(cursor.createdAt.getTime())) {
+    throw new V2CatalogInputError('Transform job cursor timestamp is invalid')
+  }
+  if (cursor.createdAt.getTime() !== truncateDateToMilliseconds(cursor.createdAt).getTime()) {
+    throw new V2CatalogInputError('Transform job cursor timestamp must use millisecond precision')
+  }
+  validateJobId(cursor.id)
+}
+
+function truncateDateToMilliseconds(value: Date): Date {
+  return new Date(value.getTime())
+}
+
 function validateLeaseOwner(value: string): void {
   if (!SAFE_WORKER_NAME.test(value)) {
     throw new V2CatalogInputError('Transform job lease owner is invalid')
@@ -1997,18 +2049,28 @@ async function lockRefForStateChange(
   namespaceId: string,
   name: string,
 ): Promise<CatalogRefRowV2 | null> {
-  const rows = await tx.$queryRaw<RefSqlRow[]>`
-    SELECT refs."namespace_id", refs."name", refs."version", snapshots."num_records",
-      refs."message", refs."updated_at", refs."deleted_at"
-    FROM "refs_v2" AS refs
-    JOIN "dataset_snapshots_v2" AS snapshots ON snapshots."version" = refs."version"
-    WHERE refs."namespace_id" = ${namespaceId}::uuid AND refs."name" = ${name}
-    FOR UPDATE OF refs
+  const locked = await tx.$queryRaw<Array<{ readonly namespace_id: string }>>`
+    SELECT "namespace_id"
+    FROM "refs_v2"
+    WHERE "namespace_id" = ${namespaceId}::uuid AND "name" = ${name}
+    FOR UPDATE
   `
-  if (rows.length > 1) {
+  if (locked.length > 1) {
     throw new V2CatalogConsistencyError('V2 ref state lookup returned more than one row')
   }
-  return rows[0] ? sqlRowToRef(rows[0]) : null
+  if (locked.length === 0) return null
+
+  // Read the joined snapshot metadata only after the ref row lock is held. A
+  // joined SELECT ... FOR UPDATE can otherwise lose a concurrently updated ref
+  // during PostgreSQL EvalPlanQual rechecks and incorrectly report `missing`.
+  const row = await tx.v2Ref.findUnique({
+    where: { namespaceId_name: { namespaceId, name } },
+    include: { dataset: { select: { numRecords: true } } },
+  })
+  if (!row) {
+    throw new V2CatalogConsistencyError('V2 locked ref disappeared before state lookup')
+  }
+  return prismaRowToRef(row)
 }
 
 function sameStringArray(stored: Prisma.JsonValue, expected: readonly string[]): boolean {

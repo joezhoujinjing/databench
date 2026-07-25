@@ -1301,6 +1301,27 @@ describe('V2Catalog transform jobs', () => {
     expect(await prisma.v2TransformJob.count()).toBe(1)
   })
 
+  test('lists recent jobs with a stable millisecond timestamp and ID cursor', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    await Promise.all(
+      ['3', '4', '5'].map((digit) =>
+        v2Catalog.createOrReadTransformJob(transformJobInput(digit.repeat(64))),
+      ),
+    )
+
+    const first = await v2Catalog.listTransformJobs(null, 2)
+    expect(first.rows).toHaveLength(2)
+    expect(first.nextCursor).not.toBeNull()
+    const second = await v2Catalog.listTransformJobs(first.nextCursor, 2)
+    expect(second.rows).toHaveLength(1)
+    expect(second.nextCursor).toBeNull()
+    expect(new Set([...first.rows, ...second.rows].map(({ id }) => id))).toEqual(
+      new Set(['3', '4', '5'].map((digit) => `job_${digit.repeat(64)}`)),
+    )
+  })
+
   test('claims one global slot and fences stale lease events with the database clock', async () => {
     await v2Catalog.registerCommittedLayout(
       registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),

@@ -1,6 +1,6 @@
 # Worker 与 Data-Juicer 接入技术方案
 
-- **状态：** Accepted design；P0-P5 已完成，下一步 P6 Transform job 产品面
+- **状态：** Accepted design；P0-P6 已完成，下一步 P7 final gate
 - **日期：** 2026-07-25
 - **决策：**
   [ADR 0010 — Long-running Python Worker over internal gRPC](../decisions/0010-python-processing-service-grpc.md)
@@ -144,6 +144,18 @@ Workspace 已实现 exact input projector 和 canonical finalizer：严格读取
 完成登记 Run/cache/lineage/job。完成后读回 Run/manifest，再 best-effort 删除两个 exact staging
 objects 和 row keys；清理失败只记录 secondary error。Dispatcher renewer 能识别同 attempt 已
 completed 的预期 lease clear，不把读回阶段误判为 lease loss。
+
+### 3.9 P6 已增加产品面与生产装配
+
+Workspace 已提供固定 `basic-clean@1` 的创建、最近任务分页、读取、durable cancel 和显式 retry
+facade，并只返回经过 Zod 校验的公共 job resource。Catalog 的最近任务游标使用签名的
+`created_at + job_id` continuation，私有 lease/token/staging 字段不进入 REST。
+
+真实 API entrypoint 在 Worker enabled 时使用同一 Store config 自动装配 staging store、Workspace
+projector、固定 Data-Juicer 参数编译器、canonical finalizer 和 exact cleaner；启动后以 Worker
+capability 决定提交/重试可用性。OpenAPI 与生成 Web client 已包含五个 job routes；Transform 页面
+提供固定输入提交、轮询、进度、取消、重试、计数以及 Dataset/lineage 入口，不暴露 Worker、YAML、
+operator 或参数编辑。
 
 ## 4. 总体架构
 

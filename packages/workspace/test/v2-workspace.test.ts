@@ -16,10 +16,13 @@ import {
   type CatalogRunPageV2,
   type CatalogRunRowV2,
   type CatalogSnapshotRowV2,
+  type CatalogTransformJobCursorV2,
+  type CatalogTransformJobPageV2,
   type CatalogTransformJobRowV2,
   type ClearCompletedTransformJobStagingV2,
   type CompareAndSetRefV2,
   type CompleteTransformJobV2,
+  type CreateTransformJobV2,
   type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
@@ -1631,6 +1634,55 @@ describe('V2Workspace converter and fidelity orchestration', () => {
   })
 })
 
+describe('V2Workspace transform job product facade', () => {
+  test('creates deterministic jobs, pages public resources, cancels, and explicitly retries', async () => {
+    const rig = createRig()
+    const first = V2Dataset.fromRecords([
+      makeRecord('7', 'First basic-clean product job input with enough stable text.'),
+    ])
+    const second = V2Dataset.fromRecords([
+      makeRecord('8', 'Second basic-clean product job input with enough stable text.'),
+    ])
+    rig.seed(first)
+    rig.seed(second)
+
+    const firstJob = await rig.workspace.createBasicCleanJob({ inputs: [first.version] })
+    const repeated = await rig.workspace.createBasicCleanJob({ inputs: [first.version] })
+    const secondJob = await rig.workspace.createBasicCleanJob({ inputs: [second.version] })
+
+    expect(repeated).toEqual(firstJob)
+    expect(firstJob).toMatchObject({
+      id: `job_${firstJob.cache_key}`,
+      operation: { name: 'basic-clean', version: '1' },
+      input_dataset_versions: [first.version],
+      status: 'queued',
+      input_count: 1,
+    })
+    expect(firstJob).not.toHaveProperty('leaseToken')
+    expect(firstJob).not.toHaveProperty('inputKey')
+
+    const page = await rig.workspace.listTransformJobs({ cursor: null, limit: 1 })
+    expect(page.items).toHaveLength(1)
+    expect(page.next_cursor).not.toBeNull()
+    const next = await rig.workspace.listTransformJobs({ cursor: page.next_cursor, limit: 1 })
+    expect(new Set([...page.items, ...next.items].map(({ id }) => id))).toEqual(
+      new Set([firstJob.id, secondJob.id]),
+    )
+    await expect(rig.workspace.getTransformJob(firstJob.id)).resolves.toEqual(firstJob)
+
+    const cancelled = await rig.workspace.cancelTransformJob(firstJob.id)
+    expect(cancelled).toMatchObject({ status: 'cancelled', finished_at: NOW.toISOString() })
+    const retried = await rig.workspace.retryTransformJob(firstJob.id)
+    expect(retried).toMatchObject({ status: 'queued', finished_at: null })
+    await expect(rig.workspace.retryTransformJob(firstJob.id)).rejects.toMatchObject({
+      code: 'conflict',
+    })
+    await expect(rig.workspace.cancelTransformJob(`job_${'f'.repeat(64)}`)).rejects.toMatchObject({
+      code: 'not_found',
+    })
+  })
+})
+
 describe('V2Workspace Worker canonical finalizer', () => {
   test('projects the exact input and publishes a retained subset without changing revisions', async () => {
     const rig = createRig()
@@ -2038,6 +2090,7 @@ class FakeCatalog implements V2WorkspaceCatalog {
   readonly layouts = new Map<string, CatalogLayoutRowV2>()
   readonly refs = new Map<string, CatalogRefRowV2>()
   readonly runs = new Map<string, CatalogRunRowV2>()
+  readonly jobs = new Map<string, CatalogTransformJobRowV2>()
   readonly claims = new Map<string, CatalogIdentityClaimRowV2>()
   readonly listPages = new Map<string | null, CatalogRefPageV2>()
   readonly deletedListPages = new Map<string | null, CatalogRefPageV2>()
@@ -2148,6 +2201,104 @@ class FakeCatalog implements V2WorkspaceCatalog {
 
   readonly clearCompletedTransformJobStagingKeys = vi.fn(
     async (_input: ClearCompletedTransformJobStagingV2): Promise<boolean> => true,
+  )
+
+  readonly createOrReadTransformJob = vi.fn(
+    async (input: CreateTransformJobV2): Promise<CatalogTransformJobRowV2> => {
+      const existing = this.jobs.get(input.id)
+      if (existing) return existing
+      const run = this.runs.get(input.cacheKey)
+      const row: CatalogTransformJobRowV2 = {
+        ...input,
+        status: run ? 'completed' : 'queued',
+        attempt: 0,
+        leaseOwner: null,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        progress: null,
+        inputKey: null,
+        outputKey: null,
+        outputCount:
+          run === undefined ? null : (this.snapshots.get(run.outputVersion)?.numRecords ?? 0n),
+        outputVersion: run?.outputVersion ?? null,
+        cacheHit: run !== undefined,
+        error: null,
+        createdAt: NOW,
+        startedAt: null,
+        finishedAt: run ? NOW : null,
+        updatedAt: NOW,
+      }
+      this.jobs.set(row.id, row)
+      return row
+    },
+  )
+
+  readonly getTransformJob = vi.fn(
+    async (id: string): Promise<CatalogTransformJobRowV2 | null> => this.jobs.get(id) ?? null,
+  )
+
+  readonly listTransformJobs = vi.fn(
+    async (
+      before: CatalogTransformJobCursorV2 | null,
+      limit: number,
+    ): Promise<CatalogTransformJobPageV2> => {
+      const rows = [...this.jobs.values()]
+        .filter(
+          (row) =>
+            before === null ||
+            row.createdAt < before.createdAt ||
+            (row.createdAt.getTime() === before.createdAt.getTime() && row.id < before.id),
+        )
+        .sort((left, right) =>
+          left.createdAt.getTime() === right.createdAt.getTime()
+            ? right.id.localeCompare(left.id)
+            : right.createdAt.getTime() - left.createdAt.getTime(),
+        )
+      const visible = rows.slice(0, limit)
+      const last = rows.length > limit ? visible.at(-1) : undefined
+      return {
+        rows: visible,
+        nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null,
+      }
+    },
+  )
+
+  readonly requestTransformJobCancellation = vi.fn(
+    async (id: string): Promise<CatalogTransformJobRowV2 | null> => {
+      const row = this.jobs.get(id)
+      if (!row) return null
+      if (!['queued', 'leased', 'running', 'finalizing'].includes(row.status)) return row
+      const cancelled = { ...row, status: 'cancelled' as const, finishedAt: NOW, updatedAt: NOW }
+      this.jobs.set(id, cancelled)
+      return cancelled
+    },
+  )
+
+  readonly retryTransformJob = vi.fn(
+    async (id: string): Promise<CatalogTransformJobRowV2 | null> => {
+      const row = this.jobs.get(id)
+      if (
+        !row ||
+        (row.status !== 'failed' && row.status !== 'cancelled') ||
+        row.leaseToken !== null ||
+        row.inputKey !== null ||
+        row.outputKey !== null
+      ) {
+        return null
+      }
+      const queued = {
+        ...row,
+        status: 'queued' as const,
+        progress: null,
+        error: null,
+        outputCount: null,
+        startedAt: null,
+        finishedAt: null,
+        updatedAt: NOW,
+      }
+      this.jobs.set(id, queued)
+      return queued
+    },
   )
 
   readonly findRun = vi.fn(async (cacheKey: string): Promise<CatalogRunRowV2 | null> => {

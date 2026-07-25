@@ -117,6 +117,23 @@ describe('V2CursorCodec', () => {
     expect(() => new V2CursorCodec(new Uint8Array(15))).toThrow(TypeError)
   })
 
+  test('round-trips recent transform job cursors and binds their scope', () => {
+    const codec = new V2CursorCodec(SECRET)
+    const state = {
+      created_at: '2026-07-25T12:34:56.789Z',
+      id: `job_${'a'.repeat(64)}`,
+    }
+    const cursor = codec.encodeTransformJob(NAMESPACE, state)
+
+    expect(codec.decodeTransformJob(cursor, NAMESPACE)).toEqual(state)
+    expect(() => codec.decodeTransformJob(cursor, 'another-namespace')).toThrowError(
+      expect.objectContaining({ message: 'Invalid or expired V2 transform job cursor' }),
+    )
+    expect(() =>
+      codec.encodeTransformJob(NAMESPACE, { ...state, created_at: 'not-a-date' }),
+    ).toThrow(TypeError)
+  })
+
   test('round-trips bounded lineage frontier state and binds all query scope', () => {
     const codec = new V2CursorCodec(SECRET)
     const root = 'a'.repeat(64)

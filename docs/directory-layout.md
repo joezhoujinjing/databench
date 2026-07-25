@@ -26,6 +26,7 @@ apps/api/
 │  │     ├─ datasets.ts         ingest/show/records/audit/export
 │  │     ├─ refs.ts             list/show/move 与 lineage
 │  │     ├─ registries.ts       converters/transforms
+│  │     ├─ transform-jobs.ts    fixed basic-clean submit/list/show/cancel/retry
 │  │     ├─ openapi.ts          route schema helpers
 │  │     └─ transport.ts        streaming/error transport helpers
 │  └─ v2/
@@ -205,7 +206,7 @@ src/
 src/
 ├─ index.ts
 └─ v2/
-   ├─ store.ts · contracts.ts · keys.ts · runtime.ts
+   ├─ store.ts · contracts.ts · keys.ts · runtime.ts · object-store.ts
    ├─ oss-adapter.ts
    ├─ s3-adapter.ts
    ├─ temp-store.ts
@@ -240,7 +241,7 @@ src/
 ├─ index.ts
 ├─ internal/worker/
 │  ├─ client.ts · grpc-client.ts · dispatcher.ts · runtime.ts
-│  ├─ staging.ts · data-juicer.ts · workspace-access.ts
+│  ├─ staging.ts · data-juicer.ts · canonical-finalizer.ts · workspace-access.ts
 │  └─ generated/
 └─ v2/
    ├─ workspace.ts · batch-transform.ts
@@ -314,7 +315,8 @@ packages/workspace/src/internal/worker/  已实现 client、generated、dispatch
                                          data-juicer、canonical-finalizer、workspace-access
 packages/workspace/src/v2/batch-transform.ts  已实现 projection 与 strict retained reader
 packages/workspace/src/v2/workspace.ts        已实现共享 publication 与 canonical finalization
-apps/api/src/routes/v2/transform-jobs.ts       planned
+apps/api/src/routes/v2/transform-jobs.ts       已实现固定任务 REST 产品面
+apps/web/src/v2/features/transforms/           已实现提交、轮询、取消、重试与结果入口
 ```
 
 Proto/generated code 只在 Workspace internal 与 Worker generated package 出现。`apps/api`、

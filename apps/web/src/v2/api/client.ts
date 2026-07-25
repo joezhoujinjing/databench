@@ -10,6 +10,7 @@ import type {
   AuditResultV2,
   CapabilitiesV2Envelope,
   ConverterRegistryPageV2,
+  CreateBasicCleanJobRequestV2,
   DatasetLineageV2,
   DatasetViewV2,
   DeletedRefPageV2,
@@ -28,6 +29,8 @@ import type {
   RestoreRefResultV2,
   RunTransformRequestV2,
   RunTransformResultV2,
+  TransformJobPageV2,
+  TransformJobV2,
   TransformRegistryPageV2,
 } from './types.js'
 
@@ -72,6 +75,19 @@ export interface V2LineageOptions extends V2DatasetOptions {
 export interface V2RunTransformOptions extends V2ReadOptions {
   readonly name: string
   readonly request: RunTransformRequestV2
+}
+
+export interface V2TransformJobsOptions extends V2ReadOptions {
+  readonly cursor: string | null
+  readonly limit: number
+}
+
+export interface V2CreateBasicCleanJobOptions extends V2ReadOptions {
+  readonly request: CreateBasicCleanJobRequestV2
+}
+
+export interface V2TransformJobOptions extends V2ReadOptions {
+  readonly jobId: string
 }
 
 export interface V2PutRefOptions extends V2ReadOptions {
@@ -182,6 +198,53 @@ export function runTransformV2(options: V2RunTransformOptions): Promise<RunTrans
       ...requestOptions(options.signal),
       body: options.request,
       params: { path: { name: options.name } },
+    }),
+  )
+}
+
+export function createBasicCleanJobV2(
+  options: V2CreateBasicCleanJobOptions,
+): Promise<TransformJobV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).POST('/v2/transforms/basic-clean/jobs', {
+      ...requestOptions(options.signal),
+      body: options.request,
+    }),
+  )
+}
+
+export function listTransformJobsV2(options: V2TransformJobsOptions): Promise<TransformJobPageV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).GET('/v2/transform-jobs', {
+      ...requestOptions(options.signal),
+      params: { query: { cursor: options.cursor, limit: options.limit } },
+    }),
+  )
+}
+
+export function getTransformJobV2(options: V2TransformJobOptions): Promise<TransformJobV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).GET('/v2/transform-jobs/{job_id}', {
+      ...requestOptions(options.signal),
+      params: { path: { job_id: options.jobId } },
+    }),
+  )
+}
+
+export function cancelTransformJobV2(options: V2TransformJobOptions): Promise<TransformJobV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).POST('/v2/transform-jobs/{job_id}:cancel', {
+      ...requestOptions(options.signal),
+      params: { path: { job_id: options.jobId } },
+    }),
+  )
+}
+
+export function retryTransformJobV2(options: V2TransformJobOptions): Promise<TransformJobV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).POST('/v2/transform-jobs/{job_id}:retry', {
+      ...requestOptions(options.signal),
+      params: { path: { job_id: options.jobId } },
     }),
   )
 }

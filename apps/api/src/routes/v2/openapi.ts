@@ -121,6 +121,28 @@ export const V2_TRANSFORM_RUN_ERROR_RESPONSES = {
   ...dataFailureResponses,
 } as const
 
+export const V2_TRANSFORM_JOB_CREATE_ERROR_RESPONSES = V2_TRANSFORM_RUN_ERROR_RESPONSES
+
+export const V2_TRANSFORM_JOB_LIST_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid transform job page request'),
+  ...internalResponse,
+  ...dependencyFailureResponse,
+} as const
+
+export const V2_TRANSFORM_JOB_SHOW_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Transform job was not found'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid transform job identifier'),
+  ...internalResponse,
+  ...dependencyFailureResponse,
+} as const
+
+export const V2_TRANSFORM_JOB_ACTION_ERROR_RESPONSES = {
+  ...V2_TRANSFORM_JOB_SHOW_ERROR_RESPONSES,
+  409: jsonResponseV2(ErrorResponse409V2Schema, 'Transform job state conflict'),
+} as const
+
 export const V2_REF_LIST_ERROR_RESPONSES = {
   ...commonAuthRateResponses,
   422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Ref page request'),

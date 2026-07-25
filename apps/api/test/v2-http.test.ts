@@ -26,6 +26,7 @@ const VERSION = 'a'.repeat(64)
 const OTHER_VERSION = 'b'.repeat(64)
 const ARTIFACT_DIGEST = 'c'.repeat(64)
 const CACHE_KEY = 'd'.repeat(64)
+const JOB_ID = `job_${CACHE_KEY}`
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const wireFixture = JSON.parse(
@@ -149,6 +150,11 @@ describe('V2 HTTP API', () => {
     expect(document.components.schemas.TransformRegistryPageV2).toMatchObject({
       properties: { items: { maxItems: 128 }, total: { maximum: 128 } },
     })
+    expect(document.components.schemas.TransformJobPageV2).toMatchObject({
+      properties: { items: { maxItems: 100 } },
+    })
+    expect(document.paths['/v2/transforms/basic-clean/jobs']?.post.responses[202]).toBeDefined()
+    expect(document.paths['/v2/transform-jobs/{job_id}:retry']?.post.responses[202]).toBeDefined()
 
     const converterResponses = document.paths['/v2/converters']?.get?.responses
     expect(converterResponses?.[409]).toBeUndefined()
@@ -400,6 +406,60 @@ describe('V2 HTTP API', () => {
       },
     })
     expect(fake.state.restoreRefRequest).toEqual({ expected_version: VERSION })
+  })
+
+  test('keeps transform job reads available and gates submission on Worker capability', async () => {
+    const unavailable = createFakeWorkspace()
+    const unavailableApp = createTestApp({ v2Workspace: unavailable.workspace })
+    const rejected = await unavailableApp.fetch(
+      request('/v2/transforms/basic-clean/jobs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ inputs: ['main'] }),
+      }),
+    )
+    expect(rejected.status).toBe(503)
+    expect(await json(rejected)).toMatchObject({
+      error: { code: 'service_unavailable', detail: { dependency: 'worker' } },
+    })
+    expect(unavailable.state.transformJobCreates).toBe(0)
+    expect(await json(await unavailableApp.fetch(request('/v2/transform-jobs')))).toMatchObject({
+      items: [{ id: JOB_ID }],
+    })
+
+    const fake = createFakeWorkspace()
+    const app = createTestApp({ v2Workspace: fake.workspace, workerJobsAvailable: true })
+    const created = await app.fetch(
+      request('/v2/transforms/basic-clean/jobs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ inputs: ['main'] }),
+      }),
+    )
+    expect(created.status).toBe(202)
+    const createdBody = await json<Record<string, unknown>>(created)
+    expect(createdBody).toMatchObject({ id: JOB_ID, status: 'queued' })
+    expect(createdBody).not.toHaveProperty('lease_token')
+    expect(createdBody).not.toHaveProperty('input_key')
+
+    expect(await json(await app.fetch(request(`/v2/transform-jobs/${JOB_ID}`)))).toMatchObject({
+      id: JOB_ID,
+      status: 'queued',
+    })
+    const cancelled = await app.fetch(
+      request(`/v2/transform-jobs/${JOB_ID}:cancel`, { method: 'POST' }),
+    )
+    expect({ status: cancelled.status, body: await json(cancelled) }).toMatchObject({
+      status: 200,
+      body: { id: JOB_ID, status: 'cancelled' },
+    })
+    const retried = await app.fetch(
+      request(`/v2/transform-jobs/${JOB_ID}:retry`, { method: 'POST' }),
+    )
+    expect({ status: retried.status, body: await json(retried) }).toMatchObject({
+      status: 202,
+      body: { id: JOB_ID, status: 'queued' },
+    })
   })
 
   test('serves registries, cursor refs, and bounded lineage with query coercion', async () => {
@@ -692,6 +752,12 @@ interface FakeState {
   refPageRequest: unknown
   restoreRefRequest: unknown
   transformCalls: number
+  transformJob: {
+    id: string
+    status: 'queued' | 'cancelled'
+    finished_at: string | null
+  }
+  transformJobCreates: number
 }
 
 function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
@@ -713,6 +779,12 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
     refPageRequest: undefined,
     restoreRefRequest: undefined,
     transformCalls: 0,
+    transformJob: {
+      id: JOB_ID,
+      status: 'queued',
+      finished_at: null,
+    },
+    transformJobCreates: 0,
   }
   const converter = {
     name: 'canonical-jsonl' as const,
@@ -861,6 +933,34 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
         cache_hit: false,
       }
     },
+    async createBasicCleanJob() {
+      state.transformJobCreates += 1
+      return publicTransformJob(state.transformJob)
+    },
+    async listTransformJobs(requestInput: unknown) {
+      const requestValue = requestInput as { cursor: string | null; limit: number }
+      return {
+        items: requestValue.limit > 0 ? [publicTransformJob(state.transformJob)] : [],
+        next_cursor: null,
+      }
+    },
+    async getTransformJob(id: string) {
+      return id === JOB_ID ? publicTransformJob(state.transformJob) : null
+    },
+    async cancelTransformJob(id: string) {
+      if (id !== JOB_ID) return null
+      state.transformJob = {
+        id: JOB_ID,
+        status: 'cancelled',
+        finished_at: '2026-07-25T12:01:00.000Z',
+      }
+      return publicTransformJob(state.transformJob)
+    },
+    async retryTransformJob(id: string) {
+      if (id !== JOB_ID) return null
+      state.transformJob = { id: JOB_ID, status: 'queued', finished_at: null }
+      return publicTransformJob(state.transformJob)
+    },
     async listRefs(requestInput: unknown) {
       state.refPageRequest = requestInput
       return { items: [ref], next_cursor: null }
@@ -907,6 +1007,26 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
   } as unknown as ApiV2Workspace
 
   return { workspace, state }
+}
+
+function publicTransformJob(state: FakeState['transformJob']) {
+  return {
+    id: state.id,
+    cache_key: CACHE_KEY,
+    operation: { name: 'basic-clean', version: '1' },
+    input_dataset_versions: [VERSION] as [string],
+    status: state.status,
+    attempt: 0,
+    progress: null,
+    input_count: 1,
+    output_count: null,
+    output_dataset_version: null,
+    cache_hit: false,
+    error: null,
+    created_at: '2026-07-25T12:00:00.000Z',
+    started_at: null,
+    finished_at: state.finished_at,
+  }
 }
 
 function canonicalLine(): string {

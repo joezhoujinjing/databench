@@ -1,8 +1,8 @@
 # Worker / Data-Juicer 接入交接
 
 - **交接日期：** 2026-07-25
-- **当前阶段：** P0-P5 已完成；固定 `basic-clean-v1` 已发布为 canonical Dataset/Run/lineage
-- **下一步：** P6 — Transform job REST/Web 产品面
+- **当前阶段：** P0-P6 已完成；固定 `basic-clean-v1` 已形成 REST/Web/canonical 闭环
+- **下一步：** P7 — 全仓、真实依赖与浏览器最终验收
 - **详细方案：** [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md)
 - **决策：**
   [ADR 0010](../decisions/0010-python-processing-service-grpc.md)
@@ -35,8 +35,9 @@ identities，并通过现有 v2 Store/Catalog 发布正式 Dataset、Run、cache
 | Data-Juicer monorepo adapter | 已实现；1.5.3、固定 allowlist、无运行时安装/网络 |
 | Catalog canonical completion | 已实现；layout + Run + completed job 单事务、DB-clock lease fence |
 | Workspace canonical finalizer | 已实现；exact retained → original revisions → Dataset/Run/lineage |
-| batch transform REST/Web | 尚未创建 |
-| 下一切片 | P6 Transform job REST/Web |
+| batch transform REST/Web | 已实现；提交、分页读取、轮询、取消、显式重试、结果/血缘入口 |
+| production Worker 装配 | 已实现；Store config 自动接 staging/projector/finalizer/cleaner |
+| 下一切片 | P7 final gate |
 
 P1 Gate（2026-07-25）：Python 2/2 tests 与 source/wheel import smoke、TS↔Python 5/5
 integration tests、确定性 codegen、原生 ARM64 preflight 全部通过；全仓 lint 351 files、build
@@ -66,6 +67,14 @@ failure secondary 和 completion/heartbeat race。真实 Postgres + MinIO 124/12
 ARM64 Python Worker + Data-Juicer + canonical Dataset/Run/lineage 完整 E2E 7/7 通过。全仓 lint
 364 files、build 13/13、typecheck 22/22、test 22/22、OpenAPI 11/11、v2 status、peer 与
 `git diff --check` 通过。
+
+P6 Gate（2026-07-25）：Schema 201/201、真实 Postgres Catalog 32/32、Workspace 122/122
+（另有 12 个显式 integration skip）、API 63/63（另有 1 个显式 integration skip）、Web 57/57
+tests 通过；原生 ARM64 Python Worker + Data-Juicer + MinIO 7/7 integration tests 继续通过，并覆盖
+production runtime 默认装配和 Workspace 公共 job facade。并发 ref move/delete 的既有
+`SELECT ... JOIN ... FOR UPDATE` 可见性竞态已改为先锁 ref 主行、再读取完整行，真实 Postgres
+连续 10 轮、每轮 32/32 通过。全仓 lint 367 files、build 13/13、typecheck 22/22、test
+22/22、OpenAPI 11/11、v2 status 与 `git diff --check` 通过。
 
 桌面实验目录：
 
@@ -294,8 +303,9 @@ packages/workspace/src/
 
 根 `package.json`、`pnpm-workspace.yaml`、`turbo.json`、CI 和 ignore 可为 codegen/gates 调整。
 
-P5 结束后仍未实现 REST/Web 产品入口和生产 runtime 的 staging/finalizer 默认接线；P5 已提供
-可注入的 Workspace projector/finalizer，P6 只做配置装配和产品面，不重写 canonical 算法。
+P6 已完成 REST/Web 产品入口和生产 runtime 的 staging/finalizer 默认接线；Workspace 的
+canonical 算法保持单一实现。Worker 未配置或缺少 `data_juicer.batch@1` 时，提交/重试返回稳定
+503，任务读取和取消仍可用。
 
 ## 10. P1 验收
 
@@ -322,7 +332,7 @@ P5 结束后仍未实现 REST/Web 产品入口和生产 runtime 的 staging/fina
 | P3 ✅ | staging signed URL + projection/result reader | real MinIO round-trip 通过 |
 | P4 ✅ | Data-Juicer adapter | 100/10k/100k determinism/cancel 通过 |
 | P5 ✅ | canonical finalizer | output Dataset/Run/cache/lineage 通过 |
-| P6 | REST/Web/可选 CLI | 用户可提交、刷新、取消、进入结果 |
+| P6 ✅ | REST/Web；CLI 延后 | 用户可提交、刷新、取消、重试、进入结果/血缘 |
 | P7 | final gate | repo + Postgres/MinIO/Worker/browser 全通过 |
 
 一个 accepted Step 一个 commit/PR；当前 gate 失败时不进入下一步。

@@ -42,8 +42,8 @@ REST: /v2/...
 
 ## Worker 执行边界
 
-ADR 0010 P1-P5 已在当前 v2-only 基线上落地 Worker foundation、控制面、临时数据面、首个
-Data-Juicer adapter 与 canonical finalizer：
+ADR 0010 P1-P6 已在当前 v2-only 基线上落地 Worker foundation、控制面、临时数据面、首个
+Data-Juicer adapter、canonical finalizer 与 REST/Web 产品闭环：
 
 ```text
 proto/                  internal Worker gRPC 唯一 transport source

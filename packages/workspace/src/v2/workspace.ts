@@ -10,10 +10,13 @@ import {
   type CatalogRunPageV2,
   type CatalogRunRowV2,
   type CatalogSnapshotRowV2,
+  type CatalogTransformJobCursorV2,
+  type CatalogTransformJobPageV2,
   type CatalogTransformJobRowV2,
   type ClearCompletedTransformJobStagingV2,
   type CompareAndSetRefV2,
   type CompleteTransformJobV2,
+  type CreateTransformJobV2,
   type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
@@ -52,11 +55,14 @@ import {
   AuditResultV2Schema,
   assertExportFidelityAcceptedV2,
   CapacityExceededError,
+  ConflictError,
   type ConverterAnalysisV2,
   type ConverterDescriptorV2,
   ConverterDescriptorV2Schema,
   type ConverterNameV2,
   ConverterNameV2Schema,
+  type CreateBasicCleanJobRequestV2,
+  CreateBasicCleanJobRequestV2Schema,
   type CursorPageRequestV2,
   CursorPageRequestV2Schema,
   createExportPlanV2,
@@ -124,18 +130,21 @@ import {
   TransformCacheIdentityV1Schema,
   type TransformDescriptorV2,
   TransformDescriptorV2Schema,
+  TransformJobIdV2Schema,
+  type TransformJobPageRequestV2,
+  TransformJobPageRequestV2Schema,
+  type TransformJobPageV2,
+  TransformJobPageV2Schema,
+  type TransformJobV2,
   V2_LINEAGE_MAX_DEPTH,
   V2_LINEAGE_MAX_NODES,
   V2_RECORD_JSON_LAYOUT_VERSION,
   V2_TRANSFORM_MAX_INPUTS,
 } from '@databench/schema'
 import {
-  type ConditionalObjectStoreV2,
+  createV2ObjectStore,
   FileBackedV2Store,
-  type OssConditionalClientV2,
-  OssConditionalObjectStoreV2,
   type PreparedArtifactV2,
-  S3ConditionalObjectStoreV2,
   type V2ObjectStoreConfig,
   type V2OperationContext,
   type V2Store,
@@ -143,7 +152,11 @@ import {
   type WorkerStagingStoreV1,
   workerStagingKeyV1,
 } from '@databench/store'
-import { compileBasicCleanWorkerParametersV1 } from '../internal/worker/data-juicer.js'
+import {
+  BASIC_CLEAN_OPERATION_V1,
+  compileBasicCleanWorkerParametersV1,
+  DATA_JUICER_BATCH_CAPABILITY_V1,
+} from '../internal/worker/data-juicer.js'
 import type { WorkerFinalizationContext } from '../internal/worker/dispatcher.js'
 import {
   registerWorkerCatalog,
@@ -171,6 +184,7 @@ import {
   mapV2CatalogError,
   refMetadataFromCatalog,
   registrationFromCommittedDataset,
+  transformJobFromCatalog,
 } from './mappings.js'
 import {
   DEFAULT_V2_TRANSFORM_CONCURRENCY,
@@ -197,6 +211,14 @@ export interface V2WorkspaceCatalog {
   clearCompletedTransformJobStagingKeys(
     input: ClearCompletedTransformJobStagingV2,
   ): Promise<boolean>
+  createOrReadTransformJob(input: CreateTransformJobV2): Promise<CatalogTransformJobRowV2>
+  getTransformJob(id: string): Promise<CatalogTransformJobRowV2 | null>
+  listTransformJobs(
+    before: CatalogTransformJobCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogTransformJobPageV2>
+  requestTransformJobCancellation(id: string): Promise<CatalogTransformJobRowV2 | null>
+  retryTransformJob(id: string): Promise<CatalogTransformJobRowV2 | null>
   findRun(cacheKey: string): Promise<CatalogRunRowV2 | null>
   lineageSnapshotSequence(): Promise<bigint>
   listRunsProducing(
@@ -312,9 +334,7 @@ export class V2Workspace {
       options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl },
     )
     try {
-      const objectStore = createConditionalObjectStoreV2(
-        options.storeConfig ?? v2ObjectStoreConfigFromEnv(),
-      )
+      const objectStore = createV2ObjectStore(options.storeConfig ?? v2ObjectStoreConfigFromEnv())
       const store = new FileBackedV2Store({
         objectStore,
         tempRoot: v2WorkspaceTempRoot(options.root),
@@ -482,6 +502,180 @@ export class V2Workspace {
         .descriptors()
         .map((descriptor) => Object.freeze(TransformDescriptorV2Schema.parse(descriptor))),
     )
+  }
+
+  async createBasicCleanJob(
+    requestInput: CreateBasicCleanJobRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<TransformJobV2> {
+    context.signal?.throwIfAborted()
+    const request = CreateBasicCleanJobRequestV2Schema.parse(requestInput)
+    const resolved = await this.#resolveLayout(request.inputs[0], context.signal)
+    const lease = await this.#acquire(resolved.identity, context.signal)
+    let inputCount: number
+    try {
+      context.signal?.throwIfAborted()
+      if (lease.dataset.version !== resolved.identity.dataset_version) {
+        throw new IntegrityError('Basic-clean input resolved to a different Dataset', {
+          reason: 'transform_job_input_mismatch',
+          expected_dataset_version: resolved.identity.dataset_version,
+          actual_dataset_version: lease.dataset.version,
+        })
+      }
+      inputCount = lease.dataset.length
+    } finally {
+      lease.release()
+    }
+
+    const params = Object.freeze({})
+    const cacheIdentity = TransformCacheIdentityV1Schema.parse({
+      identity_profile: V2_IDENTITY_PROFILE,
+      op: BASIC_CLEAN_OPERATION_V1,
+      op_version: '1',
+      input_dataset_versions: [resolved.identity.dataset_version],
+      params,
+    })
+    const cacheKey = hashV2TransformCache(cacheIdentity)
+    let row: CatalogTransformJobRowV2
+    try {
+      row = await waitWithAbort(
+        this.#catalog.createOrReadTransformJob({
+          id: `job_${cacheKey}`,
+          cacheKey,
+          op: BASIC_CLEAN_OPERATION_V1,
+          opVersion: '1',
+          params,
+          inputVersion: resolved.identity.dataset_version,
+          capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
+          capabilityVersion: '1',
+          inputCount: BigInt(inputCount),
+        }),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      if (error instanceof V2CatalogDeterminismConflictError) {
+        throw new IntegrityError('Basic-clean job identity conflicts with stored metadata', {
+          reason: 'transform_job_identity_conflict',
+          cache_key: cacheKey,
+        })
+      }
+      mapV2CatalogError(error, false)
+    }
+    if (row.status === 'completed' && row.outputVersion !== null) {
+      await this.#verifyTransformOutput(
+        row.outputVersion,
+        context.signal ?? new AbortController().signal,
+      )
+    }
+    return transformJobFromCatalog(row)
+  }
+
+  async listTransformJobs(
+    requestInput: TransformJobPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<TransformJobPageV2> {
+    context.signal?.throwIfAborted()
+    const request = TransformJobPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const before =
+      request.cursor === null
+        ? null
+        : transformJobCatalogCursor(this.#cursor.decodeTransformJob(request.cursor, namespaceId))
+    let page: CatalogTransformJobPageV2
+    try {
+      page = await waitWithAbort(
+        this.#catalog.listTransformJobs(before, request.limit),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (page.rows.length > request.limit) {
+      throw new IntegrityError('Catalog returned too many transform jobs', {
+        reason: 'transform_job_page_overflow',
+      })
+    }
+    return TransformJobPageV2Schema.parse({
+      items: page.rows.map(transformJobFromCatalog),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeTransformJob(namespaceId, {
+              created_at: page.nextCursor.createdAt.toISOString(),
+              id: page.nextCursor.id,
+            }),
+    })
+  }
+
+  async getTransformJob(
+    idInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<TransformJobV2 | null> {
+    context.signal?.throwIfAborted()
+    const id = TransformJobIdV2Schema.parse(idInput)
+    let row: CatalogTransformJobRowV2 | null
+    try {
+      row = await waitWithAbort(this.#catalog.getTransformJob(id), context.signal)
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    return row === null ? null : transformJobFromCatalog(row)
+  }
+
+  async cancelTransformJob(
+    idInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<TransformJobV2> {
+    context.signal?.throwIfAborted()
+    const id = TransformJobIdV2Schema.parse(idInput)
+    let row: CatalogTransformJobRowV2 | null
+    try {
+      row = await waitWithAbort(this.#catalog.requestTransformJobCancellation(id), context.signal)
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row === null) {
+      throw new NotFoundError(`Transform job was not found: ${id}`, { job_id: id })
+    }
+    return transformJobFromCatalog(row)
+  }
+
+  async retryTransformJob(
+    idInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<TransformJobV2> {
+    context.signal?.throwIfAborted()
+    const id = TransformJobIdV2Schema.parse(idInput)
+    const existing = await this.getTransformJob(id, context)
+    if (existing === null) {
+      throw new NotFoundError(`Transform job was not found: ${id}`, { job_id: id })
+    }
+    if (existing.status !== 'failed' && existing.status !== 'cancelled') {
+      throw new ConflictError('Transform job is not eligible for retry', {
+        job_id: id,
+        status: existing.status,
+      })
+    }
+    let row: CatalogTransformJobRowV2 | null
+    try {
+      row = await waitWithAbort(this.#catalog.retryTransformJob(id), context.signal)
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row === null) {
+      const current = await this.getTransformJob(id, context)
+      if (current?.status === 'queued') return current
+      throw new ConflictError('Transform job cleanup has not finished', {
+        job_id: id,
+        status: current?.status ?? existing.status,
+      })
+    }
+    return transformJobFromCatalog(row)
   }
 
   listConverters(): readonly Readonly<ConverterDescriptorV2>[] {
@@ -1969,6 +2163,13 @@ function requireExactDatasetVersion(input: string): string {
   return DigestHexV2Schema.parse(input)
 }
 
+function transformJobCatalogCursor(state: {
+  readonly created_at: string
+  readonly id: string
+}): CatalogTransformJobCursorV2 {
+  return Object.freeze({ createdAt: new Date(state.created_at), id: state.id })
+}
+
 function stableConverterRecords(dataset: V2Dataset): readonly RecordRevisionV2[] {
   const records = [...dataset.records()]
   for (let index = 1; index < records.length; index += 1) {
@@ -2417,53 +2618,6 @@ function snapshotV2WorkspaceOpenOptions(
     ...(input.transformLimits === undefined ? {} : { transformLimits: input.transformLimits }),
     ...(input.jsonlLimits === undefined ? {} : { jsonlLimits: input.jsonlLimits }),
   })
-}
-
-function createConditionalObjectStoreV2(config: V2ObjectStoreConfig): ConditionalObjectStoreV2 {
-  if (config.kind === 's3') {
-    return new S3ConditionalObjectStoreV2({
-      bucket: config.bucket,
-      region: config.region,
-      ...(config.endpoint === undefined ? {} : { endpoint: config.endpoint }),
-      ...(config.accessKeyId === undefined ? {} : { accessKeyId: config.accessKeyId }),
-      ...(config.secretAccessKey === undefined ? {} : { secretAccessKey: config.secretAccessKey }),
-      ...(config.forcePathStyle === undefined ? {} : { forcePathStyle: config.forcePathStyle }),
-      ...(config.client === undefined ? {} : { client: config.client }),
-    })
-  }
-
-  const client =
-    config.client === undefined ? undefined : requireOssConditionalClientV2(config.client)
-  return new OssConditionalObjectStoreV2({
-    bucket: config.bucket,
-    accessKeyId: config.accessKeyId,
-    accessKeySecret: config.accessKeySecret,
-    ...(config.region === undefined ? {} : { region: config.region }),
-    ...(config.endpoint === undefined ? {} : { endpoint: config.endpoint }),
-    ...(config.secure === undefined ? {} : { secure: config.secure }),
-    ...(config.internal === undefined ? {} : { internal: config.internal }),
-    ...(client === undefined ? {} : { client }),
-  })
-}
-
-function requireOssConditionalClientV2(client: unknown): OssConditionalClientV2 {
-  if (
-    typeof client !== 'object' ||
-    client === null ||
-    !hasFunction(client, 'putStream') ||
-    !hasFunction(client, 'get') ||
-    !hasFunction(client, 'getObjectMeta') ||
-    !hasFunction(client, 'getBucketInfo')
-  ) {
-    throw new TypeError(
-      'Injected OSS client must implement the V2 conditional object-store methods',
-    )
-  }
-  return client as OssConditionalClientV2
-}
-
-function hasFunction(value: object, key: string): boolean {
-  return key in value && typeof (value as Record<string, unknown>)[key] === 'function'
 }
 
 function snapshotJsonlLimits(input: Partial<V2JsonlLimits> | undefined): Readonly<V2JsonlLimits> {

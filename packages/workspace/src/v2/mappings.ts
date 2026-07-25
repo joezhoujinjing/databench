@@ -2,6 +2,7 @@ import {
   type CatalogLayoutRowV2,
   type CatalogRefRowV2,
   type CatalogSnapshotRowV2,
+  type CatalogTransformJobRowV2,
   type RegisterLayoutV2,
   V2CatalogConsistencyError,
   V2CatalogImmutableConflictError,
@@ -28,6 +29,8 @@ import {
   RefMetadataV2Schema,
   RefStateConflictErrorV2,
   ServiceUnavailableError,
+  type TransformJobV2,
+  TransformJobV2Schema,
   V2_RECORD_JSON_COLUMNS,
   ValidationError,
 } from '@databench/schema'
@@ -126,6 +129,47 @@ export function deletedRefMetadataFromCatalog(row: CatalogRefRowV2): DeletedRefM
   return DeletedRefMetadataV2Schema.parse({
     ...refMetadataFromCatalog(row),
     deleted_at: row.deletedAt?.toISOString(),
+  })
+}
+
+export function transformJobFromCatalog(row: CatalogTransformJobRowV2): TransformJobV2 {
+  return TransformJobV2Schema.parse({
+    id: row.id,
+    cache_key: row.cacheKey,
+    operation: { name: row.op, version: row.opVersion },
+    input_dataset_versions: [row.inputVersion],
+    status: row.status,
+    attempt: row.attempt,
+    progress:
+      row.progress === null
+        ? null
+        : {
+            phase: row.progress.phase,
+            completed_units: storedBigIntToSafeNumber(
+              row.progress.completedUnits,
+              'progress.completed_units',
+            ),
+            total_units:
+              row.progress.totalUnits === null
+                ? null
+                : storedBigIntToSafeNumber(row.progress.totalUnits, 'progress.total_units'),
+          },
+    input_count: storedBigIntToSafeNumber(row.inputCount, 'input_count'),
+    output_count:
+      row.outputCount === null ? null : storedBigIntToSafeNumber(row.outputCount, 'output_count'),
+    output_dataset_version: row.outputVersion,
+    cache_hit: row.cacheHit,
+    error:
+      row.error === null
+        ? null
+        : {
+            code: row.error.code,
+            message: row.error.message,
+            retryable: row.error.retryable,
+          },
+    created_at: row.createdAt.toISOString(),
+    started_at: row.startedAt?.toISOString() ?? null,
+    finished_at: row.finishedAt?.toISOString() ?? null,
   })
 }
 

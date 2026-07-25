@@ -216,6 +216,16 @@ export interface CatalogTransformJobRowV2 extends CreateTransformJobV2 {
   readonly updatedAt: Date
 }
 
+export interface CatalogTransformJobCursorV2 {
+  readonly createdAt: Date
+  readonly id: string
+}
+
+export interface CatalogTransformJobPageV2 {
+  readonly rows: readonly CatalogTransformJobRowV2[]
+  readonly nextCursor: CatalogTransformJobCursorV2 | null
+}
+
 export interface ClaimTransformJobV2 {
   readonly leaseOwner: string
   readonly leaseDurationMs: number

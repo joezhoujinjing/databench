@@ -466,7 +466,9 @@ function normalizeServiceUnavailable(detail: unknown) {
       ? 'object_store'
       : record?.dependency === 'catalog'
         ? 'postgres'
-        : record?.dependency === 'postgres' || record?.dependency === 'object_store'
+        : record?.dependency === 'postgres' ||
+            record?.dependency === 'object_store' ||
+            record?.dependency === 'worker'
           ? record.dependency
           : 'unknown'
   return ServiceUnavailableDetailV2Schema.parse({ dependency, retryable: true })

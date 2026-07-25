@@ -8,6 +8,7 @@ import {
   RunTransformRequestV2Schema,
   RunTransformResultV2Schema,
   TransformDescriptorV2Schema,
+  TransformJobPageRequestV2Schema,
   TransformJobV2Schema,
   V2_LINEAGE_DEFAULT_MAX_DEPTH,
   V2_LINEAGE_DEFAULT_MAX_NODES,
@@ -162,6 +163,15 @@ describe('P2 transform job contracts', () => {
         finished_at: '2026-07-25T12:01:00.000Z',
       }).success,
     ).toBe(false)
+  })
+
+  test('bounds public transform job pagination', () => {
+    expect(TransformJobPageRequestV2Schema.parse({})).toEqual({ cursor: null, limit: 20 })
+    expect(TransformJobPageRequestV2Schema.parse({ cursor: '', limit: '100' })).toEqual({
+      cursor: null,
+      limit: 100,
+    })
+    expect(TransformJobPageRequestV2Schema.safeParse({ limit: 101 }).success).toBe(false)
   })
 })
 

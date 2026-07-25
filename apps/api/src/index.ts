@@ -1,6 +1,11 @@
 import { existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { openWorkerRuntime, V2Workspace, type WorkerRuntime } from '@databench/workspace'
+import {
+  DATA_JUICER_BATCH_CAPABILITY_V1,
+  openWorkerRuntime,
+  V2Workspace,
+  type WorkerRuntime,
+} from '@databench/workspace'
 import { serve } from '@hono/node-server'
 import { createApp, createOpenApiDocument } from './app.js'
 import { type ApiConfig, loadConfig } from './config.js'
@@ -64,6 +69,9 @@ export async function startApiRuntime(
       workerRuntime = await dependencies.openWorkerRuntime({
         workspace,
         target: config.worker.target,
+        storeConfig: config.storeConfig,
+        workspaceRoot: config.workspaceRoot,
+        signedUrlTtlMs: config.worker.signedUrlTtlMs,
         jobDeadlineMs: config.worker.jobDeadlineMs,
         leaseMs: config.worker.leaseMs,
         heartbeatMs: config.worker.heartbeatMs,
@@ -79,6 +87,8 @@ export async function startApiRuntime(
       corsOrigins: config.corsOrigins,
       version: config.version,
       workspaceRoot: config.workspaceRoot,
+      workerJobsAvailable:
+        workerRuntime?.supportsCapability(DATA_JUICER_BATCH_CAPABILITY_V1, '1') ?? false,
     })
     server = dependencies.serve({ fetch: app.fetch, port: config.port })
   } catch (error) {

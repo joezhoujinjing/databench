@@ -17,4 +17,10 @@ export const v2QueryKeys = {
   resolution: (scope: string, base: string, ref: string) =>
     [scope, base, 'v2', 'resolution', ref] as const,
   transforms: (scope: string, base: string) => [scope, base, 'v2', 'transforms'] as const,
+  transformJobsRoot: (scope: string, base: string) =>
+    [scope, base, 'v2', 'transform-jobs'] as const,
+  transformJobs: (scope: string, base: string, limit: number) =>
+    [scope, base, 'v2', 'transform-jobs', 'list', limit] as const,
+  transformJob: (scope: string, base: string, jobId: string) =>
+    [scope, base, 'v2', 'transform-jobs', 'detail', jobId] as const,
 } as const

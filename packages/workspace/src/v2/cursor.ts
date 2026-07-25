@@ -3,6 +3,7 @@ import { canonicalJsonV2 } from '@databench/hashing'
 import {
   parseRawJsonV2,
   RefNameV2Schema,
+  TransformJobIdV2Schema,
   V2_CURSOR_MAX_CHARS,
   V2_LINEAGE_CURSOR_MAX_CHARS,
   V2_LINEAGE_MAX_DEPTH,
@@ -44,6 +45,18 @@ interface LineageCursorPayloadV2 extends V2LineageCursorState {
   readonly kind: 'lineage'
   readonly scope: string
   readonly requested_ref: string
+  readonly expires_at: number
+}
+
+export interface V2TransformJobCursorState {
+  readonly created_at: string
+  readonly id: string
+}
+
+interface TransformJobCursorPayloadV2 extends V2TransformJobCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'transform_jobs'
+  readonly scope: string
   readonly expires_at: number
 }
 
@@ -93,6 +106,53 @@ export class V2CursorCodec {
 
   decodeDeletedRef(cursor: string, namespace: string): string {
     return this.#decodeRef(cursor, namespace, 'deleted_refs')
+  }
+
+  encodeTransformJob(namespace: string, stateInput: V2TransformJobCursorState): string {
+    const state = validateTransformJobState(stateInput)
+    const payload: TransformJobCursorPayloadV2 = {
+      v: CURSOR_VERSION,
+      kind: 'transform_jobs',
+      scope: this.#scope(namespace, 'transform_jobs'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    }
+    const bytes = encoder.encode(canonicalJsonV2(payload))
+    return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
+  }
+
+  decodeTransformJob(cursor: string, namespace: string): Readonly<V2TransformJobCursorState> {
+    try {
+      if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
+        throw new Error('cursor text size is invalid')
+      }
+      const parts = cursor.split('.')
+      if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('malformed cursor')
+      const bytes = decodeBase64Url(parts[0])
+      if (bytes.byteLength === 0 || bytes.byteLength > CURSOR_MAX_BYTES) {
+        throw new Error('cursor payload size is invalid')
+      }
+      const signature = decodeBase64Url(parts[1])
+      const expected = this.#sign(bytes)
+      if (signature.byteLength !== expected.byteLength || !timingSafeEqual(signature, expected)) {
+        throw new Error('cursor signature is invalid')
+      }
+      const value = parseRawJsonV2(bytes, { maxBytes: CURSOR_MAX_BYTES, maxDepth: 4 })
+      if (
+        !isTransformJobCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'transform_jobs') ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateTransformJobState(value)
+    } catch {
+      throw new ValidationError('Invalid or expired V2 transform job cursor', {
+        issues: [
+          { path: '/cursor', line: null, code: 'invalid_cursor', message: 'Invalid cursor' },
+        ],
+      })
+    }
   }
 
   #decodeRef(cursor: string, namespace: string, kind: RefCursorKindV2): string {
@@ -205,7 +265,7 @@ export class V2CursorCodec {
     return createHmac('sha256', this.#key).update(bytes).digest()
   }
 
-  #scope(namespace: string, kind: RefCursorKindV2 | 'lineage'): string {
+  #scope(namespace: string, kind: RefCursorKindV2 | 'lineage' | 'transform_jobs'): string {
     return createHmac('sha256', this.#key)
       .update(canonicalJsonV2({ kind: `databench-v2-${kind}-cursor-scope`, namespace }))
       .digest('base64url')
@@ -255,6 +315,35 @@ function isLineageCursorPayload(value: unknown): value is LineageCursorPayloadV2
     Number.isSafeInteger(record.expires_at) &&
     record.expires_at >= 0
   )
+}
+
+function isTransformJobCursorPayload(value: unknown): value is TransformJobCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 6 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'transform_jobs' &&
+    typeof record.scope === 'string' &&
+    typeof record.created_at === 'string' &&
+    typeof record.id === 'string' &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
+function validateTransformJobState(
+  input: V2TransformJobCursorState,
+): Readonly<V2TransformJobCursorState> {
+  const timestamp = new Date(input.created_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.created_at) {
+    throw new TypeError('V2 transform job cursor timestamp is invalid')
+  }
+  return Object.freeze({
+    created_at: timestamp.toISOString(),
+    id: TransformJobIdV2Schema.parse(input.id),
+  })
 }
 
 function validateLineageState(input: V2LineageCursorState): Readonly<V2LineageCursorState> {

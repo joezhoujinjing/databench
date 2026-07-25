@@ -646,7 +646,7 @@ export type TooManyRequestsDetailV2 = z.infer<typeof TooManyRequestsDetailV2Sche
 
 export const ServiceUnavailableDetailV2Schema = z
   .strictObject({
-    dependency: z.enum(['postgres', 'object_store', 'unknown']),
+    dependency: z.enum(['postgres', 'object_store', 'worker', 'unknown']),
     retryable: z.literal(true),
   })
   .meta({ id: 'ServiceUnavailableDetailV2' })

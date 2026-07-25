@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { RotateCcw } from 'lucide-react'
 import { type FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -15,12 +15,22 @@ import {
   PageShell,
   Surface,
   SurfaceBody,
+  SurfaceDescription,
   SurfaceHeader,
   SurfaceTitle,
 } from '@/components/ui/surface.js'
+import { ellipsizeMiddle, formatInteger } from '@/lib/format.js'
 import { cn } from '@/lib/utils.js'
-import { useV2DatasetResolution, useV2RunTransform, useV2Transforms } from '../../api/hooks.js'
-import type { TransformDescriptorV2 } from '../../api/types.js'
+import {
+  useV2CancelTransformJob,
+  useV2CreateBasicCleanJob,
+  useV2DatasetResolution,
+  useV2RetryTransformJob,
+  useV2RunTransform,
+  useV2TransformJobs,
+  useV2Transforms,
+} from '../../api/hooks.js'
+import type { TransformDescriptorV2, TransformJobV2 } from '../../api/types.js'
 import { RefConflictRecovery, readRefConflictDetail } from '../../components/RefConflictRecovery.js'
 import { V2MutationError } from '../../components/V2MutationError.js'
 
@@ -38,7 +48,8 @@ export function V2TransformsPageView() {
 
   return (
     <PageShell>
-      <PageHeader title={t('v2.transforms.title')} />
+      <PageHeader description={t('v2.transforms.description')} title={t('v2.transforms.title')} />
+      <BasicCleanJobs />
       <div className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
         <Surface className="h-fit overflow-hidden">
           <SurfaceHeader>
@@ -86,6 +97,202 @@ export function V2TransformsPageView() {
       </div>
     </PageShell>
   )
+}
+
+function BasicCleanJobs() {
+  const { t } = useTranslation()
+  const jobs = useV2TransformJobs()
+  const create = useV2CreateBasicCleanJob()
+  const cancel = useV2CancelTransformJob()
+  const retry = useV2RetryTransformJob()
+  const [input, setInput] = useState('')
+  const [formError, setFormError] = useState<string | null>(null)
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    const value = input.trim()
+    if (value === '') {
+      setFormError(t('v2.transforms.jobs.inputRequired'))
+      return
+    }
+    setFormError(null)
+    create.mutate(value)
+  }
+
+  return (
+    <Surface className="overflow-hidden">
+      <SurfaceHeader>
+        <SurfaceTitle>{t('v2.transforms.jobs.title')}</SurfaceTitle>
+        <SurfaceDescription>{t('v2.transforms.jobs.description')}</SurfaceDescription>
+      </SurfaceHeader>
+      <SurfaceBody>
+        <form className="grid items-end gap-3 md:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submit}>
+          <Field hint={t('v2.transforms.jobs.inputHint')} label={t('v2.transforms.jobs.input')}>
+            <TextInput
+              aria-label={t('v2.transforms.jobs.input')}
+              onChange={(event) => setInput(event.currentTarget.value)}
+              placeholder={t('v2.transforms.inputPlaceholder')}
+              value={input}
+            />
+          </Field>
+          <Button disabled={create.isPending} type="submit">
+            {create.isPending ? t('v2.transforms.jobs.submitting') : t('v2.transforms.jobs.submit')}
+          </Button>
+        </form>
+        {formError ? (
+          <div className="mt-3">
+            <FormError>{formError}</FormError>
+          </div>
+        ) : null}
+        {create.isError ? (
+          <div className="mt-4">
+            <V2MutationError error={create.error} />
+          </div>
+        ) : null}
+      </SurfaceBody>
+      <div className="border-border border-t">
+        <div className="flex items-center justify-between gap-3 px-5 py-3">
+          <h3 className="font-medium text-sm">{t('v2.transforms.jobs.recent')}</h3>
+          {jobs.isFetching ? (
+            <span className="text-dim-foreground text-xs">{t('common.loading')}</span>
+          ) : null}
+        </div>
+        {jobs.isLoading ? <Spinner /> : null}
+        {jobs.isError ? <ErrorState error={jobs.error} /> : null}
+        {jobs.data?.items.length === 0 ? (
+          <SurfaceBody className="border-border border-t">
+            <EmptyState>{t('v2.transforms.jobs.empty')}</EmptyState>
+          </SurfaceBody>
+        ) : null}
+        {jobs.data?.items.map((job) => (
+          <TransformJobRow
+            cancelling={cancel.isPending && cancel.variables === job.id}
+            job={job}
+            key={job.id}
+            onCancel={() => cancel.mutate(job.id)}
+            onRetry={() => retry.mutate(job.id)}
+            retrying={retry.isPending && retry.variables === job.id}
+          />
+        ))}
+        {cancel.isError ? (
+          <SurfaceBody className="border-border border-t">
+            <V2MutationError error={cancel.error} />
+          </SurfaceBody>
+        ) : null}
+        {retry.isError ? (
+          <SurfaceBody className="border-border border-t">
+            <V2MutationError error={retry.error} />
+          </SurfaceBody>
+        ) : null}
+      </div>
+    </Surface>
+  )
+}
+
+function TransformJobRow({
+  cancelling,
+  job,
+  onCancel,
+  onRetry,
+  retrying,
+}: {
+  cancelling: boolean
+  job: TransformJobV2
+  onCancel(): void
+  onRetry(): void
+  retrying: boolean
+}) {
+  const { t } = useTranslation()
+  const active = ['queued', 'leased', 'running', 'finalizing'].includes(job.status)
+  const canRetry = job.status === 'failed' || job.status === 'cancelled'
+  const filtered = job.output_count === null ? null : job.input_count - job.output_count
+  const progress = transformJobProgressPercent(job)
+  return (
+    <article className="grid gap-4 border-border border-t px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="min-w-0 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={transformJobTone(job.status)}>
+            {t(`v2.transforms.jobs.status.${job.status}`)}
+          </Badge>
+          <span className="font-medium text-sm">{t('v2.transforms.jobs.basicClean')}</span>
+          <code className="text-dim-foreground text-xs" title={job.id}>
+            {ellipsizeMiddle(job.id, 9)}
+          </code>
+          {job.cache_hit ? <Badge tone="violet">{t('v2.transforms.jobs.cacheHit')}</Badge> : null}
+        </div>
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-muted-foreground text-xs">
+          <span>{t('v2.transforms.jobs.attempt', { count: job.attempt })}</span>
+          <span>
+            {t('v2.transforms.jobs.inputCount', { count: formatInteger(job.input_count) })}
+          </span>
+          {job.output_count === null ? null : (
+            <span>
+              {t('v2.transforms.jobs.outputCount', { count: formatInteger(job.output_count) })}
+            </span>
+          )}
+          {filtered === null ? null : (
+            <span>{t('v2.transforms.jobs.filteredCount', { count: formatInteger(filtered) })}</span>
+          )}
+        </div>
+        {job.progress === null ? null : (
+          <div className="max-w-xl">
+            <div className="mb-1 flex justify-between text-dim-foreground text-xs">
+              <span>{job.progress.phase}</span>
+              <span>
+                {progress === null ? formatInteger(job.progress.completed_units) : `${progress}%`}
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-surface-soft">
+              <div
+                className="h-full bg-primary transition-[width] duration-300"
+                style={{ width: `${progress ?? 8}%` }}
+              />
+            </div>
+          </div>
+        )}
+        {job.error ? <p className="text-danger text-sm">{job.error.message}</p> : null}
+      </div>
+      <div className="flex flex-wrap gap-2 lg:justify-end">
+        {active ? (
+          <Button disabled={cancelling} onClick={onCancel} size="sm" variant="outline">
+            {cancelling ? t('v2.transforms.jobs.cancelling') : t('common.cancel')}
+          </Button>
+        ) : null}
+        {canRetry ? (
+          <Button disabled={retrying} onClick={onRetry} size="sm" variant="outline">
+            {retrying ? t('v2.transforms.jobs.retrying') : t('v2.transforms.jobs.retry')}
+          </Button>
+        ) : null}
+        {job.output_dataset_version ? (
+          <>
+            <Button asChild size="sm">
+              <Link params={{ ref: job.output_dataset_version }} to="/datasets/$ref">
+                {t('v2.transforms.jobs.openDataset')}
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link params={{ ref: job.output_dataset_version }} to="/lineage/$ref">
+                {t('v2.transforms.jobs.openLineage')}
+              </Link>
+            </Button>
+          </>
+        ) : null}
+      </div>
+    </article>
+  )
+}
+
+export function transformJobProgressPercent(job: TransformJobV2): number | null {
+  const progress = job.progress
+  if (progress === null || progress.total_units === null || progress.total_units === 0) return null
+  return Math.min(100, Math.round((progress.completed_units / progress.total_units) * 100))
+}
+
+function transformJobTone(status: TransformJobV2['status']): 'blue' | 'green' | 'orange' | 'muted' {
+  if (status === 'completed') return 'green'
+  if (status === 'failed' || status === 'cancelled') return 'muted'
+  if (status === 'finalizing') return 'orange'
+  return 'blue'
 }
 
 function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) {

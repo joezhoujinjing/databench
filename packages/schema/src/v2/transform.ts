@@ -14,6 +14,8 @@ import { DatasetManifestV2Schema } from './manifest.js'
 
 export const V2_TRANSFORM_MAX_INPUTS = 16
 export const V2_TRANSFORM_REGISTRY_MAX_ITEMS = 128
+export const V2_TRANSFORM_JOB_PAGE_DEFAULT_LIMIT = 20
+export const V2_TRANSFORM_JOB_PAGE_MAX_LIMIT = 100
 export const V2_LINEAGE_DEFAULT_MAX_DEPTH = 8
 export const V2_LINEAGE_MAX_DEPTH = 32
 export const V2_LINEAGE_DEFAULT_MAX_NODES = 100
@@ -34,6 +36,25 @@ export const TransformInputRoleV2Schema = z.string().regex(TRANSFORM_NAME)
 export type TransformInputRoleV2 = z.infer<typeof TransformInputRoleV2Schema>
 export const RunIdV2Schema = z.string().regex(RUN_ID)
 export const TransformJobIdV2Schema = z.string().regex(JOB_ID)
+
+export const TransformJobParamsV2Schema = z
+  .strictObject({ job_id: TransformJobIdV2Schema })
+  .meta({ id: 'TransformJobParamsV2' })
+export type TransformJobParamsV2 = z.infer<typeof TransformJobParamsV2Schema>
+
+export const TransformJobPageRequestV2Schema = z
+  .strictObject({
+    cursor: OpaqueCursorQueryV2Schema,
+    limit: z.coerce
+      .number()
+      .int()
+      .safe()
+      .min(1)
+      .max(V2_TRANSFORM_JOB_PAGE_MAX_LIMIT)
+      .default(V2_TRANSFORM_JOB_PAGE_DEFAULT_LIMIT),
+  })
+  .meta({ id: 'TransformJobPageRequestV2' })
+export type TransformJobPageRequestV2 = z.infer<typeof TransformJobPageRequestV2Schema>
 
 export const TransformJobStatusV2Schema = z.enum([
   'queued',
@@ -150,7 +171,7 @@ export type TransformJobV2 = z.infer<typeof TransformJobV2Schema>
 
 export const TransformJobPageV2Schema = z
   .strictObject({
-    items: z.array(TransformJobV2Schema).max(100),
+    items: z.array(TransformJobV2Schema).max(V2_TRANSFORM_JOB_PAGE_MAX_LIMIT),
     next_cursor: z.string().min(1).max(1_536).nullable(),
   })
   .meta({ id: 'TransformJobPageV2' })

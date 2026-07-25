@@ -35,6 +35,7 @@ import {
   DATA_JUICER_BATCH_PARAMETER_SCHEMA_V1,
 } from '../src/internal/worker/data-juicer.js'
 import { GrpcWorkerClient } from '../src/internal/worker/grpc-client.js'
+import { openWorkerRuntime } from '../src/internal/worker/runtime.js'
 import { WorkerStagingJobPreparerV1 } from '../src/internal/worker/staging.js'
 import { readWorkerRetainedJsonlV1 } from '../src/v2/batch-transform.js'
 import { V2Workspace } from '../src/v2/workspace.js'
@@ -412,6 +413,33 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
       })
       await expect(staging.statExact({ ...ref, logicalName: 'input' })).resolves.toBeNull()
       await expect(staging.statExact({ ...ref, logicalName: 'output' })).resolves.toBeNull()
+
+      const runtime = await openWorkerRuntime({
+        workspace,
+        target: workerAddress,
+        client,
+        storeConfig: { kind: 's3', ...config },
+        workspaceRoot: root,
+        signedUrlTtlMs: 60_000,
+        jobDeadlineMs: 30_000,
+        leaseMs: 30_000,
+        heartbeatMs: 10_000,
+        pollMs: 10,
+      })
+      try {
+        await runtime.start()
+        expect(runtime.supportsCapability(DATA_JUICER_BATCH_CAPABILITY_V1, '1')).toBe(true)
+        const submitted = await workspace.createBasicCleanJob({ inputs: [dataset.version] })
+        const productJob = await waitForTransformJob(workspace, submitted.id, 30_000)
+        expect(productJob).toMatchObject({
+          status: 'completed',
+          input_count: 4,
+          output_count: 2,
+          output_dataset_version: expect.any(String),
+        })
+      } finally {
+        await runtime.stop()
+      }
     } finally {
       await workspace.close()
       await catalog.close()
@@ -587,6 +615,19 @@ function minioConfig(bucket: string) {
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? 'databench-secret',
     forcePathStyle: true,
   }
+}
+
+async function waitForTransformJob(workspace: V2Workspace, id: string, timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const job = await workspace.getTransformJob(id)
+    if (job?.status === 'completed') return job
+    if (job?.status === 'failed' || job?.status === 'cancelled') {
+      throw new Error(`Transform job ended as ${job.status}: ${job.error?.message ?? 'no error'}`)
+    }
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 25))
+  }
+  throw new Error('Timed out waiting for transform job completion')
 }
 
 async function deleteAllObjects(admin: S3Client, bucket: string): Promise<void> {
