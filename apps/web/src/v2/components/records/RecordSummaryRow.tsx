@@ -15,7 +15,7 @@ export function RecordSummaryRow({
 
   return (
     <Link
-      className="grid min-h-24 grid-cols-[minmax(13rem,1.3fr)_minmax(14rem,2fr)_minmax(12rem,1fr)] items-center gap-5 border-border border-b px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none max-md:grid-cols-1"
+      className="grid min-h-24 grid-cols-[minmax(13rem,1.3fr)_minmax(14rem,2fr)] items-center gap-5 border-border border-b px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none max-md:grid-cols-1"
       params={{ recordId: record.record_id, ref: datasetVersion }}
       to="/datasets/$ref/records/$recordId"
     >
@@ -41,35 +41,6 @@ export function RecordSummaryRow({
           </Badge>
         </div>
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        <EligibilityBadge label="SFT" value={record.eligibility.sft} />
-        <EligibilityBadge label="DPO" value={record.eligibility.dpo} />
-        <EligibilityBadge label="RLVR" value={record.eligibility.rlvr_grpo} />
-      </div>
     </Link>
-  )
-}
-
-function EligibilityBadge({
-  label,
-  value,
-}: {
-  label: string
-  value: RecordSummaryV2['eligibility']['sft']
-}) {
-  const { t } = useTranslation()
-  const status = value.eligible ? t('v2.record.eligible') : t('v2.record.ineligible')
-
-  return (
-    <span className="space-y-1">
-      <Badge tone={value.eligible ? 'green' : 'muted'}>
-        {label} · {status} · {value.output_count}
-      </Badge>
-      {value.reason_codes.length > 0 ? (
-        <span className="block text-dim-foreground text-[0.68rem] leading-4">
-          {value.reason_codes.join(', ')}
-        </span>
-      ) : null}
-    </span>
   )
 }
