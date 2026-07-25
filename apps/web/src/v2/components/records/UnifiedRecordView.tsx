@@ -8,7 +8,7 @@ import {
   SurfaceHeader,
   SurfaceTitle,
 } from '@/components/ui/surface.js'
-import type { PostTrainingRecordV2, RecordEligibilityV2, RecordViewV2 } from '@/v2/api/types.js'
+import type { PostTrainingRecordV2, RecordViewV2 } from '@/v2/api/types.js'
 import { CandidatesView } from './CandidateView.js'
 import { Field, RecordContents } from './ContentView.js'
 import { JsonValueView, WorkerJsonDocument } from './JsonValueView.js'
@@ -62,7 +62,6 @@ export function UnifiedRecordView({ view }: { view: RecordViewV2 }) {
         </SurfaceBody>
       </Surface>
 
-      <EligibilityView eligibility={view.eligibility} />
       <CandidatesView candidates={record.candidates} />
       <PreferenceRelations relations={record.preference_relations} />
       <ToolsAndVerification record={record} />
@@ -72,46 +71,6 @@ export function UnifiedRecordView({ view }: { view: RecordViewV2 }) {
         {() => <WorkerJsonDocument downloadName={`record-${record.id}.json`} value={record} />}
       </LazySection>
     </div>
-  )
-}
-
-export function EligibilityView({ eligibility }: { eligibility: RecordEligibilityV2 }) {
-  const { t } = useTranslation()
-  const tasks = [
-    ['sft', eligibility.sft],
-    ['dpo', eligibility.dpo],
-    ['rlvr_grpo', eligibility.rlvr_grpo],
-  ] as const
-
-  return (
-    <Surface>
-      <SurfaceHeader>
-        <SurfaceTitle>{t('v2.record.eligibility')}</SurfaceTitle>
-      </SurfaceHeader>
-      <SurfaceBody className="grid gap-3 lg:grid-cols-3">
-        {tasks.map(([name, task]) => (
-          <div className="rounded-[4px] border border-border bg-background/35 p-3" key={name}>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="blue">{name}</Badge>
-              <Badge tone={task.eligible ? 'green' : 'orange'}>
-                {task.eligible ? t('v2.record.eligible') : t('v2.record.ineligible')}
-              </Badge>
-            </div>
-            <div className="mt-3 space-y-2 text-sm">
-              <Field label={t('v2.record.outputCount')} value={task.output_count} />
-              <Field
-                label={t('v2.record.reasonCodes')}
-                value={
-                  task.reason_codes.length === 0
-                    ? t('v2.record.none')
-                    : task.reason_codes.join(', ')
-                }
-              />
-            </div>
-          </div>
-        ))}
-      </SurfaceBody>
-    </Surface>
   )
 }
 

@@ -6,7 +6,6 @@ export { MountedRelations, PreferenceRelations } from './PreferenceRelations.js'
 export { MountedSignalHistory, SignalHistory, SignalValue } from './SignalHistory.js'
 export {
   collectCallCoverage,
-  EligibilityView,
   Provenance,
   ToolsAndVerification,
   UnifiedRecordView,

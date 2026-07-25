@@ -2334,10 +2334,10 @@ endpoint。
 
 #### 17.2.5 任务资格与 Transform
 
-SFT、DPO、RLVR/GRPO badges、输出数量与不合格原因完全来自
-`RecordEligibilityV2`。前端不复制 ADR 0009 的 selected、adjudicated、supersession 或
-verification 规则。Evaluation/rejection sampling 在选定具体 policy 前显示为“需选择策略”，
-不显示虚假的 eligible 状态。
+`RecordEligibilityV2` 保留为服务端的可重建读投影，供导出预检与其他 API consumer
+使用。Web 的 record 列表与详情不展示 SFT、DPO、RLVR/GRPO 资格 badge、输出数量或
+不合格原因；选定具体 converter 后，导出 inspect/stream 仍严格执行 ADR 0009 的
+selected、adjudicated、supersession 与 verification 规则。
 
 Transform list 返回 `name`、`version`、`identity_mode` 和 parameter JSON Schema。首期 Web
 使用受约束 JSON editor + 服务端 validation error pointer，不在客户端实现第二套 Zod。

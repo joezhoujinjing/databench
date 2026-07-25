@@ -77,11 +77,10 @@ describe('Unified Record V2', () => {
     expect(signalHtml).toContain('json')
   })
 
-  test('uses server eligibility verbatim and keeps superseded relations available behind history', () => {
+  test('hides server eligibility and keeps superseded relations available behind history', () => {
     const html = renderToStaticMarkup(<UnifiedRecordView view={view} />)
-    expect(html).toContain('Server eligibility')
-    expect(html).toContain('7')
-    expect(html).toContain('selected_candidate_missing')
+    expect(html).not.toContain('Server eligibility')
+    expect(html).not.toContain('selected_candidate_missing')
 
     const relationsHtml = renderToStaticMarkup(
       <MountedRelations relations={view.record.preference_relations} />,
