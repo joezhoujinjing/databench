@@ -1,0 +1,62 @@
+{
+  "fixture_version": 1,
+  "name": "canonical-draft-sft-v1",
+  "namespace": "11111111-1111-4111-8111-111111111111",
+  "source_artifact_digest": "00ef670d117f475e546ecc0a3fc8bfbd28b3f4dd0dd1c107088388cad2ed3b4f",
+  "raw_byte_length": 996,
+  "dataset_version": "fbcad2d79efa5756588c9ae91d5fe94180c8a959bb0fba09a5b9be8fba7cc65e",
+  "rows": [
+    {
+      "data_row_index": 0,
+      "generation_run_id": "canonical-draft-jsonl-v1:00ef670d117f475e546ecc0a3fc8bfbd28b3f4dd0dd1c107088388cad2ed3b4f:row:0",
+      "event_keys": [],
+      "root_initial_record_jcs": "{\"candidates\":[],\"contents\":[{\"loss_weight\":0,\"parts\":[{\"part_metadata\":{},\"text\":\"What is 2 + 2?\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"user\"}],\"extra\":{},\"lang\":\"en\",\"lineage\":null,\"preference_relations\":[],\"schema_version\":\"2.0.0\",\"source\":{\"kind\":\"worksheet-row\",\"license\":null,\"name\":\"fixture-sft\",\"original_id\":\"sft-source-1\",\"url\":null},\"tags\":[\"task:sft\"],\"tools\":[],\"verification\":null}",
+      "candidate_initial_jcs": [
+        "{\"avg_logprobs\":null,\"contents\":[{\"loss_weight\":1,\"parts\":[{\"part_metadata\":{},\"text\":\"4\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"ai\"}],\"finish_reason\":null,\"generator\":null,\"rank\":0,\"selected\":true,\"signals\":[],\"token_count\":null}"
+      ],
+      "record_digest": "4357f0aeba84170f81a28e579b90b62c8f825d8564955cf1e47a0f7b3b1e42c2",
+      "claims": [
+        {
+          "creation_profile": "source-root-v1",
+          "entity_kind": "record",
+          "entity_id": "rec_460fcaf8324ae1592b0683655677a81afed19df21f9d1efaf4e7c3bd3ad01725",
+          "claim_key_digest": "ace37eea63ea20fb17e35b10b05ee447617077f9241a4a0005b198e16e158b05",
+          "request_digest": "99e7da2d17eba3691072ab9dc84f3320489557587144c947e6bc731ae8657e71"
+        },
+        {
+          "creation_profile": "candidate-v1",
+          "entity_kind": "candidate",
+          "entity_id": "cand_6e7e738edee56b3b23886d9fdcb99b9ccc2345fb1c6a150a443efa6b22d66518",
+          "claim_key_digest": "59028dd739b7ec8efebea421a6ef7d81839b3cb064934310d7bef7914c25e7ab",
+          "request_digest": "efb230fe389da6e2da009ba2810508db61274d1018a06f82ab0f9c74a1b7f223"
+        }
+      ]
+    },
+    {
+      "data_row_index": 1,
+      "generation_run_id": "canonical-draft-jsonl-v1:00ef670d117f475e546ecc0a3fc8bfbd28b3f4dd0dd1c107088388cad2ed3b4f:row:1",
+      "event_keys": [],
+      "root_initial_record_jcs": "{\"candidates\":[],\"contents\":[{\"loss_weight\":0,\"parts\":[{\"part_metadata\":{},\"text\":\"Name the capital of France.\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"user\"}],\"extra\":{},\"lang\":\"en\",\"lineage\":null,\"preference_relations\":[],\"schema_version\":\"2.0.0\",\"source\":null,\"tags\":[\"task:sft\"],\"tools\":[],\"verification\":null}",
+      "candidate_initial_jcs": [
+        "{\"avg_logprobs\":null,\"contents\":[{\"loss_weight\":1,\"parts\":[{\"part_metadata\":{},\"text\":\"Paris\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"ai\"}],\"finish_reason\":null,\"generator\":null,\"rank\":0,\"selected\":true,\"signals\":[],\"token_count\":null}"
+      ],
+      "record_digest": "2574e58bcb2e45dbb769fe91ed774026d3c0414897bf9b14ee6d4f93e9fa83e2",
+      "claims": [
+        {
+          "creation_profile": "artifact-row-v1",
+          "entity_kind": "record",
+          "entity_id": "rec_ca1b64cf1070bbca7a546427ee86f3a3949d0471743453b12295e27497814c7f",
+          "claim_key_digest": "f683d010531045034020727f0b9162c029e768ceb908bd3f614018aef076da5e",
+          "request_digest": "1e0c319c09a7b7ffc881adbeaf1d5af6da2457d462897fa9741e095cbf3a5442"
+        },
+        {
+          "creation_profile": "candidate-v1",
+          "entity_kind": "candidate",
+          "entity_id": "cand_0d257d7be80076195f3cacc7c3a865a19f89094b12ac49da5cdb6be4b56b68a1",
+          "claim_key_digest": "ad74ce010134c9a406b98d3a169f8349bc241ae05c27406eed4f9d213347a6a3",
+          "request_digest": "d6dc3df7d4783ccae974c7a7fd123cd274251ba34b4f377ecf82ad6c5f0bf42c"
+        }
+      ]
+    }
+  ]
+}

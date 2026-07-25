@@ -36,6 +36,8 @@ export function registerMcpFileRoutes(
       runtime.config.fileIdleTimeoutMs,
       runtime.config.fileTotalTimeoutMs,
     )
+    let responseStreamOwned = false
+    let disposeResponse: (() => Promise<void>) | undefined
     try {
       assertNdjsonContentType(request)
       assertDeclaredLength(
@@ -59,6 +61,42 @@ export function registerMcpFileRoutes(
         return context.json(McpValidationPreviewResultSchema.parse(result), 200)
       }
 
+      if (active.metadata.action === 'materialize-jsonl') {
+        const materialized = await getV2Workspace(context).materializeCanonicalDraftJsonl(
+          bytes,
+          active.metadata.expectedInputDigest === undefined
+            ? {}
+            : { expectedInputDigest: active.metadata.expectedInputDigest },
+          { signal: deadline.signal },
+        )
+        disposeResponse = async () => await materialized.dispose()
+        const source = finalizeMcpResponseStream(materialized.bytes, deadline, active.finish)
+        const body = streamAsyncIterable(
+          source,
+          (reason) => {
+            deadline.abort(
+              reason ?? new DOMException('MCP materialization was cancelled', 'AbortError'),
+            )
+          },
+          deadline.signal,
+          () => {
+            deadline.close()
+            active.finish()
+            void materialized.dispose().catch(() => undefined)
+          },
+        )
+        const response = context.body(body, 200, {
+          'Content-Type': 'application/x-ndjson',
+          'Content-Length': String(materialized.contentLength),
+          'Content-Disposition': contentDispositionAttachment(
+            `canonical-${materialized.datasetVersion}.jsonl`,
+          ),
+        })
+        responseStreamOwned = true
+        disposeResponse = undefined
+        return response
+      }
+
       const result = await getV2Workspace(context).addJsonl(
         bytes,
         { ref: null, expected_ref_version: null, message: null },
@@ -68,8 +106,11 @@ export function registerMcpFileRoutes(
     } catch (error) {
       throw deadline.mapError(error)
     } finally {
-      deadline.close()
-      active.finish()
+      if (!responseStreamOwned) {
+        await disposeResponse?.().catch(() => undefined)
+        deadline.close()
+        active.finish()
+      }
     }
   })
 

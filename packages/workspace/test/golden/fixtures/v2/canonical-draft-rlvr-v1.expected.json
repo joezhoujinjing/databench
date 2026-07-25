@@ -1,0 +1,53 @@
+{
+  "fixture_version": 1,
+  "name": "canonical-draft-rlvr-v1",
+  "namespace": "11111111-1111-4111-8111-111111111111",
+  "source_artifact_digest": "a8f8e5d8589fc86b586d7eb7b60cf27ccf92db5ff7568b59bd023a2c66b70fa0",
+  "raw_byte_length": 956,
+  "dataset_version": "a197f0153feb74b16098a0bd713bff5bc28b3715dad5b8601a09cb4b56211a57",
+  "rows": [
+    {
+      "data_row_index": 0,
+      "generation_run_id": "canonical-draft-jsonl-v1:a8f8e5d8589fc86b586d7eb7b60cf27ccf92db5ff7568b59bd023a2c66b70fa0:row:0",
+      "event_keys": [
+        "canonical-draft-jsonl-v1:a8f8e5d8589fc86b586d7eb7b60cf27ccf92db5ff7568b59bd023a2c66b70fa0:row:0:candidate:0:signal:0",
+        "canonical-draft-jsonl-v1:a8f8e5d8589fc86b586d7eb7b60cf27ccf92db5ff7568b59bd023a2c66b70fa0:row:0:candidate:0:signal:1"
+      ],
+      "root_initial_record_jcs": "{\"candidates\":[],\"contents\":[{\"loss_weight\":0,\"parts\":[{\"part_metadata\":{},\"text\":\"Return the next integer after 41.\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"user\"}],\"extra\":{},\"lang\":\"en\",\"lineage\":null,\"preference_relations\":[],\"schema_version\":\"2.0.0\",\"source\":null,\"tags\":[\"task:rlvr\"],\"tools\":[],\"verification\":{\"config\":{},\"constraint\":null,\"ground_truth\":\"42\",\"verifier\":\"integer-exact-match\",\"verifier_version\":\"1\"}}",
+      "candidate_initial_jcs": [
+        "{\"avg_logprobs\":null,\"contents\":[{\"loss_weight\":1,\"parts\":[{\"part_metadata\":{},\"text\":\"42\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"ai\"}],\"finish_reason\":null,\"generator\":null,\"rank\":0,\"selected\":true,\"signals\":[],\"token_count\":null}"
+      ],
+      "record_digest": "283aa7dbfcf86bf8a1ae0dcc92d6381e7eb14f5eae608190ed207f4d9299dfea",
+      "claims": [
+        {
+          "creation_profile": "artifact-row-v1",
+          "entity_kind": "record",
+          "entity_id": "rec_c5c26b91220a71ae7f2980df6fe9e2c1389de61d148d6a87fdc1cc7f10aa13f9",
+          "claim_key_digest": "ed597f5336d3720fc5066d3dcbf62dd98af09574d4dba75684636bf4e45e9098",
+          "request_digest": "427aae31dbd8f37d8bfd6557eef95bb3f7c099b0ce8b974376806452ed4672b9"
+        },
+        {
+          "creation_profile": "candidate-v1",
+          "entity_kind": "candidate",
+          "entity_id": "cand_2438cccf4fc1252c9ac2b6ce89bda613af49ae4968234875560b53d97a823205",
+          "claim_key_digest": "e032bab92b57052c78198d1dba48eb203f8d43e59230383a93614aebf8897712",
+          "request_digest": "4cd8b77e28b630154a7a41440bb9aedec61025d6e84c999fccb58887f4ed4b6d"
+        },
+        {
+          "creation_profile": "signal-event-v1",
+          "entity_kind": "signal",
+          "entity_id": "sig_49be3f94e10f849f57a6394f6581a1e8adf0a00c94a5ed0addf86346236cb133",
+          "claim_key_digest": "12b5a59345f5d111d1173647e911dec3fc6d5cdefc1de74bc5a8fac8104acf4e",
+          "request_digest": "bdcccfad4abe387685478fec150b45f80ada5396e11345af7e92288e69511638"
+        },
+        {
+          "creation_profile": "signal-event-v1",
+          "entity_kind": "signal",
+          "entity_id": "sig_e24f6522b377403be4e60cd7c05e76b55143a5db1b1c76db22633d5aa21ec76c",
+          "claim_key_digest": "cb57573c293cf643c841214c6cd5b0815741c397ddf1ab16841b2bbe9bcf28f6",
+          "request_digest": "3f1752443810600636f611c3314c0900696d5f08085946eaf1d1f23a7911bccd"
+        }
+      ]
+    }
+  ]
+}

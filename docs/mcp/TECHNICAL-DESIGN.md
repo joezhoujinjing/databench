@@ -420,6 +420,8 @@ PUT 行为：
   限制 canonical record bytes 不超过 `max_canonical_bytes`；JSONL physical spool 的上界为
   `max_canonical_bytes + record_count`（每条一个 LF）；完整 fsync/seal 且全部成功后才开始
   `application/x-ndjson` 响应，agent 保存为用户指定文件；
+- Workspace materialization 返回显式 output lease；调用方必须完整消费 bytes 或调用幂等
+  `dispose()`。HTTP companion 在正常关闭、client cancel、timeout 与 response 构造失败时兜底释放；
 - 失败使用统一 typed error envelope；dataset 只在成功响应前的最终 publish 阶段可见；
 - 客户端断开立即 abort；
 - 失败或 token 过期时重新调用 prepare，不提供 status/discard tool。

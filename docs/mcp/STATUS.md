@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- mcp-status
-current_step: M1b2
-last_completed_step: M1b1
+current_step: M1b3
+last_completed_step: M1b2
 mcp_runtime_enabled: false
 auth_mode: none-implemented-disabled
 offline_release_authorized: scoped-after-GM2
@@ -14,8 +14,8 @@ offline_release_authorized: scoped-after-GM2
 
 - **开发分支:** `feat/mcp-excel-import`
 - **代码基线:** `main@258bacaf673a0395c8fb3d769bd4bf6f78dcde56`
-- **当前 Step:** M1b2——M1b1 已过 GM1b1，下一步实现 deterministic identity 与 materialize
-- **MCP runtime:** M1b1 staged canonical + canonical-draft preview runtime 与 `auth_mode=none` 已实现；部署中保持关闭
+- **当前 Step:** M1b3——M1b2 已过 GM1b2，下一步实现 draft import 与真实 Excel 闭环
+- **MCP runtime:** M1b2 staged canonical + canonical-draft preview/materialize runtime 与 `auth_mode=none` 已实现；部署中保持关闭
 - **V16/V17:** 状态不变，仍未完成
 - **发布边界:** owner 只授权 GM2 后进入 ADR 0012 的匿名可信内网离线通道；未授权公网部署
 
@@ -25,9 +25,9 @@ offline_release_authorized: scoped-after-GM2
 |---|---|---|---|---|---|
 | M0 | ADR、计划、真实 Excel 与 agent preflight | ✅ | `7dcfb5f` | GM0 | 规范、preflight、全仓 gates 与独立 review 通过 |
 | M1a | Canonical MCP/companion 纵切 | ✅ | `2f562e7` | GM1a | staged runtime 完成，MCP 配置保持 disabled |
-| M1b1 | Canonical draft contract 与 no-write preview | ✅ | 本次提交 | GM1b1 | draft import/materialize 仍不可用 |
-| M1b2 | Deterministic identity 与 materialize | ⬜ | | GM1b2 | 下一 accepted Step |
-| M1b3 | Draft import 与真实 Excel 闭环 | ⬜ | | GM1b3 | |
+| M1b1 | Canonical draft contract 与 no-write preview | ✅ | `a57217c` | GM1b1 | draft import/materialize 仍不可用 |
+| M1b2 | Deterministic identity 与 materialize | ✅ | 本次提交 | GM1b2 | draft import 仍不可用 |
+| M1b3 | Draft import 与真实 Excel 闭环 | ⬜ | | GM1b3 | 下一 accepted Step |
 | M2 | 内网离线启用与 scoped release gate | ⬜ | | GM2 | 不完成 V16/V17 |
 
 ## M0 Gate 记录
@@ -99,6 +99,38 @@ offline_release_authorized: scoped-after-GM2
 - 两路独立 review 按架构正确性与 agent UX/MVP 简洁性检查；修复 dangling JSON Schema refs、input
   defaults/required 与 exact side-effect output projection、synthetic ID type/error leakage、lineage self-parent
   collision、contract rule 缺口与 contract name/format 歧义后无剩余 P0/P1/P2。
+
+## M1b2 Gate 记录
+
+- 新增 import-scoped deterministic identity planner：source-root/artifact-row root、candidate generation
+  run、signal/preference event key、owner skeleton、index/supersession refs 与完整 canonical record；claim
+  顺序固定为 root → 全部 candidates → 全部 signals → preferences，immutable replay/conflict 复用现有
+  ADR 0011 claim compare。
+- SFT/DPO/RLVR fixed vectors 锁定 exact raw digest、owner JCS、run/event keys、entity IDs、claim/request
+  digests、record digest、dataset version 与 canonical JSONL bytes；另覆盖 LF/CRLF、leading blank、无尾 LF
+  与多 candidate + signal claim order。独立 Python `jcs` + `blake3` 实现复算全部字段和 bytes：SFT
+  `00ef670d117f475e546ecc0a3fc8bfbd28b3f4dd0dd1c107088388cad2ed3b4f` / version
+  `fbcad2d79efa5756588c9ae91d5fe94180c8a959bb0fba09a5b9be8fba7cc65e` / 4 claims；DPO
+  `6e7a61e65d1f64e92733f18e91efa4e3232d4be0660a5133fc8b317e304a5612` / version
+  `54ad8339649b669e4698b594305421d31148602053eb502e3b96e29b4256cbee` / 5 claims；RLVR
+  `a8f8e5d8589fc86b586d7eb7b60cf27ccf92db5ff7568b59bd023a2c66b70fa0` / version
+  `a197f0153feb74b16098a0bd713bff5bc28b3715dad5b8601a09cb4b56211a57` / 4 claims。
+- materializer 使用 bounded raw/output 两遍 spool、exact-byte digest、reservation admission/resize 与
+  fsync/seal；expected digest 在 namespace/claim 前失败，完整 canonical output seal 后才写 claims，
+  claims 全部成功后才返回单次 stream。显式 output lease、partial cancel、首次读取前 abort、完全未读
+  HTTP timeout、response 构造失败与 temp reservation resize/release 竞态均有清理覆盖；不发布
+  dataset/ref/object，允许按 ADR 留下已成功的 orphan immutable claims。
+- `data_process_prepare` 只新增 draft `materialize-jsonl`，返回
+  `response_kind="canonical-jsonl"` 与 `side_effects=["identity_claims"]`；agent-visible instructions
+  明确 exact-byte guard、流式保存和 response-loss replay。Draft `import-dataset` 仍未暴露。
+- Store 80 tests（2 skipped）、Schema 209 tests、Workspace 110 tests（4 skipped）、API 81 tests
+  （2 skipped）通过；真实 Postgres + MinIO API suite 10 files、83 tests 通过，覆盖 preview → expected
+  digest materialize、canonical IDs、exact replay 与 digest mismatch fail-before-write。
+- `git diff --check`、`pnpm lint`（370 files）、`pnpm build`（13 tasks）、`pnpm typecheck`
+  （22 tasks）、`pnpm test`（22 tasks）、`pnpm openapi:check`（11 tasks）、`pnpm v2:status:check`、
+  `pnpm offline:check` 与 `pnpm peers check` 通过；OpenAPI 保持不变。两路独立 review 按架构正确性
+  与 agent UX/MVP 简洁性复核，修复未消费 output lease、claim order、temp reservation 竞态与在线
+  retry guidance 后无剩余 P0/P1/P2/P3，未引入 draft import、认证、审批状态机或独立服务。
 
 ## 状态更新规则
 

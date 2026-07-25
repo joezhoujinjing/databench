@@ -246,13 +246,86 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
         }),
       )
       expect(draftPreview.status).toBe(200)
-      const draftPreviewResult = await responseJson(draftPreview)
+      const draftPreviewResult = await responseJson<
+        { input_digest: string } & Record<string, unknown>
+      >(draftPreview)
       expect(draftPreviewResult).toMatchObject({
         format: 'canonical-draft-jsonl-v1',
         record_count: 1,
         records: [{ candidates: [expect.objectContaining({ signals: [] })] }],
       })
       expect(JSON.stringify(draftPreviewResult)).not.toMatch(/"(?:rec|cand|pref|sig)_[0-9a-f]{64}"/)
+
+      const draftMaterializePrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: {
+            format: 'canonical-draft-jsonl-v1',
+            action: 'materialize-jsonl',
+            expected_input_digest: draftPreviewResult.input_digest,
+          },
+        }),
+      )
+      expect(draftMaterializePrepared).toMatchObject({
+        response_kind: 'canonical-jsonl',
+        side_effects: ['identity_claims'],
+      })
+      const materializedResponse = await app.fetch(
+        new Request(String(draftMaterializePrepared.put_url), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: draftJsonl,
+        }),
+      )
+      expect(materializedResponse.status).toBe(200)
+      expect(materializedResponse.headers.get('content-type')).toContain('application/x-ndjson')
+      const materializedJsonl = await materializedResponse.text()
+      expect(materializedJsonl).toMatch(/"id":"rec_[0-9a-f]{64}"/)
+      expect(materializedJsonl).toMatch(/"id":"cand_[0-9a-f]{64}"/)
+
+      const replayPrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: {
+            format: 'canonical-draft-jsonl-v1',
+            action: 'materialize-jsonl',
+          },
+        }),
+      )
+      const replay = await app.fetch(
+        new Request(String(replayPrepared.put_url), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: draftJsonl,
+        }),
+      )
+      expect(replay.status).toBe(200)
+      expect(await replay.text()).toBe(materializedJsonl)
+
+      const mismatchPrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: {
+            format: 'canonical-draft-jsonl-v1',
+            action: 'materialize-jsonl',
+            expected_input_digest: draftPreviewResult.input_digest,
+          },
+        }),
+      )
+      const mismatch = await app.fetch(
+        new Request(String(mismatchPrepared.put_url), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: `${draftJsonl} `,
+        }),
+      )
+      expect(mismatch.status).toBe(422)
+      expect(await responseJson(mismatch)).toMatchObject({
+        error: {
+          code: 'validation_error',
+          detail: { issues: [expect.objectContaining({ code: 'input_digest_mismatch' })] },
+        },
+      })
 
       const previewPrepared = structured(
         await client.callTool({

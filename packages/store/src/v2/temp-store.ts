@@ -9,8 +9,11 @@ export const V2_TEMP_OWNER_MARKER = 'databench-v2-temp-v1\n'
 export const DEFAULT_V2_TEMP_STALE_AGE_MS = 24 * 60 * 60 * 1000
 export const DEFAULT_V2_TEMP_SAFETY_MARGIN_BYTES = 512 * 1024 * 1024
 
-const TEMP_NAME_PATTERN = /^databench-v2-(prepare|read)-[0-9a-f-]{36}\.parquet$/
+const TEMP_NAME_PATTERN =
+  /^databench-v2-(?:prepare|read)-[0-9a-f-]{36}\.parquet$|^databench-v2-draft-(?:raw|output)-[0-9a-f-]{36}\.jsonl$/
 const OWNER_CANDIDATE_PATTERN = /^\.databench-v2-owner-[0-9a-f-]{36}\.tmp$/
+
+export type V2TempFileKind = 'prepare' | 'read' | 'draft-raw' | 'draft-output'
 
 export interface V2TempStoreConfig {
   readonly tempRoot: string
@@ -27,6 +30,7 @@ export interface V2TempFile {
 
 export interface V2TempReservation {
   readonly bytes: number
+  resize(bytes: number, signal?: AbortSignal): Promise<void>
   release(): void
 }
 
@@ -79,21 +83,63 @@ export class V2TempStore {
       releaseAdmission()
     }
 
+    let currentBytes = requested
     let released = false
     return Object.freeze({
-      bytes: requested,
+      get bytes() {
+        return currentBytes
+      },
+      resize: async (bytes: number, resizeSignal?: AbortSignal) => {
+        if (released) {
+          throw new TypeError('V2 temporary storage reservation has already been released')
+        }
+        const nextBytes = nonNegativeSafeInteger('reservation bytes', bytes)
+        if (nextBytes === currentBytes) return
+        const releaseResizeAdmission = await this.#admission.acquire(resizeSignal)
+        try {
+          if (released) {
+            throw new TypeError('V2 temporary storage reservation has already been released')
+          }
+          throwIfAborted(resizeSignal)
+          if (nextBytes > currentBytes) {
+            const stats = await statfs(this.#root, { bigint: true })
+            if (released) {
+              throw new TypeError('V2 temporary storage reservation has already been released')
+            }
+            throwIfAborted(resizeSignal)
+            const available = stats.bavail * stats.bsize
+            const growth = nextBytes - currentBytes
+            const required =
+              BigInt(this.#reservedBytes) + BigInt(growth) + BigInt(this.#safetyMarginBytes)
+            if (available < required) {
+              throw new CapacityExceededError('Insufficient V2 temporary storage capacity', {
+                resource: 'temp_disk_bytes',
+                required: required.toString(),
+                available: available.toString(),
+              })
+            }
+            this.#reservedBytes = checkedAdd(this.#reservedBytes, growth)
+          } else {
+            this.#reservedBytes -= currentBytes - nextBytes
+          }
+          currentBytes = nextBytes
+        } finally {
+          releaseResizeAdmission()
+        }
+      },
       release: () => {
         if (released) return
         released = true
-        this.#reservedBytes -= requested
+        this.#reservedBytes -= currentBytes
       },
     })
   }
 
-  async create(kind: 'prepare' | 'read', signal?: AbortSignal): Promise<V2TempFile> {
+  async create(kind: V2TempFileKind, signal?: AbortSignal): Promise<V2TempFile> {
     await this.initialize()
     throwIfAborted(signal)
-    const path = join(this.#root, `databench-v2-${kind}-${randomUUID()}.parquet`)
+    const extension = kind === 'prepare' || kind === 'read' ? 'parquet' : 'jsonl'
+    const path = join(this.#root, `databench-v2-${kind}-${randomUUID()}.${extension}`)
     const handle = await open(
       path,
       constants.O_CREAT | constants.O_EXCL | constants.O_RDWR | constants.O_NOFOLLOW,

@@ -108,10 +108,17 @@ const McpCanonicalImportPrepareInputSchema = z.strictObject({
   action: z.literal('import-dataset'),
 })
 
+const McpCanonicalDraftMaterializePrepareInputSchema = z.strictObject({
+  format: z.literal(CANONICAL_DRAFT_FORMAT_V1),
+  action: z.literal('materialize-jsonl'),
+  expected_input_digest: DigestHexSchema.optional(),
+})
+
 export const McpDataProcessPrepareInputSchema = z
   .discriminatedUnion('action', [
     McpPreviewPrepareInputSchema,
     McpCanonicalImportPrepareInputSchema,
+    McpCanonicalDraftMaterializePrepareInputSchema,
   ])
   .meta({ id: 'McpDataProcessPrepareInput' })
 export type McpDataProcessPrepareInput = z.infer<typeof McpDataProcessPrepareInputSchema>
@@ -123,14 +130,15 @@ export type McpDataProcessPrepareInput = z.infer<typeof McpDataProcessPrepareInp
 export const McpDataProcessPrepareToolInputSchema = z
   .strictObject({
     format: z.enum([MCP_CANONICAL_FORMAT, CANONICAL_DRAFT_FORMAT_V1]),
-    action: z.enum(['validate-preview', 'import-dataset']),
+    action: z.enum(['validate-preview', 'import-dataset', 'materialize-jsonl']),
     preview_records: z.number().int().min(0).max(MCP_MAX_PREVIEW_RECORDS).optional(),
+    expected_input_digest: DigestHexSchema.optional(),
   })
   .superRefine((input, context) => {
     if (!McpDataProcessPrepareInputSchema.safeParse(input).success) {
       context.addIssue({
         code: 'custom',
-        message: 'preview_records is only allowed with validate-preview',
+        message: 'process fields do not match the selected format and action',
       })
     }
   })
@@ -163,8 +171,20 @@ const McpCanonicalImportPreparedSchema = z.strictObject({
   side_effects: z.array(z.literal('dataset_publish')).length(1),
 })
 
+const McpCanonicalDraftMaterializePreparedSchema = z.strictObject({
+  ...McpPreparedFileOperationShape,
+  format: z.literal(CANONICAL_DRAFT_FORMAT_V1),
+  action: z.literal('materialize-jsonl'),
+  response_kind: z.literal('canonical-jsonl'),
+  side_effects: z.array(z.literal('identity_claims')).length(1),
+})
+
 export const McpDataProcessPreparedSchema = z
-  .discriminatedUnion('action', [McpPreviewPreparedSchema, McpCanonicalImportPreparedSchema])
+  .discriminatedUnion('action', [
+    McpPreviewPreparedSchema,
+    McpCanonicalImportPreparedSchema,
+    McpCanonicalDraftMaterializePreparedSchema,
+  ])
   .meta({ id: 'McpDataProcessPrepared' })
 export type McpDataProcessPrepared = z.infer<typeof McpDataProcessPreparedSchema>
 
@@ -172,9 +192,9 @@ export const McpDataProcessPreparedToolOutputSchema = z
   .strictObject({
     ...McpPreparedFileOperationShape,
     format: z.enum([MCP_CANONICAL_FORMAT, CANONICAL_DRAFT_FORMAT_V1]),
-    action: z.enum(['validate-preview', 'import-dataset']),
-    response_kind: z.enum(['json-preview', 'json-ingest-result']),
-    side_effects: z.array(z.literal('dataset_publish')).max(1),
+    action: z.enum(['validate-preview', 'import-dataset', 'materialize-jsonl']),
+    response_kind: z.enum(['json-preview', 'json-ingest-result', 'canonical-jsonl']),
+    side_effects: z.array(z.enum(['dataset_publish', 'identity_claims'])).max(1),
   })
   .superRefine((input, context) => {
     if (!McpDataProcessPreparedSchema.safeParse(input).success) {

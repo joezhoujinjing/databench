@@ -132,6 +132,7 @@ import {
   type V2ObjectStoreConfig,
   type V2OperationContext,
   type V2Store,
+  V2TempStore,
   v2ObjectStoreConfigFromEnv,
 } from '@databench/store'
 import {
@@ -140,6 +141,11 @@ import {
   type V2DatasetLease,
   v2DatasetCacheRequiredWeight,
 } from './cache.js'
+import {
+  materializeCanonicalDraftJsonlV1,
+  type V2CanonicalDraftMaterialization,
+  type V2CanonicalDraftMaterializeOptions,
+} from './canonical-draft-materializer.js'
 import { V2CursorCodec } from './cursor.js'
 import { V2WorkspaceIdentityAllocator } from './identity-allocator.js'
 import {
@@ -217,6 +223,7 @@ export interface PostTrainingV2CapabilityOptions {
 export interface V2WorkspaceOptions {
   readonly catalog: V2WorkspaceCatalog
   readonly store: V2Store
+  readonly tempStore?: V2TempStore
   readonly cursorSecret: Uint8Array | string
   readonly cache?: V2DatasetCache
   readonly datasetLimits?: V2DatasetLimits
@@ -262,6 +269,7 @@ type CleanupOutcomeV2 =
 export class V2Workspace {
   readonly #catalog: V2WorkspaceCatalog
   readonly #store: V2Store
+  readonly #tempStore: V2TempStore
   readonly #cache: V2DatasetCache
   readonly #cursor: V2CursorCodec
   readonly #datasetLimits: Readonly<V2DatasetLimits>
@@ -285,14 +293,18 @@ export class V2Workspace {
       const objectStore = createConditionalObjectStoreV2(
         options.storeConfig ?? v2ObjectStoreConfigFromEnv(),
       )
+      const tempRoot = v2WorkspaceTempRoot(options.root)
+      const tempStore = new V2TempStore({ tempRoot })
       const store = new FileBackedV2Store({
         objectStore,
-        tempRoot: v2WorkspaceTempRoot(options.root),
+        tempRoot,
+        tempStore,
         ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
       })
       const workspace = new V2Workspace({
         catalog,
         store,
+        tempStore,
         cursorSecret: options.cursorSecret,
         ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
         ...(options.transformLimits === undefined
@@ -324,8 +336,12 @@ export class V2Workspace {
     if (!options.store || typeof options.store !== 'object') {
       throw new TypeError('V2Workspace store is required')
     }
+    if (options.tempStore !== undefined && !(options.tempStore instanceof V2TempStore)) {
+      throw new TypeError('V2Workspace tempStore must be a V2TempStore')
+    }
     this.#catalog = options.catalog
     this.#store = options.store
+    this.#tempStore = options.tempStore ?? new V2TempStore({ tempRoot: v2WorkspaceTempRoot() })
     this.#cursor = new V2CursorCodec(options.cursorSecret)
     this.#datasetLimits = snapshotDatasetLimits(options.datasetLimits ?? DEFAULT_V2_DATASET_LIMITS)
     this.#transformRegistry = options.transformRegistry ?? BUILTIN_V2_TRANSFORM_REGISTRY
@@ -529,6 +545,25 @@ export class V2Workspace {
       options.maxResponseBytes,
       (value) => McpCanonicalDraftValidationPreviewResultSchema.parse(value),
     )
+  }
+
+  async materializeCanonicalDraftJsonl(
+    source: AsyncIterable<Uint8Array>,
+    options: V2CanonicalDraftMaterializeOptions = {},
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<Readonly<V2CanonicalDraftMaterialization>> {
+    context.signal?.throwIfAborted()
+    const signal = context.signal ?? new AbortController().signal
+    return await materializeCanonicalDraftJsonlV1({
+      source,
+      options,
+      tempStore: this.#tempStore,
+      catalog: this.#catalog,
+      getNamespace: async () => await this.#namespace(signal),
+      datasetLimits: this.#datasetLimits,
+      jsonlLimits: this.#jsonlLimits,
+      signal,
+    })
   }
 
   listTransforms(): readonly Readonly<TransformDescriptorV2>[] {

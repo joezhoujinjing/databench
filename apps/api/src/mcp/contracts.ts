@@ -24,7 +24,7 @@ const CONTRACT_RULES = Object.freeze([
 const DRAFT_CONTRACT_RULES = Object.freeze([
   'Use UTF-8 JSON Lines: one canonical-draft-jsonl-v1 object per non-blank line.',
   'draft_schema_version must be exactly 1.0.0 and schema_version exactly 2.0.0; unknown fields are rejected.',
-  'Do not provide record, candidate, signal, or preference IDs. Databench creates them only during later materialize or import operations.',
+  'Do not provide record, candidate, signal, or preference IDs. Databench creates stable IDs during materialize-jsonl and later import operations.',
   'Use zero-based candidate indexes in preferences and same-array earlier indexes for signal or preference supersession.',
   'Optional fields with JSON Schema defaults may be omitted; validation preview returns them fully materialized.',
   'source.original_id must contain the stable business record ID for that row, or null when no stable row ID exists.',
@@ -33,7 +33,8 @@ const DRAFT_CONTRACT_RULES = Object.freeze([
   'At most one system content is allowed, only at shared contents[0], with exactly one text part and loss_weight 0.',
   'Tags must be unique and sorted by the RFC 8785/JCS UTF-16 comparator.',
   'Function calls must reference declared tools, responses must reference earlier calls, and all remaining verification, preference, lineage, supersession, sensitive-payload, and dataset resource invariants are validated.',
-  'This stage supports validate-preview only for canonical drafts; preview performs no identity, dataset, object, ref, or catalog writes.',
+  'validate-preview performs no writes. materialize-jsonl writes immutable identity claims and returns canonical JSONL without publishing a dataset, object, or ref.',
+  'If you materialize bytes that were already previewed, you may pass that preview input_digest as expected_input_digest to guard the exact uploaded bytes; preview is not required, and retrying the same exact bytes safely replays the same identities.',
 ])
 
 let cachedSchema: Record<string, unknown> | undefined

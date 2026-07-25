@@ -25,8 +25,9 @@ import type { McpFileTokenRegistry } from './file-tokens.js'
 const MCP_INSTRUCTIONS = [
   'Process existing canonical JSONL directly, or map raw Excel and CSV rows into canonical-draft-jsonl-v1 without Databench-managed IDs.',
   'Call contract_get with name canonical-jsonl for canonical input or canonical-draft-import for draft input; upload drafts with format canonical-draft-jsonl-v1, and do not place file bytes in MCP arguments.',
-  'Canonical draft currently supports validate-preview only; draft materialization and dataset import are not available yet.',
-  'Use data_process_prepare to obtain a one-time PUT URL for validation preview or canonical dataset import.',
+  'Canonical draft supports validate-preview and materialize-jsonl; draft dataset import is not available yet.',
+  'Use data_process_prepare to obtain a one-time PUT URL for validation preview, canonical dataset import, or draft materialization.',
+  'For materialize-jsonl, stream the PUT response to the requested canonical JSONL file; expected_input_digest, when used, must be the preview input_digest and guards the exact re-uploaded bytes. If the response is lost, prepare again and retry the same exact bytes; identities replay safely.',
   'Preview is optional: choose it when mapping is uncertain or a sample would help; do not treat it as an approval state machine.',
   'Use dataset_show with an exact dataset version and dataset_export_canonical_prepare for a one-time canonical JSONL GET URL.',
   'The current workspace is anonymous and grants full access; it is intended only for a trusted internal network.',
@@ -114,7 +115,7 @@ function createMcpServer(
     {
       title: 'Prepare canonical JSONL processing',
       description:
-        'Create a one-time PUT URL. canonical draft supports validate-preview only; canonical import-dataset publishes a dataset.',
+        'Create a one-time PUT URL. canonical draft supports validate-preview or materialize-jsonl; optional expected_input_digest guards previewed bytes; canonical import-dataset publishes a dataset.',
       inputSchema: McpDataProcessPrepareToolInputSchema,
       outputSchema: McpDataProcessPreparedToolOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
@@ -130,11 +131,20 @@ function createMcpServer(
                 action: operation.action,
                 previewRecords: operation.preview_records,
               }
-            : {
-                kind: 'process' as const,
-                format: operation.format,
-                action: operation.action,
-              },
+            : operation.action === 'materialize-jsonl'
+              ? {
+                  kind: 'process' as const,
+                  format: operation.format,
+                  action: operation.action,
+                  ...(operation.expected_input_digest === undefined
+                    ? {}
+                    : { expectedInputDigest: operation.expected_input_digest }),
+                }
+              : {
+                  kind: 'process' as const,
+                  format: operation.format,
+                  action: operation.action,
+                },
         )
         const result = McpDataProcessPreparedSchema.parse({
           method: 'PUT',
@@ -145,8 +155,17 @@ function createMcpServer(
           format: operation.format,
           action: operation.action,
           response_kind:
-            operation.action === 'validate-preview' ? 'json-preview' : 'json-ingest-result',
-          side_effects: operation.action === 'validate-preview' ? [] : ['dataset_publish'],
+            operation.action === 'validate-preview'
+              ? 'json-preview'
+              : operation.action === 'materialize-jsonl'
+                ? 'canonical-jsonl'
+                : 'json-ingest-result',
+          side_effects:
+            operation.action === 'validate-preview'
+              ? []
+              : operation.action === 'materialize-jsonl'
+                ? ['identity_claims']
+                : ['dataset_publish'],
         })
         return toolResult(result)
       })

@@ -220,7 +220,7 @@ src/
    ├─ store.ts · contracts.ts · keys.ts · runtime.ts
    ├─ oss-adapter.ts
    ├─ s3-adapter.ts
-   ├─ temp-store.ts
+   ├─ temp-store.ts             shared bounded temp admission and draft spools
    ├─ config.ts
    └─ index.ts
 ```
@@ -251,14 +251,17 @@ src/
 └─ v2/
    ├─ workspace.ts
    ├─ identity-allocator.ts
+   ├─ canonical-draft-identity.ts
+   ├─ canonical-draft-materializer.ts
    ├─ cache.ts · cursor.ts
    ├─ mappings.ts
    ├─ transform-semaphore.ts
    └─ index.ts
 ```
 
-这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical no-write preview、persist、transform、
-CAS ref、record/dataset lineage、audit、converter inspect/export 与取消语义。
+这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
+deterministic identity/materialize、persist、transform、CAS ref、record/dataset lineage、audit、
+converter inspect/export 与取消语义。
 
 ## Tooling 与根目录
 

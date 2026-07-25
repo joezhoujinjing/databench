@@ -61,6 +61,14 @@ describe('V2TempStore root and ownership safety', () => {
     } finally {
       await store.remove(file)
     }
+    const draft = await store.create('draft-output')
+    try {
+      expect(permissionBits((await draft.handle.stat()).mode)).toBe(0o600)
+      expect(draft.path.startsWith(`${root}/databench-v2-draft-output-`)).toBe(true)
+      expect(draft.path.endsWith('.jsonl')).toBe(true)
+    } finally {
+      await store.remove(draft)
+    }
   })
 
   test('allows two store instances to initialize the same root concurrently', async () => {
@@ -133,6 +141,14 @@ describe('V2TempStore root and ownership safety', () => {
       root,
       '.databench-v2-owner-00000000-0000-4000-8000-000000000003.tmp',
     )
+    const staleDraftRaw = join(
+      root,
+      'databench-v2-draft-raw-00000000-0000-4000-8000-000000000007.jsonl',
+    )
+    const staleDraftOutput = join(
+      root,
+      'databench-v2-draft-output-00000000-0000-4000-8000-000000000008.jsonl',
+    )
     const recentOwned = join(root, 'databench-v2-read-00000000-0000-4000-8000-000000000004.parquet')
     const unrelated = join(root, 'unrelated.txt')
     const lookalike = join(root, 'databench-v2-prepare-not-a-uuid.parquet')
@@ -149,6 +165,8 @@ describe('V2TempStore root and ownership safety', () => {
       writeFile(stalePrepare, 'stale'),
       writeFile(staleRead, 'stale'),
       writeFile(staleCandidate, 'stale'),
+      writeFile(staleDraftRaw, 'stale'),
+      writeFile(staleDraftOutput, 'stale'),
       writeFile(recentOwned, 'recent'),
       writeFile(unrelated, 'keep'),
       writeFile(lookalike, 'keep'),
@@ -160,6 +178,8 @@ describe('V2TempStore root and ownership safety', () => {
       utimes(stalePrepare, old, old),
       utimes(staleRead, old, old),
       utimes(staleCandidate, old, old),
+      utimes(staleDraftRaw, old, old),
+      utimes(staleDraftOutput, old, old),
     ])
 
     await new V2TempStore({ tempRoot: root, staleAgeMs: 1_000 }).initialize()
@@ -249,6 +269,33 @@ describe('V2TempStore cancellation and admission', () => {
     const second = await store.reserve(requested)
     await expect(store.reserve(requested)).rejects.toBeInstanceOf(CapacityExceededError)
     second.release()
+  })
+
+  test('resizes reservations atomically and preserves the prior size on failed growth', async () => {
+    const { root } = await tempRoot()
+    const store = new V2TempStore({ tempRoot: root, safetyMarginBytes: 0 })
+    await store.initialize()
+    const stats = await statfs(root, { bigint: true })
+    const available = stats.bavail * stats.bsize
+    const requested = Number(available / 2n)
+    const first = await store.reserve(requested)
+
+    await first.resize(Math.floor(requested / 4))
+    expect(first.bytes).toBe(Math.floor(requested / 4))
+    const second = await store.reserve(requested)
+    await expect(first.resize(requested + Math.floor(requested / 2))).rejects.toBeInstanceOf(
+      CapacityExceededError,
+    )
+    expect(first.bytes).toBe(Math.floor(requested / 4))
+
+    first.release()
+    second.release()
+    await expect(first.resize(1)).rejects.toThrow(/released/)
+
+    const racing = await store.reserve(1)
+    const resizeAfterRelease = racing.resize(2)
+    racing.release()
+    await expect(resizeAfterRelease).rejects.toThrow(/released/)
   })
 })
 

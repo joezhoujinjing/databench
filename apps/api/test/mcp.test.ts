@@ -109,9 +109,7 @@ describe('MCP canonical vertical slice', () => {
     await client.connect(transport)
     try {
       expect(client.getInstructions()).toContain('map raw Excel and CSV rows')
-      expect(client.getInstructions()).toContain(
-        'draft materialization and dataset import are not available yet',
-      )
+      expect(client.getInstructions()).toContain('draft dataset import is not available yet')
       const tools = await client.listTools()
       expect(tools.tools.map(({ name }) => name)).toEqual([
         'contract_get',
@@ -132,6 +130,13 @@ describe('MCP canonical vertical slice', () => {
           },
           {
             properties: { action: { const: 'import-dataset' } },
+            additionalProperties: false,
+          },
+          {
+            properties: {
+              action: { const: 'materialize-jsonl' },
+              format: { const: 'canonical-draft-jsonl-v1' },
+            },
             additionalProperties: false,
           },
         ],
@@ -159,6 +164,17 @@ describe('MCP canonical vertical slice', () => {
             properties: {
               action: { const: 'import-dataset' },
               response_kind: { const: 'json-ingest-result' },
+            },
+          },
+          {
+            properties: {
+              action: { const: 'materialize-jsonl' },
+              response_kind: { const: 'canonical-jsonl' },
+              side_effects: {
+                minItems: 1,
+                maxItems: 1,
+                items: { const: 'identity_claims' },
+              },
             },
           },
         ],
@@ -279,6 +295,36 @@ describe('MCP canonical vertical slice', () => {
       expect(JSON.stringify(draftPreviewBody)).not.toMatch(/"(?:id|supersedes)":/)
       expect(fake.state.draftPreviewCalls).toBe(1)
       expect(fake.state.importCalls).toBe(0)
+
+      const materializePrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: {
+            format: 'canonical-draft-jsonl-v1',
+            action: 'materialize-jsonl',
+            expected_input_digest: INPUT_DIGEST,
+          },
+        }),
+      )
+      expect(materializePrepared).toMatchObject({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'materialize-jsonl',
+        response_kind: 'canonical-jsonl',
+        side_effects: ['identity_claims'],
+      })
+      const materialized = await app.fetch(
+        new Request(String(materializePrepared.put_url), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: draftLine(),
+        }),
+      )
+      expect(materialized.status).toBe(200)
+      expect(materialized.headers.get('content-type')).toContain('application/x-ndjson')
+      expect(materialized.headers.get('content-disposition')).toContain(`canonical-${VERSION}`)
+      expect(await materialized.text()).toBe(canonicalLine())
+      expect(fake.state.materializeCalls).toBe(1)
+      expect(fake.state.materializeExpectedDigest).toBe(INPUT_DIGEST)
 
       const unavailableDraftImport = await client.callTool({
         name: 'data_process_prepare',
@@ -601,6 +647,33 @@ describe('MCP canonical vertical slice', () => {
     gate.resolve()
   })
 
+  test('disposes an unread materialization response on total timeout', async () => {
+    const fake = fakeWorkspace()
+    const app = createTestApp({
+      v2Workspace: fake.workspace,
+      mcp: mcpConfig({
+        maxActiveFileOperations: 1,
+        fileIdleTimeoutMs: 1_000,
+        fileTotalTimeoutMs: 30,
+      }),
+    })
+    const materializePrepared = await prepareDraftMaterialize(app)
+    const previewPrepared = await prepareRaw(app, 'validate-preview')
+    const response = await app.fetch(
+      new Request(String(materializePrepared.put_url), {
+        method: 'PUT',
+        headers: { 'content-type': 'application/x-ndjson' },
+        body: draftLine(),
+      }),
+    )
+    expect(response.status).toBe(200)
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 60))
+    expect(fake.state.materializeDisposeCalls).toBe(1)
+    expect((await app.fetch(processRequest(String(previewPrepared.put_url)))).status).toBe(200)
+    await response.body?.cancel().catch(() => undefined)
+  })
+
   test('releases an export slot on total timeout when the client stops reading', async () => {
     const fake = fakeWorkspace()
     const gate = deferred<void>()
@@ -767,13 +840,22 @@ interface FakeState {
   exportGate?: Promise<void>
   exportIgnoresAbort?: boolean
   importCalls: number
+  materializeCalls: number
+  materializeDisposeCalls: number
+  materializeExpectedDigest?: string
   previewCalls: number
   previewGate?: Promise<void>
   previewSignal?: AbortSignal
 }
 
 function fakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
-  const state: FakeState = { draftPreviewCalls: 0, importCalls: 0, previewCalls: 0 }
+  const state: FakeState = {
+    draftPreviewCalls: 0,
+    importCalls: 0,
+    materializeCalls: 0,
+    materializeDisposeCalls: 0,
+    previewCalls: 0,
+  }
   const workspace = {
     postTrainingV2Capability: () => postTrainingV2Capability(),
     async previewCanonicalJsonl(
@@ -817,6 +899,27 @@ function fakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
         dataset_version: VERSION,
         manifest,
         ref_update: { status: 'not_requested' as const },
+      }
+    },
+    async materializeCanonicalDraftJsonl(
+      source: AsyncIterable<Uint8Array>,
+      options: { expectedInputDigest?: string },
+    ) {
+      await collect(source)
+      state.materializeCalls += 1
+      state.materializeExpectedDigest = options.expectedInputDigest
+      const output = encoder.encode(canonicalLine())
+      return {
+        inputDigest: INPUT_DIGEST,
+        recordCount: 1,
+        datasetVersion: VERSION,
+        contentLength: output.byteLength,
+        bytes: (async function* () {
+          yield output
+        })(),
+        async dispose() {
+          state.materializeDisposeCalls += 1
+        },
       }
     },
     async describeDataset() {
@@ -910,6 +1013,28 @@ async function prepareRaw(
       params: {
         name: 'data_process_prepare',
         arguments: { format: 'canonical-jsonl', action },
+      },
+    }),
+  )
+  const body = (await response.json()) as {
+    error?: unknown
+    result?: { structuredContent: Record<string, unknown> }
+  }
+  if (body.result === undefined) throw new Error(JSON.stringify(body))
+  return body.result.structuredContent
+}
+
+async function prepareDraftMaterialize(
+  app: ReturnType<typeof createTestApp>,
+): Promise<Record<string, unknown>> {
+  const response = await app.fetch(
+    mcpRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'data_process_prepare',
+        arguments: { format: 'canonical-draft-jsonl-v1', action: 'materialize-jsonl' },
       },
     }),
   )

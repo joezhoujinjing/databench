@@ -69,6 +69,24 @@ describe('MCP v2 schemas', () => {
         action: 'materialize-jsonl',
       }),
     ).toThrow()
+    expect(
+      McpDataProcessPrepareInputSchema.parse({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'materialize-jsonl',
+        expected_input_digest: DIGEST,
+      }),
+    ).toEqual({
+      format: 'canonical-draft-jsonl-v1',
+      action: 'materialize-jsonl',
+      expected_input_digest: DIGEST,
+    })
+    expect(() =>
+      McpDataProcessPrepareInputSchema.parse({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'validate-preview',
+        expected_input_digest: DIGEST,
+      }),
+    ).toThrow()
   })
 
   test('locks action-specific prepared output side effects', () => {
@@ -96,6 +114,15 @@ describe('MCP v2 schemas', () => {
         side_effects: ['dataset_publish'],
       }),
     ).toThrow()
+    expect(
+      McpDataProcessPreparedSchema.parse({
+        ...base,
+        format: 'canonical-draft-jsonl-v1',
+        action: 'materialize-jsonl',
+        response_kind: 'canonical-jsonl',
+        side_effects: ['identity_claims'],
+      }),
+    ).toMatchObject({ action: 'materialize-jsonl', side_effects: ['identity_claims'] })
     expect(
       McpDataProcessPreparedSchema.parse({
         ...base,
@@ -138,6 +165,14 @@ describe('MCP v2 schemas', () => {
           properties: { action: { const: 'import-dataset' } },
           additionalProperties: false,
         },
+        {
+          properties: {
+            action: { const: 'materialize-jsonl' },
+            format: { const: 'canonical-draft-jsonl-v1' },
+            expected_input_digest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+          },
+          additionalProperties: false,
+        },
       ],
     })
     expect(output).toMatchObject({
@@ -171,6 +206,19 @@ describe('MCP v2 schemas', () => {
             },
           },
         },
+        {
+          properties: {
+            action: { const: 'materialize-jsonl' },
+            format: { const: 'canonical-draft-jsonl-v1' },
+            response_kind: { const: 'canonical-jsonl' },
+            side_effects: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 1,
+              items: { type: 'string', const: 'identity_claims' },
+            },
+          },
+        },
       ],
     })
 
@@ -182,6 +230,13 @@ describe('MCP v2 schemas', () => {
     expect(validateInput({ format: 'canonical-draft-jsonl-v1', action: 'import-dataset' })).toBe(
       false,
     )
+    expect(
+      validateInput({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'materialize-jsonl',
+        expected_input_digest: DIGEST,
+      }),
+    ).toBe(true)
 
     const validateOutput = ajv.compile(output)
     const preparedBase = {
@@ -209,6 +264,15 @@ describe('MCP v2 schemas', () => {
         side_effects: [],
       }),
     ).toBe(false)
+    expect(
+      validateOutput({
+        ...preparedBase,
+        format: 'canonical-draft-jsonl-v1',
+        action: 'materialize-jsonl',
+        response_kind: 'canonical-jsonl',
+        side_effects: ['identity_claims'],
+      }),
+    ).toBe(true)
     expect(contractOutput).toMatchObject({
       type: 'object',
       additionalProperties: false,

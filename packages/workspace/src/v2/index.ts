@@ -12,11 +12,26 @@ export {
   v2DatasetCacheWeight,
 } from './cache.js'
 export {
+  canonicalDraftGenerationRunId,
+  canonicalDraftPreferenceEventKey,
+  canonicalDraftSignalEventKey,
+  V2CanonicalDraftIdentityAllocator,
+  type V2CanonicalDraftPlannedClaim,
+  type V2CanonicalDraftRecordIdentityPlan,
+} from './canonical-draft-identity.js'
+export {
+  type MaterializeCanonicalDraftJsonlV1Input,
+  materializeCanonicalDraftJsonlV1,
+  type V2CanonicalDraftMaterialization,
+  type V2CanonicalDraftMaterializeOptions,
+} from './canonical-draft-materializer.js'
+export {
   DEFAULT_V2_CURSOR_TTL_MS,
   V2CursorCodec,
   type V2CursorCodecOptions,
 } from './cursor.js'
 export {
+  insertOrReplayV2IdentityClaim,
   type V2IdentityAllocatorCatalog,
   V2WorkspaceIdentityAllocator,
 } from './identity-allocator.js'
