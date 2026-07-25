@@ -1,6 +1,9 @@
+import Ajv2020 from 'ajv/dist/2020.js'
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 import {
+  McpCanonicalDraftImportContractSchema,
+  McpCanonicalDraftValidationPreviewResultSchema,
   McpCanonicalImportContractSchema,
   McpCanonicalValidationPreviewResultSchema,
   McpContractGetInputSchema,
@@ -9,6 +12,8 @@ import {
   McpDataProcessPrepareInputSchema,
   McpDataProcessPrepareToolInputSchema,
   McpDatasetExportCanonicalPreparedSchema,
+  McpImportContractSchema,
+  McpImportContractToolOutputSchema,
 } from '../src/v2/index.js'
 
 const DIGEST = 'a'.repeat(64)
@@ -21,7 +26,9 @@ describe('MCP v2 schemas', () => {
     expect(() =>
       McpContractGetInputSchema.parse({ name: 'canonical-jsonl', unknown: true }),
     ).toThrow()
-    expect(() => McpContractGetInputSchema.parse({ name: 'canonical-draft-import' })).toThrow()
+    expect(McpContractGetInputSchema.parse({ name: 'canonical-draft-import' })).toEqual({
+      name: 'canonical-draft-import',
+    })
 
     expect(
       McpDataProcessPrepareInputSchema.parse({
@@ -38,6 +45,22 @@ describe('MCP v2 schemas', () => {
         format: 'canonical-jsonl',
         action: 'import-dataset',
         preview_records: 1,
+      }),
+    ).toThrow()
+    expect(
+      McpDataProcessPrepareInputSchema.parse({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'validate-preview',
+      }),
+    ).toEqual({
+      format: 'canonical-draft-jsonl-v1',
+      action: 'validate-preview',
+      preview_records: 3,
+    })
+    expect(() =>
+      McpDataProcessPrepareInputSchema.parse({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'import-dataset',
       }),
     ).toThrow()
     expect(() =>
@@ -73,6 +96,15 @@ describe('MCP v2 schemas', () => {
         side_effects: ['dataset_publish'],
       }),
     ).toThrow()
+    expect(
+      McpDataProcessPreparedSchema.parse({
+        ...base,
+        format: 'canonical-draft-jsonl-v1',
+        action: 'validate-preview',
+        response_kind: 'json-preview',
+        side_effects: [],
+      }),
+    ).toMatchObject({ format: 'canonical-draft-jsonl-v1', side_effects: [] })
     expect(() =>
       McpDataProcessPreparedSchema.parse({
         ...base,
@@ -86,6 +118,7 @@ describe('MCP v2 schemas', () => {
   test('advertises exact action branches in SDK-compatible object schemas', () => {
     const input = z.toJSONSchema(McpDataProcessPrepareToolInputSchema)
     const output = z.toJSONSchema(McpDataProcessPreparedToolOutputSchema)
+    const contractOutput = z.toJSONSchema(McpImportContractToolOutputSchema)
 
     expect(input).toMatchObject({
       type: 'object',
@@ -94,8 +127,12 @@ describe('MCP v2 schemas', () => {
         {
           properties: {
             action: { const: 'validate-preview' },
+            format: {
+              enum: ['canonical-jsonl', 'canonical-draft-jsonl-v1'],
+            },
             preview_records: { type: 'integer', minimum: 0, maximum: 10, default: 3 },
           },
+          required: ['format', 'action'],
         },
         {
           properties: { action: { const: 'import-dataset' } },
@@ -110,8 +147,16 @@ describe('MCP v2 schemas', () => {
         {
           properties: {
             action: { const: 'validate-preview' },
+            format: {
+              enum: ['canonical-jsonl', 'canonical-draft-jsonl-v1'],
+            },
             response_kind: { const: 'json-preview' },
-            side_effects: { type: 'array', prefixItems: [] },
+            side_effects: {
+              type: 'array',
+              minItems: 0,
+              maxItems: 0,
+              items: { not: {} },
+            },
           },
         },
         {
@@ -120,8 +165,64 @@ describe('MCP v2 schemas', () => {
             response_kind: { const: 'json-ingest-result' },
             side_effects: {
               type: 'array',
-              prefixItems: [{ type: 'string', const: 'dataset_publish' }],
+              minItems: 1,
+              maxItems: 1,
+              items: { type: 'string', const: 'dataset_publish' },
             },
+          },
+        },
+      ],
+    })
+
+    const ajv = new Ajv2020({ logger: false, strict: false })
+    const validateInput = ajv.compile(input)
+    expect(validateInput({ format: 'canonical-draft-jsonl-v1', action: 'validate-preview' })).toBe(
+      true,
+    )
+    expect(validateInput({ format: 'canonical-draft-jsonl-v1', action: 'import-dataset' })).toBe(
+      false,
+    )
+
+    const validateOutput = ajv.compile(output)
+    const preparedBase = {
+      method: 'PUT',
+      put_url: 'http://databench.internal/api/mcp-files/process/proc_token',
+      content_type: 'application/x-ndjson',
+      max_bytes: 1024,
+      expires_at: '2026-07-25T08:00:00.000Z',
+    }
+    expect(
+      validateOutput({
+        ...preparedBase,
+        format: 'canonical-draft-jsonl-v1',
+        action: 'validate-preview',
+        response_kind: 'json-preview',
+        side_effects: [],
+      }),
+    ).toBe(true)
+    expect(
+      validateOutput({
+        ...preparedBase,
+        format: 'canonical-jsonl',
+        action: 'import-dataset',
+        response_kind: 'json-ingest-result',
+        side_effects: [],
+      }),
+    ).toBe(false)
+    expect(contractOutput).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      oneOf: [
+        {
+          properties: {
+            name: { const: 'canonical-jsonl' },
+            version: { const: '2.0.0' },
+          },
+        },
+        {
+          properties: {
+            name: { const: 'canonical-draft-import' },
+            version: { const: '1.0.0' },
           },
         },
       ],
@@ -148,6 +249,21 @@ describe('MCP v2 schemas', () => {
         unknown: true,
       }),
     ).toThrow()
+    expect(
+      McpCanonicalDraftValidationPreviewResultSchema.parse({
+        format: 'canonical-draft-jsonl-v1',
+        input_digest: DIGEST,
+        record_count: 1,
+        records: [
+          {
+            draft_schema_version: '1.0.0',
+            schema_version: '2.0.0',
+            contents: [],
+          },
+        ],
+        records_truncated: false,
+      }),
+    ).toMatchObject({ records: [{ candidates: [], extra: {} }] })
     expect(
       McpDatasetExportCanonicalPreparedSchema.parse({
         method: 'GET',
@@ -200,5 +316,19 @@ describe('MCP v2 schemas', () => {
         ],
       }),
     ).toThrow()
+
+    const draft = {
+      ...base,
+      name: 'canonical-draft-import',
+      version: '1.0.0',
+      examples: [
+        { name: 'sft', jsonl: '{}\n' },
+        { name: 'dpo', jsonl: '{}\n' },
+        { name: 'rlvr', jsonl: '{}\n' },
+      ],
+    } as const
+    expect(McpCanonicalDraftImportContractSchema.parse(draft).version).toBe('1.0.0')
+    expect(McpImportContractSchema.parse(draft).name).toBe('canonical-draft-import')
+    expect(() => McpImportContractSchema.parse({ ...draft, version: '2.0.0' })).toThrow()
   })
 })

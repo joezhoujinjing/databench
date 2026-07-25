@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- mcp-status
-current_step: M1b1
-last_completed_step: M1a
+current_step: M1b2
+last_completed_step: M1b1
 mcp_runtime_enabled: false
 auth_mode: none-implemented-disabled
 offline_release_authorized: scoped-after-GM2
@@ -14,8 +14,8 @@ offline_release_authorized: scoped-after-GM2
 
 - **开发分支:** `feat/mcp-excel-import`
 - **代码基线:** `main@258bacaf673a0395c8fb3d769bd4bf6f78dcde56`
-- **当前 Step:** M1b1——M1a 已过 GM1a，下一步增加 canonical draft contract 与 no-write preview
-- **MCP runtime:** M1a staged canonical runtime 与 `auth_mode=none` 已实现；部署中保持关闭
+- **当前 Step:** M1b2——M1b1 已过 GM1b1，下一步实现 deterministic identity 与 materialize
+- **MCP runtime:** M1b1 staged canonical + canonical-draft preview runtime 与 `auth_mode=none` 已实现；部署中保持关闭
 - **V16/V17:** 状态不变，仍未完成
 - **发布边界:** owner 只授权 GM2 后进入 ADR 0012 的匿名可信内网离线通道；未授权公网部署
 
@@ -24,9 +24,9 @@ offline_release_authorized: scoped-after-GM2
 | Step | 目标 | 状态 | PR / 提交 | Gate | 备注 |
 |---|---|---|---|---|---|
 | M0 | ADR、计划、真实 Excel 与 agent preflight | ✅ | `7dcfb5f` | GM0 | 规范、preflight、全仓 gates 与独立 review 通过 |
-| M1a | Canonical MCP/companion 纵切 | ✅ | 本次提交 | GM1a | staged runtime 完成，MCP 配置保持 disabled |
-| M1b1 | Canonical draft contract 与 no-write preview | 🔄 | | GM1b1 | 下一 accepted Step |
-| M1b2 | Deterministic identity 与 materialize | ⬜ | | GM1b2 | |
+| M1a | Canonical MCP/companion 纵切 | ✅ | `2f562e7` | GM1a | staged runtime 完成，MCP 配置保持 disabled |
+| M1b1 | Canonical draft contract 与 no-write preview | ✅ | 本次提交 | GM1b1 | draft import/materialize 仍不可用 |
+| M1b2 | Deterministic identity 与 materialize | ⬜ | | GM1b2 | 下一 accepted Step |
 | M1b3 | Draft import 与真实 Excel 闭环 | ⬜ | | GM1b3 | |
 | M2 | 内网离线启用与 scoped release gate | ⬜ | | GM2 | 不完成 V16/V17 |
 
@@ -73,6 +73,32 @@ offline_release_authorized: scoped-after-GM2
   OpenAPI 保持不变。
 - 三路独立 review 按架构、安全/agent UX 与 MVP 简洁性检查；发现的问题均在 M1a 内修复，
   没有引入认证平台、审批状态机、独立 MCP 服务或 Excel 服务端解析。
+
+## M1b1 Gate 记录
+
+- 新增唯一通用 `canonical-draft-jsonl-v1`：覆盖 SFT/DPO/RLVR、tools/trajectory、signals、
+  preferences、verification、lineage、tags 与 extra；agent 不提供 record/candidate/signal/preference
+  managed IDs，只使用 record 内的 zero-based index refs。
+- `contract_get(name="canonical-draft-import")` 发布 input JSON Schema、不可投影的 canonical rules、
+  SFT/DPO/RLVR examples 与 runtime limits；JSON Schema input projection 允许省略 defaults，preview
+  output 返回完全物化的 strict draft。
+- `data_process_prepare` 只增加 `canonical-draft-jsonl-v1 + validate-preview`；`tools/list` 不提前暴露
+  draft import、materialize 或 expected digest，initialize instructions 明确 contract name 与 upload format
+  的映射。
+- draft reader 复用 canonical reader 的 bounded streaming/raw JSON 路径，保持 exact uploaded-byte
+  BLAKE3、1-based physical line、0-based non-blank data row、BOM/duplicate-key/fatal UTF-8、CRLF/LF、
+  nesting/record/transport limits 与 abort 语义一致。
+- `V2Workspace.previewCanonicalDraftJsonl()` 只在内存中使用 branded synthetic preview IDs 运行完整
+  canonical + `V2Dataset` invariants；响应不返回 synthetic IDs，并通过 Store/Catalog/namespace/claim/
+  object/ref no-access/no-write 断言与 whole-record response budget 测试。
+- Schema 209 tests、IO 45 tests、Workspace 100 tests 与 API 80 tests 通过；真实 Postgres + MinIO API
+  suite 10 files、82 tests 通过，其中 MCP 生命周期已加入 draft contract example → no-write preview。
+- `git diff --check`、`pnpm lint`（364 files）、`pnpm build`（13 tasks）、`pnpm typecheck`
+  （22 tasks）、`pnpm test`（22 tasks）、`pnpm openapi:check`、`pnpm v2:status:check`、
+  `pnpm offline:check` 与 `pnpm peers check` 通过；OpenAPI 保持不变。
+- 两路独立 review 按架构正确性与 agent UX/MVP 简洁性检查；修复 dangling JSON Schema refs、input
+  defaults/required 与 exact side-effect output projection、synthetic ID type/error leakage、lineage self-parent
+  collision、contract rule 缺口与 contract name/format 歧义后无剩余 P0/P1/P2。
 
 ## 状态更新规则
 

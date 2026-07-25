@@ -1,6 +1,11 @@
 import {
+  CanonicalDraftRecordV1Schema,
+  type McpCanonicalDraftImportContract,
+  McpCanonicalDraftImportContractSchema,
   type McpCanonicalImportContract,
   McpCanonicalImportContractSchema,
+  type McpContractGetInput,
+  type McpImportContract,
   PostTrainingRecordV2Schema,
   type PostTrainingV2Capability,
 } from '@databench/schema'
@@ -16,7 +21,33 @@ const CONTRACT_RULES = Object.freeze([
   'The whole file and dataset-level uniqueness/resource limits must pass before a dataset is published.',
 ])
 
+const DRAFT_CONTRACT_RULES = Object.freeze([
+  'Use UTF-8 JSON Lines: one canonical-draft-jsonl-v1 object per non-blank line.',
+  'draft_schema_version must be exactly 1.0.0 and schema_version exactly 2.0.0; unknown fields are rejected.',
+  'Do not provide record, candidate, signal, or preference IDs. Databench creates them only during later materialize or import operations.',
+  'Use zero-based candidate indexes in preferences and same-array earlier indexes for signal or preference supersession.',
+  'Optional fields with JSON Schema defaults may be omitted; validation preview returns them fully materialized.',
+  'source.original_id must contain the stable business record ID for that row, or null when no stable row ID exists.',
+  'UTF-8 BOM, duplicate JSON keys, invalid UTF-8, excessive nesting, and oversized records are rejected.',
+  'Shared contents and each candidate trajectory must alternate user and ai roles; when candidates exist, shared contents must end with user.',
+  'At most one system content is allowed, only at shared contents[0], with exactly one text part and loss_weight 0.',
+  'Tags must be unique and sorted by the RFC 8785/JCS UTF-16 comparator.',
+  'Function calls must reference declared tools, responses must reference earlier calls, and all remaining verification, preference, lineage, supersession, sensitive-payload, and dataset resource invariants are validated.',
+  'This stage supports validate-preview only for canonical drafts; preview performs no identity, dataset, object, ref, or catalog writes.',
+])
+
 let cachedSchema: Record<string, unknown> | undefined
+let cachedDraftSchema: Record<string, unknown> | undefined
+
+export function createImportContract(
+  name: McpContractGetInput['name'],
+  capability: Readonly<PostTrainingV2Capability>,
+  maxPreviewResponseBytes: number,
+): Readonly<McpImportContract> {
+  return name === 'canonical-jsonl'
+    ? createCanonicalImportContract(capability, maxPreviewResponseBytes)
+    : createCanonicalDraftImportContract(capability, maxPreviewResponseBytes)
+}
 
 export function createCanonicalImportContract(
   capability: Readonly<PostTrainingV2Capability>,
@@ -41,6 +72,29 @@ export function createCanonicalImportContract(
   )
 }
 
+export function createCanonicalDraftImportContract(
+  capability: Readonly<PostTrainingV2Capability>,
+  maxPreviewResponseBytes: number,
+): Readonly<McpCanonicalDraftImportContract> {
+  const limits = capability.limits
+  return deepFreeze(
+    McpCanonicalDraftImportContractSchema.parse({
+      name: 'canonical-draft-import',
+      version: '1.0.0',
+      schema: canonicalDraftRecordInputJsonSchema(),
+      rules: DRAFT_CONTRACT_RULES,
+      examples: canonicalDraftExamples(),
+      effective_limits: {
+        max_request_bytes: limits.max_request_bytes,
+        max_record_bytes: limits.max_record_bytes,
+        max_snapshot_records: limits.max_snapshot_records,
+        max_canonical_bytes: limits.max_canonical_bytes,
+        max_preview_response_bytes: maxPreviewResponseBytes,
+      },
+    }),
+  )
+}
+
 function canonicalRecordJsonSchema(): Record<string, unknown> {
   if (cachedSchema === undefined) {
     const projected = z.toJSONSchema(PostTrainingRecordV2Schema, {
@@ -54,6 +108,18 @@ function canonicalRecordJsonSchema(): Record<string, unknown> {
   return cachedSchema
 }
 
+function canonicalDraftRecordInputJsonSchema(): Record<string, unknown> {
+  if (cachedDraftSchema === undefined) {
+    const projected = z.toJSONSchema(CanonicalDraftRecordV1Schema, {
+      target: 'draft-2020-12',
+      unrepresentable: 'any',
+      io: 'input',
+    }) as Record<string, unknown>
+    cachedDraftSchema = deepFreeze(JSON.parse(JSON.stringify(projected)) as Record<string, unknown>)
+  }
+  return cachedDraftSchema
+}
+
 function canonicalExamples() {
   return [
     { name: 'sft', jsonl: exampleJsonl(sftExample()) },
@@ -62,8 +128,21 @@ function canonicalExamples() {
   ] as const
 }
 
+function canonicalDraftExamples() {
+  return [
+    { name: 'sft', jsonl: draftExampleJsonl(sftDraftExample()) },
+    { name: 'dpo', jsonl: draftExampleJsonl(dpoDraftExample()) },
+    { name: 'rlvr', jsonl: draftExampleJsonl(rlvrDraftExample()) },
+  ] as const
+}
+
 function exampleJsonl(input: unknown): string {
   return `${JSON.stringify(PostTrainingRecordV2Schema.parse(input))}\n`
+}
+
+function draftExampleJsonl(input: unknown): string {
+  CanonicalDraftRecordV1Schema.parse(input)
+  return `${JSON.stringify(input)}\n`
 }
 
 function sftExample(): unknown {
@@ -160,6 +239,86 @@ function rlvrExample(): unknown {
     lineage: null,
     tags: ['task:rlvr'],
     extra: {},
+  }
+}
+
+function sftDraftExample(): unknown {
+  return {
+    draft_schema_version: '1.0.0',
+    schema_version: '2.0.0',
+    contents: [
+      content('system', 'Answer accurately and concisely.', 0),
+      content('user', 'What is 2 + 2?', 0),
+    ],
+    candidates: [{ contents: [content('ai', '4', 1)], rank: 0, selected: true }],
+    lang: 'en',
+    tags: ['task:sft'],
+  }
+}
+
+function dpoDraftExample(): unknown {
+  return {
+    draft_schema_version: '1.0.0',
+    schema_version: '2.0.0',
+    contents: [content('user', 'Explain overfitting in one sentence.', 0)],
+    candidates: [
+      {
+        contents: [
+          content('ai', 'Overfitting is learning training noise that does not generalize.', 1),
+        ],
+        rank: 0,
+        selected: true,
+      },
+      {
+        contents: [content('ai', 'Overfitting means a model is always too small.', 1)],
+        rank: 1,
+        selected: false,
+      },
+    ],
+    preference_relations: [
+      {
+        left_candidate_index: 0,
+        right_candidate_index: 1,
+        outcome: 'left',
+        status: 'adjudicated',
+        criterion: 'correctness',
+        source: { type: 'imported', id: 'spreadsheet-import', version: '1' },
+      },
+    ],
+    lang: 'en',
+    tags: ['task:dpo'],
+  }
+}
+
+function rlvrDraftExample(): unknown {
+  return {
+    draft_schema_version: '1.0.0',
+    schema_version: '2.0.0',
+    contents: [content('user', 'Return the next integer after 41.', 0)],
+    candidates: [
+      {
+        contents: [content('ai', '42', 1)],
+        rank: 0,
+        selected: true,
+        signals: [
+          {
+            name: 'exact_match',
+            kind: 'verdict',
+            value: { type: 'boolean', value: true },
+            source: { type: 'verifier', id: 'integer-exact-match', version: '1' },
+          },
+        ],
+      },
+    ],
+    verification: {
+      verifier: 'integer-exact-match',
+      verifier_version: '1',
+      ground_truth: '42',
+      constraint: null,
+      config: {},
+    },
+    lang: 'en',
+    tags: ['task:rlvr'],
   }
 }
 

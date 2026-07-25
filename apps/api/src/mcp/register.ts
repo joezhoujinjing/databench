@@ -1,6 +1,5 @@
 import {
   DomainError,
-  McpCanonicalImportContractSchema,
   McpContractGetInputSchema,
   McpDataProcessPreparedSchema,
   McpDataProcessPreparedToolOutputSchema,
@@ -10,6 +9,8 @@ import {
   McpDatasetExportCanonicalPrepareInputSchema,
   McpDatasetShowInputSchema,
   McpDatasetShowResultSchema,
+  McpImportContractSchema,
+  McpImportContractToolOutputSchema,
 } from '@databench/schema'
 import type { OpenAPIHono } from '@hono/zod-openapi'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -18,14 +19,14 @@ import type { Context } from 'hono'
 import type { ApiEnv } from '../context.js'
 import { getV2Workspace } from '../context.js'
 import type { McpEnabledConfig } from './config.js'
-import { createCanonicalImportContract } from './contracts.js'
+import { createImportContract } from './contracts.js'
 import type { McpFileTokenRegistry } from './file-tokens.js'
 
 const MCP_INSTRUCTIONS = [
-  'This M1a stage only processes existing canonical JSONL that already contains Databench-managed IDs.',
-  'Do not convert Excel or CSV and do not invent canonical IDs; raw table support arrives with the canonical-draft stage.',
-  'Call contract_get before validating or importing canonical JSONL, and do not place file bytes in MCP arguments.',
-  'Use data_process_prepare to obtain a one-time PUT URL for optional validation preview or dataset import.',
+  'Process existing canonical JSONL directly, or map raw Excel and CSV rows into canonical-draft-jsonl-v1 without Databench-managed IDs.',
+  'Call contract_get with name canonical-jsonl for canonical input or canonical-draft-import for draft input; upload drafts with format canonical-draft-jsonl-v1, and do not place file bytes in MCP arguments.',
+  'Canonical draft currently supports validate-preview only; draft materialization and dataset import are not available yet.',
+  'Use data_process_prepare to obtain a one-time PUT URL for validation preview or canonical dataset import.',
   'Preview is optional: choose it when mapping is uncertain or a sample would help; do not treat it as an approval state machine.',
   'Use dataset_show with an exact dataset version and dataset_export_canonical_prepare for a one-time canonical JSONL GET URL.',
   'The current workspace is anonymous and grants full access; it is intended only for a trusted internal network.',
@@ -89,19 +90,21 @@ function createMcpServer(
     'contract_get',
     {
       title: 'Get Databench import contract',
-      description: 'Return the canonical JSONL schema, rules, examples, and effective limits.',
+      description:
+        'Return the canonical or canonical-draft JSONL schema, rules, examples, and effective limits.',
       inputSchema: McpContractGetInputSchema,
-      outputSchema: McpCanonicalImportContractSchema,
+      outputSchema: McpImportContractToolOutputSchema,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     },
     async (input) => {
       return safeToolResult(async () => {
-        McpContractGetInputSchema.parse(input)
-        const result = createCanonicalImportContract(
+        const { name } = McpContractGetInputSchema.parse(input)
+        const result = createImportContract(
+          name,
           workspace.postTrainingV2Capability(),
           runtime.config.maxPreviewResponseBytes,
         )
-        return toolResult(McpCanonicalImportContractSchema.parse(result))
+        return toolResult(McpImportContractSchema.parse(result))
       })
     },
   )
@@ -111,7 +114,7 @@ function createMcpServer(
     {
       title: 'Prepare canonical JSONL processing',
       description:
-        'Create a one-time PUT URL. preview_records is valid only for validate-preview; import-dataset publishes a dataset.',
+        'Create a one-time PUT URL. canonical draft supports validate-preview only; canonical import-dataset publishes a dataset.',
       inputSchema: McpDataProcessPrepareToolInputSchema,
       outputSchema: McpDataProcessPreparedToolOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },

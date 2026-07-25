@@ -1,7 +1,7 @@
 import {
   BadInputError,
   McpCanonicalImportResultSchema,
-  McpCanonicalValidationPreviewResultSchema,
+  McpValidationPreviewResultSchema,
   ResourceLimitError,
 } from '@databench/schema'
 import type { OpenAPIHono } from '@hono/zod-openapi'
@@ -44,15 +44,19 @@ export function registerMcpFileRoutes(
       )
       const bytes = streamMcpRequestBody(request, deadline)
       if (active.metadata.action === 'validate-preview') {
-        const result = await getV2Workspace(context).previewCanonicalJsonl(
-          bytes,
-          {
-            previewRecords: active.metadata.previewRecords,
-            maxResponseBytes: runtime.config.maxPreviewResponseBytes,
-          },
-          { signal: deadline.signal },
-        )
-        return context.json(McpCanonicalValidationPreviewResultSchema.parse(result), 200)
+        const options = {
+          previewRecords: active.metadata.previewRecords,
+          maxResponseBytes: runtime.config.maxPreviewResponseBytes,
+        }
+        const result =
+          active.metadata.format === 'canonical-draft-jsonl-v1'
+            ? await getV2Workspace(context).previewCanonicalDraftJsonl(bytes, options, {
+                signal: deadline.signal,
+              })
+            : await getV2Workspace(context).previewCanonicalJsonl(bytes, options, {
+                signal: deadline.signal,
+              })
+        return context.json(McpValidationPreviewResultSchema.parse(result), 200)
       }
 
       const result = await getV2Workspace(context).addJsonl(

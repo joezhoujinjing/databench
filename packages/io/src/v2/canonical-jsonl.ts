@@ -47,6 +47,16 @@ export async function* readCanonicalJsonlV2(
   source: AsyncIterable<Uint8Array>,
   options: ReadCanonicalJsonlV2Options = {},
 ): AsyncIterableIterator<PostTrainingRecordV2> {
+  for await (const { line, value } of readRawCanonicalJsonlV2(source, options)) {
+    yield parseCanonicalJsonlValueV2(value, line)
+  }
+}
+
+/** Package-internal bounded JSONL transport reader shared with canonical draft. */
+export async function* readRawCanonicalJsonlV2(
+  source: AsyncIterable<Uint8Array>,
+  options: ReadCanonicalJsonlV2Options = {},
+): AsyncIterableIterator<Readonly<{ line: number; value: unknown }>> {
   const limits = freezeAndValidateLimits(options.limits ?? DEFAULT_RAW_JSON_LIMITS_V2)
   const maxTransportBytes = validateMaxTransportBytes(
     options.maxTransportBytes ?? DEFAULT_CANONICAL_JSONL_MAX_TRANSPORT_BYTES_V2,
@@ -57,13 +67,16 @@ export async function* readCanonicalJsonlV2(
   let lineBuffer: Uint8Array = new Uint8Array(0)
   let lineBytes = 0
 
-  const finishLine = (): PostTrainingRecordV2 | null => {
+  const finishLine = (): Readonly<{ line: number; value: unknown }> | null => {
     const bytes = lineBuffer.subarray(0, lineBytes)
     lineBytes = 0
     if (isBlankLine(bytes)) {
       return null
     }
-    return parseCanonicalJsonlLineV2(bytes, lineNumber, limits)
+    return Object.freeze({
+      line: lineNumber,
+      value: parseRawJsonlLineV2(bytes, lineNumber, limits),
+    })
   }
 
   signal?.throwIfAborted()
@@ -88,9 +101,9 @@ export async function* readCanonicalJsonlV2(
         limits,
       )
       lineBytes += index - start
-      const record = finishLine()
-      if (record !== null) {
-        yield record
+      const parsed = finishLine()
+      if (parsed !== null) {
+        yield parsed
         signal?.throwIfAborted()
       }
       lineNumber += 1
@@ -104,9 +117,9 @@ export async function* readCanonicalJsonlV2(
 
   signal?.throwIfAborted()
   if (lineBytes > 0) {
-    const record = finishLine()
-    if (record !== null) {
-      yield record
+    const parsed = finishLine()
+    if (parsed !== null) {
+      yield parsed
       signal?.throwIfAborted()
     }
   }
@@ -137,11 +150,7 @@ export async function* writeCanonicalJsonlV2(
   }
 }
 
-function parseCanonicalJsonlLineV2(
-  bytes: Uint8Array,
-  line: number,
-  limits: RawJsonLimitsV2,
-): PostTrainingRecordV2 {
+function parseRawJsonlLineV2(bytes: Uint8Array, line: number, limits: RawJsonLimitsV2): unknown {
   let parsed: unknown
   try {
     parsed = parseRawJsonV2(bytes, limits)
@@ -183,6 +192,10 @@ function parseCanonicalJsonlLineV2(
     throw error
   }
 
+  return parsed
+}
+
+function parseCanonicalJsonlValueV2(parsed: unknown, line: number): PostTrainingRecordV2 {
   const schemaVersion = readSchemaVersion(parsed)
   if (schemaVersion !== null && isSemver(schemaVersion) && schemaVersion !== '2.0.0') {
     throw new CanonicalJsonlUnsupportedRecordSchemaErrorV2(line, schemaVersion)
@@ -263,7 +276,7 @@ function isSemver(version: string): boolean {
   )
 }
 
-function zodPathToJsonPointer(path: readonly PropertyKey[]): string {
+export function zodPathToJsonPointer(path: readonly PropertyKey[]): string {
   if (path.length === 0) {
     return ''
   }

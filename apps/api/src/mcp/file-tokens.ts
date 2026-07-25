@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import { BadInputError, CapacityExceededError } from '@databench/schema'
 
-export interface CanonicalPreviewProcessMetadata {
+export interface ValidationPreviewProcessMetadata {
   readonly kind: 'process'
-  readonly format: 'canonical-jsonl'
+  readonly format: 'canonical-jsonl' | 'canonical-draft-jsonl-v1'
   readonly action: 'validate-preview'
   readonly previewRecords: number
 }
@@ -22,7 +22,7 @@ export interface CanonicalExportMetadata {
 }
 
 export type McpFileTokenMetadata =
-  | CanonicalPreviewProcessMetadata
+  | ValidationPreviewProcessMetadata
   | CanonicalImportProcessMetadata
   | CanonicalExportMetadata
 

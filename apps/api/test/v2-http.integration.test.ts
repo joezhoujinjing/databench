@@ -218,6 +218,42 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       })
       expect(contract.isError).not.toBe(true)
 
+      const draftContract = structured(
+        await client.callTool({
+          name: 'contract_get',
+          arguments: { name: 'canonical-draft-import' },
+        }),
+      )
+      const draftJsonl = (draftContract.examples as Array<{ name: string; jsonl: string }>).find(
+        ({ name }) => name === 'sft',
+      )?.jsonl
+      if (draftJsonl === undefined) throw new Error('Draft SFT contract example is missing')
+      const draftPreviewPrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: {
+            format: 'canonical-draft-jsonl-v1',
+            action: 'validate-preview',
+            preview_records: 1,
+          },
+        }),
+      )
+      const draftPreview = await app.fetch(
+        new Request(String(draftPreviewPrepared.put_url), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: draftJsonl,
+        }),
+      )
+      expect(draftPreview.status).toBe(200)
+      const draftPreviewResult = await responseJson(draftPreview)
+      expect(draftPreviewResult).toMatchObject({
+        format: 'canonical-draft-jsonl-v1',
+        record_count: 1,
+        records: [{ candidates: [expect.objectContaining({ signals: [] })] }],
+      })
+      expect(JSON.stringify(draftPreviewResult)).not.toMatch(/"(?:rec|cand|pref|sig)_[0-9a-f]{64}"/)
+
       const previewPrepared = structured(
         await client.callTool({
           name: 'data_process_prepare',

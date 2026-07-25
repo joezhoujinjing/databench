@@ -4,6 +4,10 @@ export type {
   ExternalRecordAdapterV2,
 } from './adapters.js'
 export {
+  type ReadCanonicalDraftJsonlV1Options,
+  readCanonicalDraftJsonlV1,
+} from './canonical-draft-jsonl.js'
+export {
   DEFAULT_CANONICAL_JSONL_MAX_TRANSPORT_BYTES_V2,
   type ReadCanonicalJsonlV2Options,
   readCanonicalJsonlV2,

@@ -30,6 +30,7 @@ import {
 import {
   createDefaultV2ConverterRegistry,
   DEFAULT_CANONICAL_JSONL_MAX_TRANSPORT_BYTES_V2,
+  readCanonicalDraftJsonlV1,
   readCanonicalJsonlV2,
   type V2ConverterRegistry,
 } from '@databench/io'
@@ -45,6 +46,7 @@ import {
   type AuditResultV2,
   AuditResultV2Schema,
   assertExportFidelityAcceptedV2,
+  type CanonicalDraftRecordV1,
   CapacityExceededError,
   type ConverterAnalysisV2,
   type ConverterDescriptorV2,
@@ -53,6 +55,7 @@ import {
   ConverterNameV2Schema,
   type CursorPageRequestV2,
   CursorPageRequestV2Schema,
+  canonicalPreviewRecordFromDraftV1,
   createExportPlanV2,
   createPostTrainingV2Capability,
   createRecordSummaryV2,
@@ -79,6 +82,8 @@ import {
   type LineagePageRequestV2,
   LineagePageRequestV2Schema,
   MCP_MAX_PREVIEW_RECORDS,
+  type McpCanonicalDraftValidationPreviewResult,
+  McpCanonicalDraftValidationPreviewResultSchema,
   type McpCanonicalValidationPreviewResult,
   McpCanonicalValidationPreviewResultSchema,
   NotFoundError,
@@ -479,6 +484,50 @@ export class V2Workspace {
       },
       options.previewRecords,
       options.maxResponseBytes,
+    )
+  }
+
+  async previewCanonicalDraftJsonl(
+    source: AsyncIterable<Uint8Array>,
+    optionsInput: V2CanonicalJsonlPreviewOptions,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<Readonly<McpCanonicalDraftValidationPreviewResult>> {
+    context.signal?.throwIfAborted()
+    const options = snapshotCanonicalPreviewOptions(optionsInput)
+    const hasher = createArtifactHasher()
+    const previewDrafts: CanonicalDraftRecordV1[] = []
+    let recordCount = 0
+    const operationOptions = operationContext(context.signal)
+    const parsed = readCanonicalDraftJsonlV1(hashCanonicalSource(source, hasher, context.signal), {
+      limits: {
+        maxBytes: this.#datasetLimits.max_record_bytes,
+        maxDepth: this.#jsonlLimits.max_nesting_depth,
+      },
+      maxTransportBytes: this.#jsonlLimits.max_request_bytes,
+      ...operationOptions,
+    })
+    const canonicalRecords = canonicalPreviewRecordsFromDrafts(
+      parsed,
+      previewDrafts,
+      options.previewRecords,
+      () => {
+        recordCount += 1
+      },
+    )
+
+    await V2Dataset.fromAsyncRecords(canonicalRecords, this.#datasetLimits, operationOptions)
+    context.signal?.throwIfAborted()
+    return fitPreviewResult(
+      {
+        format: 'canonical-draft-jsonl-v1',
+        input_digest: hasher.digestHex(),
+        record_count: recordCount,
+        records: previewDrafts,
+        records_truncated: false,
+      },
+      options.previewRecords,
+      options.maxResponseBytes,
+      (value) => McpCanonicalDraftValidationPreviewResultSchema.parse(value),
     )
   }
 
@@ -2048,9 +2097,26 @@ function fitCanonicalPreviewResult(
   requestedRecords: number,
   maxResponseBytes: number,
 ): Readonly<McpCanonicalValidationPreviewResult> {
+  return fitPreviewResult(input, requestedRecords, maxResponseBytes, (value) =>
+    McpCanonicalValidationPreviewResultSchema.parse(value),
+  )
+}
+
+function fitPreviewResult<
+  T extends {
+    readonly record_count: number
+    readonly records: readonly unknown[]
+    readonly records_truncated: boolean
+  },
+>(
+  input: T,
+  requestedRecords: number,
+  maxResponseBytes: number,
+  parse: (input: unknown) => T,
+): Readonly<T> {
   const records = [...input.records]
   while (true) {
-    const result = McpCanonicalValidationPreviewResultSchema.parse({
+    const result = parse({
       ...input,
       records,
       records_truncated: records.length < Math.min(input.record_count, requestedRecords),
@@ -2067,6 +2133,21 @@ function fitCanonicalPreviewResult(
       })
     }
     records.pop()
+  }
+}
+
+async function* canonicalPreviewRecordsFromDrafts(
+  source: AsyncIterable<CanonicalDraftRecordV1>,
+  previewDrafts: CanonicalDraftRecordV1[],
+  limit: number,
+  onRecord: () => void,
+): AsyncIterableIterator<PostTrainingRecordV2> {
+  let dataRowIndex = 0
+  for await (const draft of source) {
+    onRecord()
+    if (previewDrafts.length < limit) previewDrafts.push(draft)
+    yield PostTrainingRecordV2Schema.parse(canonicalPreviewRecordFromDraftV1(draft, dataRowIndex))
+    dataRowIndex += 1
   }
 }
 

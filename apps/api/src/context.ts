@@ -18,6 +18,7 @@ export type ApiV2Workspace = Pick<
   | 'listTransforms'
   | 'postTrainingV2Capability'
   | 'previewCanonicalJsonl'
+  | 'previewCanonicalDraftJsonl'
   | 'putRef'
   | 'runTransform'
 >

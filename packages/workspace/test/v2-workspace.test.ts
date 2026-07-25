@@ -224,6 +224,12 @@ describe('V2Workspace canonical JSONL preview', () => {
     expect(Object.isFrozen(result)).toBe(true)
     expect(Object.isFrozen(result.records)).toBe(true)
     expect(rig.events).toEqual([])
+    expect(rig.store.prepare).not.toHaveBeenCalled()
+    expect(rig.store.exists).not.toHaveBeenCalled()
+    expect(rig.store.read).not.toHaveBeenCalled()
+    expect(rig.catalog.getOrCreateNamespace).not.toHaveBeenCalled()
+    expect(rig.catalog.insertOrReadIdentityClaim).not.toHaveBeenCalled()
+    expect(rig.catalog.registerCommittedLayout).not.toHaveBeenCalled()
   })
 
   test('drops only whole preview records to fit the response budget', async () => {
@@ -273,6 +279,124 @@ describe('V2Workspace canonical JSONL preview', () => {
     await expect(
       rig.workspace.previewCanonicalJsonl(
         byteSource(new TextEncoder().encode(`${JSON.stringify(first)}\n`)),
+        { previewRecords: 1, maxResponseBytes: 1024 * 1024 },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(rig.events).toEqual([])
+  })
+})
+
+describe('V2Workspace canonical draft JSONL preview', () => {
+  test('hashes exact bytes, validates all rows, preserves defaulted drafts, and performs no writes', async () => {
+    const rig = createRig()
+    const first = makeDraftRecord('first draft')
+    const second = makeDraftRecord('second draft')
+    const bytes = new TextEncoder().encode(
+      ` \r\n${JSON.stringify(first)}\r\n\n${JSON.stringify(second)}\n`,
+    )
+
+    const result = await rig.workspace.previewCanonicalDraftJsonl(
+      (async function* () {
+        yield bytes.subarray(0, 19)
+        yield bytes.subarray(19, 127)
+        yield bytes.subarray(127)
+      })(),
+      { previewRecords: 2, maxResponseBytes: 1024 * 1024 },
+    )
+
+    expect(result).toMatchObject({
+      format: 'canonical-draft-jsonl-v1',
+      input_digest: hashArtifactBytes(bytes),
+      record_count: 2,
+      records_truncated: false,
+      records: [
+        { candidates: [], preference_relations: [], verification: null, extra: {} },
+        { candidates: [], preference_relations: [], verification: null, extra: {} },
+      ],
+    })
+    expect(result.records.map((draft) => draft.contents[0]?.parts[0])).toMatchObject([
+      { text: 'first draft' },
+      { text: 'second draft' },
+    ])
+    expect(JSON.stringify(result.records)).not.toMatch(/"(?:id|supersedes)":/)
+    expect(Object.isFrozen(result)).toBe(true)
+    expect(Object.isFrozen(result.records)).toBe(true)
+    expect(rig.events).toEqual([])
+    expect(rig.store.prepare).not.toHaveBeenCalled()
+    expect(rig.store.exists).not.toHaveBeenCalled()
+    expect(rig.store.read).not.toHaveBeenCalled()
+    expect(rig.catalog.getOrCreateNamespace).not.toHaveBeenCalled()
+    expect(rig.catalog.insertOrReadIdentityClaim).not.toHaveBeenCalled()
+    expect(rig.catalog.registerCommittedLayout).not.toHaveBeenCalled()
+  })
+
+  test('rejects a later invalid row and returns only whole records within the response budget', async () => {
+    const rig = createRig()
+    const valid = makeDraftRecord('valid first draft')
+    const invalid = {
+      ...makeDraftRecord('invalid second draft'),
+      preference_relations: [
+        {
+          left_candidate_index: 0,
+          right_candidate_index: 1,
+          outcome: 'left',
+          status: 'adjudicated',
+          source: { type: 'imported', id: 'spreadsheet', version: '1' },
+        },
+      ],
+    }
+    await expect(
+      rig.workspace.previewCanonicalDraftJsonl(
+        byteSource(
+          new TextEncoder().encode(`${JSON.stringify(valid)}\n${JSON.stringify(invalid)}\n`),
+        ),
+        { previewRecords: 1, maxResponseBytes: 1024 * 1024 },
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation_error',
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          line: 2,
+          path: '/preference_relations/0/left_candidate_index',
+          code: 'canonical_draft.index_out_of_range',
+        }),
+      ]),
+    })
+
+    const largeBytes = new TextEncoder().encode(
+      `${JSON.stringify(makeDraftRecord('x'.repeat(2_000)))}\n`,
+    )
+    const metadataOnlyBytes = Buffer.byteLength(
+      JSON.stringify({
+        format: 'canonical-draft-jsonl-v1',
+        input_digest: hashArtifactBytes(largeBytes),
+        record_count: 1,
+        records: [],
+        records_truncated: true,
+      }),
+      'utf8',
+    )
+    const trimmed = await rig.workspace.previewCanonicalDraftJsonl(byteSource(largeBytes), {
+      previewRecords: 1,
+      maxResponseBytes: metadataOnlyBytes,
+    })
+    expect(trimmed.records).toEqual([])
+    expect(trimmed.records_truncated).toBe(true)
+    expect(Buffer.byteLength(JSON.stringify(trimmed), 'utf8')).toBeLessThanOrEqual(
+      metadataOnlyBytes,
+    )
+    expect(rig.events).toEqual([])
+  })
+
+  test('observes an already-aborted draft preview without reading or writing', async () => {
+    const rig = createRig()
+    const controller = new AbortController()
+    controller.abort(new DOMException('cancel draft preview', 'AbortError'))
+
+    await expect(
+      rig.workspace.previewCanonicalDraftJsonl(
+        byteSource(new TextEncoder().encode(`${JSON.stringify(makeDraftRecord('unused'))}\n`)),
         { previewRecords: 1, maxResponseBytes: 1024 * 1024 },
         { signal: controller.signal },
       ),
@@ -2181,6 +2305,28 @@ function makeRecord(idDigit: string, text: string): PostTrainingRecordV2 {
     lineage: null,
     tags: [],
     extra: {},
+  }
+}
+
+function makeDraftRecord(text: string) {
+  return {
+    draft_schema_version: '1.0.0',
+    schema_version: '2.0.0',
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            type: 'text',
+            text,
+            thought: false,
+            thought_signature: null,
+            part_metadata: {},
+          },
+        ],
+        loss_weight: 0,
+      },
+    ],
   }
 }
 

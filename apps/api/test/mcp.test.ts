@@ -1,4 +1,6 @@
 import {
+  type CanonicalDraftRecordV1,
+  CanonicalDraftRecordV1Schema,
   createExportPlanV2,
   createRecordRevisionV2,
   NotFoundError,
@@ -48,6 +50,11 @@ const record: PostTrainingRecordV2 = PostTrainingRecordV2Schema.parse({
   extra: {},
 })
 const revision = createRecordRevisionV2(record)
+const draftRecord: CanonicalDraftRecordV1 = CanonicalDraftRecordV1Schema.parse({
+  draft_schema_version: '1.0.0',
+  schema_version: '2.0.0',
+  contents: record.contents,
+})
 const manifest = {
   manifest_version: '2.0.0' as const,
   identity_profile: 'databench-v2-jcs-1' as const,
@@ -101,8 +108,9 @@ describe('MCP canonical vertical slice', () => {
     })
     await client.connect(transport)
     try {
+      expect(client.getInstructions()).toContain('map raw Excel and CSV rows')
       expect(client.getInstructions()).toContain(
-        'Do not convert Excel or CSV and do not invent canonical IDs',
+        'draft materialization and dataset import are not available yet',
       )
       const tools = await client.listTools()
       expect(tools.tools.map(({ name }) => name)).toEqual([
@@ -116,13 +124,27 @@ describe('MCP canonical vertical slice', () => {
         type: 'object',
         additionalProperties: false,
         oneOf: [
-          { properties: { action: { const: 'validate-preview' } } },
+          {
+            properties: {
+              action: { const: 'validate-preview' },
+              format: { enum: ['canonical-jsonl', 'canonical-draft-jsonl-v1'] },
+            },
+          },
           {
             properties: { action: { const: 'import-dataset' } },
             additionalProperties: false,
           },
         ],
       })
+      const contractTool = tools.tools.find(({ name }) => name === 'contract_get')
+      expect(contractTool?.outputSchema).toMatchObject({
+        type: 'object',
+        oneOf: [
+          { properties: { name: { const: 'canonical-jsonl' } } },
+          { properties: { name: { const: 'canonical-draft-import' } } },
+        ],
+      })
+      expect(JSON.stringify(contractTool?.outputSchema)).not.toContain('"$ref"')
       expect(processTool?.outputSchema).toMatchObject({
         type: 'object',
         additionalProperties: false,
@@ -152,6 +174,24 @@ describe('MCP canonical vertical slice', () => {
         version: '2.0.0',
         examples: [{ name: 'sft' }, { name: 'dpo' }, { name: 'rlvr' }],
       })
+
+      const draftContract = structured(
+        await client.callTool({
+          name: 'contract_get',
+          arguments: { name: 'canonical-draft-import' },
+        }),
+      )
+      expect(draftContract).toMatchObject({
+        name: 'canonical-draft-import',
+        version: '1.0.0',
+        schema: {
+          required: ['draft_schema_version', 'schema_version', 'contents'],
+        },
+        examples: [{ name: 'sft' }, { name: 'dpo' }, { name: 'rlvr' }],
+      })
+      for (const example of draftContract.examples as Array<{ jsonl: string }>) {
+        expect(() => CanonicalDraftRecordV1Schema.parse(JSON.parse(example.jsonl))).not.toThrow()
+      }
 
       const invalid = await client.callTool({
         name: 'data_process_prepare',
@@ -205,6 +245,46 @@ describe('MCP canonical vertical slice', () => {
       expect(
         (await app.fetch(new Request(String(previewPrepared.put_url), { method: 'PUT' }))).status,
       ).toBe(400)
+
+      const draftPreviewPrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: {
+            format: 'canonical-draft-jsonl-v1',
+            action: 'validate-preview',
+            preview_records: 1,
+          },
+        }),
+      )
+      expect(draftPreviewPrepared).toMatchObject({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'validate-preview',
+        side_effects: [],
+      })
+      const draftPreview = await app.fetch(
+        new Request(String(draftPreviewPrepared.put_url), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: draftLine(),
+        }),
+      )
+      expect(draftPreview.status).toBe(200)
+      const draftPreviewBody = await draftPreview.json()
+      expect(draftPreviewBody).toMatchObject({
+        format: 'canonical-draft-jsonl-v1',
+        input_digest: INPUT_DIGEST,
+        record_count: 1,
+        records: [{ candidates: [], extra: {} }],
+      })
+      expect(JSON.stringify(draftPreviewBody)).not.toMatch(/"(?:id|supersedes)":/)
+      expect(fake.state.draftPreviewCalls).toBe(1)
+      expect(fake.state.importCalls).toBe(0)
+
+      const unavailableDraftImport = await client.callTool({
+        name: 'data_process_prepare',
+        arguments: { format: 'canonical-draft-jsonl-v1', action: 'import-dataset' },
+      })
+      expect(unavailableDraftImport.isError).toBe(true)
 
       const importPrepared = structured(
         await client.callTool({
@@ -683,6 +763,7 @@ describe('MCP canonical vertical slice', () => {
 
 interface FakeState {
   describeError?: unknown
+  draftPreviewCalls: number
   exportGate?: Promise<void>
   exportIgnoresAbort?: boolean
   importCalls: number
@@ -692,7 +773,7 @@ interface FakeState {
 }
 
 function fakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
-  const state: FakeState = { importCalls: 0, previewCalls: 0 }
+  const state: FakeState = { draftPreviewCalls: 0, importCalls: 0, previewCalls: 0 }
   const workspace = {
     postTrainingV2Capability: () => postTrainingV2Capability(),
     async previewCanonicalJsonl(
@@ -709,6 +790,23 @@ function fakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
         input_digest: INPUT_DIGEST,
         record_count: 1,
         records: options.previewRecords === 0 ? [] : [record],
+        records_truncated: options.previewRecords === 0,
+      }
+    },
+    async previewCanonicalDraftJsonl(
+      source: AsyncIterable<Uint8Array>,
+      options: { previewRecords?: number },
+      execution?: { signal?: AbortSignal },
+    ) {
+      state.previewSignal = execution?.signal
+      await collect(source)
+      state.draftPreviewCalls += 1
+      await waitForGateOrAbort(state.previewGate, execution?.signal)
+      return {
+        format: 'canonical-draft-jsonl-v1' as const,
+        input_digest: INPUT_DIGEST,
+        record_count: 1,
+        records: options.previewRecords === 0 ? [] : [draftRecord],
         records_truncated: options.previewRecords === 0,
       }
     },
@@ -766,6 +864,10 @@ function mcpConfig(overrides: Partial<McpEnabledConfig> = {}): McpEnabledConfig 
 
 function canonicalLine(): string {
   return `${revision.record_json}\n`
+}
+
+function draftLine(): string {
+  return `${JSON.stringify(draftRecord)}\n`
 }
 
 function request(path: string, init?: RequestInit): Request {

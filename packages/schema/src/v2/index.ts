@@ -7,6 +7,20 @@ export {
   InitialCandidateV2Schema,
 } from './candidate.js'
 export {
+  CANONICAL_DRAFT_FORMAT_V1,
+  CANONICAL_DRAFT_SCHEMA_VERSION_V1,
+  type CanonicalDraftCandidateV1,
+  CanonicalDraftCandidateV1Schema,
+  type CanonicalDraftPreferenceV1,
+  CanonicalDraftPreferenceV1Schema,
+  type CanonicalDraftPreviewRecordV1,
+  type CanonicalDraftRecordV1,
+  CanonicalDraftRecordV1Schema,
+  type CanonicalDraftSignalV1,
+  CanonicalDraftSignalV1Schema,
+  canonicalPreviewRecordFromDraftV1,
+} from './canonical-draft.js'
+export {
   Bcp47LanguageTagSchema as Bcp47LanguageTagV2Schema,
   CandidateIdSchema as CandidateIdV2Schema,
   CanonicalMimeTypeSchema as CanonicalMimeTypeV2Schema,
@@ -234,8 +248,13 @@ export {
 } from './manifest.js'
 export {
   MCP_CANONICAL_CONTRACT_VERSION,
+  MCP_CANONICAL_DRAFT_CONTRACT_NAME,
   MCP_CANONICAL_FORMAT,
   MCP_MAX_PREVIEW_RECORDS,
+  type McpCanonicalDraftImportContract,
+  McpCanonicalDraftImportContractSchema,
+  type McpCanonicalDraftValidationPreviewResult,
+  McpCanonicalDraftValidationPreviewResultSchema,
   type McpCanonicalImportContract,
   McpCanonicalImportContractSchema,
   McpCanonicalImportResultSchema,
@@ -256,10 +275,15 @@ export {
   type McpDatasetShowInput,
   McpDatasetShowInputSchema,
   McpDatasetShowResultSchema,
+  type McpImportContract,
   type McpImportContractExample,
   McpImportContractExampleSchema,
+  McpImportContractSchema,
+  McpImportContractToolOutputSchema,
   type McpImportEffectiveLimits,
   McpImportEffectiveLimitsSchema,
+  type McpValidationPreviewResult,
+  McpValidationPreviewResultSchema,
 } from './mcp.js'
 export {
   type CompatiblePartV2,
