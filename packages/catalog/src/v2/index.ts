@@ -7,6 +7,7 @@ export {
   V2CatalogInputError,
   V2CatalogLineageCycleError,
   V2CatalogRefConflictError,
+  V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
 } from './errors.js'
 export type {
@@ -29,6 +30,10 @@ export type {
   CatalogSnapshotInputV2,
   CatalogSnapshotRowV2,
   CompareAndSetRefV2,
+  DeleteRefResultV2,
+  DeleteRefV2,
   RegisterLayoutV2,
   RegisterTransformResultV2,
+  RestoreRefResultV2,
+  RestoreRefV2,
 } from './types.js'

@@ -22,7 +22,10 @@
     "transform run",
     "ref list",
     "ref show",
+    "ref trash",
     "ref move",
+    "ref delete",
+    "ref restore",
     "lineage show"
   ],
   "transport": {
@@ -46,6 +49,7 @@
     "layout_conflict",
     "fidelity_error",
     "ref_conflict",
+    "ref_state_conflict",
     "resource_limit",
     "capacity_exceeded",
     "integrity_error",

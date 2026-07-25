@@ -8,6 +8,7 @@ import {
   V2CatalogInputError,
   V2CatalogLineageCycleError,
   V2CatalogRefConflictError,
+  V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
 } from './errors.js'
 import type {
@@ -27,8 +28,12 @@ import type {
   CatalogSnapshotInputV2,
   CatalogSnapshotRowV2,
   CompareAndSetRefV2,
+  DeleteRefResultV2,
+  DeleteRefV2,
   RegisterLayoutV2,
   RegisterTransformResultV2,
+  RestoreRefResultV2,
+  RestoreRefV2,
 } from './types.js'
 
 const EXACT_VERSION = /^[0-9a-f]{64}$/
@@ -61,6 +66,11 @@ interface RefSqlRow {
   readonly num_records: bigint
   readonly message: string | null
   readonly updated_at: Date
+  readonly deleted_at: Date | null
+}
+
+interface RefStateMutationSqlRow {
+  readonly deleted_at: Date | null
 }
 
 interface RecordRevisionSqlRow {
@@ -337,8 +347,16 @@ export class V2Catalog {
   }
 
   async getRef(namespaceId: string, name: string): Promise<CatalogRefRowV2 | null> {
-    const row = await this.#client.v2Ref.findUnique({
-      where: { namespaceId_name: { namespaceId, name } },
+    const row = await this.#client.v2Ref.findFirst({
+      where: { namespaceId, name, deletedAt: null },
+      include: { dataset: { select: { numRecords: true } } },
+    })
+    return row ? prismaRowToRef(row) : null
+  }
+
+  async getDeletedRef(namespaceId: string, name: string): Promise<CatalogRefRowV2 | null> {
+    const row = await this.#client.v2Ref.findFirst({
+      where: { namespaceId, name, deletedAt: { not: null } },
       include: { dataset: { select: { numRecords: true } } },
     })
     return row ? prismaRowToRef(row) : null
@@ -369,7 +387,7 @@ export class V2Catalog {
                 WHERE "dataset_version" = ${input.newVersion}
               )
               ON CONFLICT DO NOTHING
-              RETURNING "namespace_id", "name", "version", "message", "updated_at"
+              RETURNING "namespace_id", "name", "version", "message", "updated_at", "deleted_at"
             )
             SELECT changed.*, snapshots."num_records"
             FROM changed
@@ -387,12 +405,13 @@ export class V2Catalog {
                 "namespace_id" = ${input.namespaceId}::uuid AND
                 "name" = ${input.name} AND
                 "version" = ${input.expectedVersion} AND
+                "deleted_at" IS NULL AND
                 EXISTS (
                   SELECT 1
                   FROM "dataset_layouts_v2"
                   WHERE "dataset_version" = ${input.newVersion}
                 )
-              RETURNING "namespace_id", "name", "version", "message", "updated_at"
+              RETURNING "namespace_id", "name", "version", "message", "updated_at", "deleted_at"
             )
             SELECT changed.*, snapshots."num_records"
             FROM changed
@@ -408,13 +427,68 @@ export class V2Catalog {
     })
     if (!targetLayout) throw new V2CatalogTargetNotCommittedError(input.newVersion)
 
-    const current = await this.getRef(input.namespaceId, input.name)
+    const current = await this.#client.v2Ref.findUnique({
+      where: { namespaceId_name: { namespaceId: input.namespaceId, name: input.name } },
+    })
     throw new V2CatalogRefConflictError({
       namespaceId: input.namespaceId,
       refName: input.name,
       expectedVersion: input.expectedVersion,
       currentVersion: current?.version ?? null,
       newVersion: input.newVersion,
+    })
+  }
+
+  async deleteRef(input: DeleteRefV2): Promise<DeleteRefResultV2> {
+    return await this.#client.$transaction(async (tx) => {
+      const row = await lockRefForStateChange(tx, input.namespaceId, input.name)
+      if (row === null) return { status: 'missing' }
+      if (row.version !== input.expectedVersion) {
+        throw refStateConflict(input, row, 'delete')
+      }
+      if (row.deletedAt !== null) return { status: 'already_deleted', row }
+
+      const changed = await tx.$queryRaw<RefStateMutationSqlRow[]>`
+        UPDATE "refs_v2"
+        SET "deleted_at" = transaction_timestamp()
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "name" = ${input.name} AND
+          "version" = ${input.expectedVersion} AND
+          "deleted_at" IS NULL
+        RETURNING "deleted_at"
+      `
+      const deletedAt = changed[0]?.deleted_at
+      if (changed.length !== 1 || deletedAt === null || deletedAt === undefined) {
+        throw new V2CatalogConsistencyError('V2 ref delete did not change exactly one row')
+      }
+      return { status: 'deleted', row: { ...row, deletedAt } }
+    })
+  }
+
+  async restoreRef(input: RestoreRefV2): Promise<RestoreRefResultV2> {
+    return await this.#client.$transaction(async (tx) => {
+      const row = await lockRefForStateChange(tx, input.namespaceId, input.name)
+      if (row === null) return { status: 'missing' }
+      if (row.version !== input.expectedVersion) {
+        throw refStateConflict(input, row, 'restore')
+      }
+      if (row.deletedAt === null) return { status: 'already_active', row }
+
+      const changed = await tx.$queryRaw<RefStateMutationSqlRow[]>`
+        UPDATE "refs_v2"
+        SET "deleted_at" = NULL
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "name" = ${input.name} AND
+          "version" = ${input.expectedVersion} AND
+          "deleted_at" IS NOT NULL
+        RETURNING "deleted_at"
+      `
+      if (changed.length !== 1 || changed[0]?.deleted_at !== null) {
+        throw new V2CatalogConsistencyError('V2 ref restore did not change exactly one row')
+      }
+      return { status: 'restored', row: { ...row, deletedAt: null } }
     })
   }
 
@@ -428,20 +502,58 @@ export class V2Catalog {
       afterName === null
         ? await this.#client.$queryRaw<RefSqlRow[]>`
             SELECT refs."namespace_id", refs."name", refs."version", snapshots."num_records",
-              refs."message", refs."updated_at"
+              refs."message", refs."updated_at", refs."deleted_at"
             FROM "refs_v2" AS refs
             JOIN "dataset_snapshots_v2" AS snapshots ON snapshots."version" = refs."version"
-            WHERE refs."namespace_id" = ${namespaceId}::uuid
+            WHERE refs."namespace_id" = ${namespaceId}::uuid AND refs."deleted_at" IS NULL
             ORDER BY refs."name" COLLATE "C" ASC
             LIMIT ${fetchLimit}
           `
         : await this.#client.$queryRaw<RefSqlRow[]>`
             SELECT refs."namespace_id", refs."name", refs."version", snapshots."num_records",
-              refs."message", refs."updated_at"
+              refs."message", refs."updated_at", refs."deleted_at"
             FROM "refs_v2" AS refs
             JOIN "dataset_snapshots_v2" AS snapshots ON snapshots."version" = refs."version"
             WHERE
               refs."namespace_id" = ${namespaceId}::uuid AND
+              refs."deleted_at" IS NULL AND
+              refs."name" COLLATE "C" > ${afterName}
+            ORDER BY refs."name" COLLATE "C" ASC
+            LIMIT ${fetchLimit}
+          `
+    const hasMore = rows.length > limit
+    const visible = hasMore ? rows.slice(0, limit) : rows
+    return {
+      rows: visible.map(sqlRowToRef),
+      nextName: hasMore ? (visible.at(-1)?.name ?? null) : null,
+    }
+  }
+
+  async listDeletedRefs(
+    namespaceId: string,
+    afterName: string | null,
+    limit: number,
+  ): Promise<CatalogRefPageV2> {
+    const fetchLimit = checkedPageFetchLimit(limit, 'V2 deleted ref page limit')
+    const rows =
+      afterName === null
+        ? await this.#client.$queryRaw<RefSqlRow[]>`
+            SELECT refs."namespace_id", refs."name", refs."version", snapshots."num_records",
+              refs."message", refs."updated_at", refs."deleted_at"
+            FROM "refs_v2" AS refs
+            JOIN "dataset_snapshots_v2" AS snapshots ON snapshots."version" = refs."version"
+            WHERE refs."namespace_id" = ${namespaceId}::uuid AND refs."deleted_at" IS NOT NULL
+            ORDER BY refs."name" COLLATE "C" ASC
+            LIMIT ${fetchLimit}
+          `
+        : await this.#client.$queryRaw<RefSqlRow[]>`
+            SELECT refs."namespace_id", refs."name", refs."version", snapshots."num_records",
+              refs."message", refs."updated_at", refs."deleted_at"
+            FROM "refs_v2" AS refs
+            JOIN "dataset_snapshots_v2" AS snapshots ON snapshots."version" = refs."version"
+            WHERE
+              refs."namespace_id" = ${namespaceId}::uuid AND
+              refs."deleted_at" IS NOT NULL AND
               refs."name" COLLATE "C" > ${afterName}
             ORDER BY refs."name" COLLATE "C" ASC
             LIMIT ${fetchLimit}
@@ -917,6 +1029,7 @@ function prismaRowToRef(row: {
   dataset: { numRecords: bigint }
   message: string | null
   updatedAt: Date
+  deletedAt: Date | null
 }): CatalogRefRowV2 {
   return {
     namespaceId: row.namespaceId,
@@ -925,6 +1038,7 @@ function prismaRowToRef(row: {
     numRecords: row.dataset.numRecords,
     message: row.message,
     updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt,
   }
 }
 
@@ -936,7 +1050,42 @@ function sqlRowToRef(row: RefSqlRow): CatalogRefRowV2 {
     numRecords: row.num_records,
     message: row.message,
     updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
   }
+}
+
+function refStateConflict(
+  input: DeleteRefV2 | RestoreRefV2,
+  row: { readonly version: string; readonly deletedAt: Date | null },
+  operation: 'delete' | 'restore',
+): V2CatalogRefStateConflictError {
+  return new V2CatalogRefStateConflictError({
+    namespaceId: input.namespaceId,
+    refName: input.name,
+    expectedVersion: input.expectedVersion,
+    currentVersion: row.version,
+    currentState: row.deletedAt === null ? 'active' : 'deleted',
+    operation,
+  })
+}
+
+async function lockRefForStateChange(
+  tx: Prisma.TransactionClient,
+  namespaceId: string,
+  name: string,
+): Promise<CatalogRefRowV2 | null> {
+  const rows = await tx.$queryRaw<RefSqlRow[]>`
+    SELECT refs."namespace_id", refs."name", refs."version", snapshots."num_records",
+      refs."message", refs."updated_at", refs."deleted_at"
+    FROM "refs_v2" AS refs
+    JOIN "dataset_snapshots_v2" AS snapshots ON snapshots."version" = refs."version"
+    WHERE refs."namespace_id" = ${namespaceId}::uuid AND refs."name" = ${name}
+    FOR UPDATE OF refs
+  `
+  if (rows.length > 1) {
+    throw new V2CatalogConsistencyError('V2 ref state lookup returned more than one row')
+  }
+  return rows[0] ? sqlRowToRef(rows[0]) : null
 }
 
 function sameStringArray(stored: Prisma.JsonValue, expected: readonly string[]): boolean {

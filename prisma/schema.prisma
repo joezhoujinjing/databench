@@ -132,6 +132,7 @@ model V2Ref {
   version     String   @db.Char(64)
   message     String?
   updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   namespace V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   dataset   V2DatasetSnapshot   @relation(fields: [version], references: [version], onDelete: Restrict, onUpdate: Restrict)

@@ -1,16 +1,20 @@
 import { parse as parsePath, resolve as resolvePath } from 'node:path'
 import {
+  type DeleteRefResultV2 as CatalogDeleteRefResultV2,
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
   type CatalogLayoutRowV2,
   type CatalogRefPageV2,
   type CatalogRefRowV2,
+  type RestoreRefResultV2 as CatalogRestoreRefResultV2,
   type CatalogRunPageV2,
   type CatalogRunRowV2,
   type CatalogSnapshotRowV2,
   type CompareAndSetRefV2,
+  type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
+  type RestoreRefV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
 } from '@databench/catalog'
@@ -62,6 +66,13 @@ import {
   DatasetViewV2Schema,
   DEFAULT_RAW_JSON_LIMITS_V2,
   DEFAULT_TOOL_SCHEMA_LIMITS_V2,
+  type DeletedRefMetadataV2,
+  type DeletedRefPageV2,
+  DeletedRefPageV2Schema,
+  type DeleteRefRequestV2,
+  DeleteRefRequestV2Schema,
+  type DeleteRefResultV2,
+  DeleteRefResultV2Schema,
   DeterminismConflictErrorV2,
   DigestHexV2Schema,
   datasetLayoutIdentityV2FromManifest,
@@ -96,6 +107,10 @@ import {
   RefOrVersionV2Schema,
   type RefPageV2,
   RefPageV2Schema,
+  type RestoreRefRequestV2,
+  RestoreRefRequestV2Schema,
+  type RestoreRefResultV2,
+  RestoreRefResultV2Schema,
   type RunMetadataV2,
   RunMetadataV2Schema,
   type RunTransformRequestV2,
@@ -131,6 +146,7 @@ import {
 import { V2CursorCodec } from './cursor.js'
 import { V2WorkspaceIdentityAllocator } from './identity-allocator.js'
 import {
+  deletedRefMetadataFromCatalog,
   layoutIdentityFromCatalog,
   manifestFromCatalogIdentity,
   mapV2CatalogError,
@@ -169,8 +185,16 @@ export interface V2WorkspaceCatalog {
   getSnapshot(version: string): Promise<CatalogSnapshotRowV2 | null>
   getLayout(version: string, layout: string): Promise<CatalogLayoutRowV2 | null>
   getRef(namespaceId: string, name: string): Promise<CatalogRefRowV2 | null>
+  getDeletedRef(namespaceId: string, name: string): Promise<CatalogRefRowV2 | null>
   compareAndSetRef(input: CompareAndSetRefV2): Promise<CatalogRefRowV2>
+  deleteRef(input: DeleteRefV2): Promise<CatalogDeleteRefResultV2>
   listRefs(namespaceId: string, afterName: string | null, limit: number): Promise<CatalogRefPageV2>
+  listDeletedRefs(
+    namespaceId: string,
+    afterName: string | null,
+    limit: number,
+  ): Promise<CatalogRefPageV2>
+  restoreRef(input: RestoreRefV2): Promise<CatalogRestoreRefResultV2>
 }
 
 export interface V2WorkspaceOperationOptions extends V2OperationContext {}
@@ -900,13 +924,55 @@ export class V2Workspace {
       if (context.signal?.aborted) throw error
       mapV2CatalogError(error, false)
     }
-    const validatedPage = validateCatalogRefPage(page, namespaceId, afterName, request.limit)
+    const validatedPage = validateCatalogRefPage(
+      page,
+      namespaceId,
+      afterName,
+      request.limit,
+      'active',
+    )
     return RefPageV2Schema.parse({
       items: validatedPage.items,
       next_cursor:
         validatedPage.nextName === null
           ? null
           : this.#cursor.encodeRef(namespaceId, validatedPage.nextName),
+    })
+  }
+
+  async listDeletedRefs(
+    requestInput: CursorPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<DeletedRefPageV2> {
+    context.signal?.throwIfAborted()
+    const request = CursorPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const afterName =
+      request.cursor === null ? null : this.#cursor.decodeDeletedRef(request.cursor, namespaceId)
+    context.signal?.throwIfAborted()
+    let page: CatalogRefPageV2
+    try {
+      page = await waitWithAbort(
+        this.#catalog.listDeletedRefs(namespaceId, afterName, request.limit),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    const validatedPage = validateCatalogRefPage(
+      page,
+      namespaceId,
+      afterName,
+      request.limit,
+      'deleted',
+    )
+    return DeletedRefPageV2Schema.parse({
+      items: validatedPage.items,
+      next_cursor:
+        validatedPage.nextName === null
+          ? null
+          : this.#cursor.encodeDeletedRef(namespaceId, validatedPage.nextName),
     })
   }
 
@@ -925,8 +991,27 @@ export class V2Workspace {
       mapV2CatalogError(error, false)
     }
     if (row === null) return null
-    assertRefRow(row, namespaceId, name, row.version)
+    assertRefRow(row, namespaceId, name, row.version, 'active')
     return catalogRefMetadata(row)
+  }
+
+  async getDeletedRef(
+    nameInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<DeletedRefMetadataV2 | null> {
+    const name = RefNameV2Schema.parse(nameInput)
+    const namespaceId = await this.#namespace(context.signal)
+    context.signal?.throwIfAborted()
+    let row: CatalogRefRowV2 | null
+    try {
+      row = await waitWithAbort(this.#catalog.getDeletedRef(namespaceId, name), context.signal)
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row === null) return null
+    assertRefRow(row, namespaceId, name, row.version, 'deleted')
+    return catalogDeletedRefMetadata(row)
   }
 
   async putRef(
@@ -950,8 +1035,66 @@ export class V2Workspace {
     } catch (error) {
       mapV2CatalogError(error, true, false)
     }
-    assertRefRow(row, namespaceId, name, request.new_version)
+    assertRefRow(row, namespaceId, name, request.new_version, 'active')
     return catalogRefMetadata(row)
+  }
+
+  async deleteRef(
+    nameInput: string,
+    requestInput: DeleteRefRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<DeleteRefResultV2> {
+    const name = RefNameV2Schema.parse(nameInput)
+    const request = DeleteRefRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    context.signal?.throwIfAborted()
+    let result: CatalogDeleteRefResultV2
+    try {
+      result = await this.#catalog.deleteRef({
+        namespaceId,
+        name,
+        expectedVersion: request.expected_version,
+      })
+    } catch (error) {
+      mapV2CatalogError(error, false)
+    }
+    if (result.status === 'missing') {
+      throw new NotFoundError(`V2 ref was not found: ${name}`, { ref_name: name })
+    }
+    assertRefRow(result.row, namespaceId, name, request.expected_version, 'deleted')
+    return DeleteRefResultV2Schema.parse({
+      status: result.status,
+      ref: catalogDeletedRefMetadata(result.row),
+    })
+  }
+
+  async restoreRef(
+    nameInput: string,
+    requestInput: RestoreRefRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<RestoreRefResultV2> {
+    const name = RefNameV2Schema.parse(nameInput)
+    const request = RestoreRefRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    context.signal?.throwIfAborted()
+    let result: CatalogRestoreRefResultV2
+    try {
+      result = await this.#catalog.restoreRef({
+        namespaceId,
+        name,
+        expectedVersion: request.expected_version,
+      })
+    } catch (error) {
+      mapV2CatalogError(error, false)
+    }
+    if (result.status === 'missing') {
+      throw new NotFoundError(`V2 ref was not found: ${name}`, { ref_name: name })
+    }
+    assertRefRow(result.row, namespaceId, name, request.expected_version, 'active')
+    return RestoreRefResultV2Schema.parse({
+      status: result.status,
+      ref: catalogRefMetadata(result.row),
+    })
   }
 
   #createExportPlan(
@@ -1318,7 +1461,7 @@ export class V2Workspace {
     } catch (error) {
       mapV2CatalogError(error, true)
     }
-    assertRefRow(ref, namespaceId, request.ref, datasetVersion)
+    assertRefRow(ref, namespaceId, request.ref, datasetVersion, 'active')
     return {
       status: 'updated',
       ref_name: ref.name,
@@ -1363,7 +1506,7 @@ export class V2Workspace {
         } catch (error) {
           mapV2CatalogError(error, true)
         }
-        assertRefRow(ref, namespaceId, options.ref, dataset.version)
+        assertRefRow(ref, namespaceId, options.ref, dataset.version, 'active')
         refUpdate = {
           status: 'updated',
           ref_name: ref.name,
@@ -1456,7 +1599,7 @@ export class V2Workspace {
       if (ref === null) {
         throw new NotFoundError('V2 ref was not found', { ref_name: requestedRef })
       }
-      assertRefRow(ref, namespaceId, requestedRef, ref.version)
+      assertRefRow(ref, namespaceId, requestedRef, ref.version, 'active')
       version = ref.version
       refName = requestedRef
     }
@@ -1757,12 +1900,15 @@ function assertRefRow(
   namespaceId: string,
   name: string,
   version: string,
+  state: 'active' | 'deleted',
 ): void {
   if (
     row.namespaceId !== namespaceId ||
     row.name !== name ||
     row.version !== version ||
-    !EXACT_VERSION.test(row.version)
+    !EXACT_VERSION.test(row.version) ||
+    (state === 'active' ? row.deletedAt !== null : row.deletedAt === null) ||
+    (row.deletedAt !== null && !Number.isFinite(row.deletedAt.getTime()))
   ) {
     throw new IntegrityError('V2 Catalog returned an inconsistent ref row', {
       reason: 'ref_row_mismatch',
@@ -1784,12 +1930,27 @@ function catalogRefMetadata(row: CatalogRefRowV2): RefMetadataV2 {
   }
 }
 
+function catalogDeletedRefMetadata(row: CatalogRefRowV2): DeletedRefMetadataV2 {
+  try {
+    return deletedRefMetadataFromCatalog(row)
+  } catch (error) {
+    throw new IntegrityError('Stored deleted V2 ref metadata is inconsistent', {
+      reason: 'catalog_deleted_ref_invalid',
+      cause: error instanceof Error ? error.name : typeof error,
+    })
+  }
+}
+
 function validateCatalogRefPage(
   page: CatalogRefPageV2,
   namespaceId: string,
   afterName: string | null,
   limit: number,
-): { readonly items: readonly RefMetadataV2[]; readonly nextName: string | null } {
+  state: 'active' | 'deleted',
+): {
+  readonly items: readonly (DeletedRefMetadataV2 | RefMetadataV2)[]
+  readonly nextName: string | null
+} {
   if (page.rows.length > limit) {
     throw new IntegrityError('V2 Catalog returned too many refs', {
       reason: 'catalog_ref_page_oversized',
@@ -1797,7 +1958,7 @@ function validateCatalogRefPage(
       actual: page.rows.length,
     })
   }
-  const items: RefMetadataV2[] = []
+  const items: Array<DeletedRefMetadataV2 | RefMetadataV2> = []
   let previousName = afterName
   for (const row of page.rows) {
     if (row.namespaceId !== namespaceId || (previousName !== null && row.name <= previousName)) {
@@ -1805,7 +1966,8 @@ function validateCatalogRefPage(
         reason: 'catalog_ref_page_order',
       })
     }
-    items.push(catalogRefMetadata(row))
+    assertRefRow(row, namespaceId, row.name, row.version, state)
+    items.push(state === 'active' ? catalogRefMetadata(row) : catalogDeletedRefMetadata(row))
     previousName = row.name
   }
   if (

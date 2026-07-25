@@ -1,11 +1,13 @@
 {
   "fixture_version": 1,
   "operations": [
+    "DELETE /v2/refs/{name}",
     "GET /v2/converters",
     "GET /v2/converters/{name}",
     "GET /v2/datasets/{ref_or_version}",
     "GET /v2/datasets/{ref_or_version}/records",
     "GET /v2/datasets/{ref_or_version}/records/{record_id}",
+    "GET /v2/deleted-refs",
     "GET /v2/lineage/{ref_or_version}",
     "GET /v2/refs",
     "GET /v2/refs/{name}",
@@ -14,6 +16,7 @@
     "POST /v2/datasets/{ref_or_version}:audit",
     "POST /v2/datasets/{ref_or_version}:inspect-export",
     "POST /v2/datasets:ingest-jsonl",
+    "POST /v2/refs/{name}:restore",
     "POST /v2/transforms/{name}/run",
     "PUT /v2/refs/{name}"
   ],
@@ -23,6 +26,9 @@
     "ConverterRegistryPageV2",
     "DatasetLineageV2",
     "DatasetViewV2",
+    "DeletedRefMetadataV2",
+    "DeletedRefPageV2",
+    "DeleteRefResultV2",
     "ExportPlanV2",
     "IngestResultV2",
     "PostTrainingV2Capability",
@@ -30,6 +36,7 @@
     "RecordViewV2",
     "RefMetadataV2",
     "RefPageV2",
+    "RestoreRefResultV2",
     "RunTransformResultV2",
     "TransformDescriptorV2",
     "TransformRegistryPageV2"
@@ -46,6 +53,7 @@
     "LayoutConflictDetailV2",
     "NotFoundDetailV2",
     "RefConflictDetailV2",
+    "RefStateConflictDetailV2",
     "ResourceLimitDetailV2",
     "ServiceUnavailableDetailV2",
     "TooManyRequestsDetailV2",

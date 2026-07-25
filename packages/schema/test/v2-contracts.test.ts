@@ -9,6 +9,10 @@ import {
   createRecordRevisionV2,
   createRecordSummaryV2,
   DatasetViewV2Schema,
+  DeletedRefMetadataV2Schema,
+  DeletedRefPageV2Schema,
+  DeleteRefRequestV2Schema,
+  DeleteRefResultV2Schema,
   deriveRecordEligibilityV2,
   IngestResultV2Schema,
   type PostTrainingRecordV2,
@@ -22,7 +26,11 @@ import {
   RefNameV2Schema,
   RefOrVersionV2Schema,
   RefPageV2Schema,
+  RefStateConflictDetailV2Schema,
+  RefStateConflictErrorV2,
   RefUpdateResultV2Schema,
+  RestoreRefRequestV2Schema,
+  RestoreRefResultV2Schema,
   V2_CURSOR_PAGE_DEFAULT_LIMIT,
   V2_CURSOR_PAGE_MAX_LIMIT,
   V2_RECORD_PAGE_MAX_LIMIT,
@@ -307,6 +315,7 @@ describe('V9 audit and ref DTO contracts', () => {
     message: 'publish',
     updated_at: '2026-07-23T08:00:00Z',
   }
+  const deletedRef = { ...ref, deleted_at: '2026-07-25T08:00:00Z' }
 
   test('accepts only an all-ok exact audit result', () => {
     expect(AuditResultV2Schema.parse(audit)).toEqual(audit)
@@ -342,6 +351,27 @@ describe('V9 audit and ref DTO contracts', () => {
       new_version: DATASET_VERSION,
       expected_version: OTHER_VERSION,
       message: 'move',
+    })
+    expect(DeleteRefRequestV2Schema.parse({ expected_version: OTHER_VERSION })).toEqual({
+      expected_version: OTHER_VERSION,
+    })
+    expect(RestoreRefRequestV2Schema.parse({ expected_version: OTHER_VERSION })).toEqual({
+      expected_version: OTHER_VERSION,
+    })
+    expect(DeletedRefMetadataV2Schema.parse(deletedRef)).toEqual(deletedRef)
+    expect(DeletedRefPageV2Schema.parse({ items: [deletedRef], next_cursor: null })).toEqual({
+      items: [deletedRef],
+      next_cursor: null,
+    })
+    expect(
+      DeleteRefResultV2Schema.parse({
+        status: 'deleted',
+        ref: deletedRef,
+      }),
+    ).toEqual({ status: 'deleted', ref: deletedRef })
+    expect(RestoreRefResultV2Schema.parse({ status: 'restored', ref })).toEqual({
+      status: 'restored',
+      ref,
     })
 
     expect(RefMetadataV2Schema.safeParse({ ...ref, updated_at: 'not-a-time' }).success).toBe(false)
@@ -426,5 +456,24 @@ describe('V9 audit and ref DTO contracts', () => {
           unknown: true,
         } as never),
     ).toThrow()
+  })
+
+  test('strictly validates typed ref state conflicts', () => {
+    const detail = {
+      ref_name: 'main',
+      expected_version: OTHER_VERSION,
+      current_version: DATASET_VERSION,
+      current_state: 'deleted' as const,
+      operation: 'restore' as const,
+    }
+    expect(RefStateConflictDetailV2Schema.parse(detail)).toEqual(detail)
+    expect(new RefStateConflictErrorV2(detail)).toMatchObject({
+      name: 'RefStateConflictErrorV2',
+      code: 'ref_state_conflict',
+      detail,
+    })
+    expect(
+      RefStateConflictDetailV2Schema.safeParse({ ...detail, current_version: 'invalid' }).success,
+    ).toBe(false)
   })
 })

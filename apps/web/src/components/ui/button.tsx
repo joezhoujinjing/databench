@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils.js'
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly asChild?: boolean
   readonly size?: 'sm' | 'md' | 'lg'
-  readonly variant?: 'default' | 'ghost' | 'outline' | 'quiet'
+  readonly variant?: 'default' | 'destructive' | 'ghost' | 'outline' | 'quiet'
 }
 
 export function Button({
@@ -31,6 +31,7 @@ export function Button({
     variant === 'quiet' && 'text-accent-foreground hover:text-foreground',
     variant === 'default' &&
       'bg-primary text-primary-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset,0_12px_32px_rgba(124,92,255,0.2)] hover:bg-primary-hover',
+    variant === 'destructive' && 'bg-danger text-white hover:bg-danger/85',
     className,
   )
 

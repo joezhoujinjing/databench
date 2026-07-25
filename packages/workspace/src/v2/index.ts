@@ -21,6 +21,7 @@ export {
   V2WorkspaceIdentityAllocator,
 } from './identity-allocator.js'
 export {
+  deletedRefMetadataFromCatalog,
   layoutIdentityFromCatalog,
   manifestFromCatalogIdentity,
   mapV2CatalogError,

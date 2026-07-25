@@ -8,6 +8,7 @@ import {
   V2CatalogInputError,
   V2CatalogLineageCycleError,
   V2CatalogRefConflictError,
+  V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
 } from '@databench/catalog'
 import type { V2Dataset } from '@databench/engine'
@@ -16,12 +17,15 @@ import {
   type DatasetLayoutIdentityV2,
   DatasetLayoutIdentityV2Schema,
   type DatasetManifestV2,
+  type DeletedRefMetadataV2,
+  DeletedRefMetadataV2Schema,
   datasetLayoutIdentityV2FromManifest,
   IntegrityError,
   NotFoundError,
   RefConflictErrorV2,
   type RefMetadataV2,
   RefMetadataV2Schema,
+  RefStateConflictErrorV2,
   ServiceUnavailableError,
   V2_RECORD_JSON_COLUMNS,
   ValidationError,
@@ -117,11 +121,27 @@ export function refMetadataFromCatalog(row: CatalogRefRowV2): RefMetadataV2 {
   })
 }
 
+export function deletedRefMetadataFromCatalog(row: CatalogRefRowV2): DeletedRefMetadataV2 {
+  return DeletedRefMetadataV2Schema.parse({
+    ...refMetadataFromCatalog(row),
+    deleted_at: row.deletedAt?.toISOString(),
+  })
+}
+
 export function mapV2CatalogError(
   error: unknown,
   refConflictDatasetCommitted: boolean,
   targetExpectedCommitted = refConflictDatasetCommitted,
 ): never {
+  if (error instanceof V2CatalogRefStateConflictError) {
+    throw new RefStateConflictErrorV2({
+      ref_name: error.refName,
+      expected_version: error.expectedVersion,
+      current_version: error.currentVersion,
+      current_state: error.currentState,
+      operation: error.operation,
+    })
+  }
   if (error instanceof V2CatalogRefConflictError) {
     throw new RefConflictErrorV2({
       ref_name: error.refName,

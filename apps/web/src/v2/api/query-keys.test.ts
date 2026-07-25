@@ -31,6 +31,21 @@ describe('V2 immutable query identity', () => {
       'record',
       'record-1',
     ])
+    expect(v2QueryKeys.refsRoot('scope-a', 'https://api.test')).toEqual([
+      'scope-a',
+      'https://api.test',
+      'v2',
+      'refs',
+    ])
+    expect(v2QueryKeys.deletedRefsRoot('scope-a', 'https://api.test')).toEqual([
+      'scope-a',
+      'https://api.test',
+      'v2',
+      'deleted-refs',
+    ])
+    expect(v2QueryKeys.deletedRefs('scope-a', 'https://api.test', 100)).not.toEqual(
+      v2QueryKeys.refs('scope-a', 'https://api.test', 100),
+    )
   })
 
   test('pins the first resolution and computes bounded page continuation', () => {

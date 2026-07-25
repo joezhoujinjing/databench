@@ -70,6 +70,33 @@ export class V2CatalogRefConflictError extends Error {
   }
 }
 
+export class V2CatalogRefStateConflictError extends Error {
+  override readonly name = 'V2CatalogRefStateConflictError'
+  readonly namespaceId: string
+  readonly refName: string
+  readonly expectedVersion: string
+  readonly currentVersion: string
+  readonly currentState: 'active' | 'deleted'
+  readonly operation: 'delete' | 'restore'
+
+  constructor(input: {
+    readonly namespaceId: string
+    readonly refName: string
+    readonly expectedVersion: string
+    readonly currentVersion: string
+    readonly currentState: 'active' | 'deleted'
+    readonly operation: 'delete' | 'restore'
+  }) {
+    super(`V2 ref ${input.operation} compare-and-set conflict for ${input.refName}`)
+    this.namespaceId = input.namespaceId
+    this.refName = input.refName
+    this.expectedVersion = input.expectedVersion
+    this.currentVersion = input.currentVersion
+    this.currentState = input.currentState
+    this.operation = input.operation
+  }
+}
+
 export class V2CatalogTargetNotCommittedError extends Error {
   override readonly name = 'V2CatalogTargetNotCommittedError'
   readonly version: string

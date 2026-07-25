@@ -20,9 +20,11 @@ const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
 const encoder = new TextEncoder()
 export const DEFAULT_V2_CURSOR_TTL_MS = 15 * 60 * 1000
 
+type RefCursorKindV2 = 'deleted_refs' | 'refs'
+
 interface RefCursorPayloadV2 {
   readonly v: typeof CURSOR_VERSION
-  readonly kind: 'refs'
+  readonly kind: RefCursorKindV2
   readonly scope: string
   readonly after: string
   readonly expires_at: number
@@ -66,10 +68,18 @@ export class V2CursorCodec {
   }
 
   encodeRef(namespace: string, after: string): string {
+    return this.#encodeRef(namespace, after, 'refs')
+  }
+
+  encodeDeletedRef(namespace: string, after: string): string {
+    return this.#encodeRef(namespace, after, 'deleted_refs')
+  }
+
+  #encodeRef(namespace: string, after: string, kind: RefCursorKindV2): string {
     const payload: RefCursorPayloadV2 = {
       v: CURSOR_VERSION,
-      kind: 'refs',
-      scope: this.#scope(namespace, 'refs'),
+      kind,
+      scope: this.#scope(namespace, kind),
       after: RefNameV2Schema.parse(after),
       expires_at: checkedAdd(this.#now(), this.#ttlMs),
     }
@@ -78,6 +88,14 @@ export class V2CursorCodec {
   }
 
   decodeRef(cursor: string, namespace: string): string {
+    return this.#decodeRef(cursor, namespace, 'refs')
+  }
+
+  decodeDeletedRef(cursor: string, namespace: string): string {
+    return this.#decodeRef(cursor, namespace, 'deleted_refs')
+  }
+
+  #decodeRef(cursor: string, namespace: string, kind: RefCursorKindV2): string {
     try {
       if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
         throw new Error('cursor text size is invalid')
@@ -95,8 +113,8 @@ export class V2CursorCodec {
       }
       const value = parseRawJsonV2(bytes, { maxBytes: CURSOR_MAX_BYTES, maxDepth: 4 })
       if (
-        !isRefCursorPayload(value) ||
-        value.scope !== this.#scope(namespace, 'refs') ||
+        !isRefCursorPayload(value, kind) ||
+        value.scope !== this.#scope(namespace, kind) ||
         value.expires_at <= this.#now()
       ) {
         throw new Error('cursor scope is invalid')
@@ -187,7 +205,7 @@ export class V2CursorCodec {
     return createHmac('sha256', this.#key).update(bytes).digest()
   }
 
-  #scope(namespace: string, kind: 'refs' | 'lineage'): string {
+  #scope(namespace: string, kind: RefCursorKindV2 | 'lineage'): string {
     return createHmac('sha256', this.#key)
       .update(canonicalJsonV2({ kind: `databench-v2-${kind}-cursor-scope`, namespace }))
       .digest('base64url')
@@ -203,13 +221,13 @@ function decodeBase64Url(value: string): Buffer {
   return decoded
 }
 
-function isRefCursorPayload(value: unknown): value is RefCursorPayloadV2 {
+function isRefCursorPayload(value: unknown, kind: RefCursorKindV2): value is RefCursorPayloadV2 {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return (
     Object.keys(record).length === 5 &&
     record.v === CURSOR_VERSION &&
-    record.kind === 'refs' &&
+    record.kind === kind &&
     typeof record.scope === 'string' &&
     typeof record.after === 'string' &&
     typeof record.expires_at === 'number' &&

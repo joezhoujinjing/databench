@@ -13,6 +13,7 @@ import {
   LayoutConflictDetailV2Schema,
   NotFoundDetailV2Schema,
   RefConflictDetailV2Schema,
+  RefStateConflictDetailV2Schema,
   ResourceLimitDetailV2Schema,
   ServiceUnavailableDetailV2Schema,
   UnsupportedProfileDetailV2Schema,
@@ -40,6 +41,7 @@ type ErrorCode =
   | 'not_found'
   | 'resource_limit'
   | 'ref_conflict'
+  | 'ref_state_conflict'
   | 'service_unavailable'
   | 'too_many_requests'
   | 'unauthorized'
@@ -262,6 +264,12 @@ function normalizeV2Error(
         code: 'ref_conflict',
         message,
         detail: RefConflictDetailV2Schema.parse(detail),
+      }
+    case 'ref_state_conflict':
+      return {
+        code: 'ref_state_conflict',
+        message,
+        detail: RefStateConflictDetailV2Schema.parse(detail),
       }
     case 'unsupported_profile':
       return {

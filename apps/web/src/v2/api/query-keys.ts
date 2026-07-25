@@ -10,6 +10,9 @@ export const v2QueryKeys = {
   lineage: (scope: string, base: string, version: string, maxDepth: number, maxNodes: number) =>
     [scope, base, 'v2', 'lineage', version, maxDepth, maxNodes] as const,
   refsRoot: (scope: string, base: string) => [scope, base, 'v2', 'refs'] as const,
+  deletedRefsRoot: (scope: string, base: string) => [scope, base, 'v2', 'deleted-refs'] as const,
+  deletedRefs: (scope: string, base: string, limit: number) =>
+    [scope, base, 'v2', 'deleted-refs', limit] as const,
   refs: (scope: string, base: string, limit: number) => [scope, base, 'v2', 'refs', limit] as const,
   resolution: (scope: string, base: string, ref: string) =>
     [scope, base, 'v2', 'resolution', ref] as const,

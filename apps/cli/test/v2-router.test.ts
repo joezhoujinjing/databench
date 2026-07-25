@@ -63,7 +63,10 @@ describe('product command router', () => {
       'transform run',
       'ref list',
       'ref show',
+      'ref trash',
       'ref move',
+      'ref delete',
+      'ref restore',
       'lineage show',
     ])
 
@@ -182,6 +185,43 @@ describe('product command router', () => {
       { signal: expect.any(AbortSignal) },
     )
   })
+
+  test('routes recoverable ref deletion, trash listing, and restore through V2Workspace', async () => {
+    const workspace = fakeWorkspace()
+    injectWorkspace(workspace)
+
+    expect(await run(['ref', 'delete', 'main'])).toBe(EXIT.badInput)
+    expect(workspace.deleteRef).not.toHaveBeenCalled()
+
+    stderr.length = 0
+    expect(await run(['ref', 'delete', 'main', '--use-current', '--compact'])).toBe(EXIT.ok)
+    expect(workspace.getRef.mock.invocationCallOrder[0]).toBeLessThan(
+      workspace.deleteRef.mock.invocationCallOrder[0] as number,
+    )
+    expect(workspace.deleteRef).toHaveBeenCalledWith(
+      'main',
+      { expected_version: VERSION },
+      { signal: expect.any(AbortSignal) },
+    )
+
+    stdout.length = 0
+    expect(await run(['ref', 'trash', '--limit', '7', '--compact'])).toBe(EXIT.ok)
+    expect(workspace.listDeletedRefs).toHaveBeenCalledWith(
+      { cursor: null, limit: 7 },
+      { signal: expect.any(AbortSignal) },
+    )
+
+    stdout.length = 0
+    expect(await run(['ref', 'restore', 'main', '--use-current', '--compact'])).toBe(EXIT.ok)
+    expect(workspace.getDeletedRef.mock.invocationCallOrder[0]).toBeLessThan(
+      workspace.restoreRef.mock.invocationCallOrder[0] as number,
+    )
+    expect(workspace.restoreRef).toHaveBeenCalledWith(
+      'main',
+      { expected_version: VERSION },
+      { signal: expect.any(AbortSignal) },
+    )
+  })
 })
 
 describe('export transport', () => {
@@ -274,6 +314,14 @@ describe('export transport', () => {
 
 function fakeWorkspace(options: { plan?: ExportPlanV2 } = {}) {
   const plan = options.plan ?? exportPlan(false)
+  const ref = {
+    name: 'main',
+    version: VERSION,
+    num_records: 1,
+    message: null,
+    updated_at: '2026-07-24T00:00:00.000Z',
+  }
+  const deletedRef = { ...ref, deleted_at: '2026-07-24T01:00:00.000Z' }
   return {
     describeDataset: vi.fn(async () => ({ dataset_version: VERSION })),
     getRecordPage: vi.fn(async () => ({ dataset_version: VERSION, items: [] })),
@@ -285,8 +333,12 @@ function fakeWorkspace(options: { plan?: ExportPlanV2 } = {}) {
     listTransforms: vi.fn(() => []),
     runTransform: vi.fn(async () => ({})),
     listRefs: vi.fn(async () => ({ items: [], next_cursor: null })),
-    getRef: vi.fn(async () => ({ name: 'main', version: VERSION, message: null })),
+    listDeletedRefs: vi.fn(async () => ({ items: [deletedRef], next_cursor: null })),
+    getRef: vi.fn(async () => ref),
+    getDeletedRef: vi.fn(async () => deletedRef),
     putRef: vi.fn(async () => ({ name: 'main', version: NEXT_VERSION, message: null })),
+    deleteRef: vi.fn(async () => ({ status: 'deleted' as const, ref: deletedRef })),
+    restoreRef: vi.fn(async () => ({ status: 'restored' as const, ref })),
     lineage: vi.fn(async () => ({})),
     addJsonl: vi.fn(async () => ({})),
   }

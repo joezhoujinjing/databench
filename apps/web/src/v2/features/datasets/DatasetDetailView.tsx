@@ -1,8 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CopyTextButton } from '@/components/common/CopyTextButton.js'
 import { JsonBlock } from '@/components/common/JsonBlock.js'
+import { Alert } from '@/components/ui/alert.js'
 import { Badge } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
 import {
@@ -20,21 +22,31 @@ import {
 import { formatInteger } from '@/lib/format.js'
 import type { DatasetViewV2 } from '../../api/types.js'
 import { VirtualizedRecords } from '../../components/records/VirtualizedRecords.js'
+import { V2MutationError } from '../../components/V2MutationError.js'
 
 export function V2DatasetDetailView({
+  canDelete,
+  deleteError,
+  isDeleting,
   latestVersion,
   onAdoptLatest,
+  onDelete,
   pinnedVersion,
   requestedRef,
   view,
 }: {
+  canDelete: boolean
+  deleteError: unknown
+  isDeleting: boolean
   latestVersion: string | null
   onAdoptLatest(): void
+  onDelete(): void
   pinnedVersion: string
   requestedRef: string
   view: DatasetViewV2
 }) {
   const { t } = useTranslation()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const { manifest } = view
   const moved = latestVersion !== null && latestVersion !== pinnedVersion
 
@@ -53,6 +65,18 @@ export function V2DatasetDetailView({
                 {t('v2.detail.export')}
               </Link>
             </Button>
+            {canDelete ? (
+              <Button
+                className="border-danger/45 text-danger hover:bg-danger/10"
+                disabled={isDeleting}
+                onClick={() => setConfirmingDelete(true)}
+                type="button"
+                variant="outline"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+                {t('v2.detail.delete')}
+              </Button>
+            ) : null}
             <Button asChild variant="outline">
               <Link to="/datasets">{t('v2.detail.back')}</Link>
             </Button>
@@ -60,6 +84,30 @@ export function V2DatasetDetailView({
         }
         title={requestedRef}
       />
+
+      {confirmingDelete ? (
+        <Alert className="border-danger/35 bg-danger/10" role="alertdialog">
+          <div className="font-medium text-foreground">{t('v2.detail.deleteTitle')}</div>
+          <p className="mt-1 text-muted-foreground">
+            {t('v2.detail.deleteDescription', { name: requestedRef })}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button disabled={isDeleting} onClick={onDelete} type="button" variant="destructive">
+              {isDeleting ? t('v2.detail.deleting') : t('v2.detail.confirmDelete')}
+            </Button>
+            <Button
+              disabled={isDeleting}
+              onClick={() => setConfirmingDelete(false)}
+              type="button"
+              variant="outline"
+            >
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
+
+      {deleteError === null ? null : <V2MutationError error={deleteError} />}
 
       {moved ? (
         <div className="flex flex-wrap items-center justify-between gap-4 border-warning/35 border-y bg-warning/5 px-4 py-3 text-sm">

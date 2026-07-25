@@ -12,6 +12,9 @@ import type {
   ConverterRegistryPageV2,
   DatasetLineageV2,
   DatasetViewV2,
+  DeletedRefPageV2,
+  DeleteRefRequestV2,
+  DeleteRefResultV2,
   ExportPlanV2,
   ExportRequestV2,
   IngestResultV2,
@@ -21,6 +24,8 @@ import type {
   RecordViewV2,
   RefMetadataV2,
   RefPageV2,
+  RestoreRefRequestV2,
+  RestoreRefResultV2,
   RunTransformRequestV2,
   RunTransformResultV2,
   TransformRegistryPageV2,
@@ -74,6 +79,16 @@ export interface V2PutRefOptions extends V2ReadOptions {
   readonly request: PutRefRequestV2
 }
 
+export interface V2DeleteRefOptions extends V2ReadOptions {
+  readonly name: string
+  readonly request: DeleteRefRequestV2
+}
+
+export interface V2RestoreRefOptions extends V2ReadOptions {
+  readonly name: string
+  readonly request: RestoreRefRequestV2
+}
+
 export interface V2InspectExportOptions extends V2DatasetOptions {
   readonly request: InspectExportRequestV2
 }
@@ -92,6 +107,20 @@ export function getCapabilitiesV2(options: V2ReadOptions): Promise<CapabilitiesV
 export function listRefsV2(options: V2RefsOptions): Promise<RefPageV2> {
   return unwrapOpenApiResponse(
     createApiClient(options).GET('/v2/refs', {
+      ...requestOptions(options.signal),
+      params: {
+        query: {
+          cursor: options.cursor,
+          limit: options.limit,
+        },
+      },
+    }),
+  )
+}
+
+export function listDeletedRefsV2(options: V2RefsOptions): Promise<DeletedRefPageV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).GET('/v2/deleted-refs', {
       ...requestOptions(options.signal),
       params: {
         query: {
@@ -160,6 +189,26 @@ export function runTransformV2(options: V2RunTransformOptions): Promise<RunTrans
 export function putRefV2(options: V2PutRefOptions): Promise<RefMetadataV2> {
   return unwrapOpenApiResponse(
     createApiClient(options).PUT('/v2/refs/{name}', {
+      ...requestOptions(options.signal),
+      body: options.request,
+      params: { path: { name: options.name } },
+    }),
+  )
+}
+
+export function deleteRefV2(options: V2DeleteRefOptions): Promise<DeleteRefResultV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).DELETE('/v2/refs/{name}', {
+      ...requestOptions(options.signal),
+      body: options.request,
+      params: { path: { name: options.name } },
+    }),
+  )
+}
+
+export function restoreRefV2(options: V2RestoreRefOptions): Promise<RestoreRefResultV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).POST('/v2/refs/{name}:restore', {
       ...requestOptions(options.signal),
       body: options.request,
       params: { path: { name: options.name } },

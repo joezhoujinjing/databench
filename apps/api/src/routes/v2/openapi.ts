@@ -9,6 +9,7 @@ import {
   InternalErrorResponseV2Schema,
   NotFoundErrorResponseV2Schema,
   RefConflictErrorResponseV2Schema,
+  RefStateConflictErrorResponseV2Schema,
   ResourceLimitErrorResponseV2Schema,
   ServiceUnavailableErrorResponseV2Schema,
   TooManyRequestsErrorResponseV2Schema,
@@ -145,6 +146,19 @@ export const V2_REF_PUT_ERROR_RESPONSES = {
   ...internalResponse,
   ...dependencyFailureResponse,
 } as const
+
+export const V2_REF_DELETE_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed Ref delete request'),
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'V2 Ref was not found'),
+  409: jsonResponseV2(RefStateConflictErrorResponseV2Schema, 'Ref state compare-and-set conflict'),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'V2 request resource limit exceeded'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Ref delete request'),
+  ...internalResponse,
+  ...dependencyFailureResponse,
+} as const
+
+export const V2_REF_RESTORE_ERROR_RESPONSES = V2_REF_DELETE_ERROR_RESPONSES
 
 export const V2_LINEAGE_ERROR_RESPONSES = {
   ...commonAuthRateResponses,

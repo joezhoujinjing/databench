@@ -5,6 +5,7 @@ import { checkCompatibility } from '@/api/version.js'
 import { classifyPostTrainingV2 } from './capability.js'
 import {
   auditDatasetV2,
+  deleteRefV2,
   describeDatasetV2,
   getCapabilitiesV2,
   getDatasetRecordV2,
@@ -13,9 +14,11 @@ import {
   inspectExportV2,
   listConvertersV2,
   listDatasetRecordsV2,
+  listDeletedRefsV2,
   listRefsV2,
   listTransformsV2,
   putRefV2,
+  restoreRefV2,
   runTransformV2,
 } from './client.js'
 import { v2QueryKeys } from './query-keys.js'
@@ -53,6 +56,18 @@ export function useV2Refs(limit = 100) {
     queryFn: ({ pageParam, signal }) =>
       listRefsV2({ base, cursor: pageParam, limit, signal, token }),
     queryKey: v2QueryKeys.refs(connectionScope, base, limit),
+  })
+}
+
+export function useV2DeletedRefs(limit = 100) {
+  const { base, connectionScope, token } = useBackend()
+
+  return useInfiniteQuery({
+    getNextPageParam: nextRefCursor,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      listDeletedRefsV2({ base, cursor: pageParam, limit, signal, token }),
+    queryKey: v2QueryKeys.deletedRefs(connectionScope, base, limit),
   })
 }
 
@@ -193,6 +208,48 @@ export function useV2PutRef() {
         queryClient.invalidateQueries({ queryKey: v2QueryKeys.refsRoot(connectionScope, base) }),
         queryClient.invalidateQueries({
           queryKey: v2QueryKeys.resolution(connectionScope, base, ref.name),
+        }),
+      ])
+    },
+  })
+}
+
+export function useV2DeleteRef() {
+  const { base, connectionScope, token } = useBackend()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (variables: Omit<Parameters<typeof deleteRefV2>[0], 'base' | 'token'>) =>
+      deleteRefV2({ ...variables, base, token }),
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: v2QueryKeys.refsRoot(connectionScope, base) }),
+        queryClient.invalidateQueries({
+          queryKey: v2QueryKeys.deletedRefsRoot(connectionScope, base),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: v2QueryKeys.resolution(connectionScope, base, result.ref.name),
+        }),
+      ])
+    },
+  })
+}
+
+export function useV2RestoreRef() {
+  const { base, connectionScope, token } = useBackend()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (variables: Omit<Parameters<typeof restoreRefV2>[0], 'base' | 'token'>) =>
+      restoreRefV2({ ...variables, base, token }),
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: v2QueryKeys.refsRoot(connectionScope, base) }),
+        queryClient.invalidateQueries({
+          queryKey: v2QueryKeys.deletedRefsRoot(connectionScope, base),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: v2QueryKeys.resolution(connectionScope, base, result.ref.name),
         }),
       ])
     },

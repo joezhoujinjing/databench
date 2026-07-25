@@ -5,20 +5,24 @@ export type ApiV2Workspace = Pick<
   V2Workspace,
   | 'addJsonl'
   | 'audit'
+  | 'deleteRef'
   | 'describeDataset'
   | 'export'
   | 'getConverter'
+  | 'getDeletedRef'
   | 'getRecordPage'
   | 'getRecordView'
   | 'getRef'
   | 'inspectExport'
   | 'lineage'
   | 'listConverters'
+  | 'listDeletedRefs'
   | 'listRefs'
   | 'listTransforms'
   | 'postTrainingV2Capability'
   | 'putRef'
   | 'runTransform'
+  | 'restoreRef'
 >
 
 export interface ApiVariables {

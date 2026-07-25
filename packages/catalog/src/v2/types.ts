@@ -116,6 +116,26 @@ export interface CompareAndSetRefV2 {
   readonly message: string | null
 }
 
+export interface DeleteRefV2 {
+  readonly namespaceId: string
+  readonly name: string
+  readonly expectedVersion: string
+}
+
+export type DeleteRefResultV2 =
+  | { readonly status: 'deleted' | 'already_deleted'; readonly row: CatalogRefRowV2 }
+  | { readonly status: 'missing' }
+
+export interface RestoreRefV2 {
+  readonly namespaceId: string
+  readonly name: string
+  readonly expectedVersion: string
+}
+
+export type RestoreRefResultV2 =
+  | { readonly status: 'restored' | 'already_active'; readonly row: CatalogRefRowV2 }
+  | { readonly status: 'missing' }
+
 export interface CatalogRefRowV2 {
   readonly namespaceId: string
   readonly name: string
@@ -123,6 +143,7 @@ export interface CatalogRefRowV2 {
   readonly numRecords: bigint
   readonly message: string | null
   readonly updatedAt: Date
+  readonly deletedAt: Date | null
 }
 
 export interface CatalogRefPageV2 {

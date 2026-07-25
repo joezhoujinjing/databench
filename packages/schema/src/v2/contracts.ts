@@ -395,6 +395,13 @@ export const RefMetadataV2Schema = z
   .meta({ id: 'RefMetadataV2' })
 export type RefMetadataV2 = z.infer<typeof RefMetadataV2Schema>
 
+export const DeletedRefMetadataV2Schema = RefMetadataV2Schema.extend({
+  deleted_at: Rfc3339UtcSchema,
+})
+  .strict()
+  .meta({ id: 'DeletedRefMetadataV2' })
+export type DeletedRefMetadataV2 = z.infer<typeof DeletedRefMetadataV2Schema>
+
 export const RefPageV2Schema = z
   .strictObject({
     items: z.array(RefMetadataV2Schema).max(V2_CURSOR_PAGE_MAX_LIMIT),
@@ -416,6 +423,27 @@ export const RefPageV2Schema = z
   .meta({ id: 'RefPageV2' })
 export type RefPageV2 = z.infer<typeof RefPageV2Schema>
 
+export const DeletedRefPageV2Schema = z
+  .strictObject({
+    items: z.array(DeletedRefMetadataV2Schema).max(V2_CURSOR_PAGE_MAX_LIMIT),
+    next_cursor: z.string().min(1).max(V2_CURSOR_MAX_CHARS).nullable(),
+  })
+  .superRefine((page, context) => {
+    for (let index = 1; index < page.items.length; index += 1) {
+      const previous = page.items[index - 1]
+      const current = page.items[index]
+      if (previous && current && previous.name >= current.name) {
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'name'],
+          message: 'deleted ref page items must be strictly C/ASCII sorted and unique',
+        })
+      }
+    }
+  })
+  .meta({ id: 'DeletedRefPageV2' })
+export type DeletedRefPageV2 = z.infer<typeof DeletedRefPageV2Schema>
+
 export const PutRefRequestV2Schema = z
   .strictObject({
     new_version: DigestHexSchema,
@@ -424,6 +452,36 @@ export const PutRefRequestV2Schema = z
   })
   .meta({ id: 'PutRefRequestV2' })
 export type PutRefRequestV2 = z.infer<typeof PutRefRequestV2Schema>
+
+export const DeleteRefRequestV2Schema = z
+  .strictObject({
+    expected_version: DigestHexSchema,
+  })
+  .meta({ id: 'DeleteRefRequestV2' })
+export type DeleteRefRequestV2 = z.infer<typeof DeleteRefRequestV2Schema>
+
+export const RestoreRefRequestV2Schema = z
+  .strictObject({
+    expected_version: DigestHexSchema,
+  })
+  .meta({ id: 'RestoreRefRequestV2' })
+export type RestoreRefRequestV2 = z.infer<typeof RestoreRefRequestV2Schema>
+
+export const DeleteRefResultV2Schema = z
+  .strictObject({
+    status: z.enum(['deleted', 'already_deleted']),
+    ref: DeletedRefMetadataV2Schema,
+  })
+  .meta({ id: 'DeleteRefResultV2' })
+export type DeleteRefResultV2 = z.infer<typeof DeleteRefResultV2Schema>
+
+export const RestoreRefResultV2Schema = z
+  .strictObject({
+    status: z.enum(['restored', 'already_active']),
+    ref: RefMetadataV2Schema,
+  })
+  .meta({ id: 'RestoreRefResultV2' })
+export type RestoreRefResultV2 = z.infer<typeof RestoreRefResultV2Schema>
 
 export const RefConflictDetailV2Schema = z
   .strictObject({
@@ -435,6 +493,17 @@ export const RefConflictDetailV2Schema = z
   })
   .meta({ id: 'RefConflictDetailV2' })
 export type RefConflictDetailV2 = z.infer<typeof RefConflictDetailV2Schema>
+
+export const RefStateConflictDetailV2Schema = z
+  .strictObject({
+    ref_name: RefNameV2Schema,
+    expected_version: DigestHexSchema,
+    current_version: DigestHexSchema,
+    current_state: z.enum(['active', 'deleted']),
+    operation: z.enum(['delete', 'restore']),
+  })
+  .meta({ id: 'RefStateConflictDetailV2' })
+export type RefStateConflictDetailV2 = z.infer<typeof RefStateConflictDetailV2Schema>
 
 const ErrorMessageV2Schema = z.string().min(1).max(2_048)
 const ErrorReasonV2Schema = z
@@ -624,6 +693,10 @@ const RefConflictErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
   'ref_conflict',
   RefConflictDetailV2Schema,
 )
+const RefStateConflictErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
+  'ref_state_conflict',
+  RefStateConflictDetailV2Schema,
+)
 const UnsupportedProfileErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
   'unsupported_profile',
   UnsupportedProfileDetailV2Schema,
@@ -668,6 +741,7 @@ export const ErrorBodyV2Schema = z
     DeterminismConflictErrorBodyV2Schema,
     LayoutConflictErrorBodyV2Schema,
     RefConflictErrorBodyV2Schema,
+    RefStateConflictErrorBodyV2Schema,
     UnsupportedProfileErrorBodyV2Schema,
     FidelityErrorBodyV2Schema,
     IntegrityErrorBodyV2Schema,
@@ -741,6 +815,12 @@ export const RefConflictErrorResponseV2Schema = createErrorResponseV2Schema(
 )
 export type RefConflictErrorResponseV2 = z.infer<typeof RefConflictErrorResponseV2Schema>
 
+export const RefStateConflictErrorResponseV2Schema = createErrorResponseV2Schema(
+  'RefStateConflictErrorResponseV2',
+  RefStateConflictErrorBodyV2Schema,
+)
+export type RefStateConflictErrorResponseV2 = z.infer<typeof RefStateConflictErrorResponseV2Schema>
+
 export const FidelityErrorResponseV2Schema = createErrorResponseV2Schema(
   'FidelityErrorResponseV2',
   FidelityErrorBodyV2Schema,
@@ -799,6 +879,7 @@ export const ErrorResponse409V2Schema = z
     DeterminismConflictErrorResponseV2Schema,
     LayoutConflictErrorResponseV2Schema,
     RefConflictErrorResponseV2Schema,
+    RefStateConflictErrorResponseV2Schema,
   ])
   .meta({ id: 'ErrorResponse409V2' })
 export type ErrorResponse409V2 = z.infer<typeof ErrorResponse409V2Schema>
@@ -845,6 +926,16 @@ export class RefConflictErrorV2 extends ConflictError {
   constructor(detailInput: RefConflictDetailV2) {
     const detail = Object.freeze(RefConflictDetailV2Schema.parse(detailInput))
     super(`V2 ref compare-and-set conflict for ${detail.ref_name}`, detail)
+  }
+}
+
+export class RefStateConflictErrorV2 extends ConflictError {
+  override readonly name = 'RefStateConflictErrorV2'
+  override readonly code = 'ref_state_conflict'
+
+  constructor(detailInput: RefStateConflictDetailV2) {
+    const detail = Object.freeze(RefStateConflictDetailV2Schema.parse(detailInput))
+    super(`V2 ref ${detail.operation} compare-and-set conflict for ${detail.ref_name}`, detail)
   }
 }
 

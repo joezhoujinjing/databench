@@ -236,6 +236,22 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v2/deleted-refs': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['listDeletedRefsV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v2/lineage/{ref_or_version}': {
     parameters: {
       query?: never
@@ -278,6 +294,22 @@ export interface paths {
     get: operations['getRefV2']
     put: operations['putRefV2']
     post?: never
+    delete: operations['deleteRefV2']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/refs/{name}:restore': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['restoreRefV2']
     delete?: never
     options?: never
     head?: never
@@ -478,6 +510,26 @@ export interface components {
       ref_name: string | null
       requested_ref: string
     }
+    DeletedRefMetadataV2: {
+      deleted_at: string
+      message: string | null
+      name: string
+      num_records: number
+      updated_at: string
+      version: string
+    }
+    DeletedRefPageV2: {
+      items: components['schemas']['DeletedRefMetadataV2'][]
+      next_cursor: string | null
+    }
+    DeleteRefRequestV2: {
+      expected_version: string
+    }
+    DeleteRefResultV2: {
+      ref: components['schemas']['DeletedRefMetadataV2']
+      /** @enum {string} */
+      status: 'deleted' | 'already_deleted'
+    }
     DeterminismConflictDetailV2: {
       attempted_dataset_committed: boolean
       attempted_output_version: string
@@ -509,6 +561,7 @@ export interface components {
       | components['schemas']['DeterminismConflictErrorResponseV2']
       | components['schemas']['LayoutConflictErrorResponseV2']
       | components['schemas']['RefConflictErrorResponseV2']
+      | components['schemas']['RefStateConflictErrorResponseV2']
     ErrorResponse422V2:
       | components['schemas']['ValidationErrorResponseV2']
       | components['schemas']['UnsupportedProfileErrorResponseV2']
@@ -1068,6 +1121,23 @@ export interface components {
       items: components['schemas']['RefMetadataV2'][]
       next_cursor: string | null
     }
+    RefStateConflictDetailV2: {
+      /** @enum {string} */
+      current_state: 'active' | 'deleted'
+      current_version: string
+      expected_version: string
+      /** @enum {string} */
+      operation: 'delete' | 'restore'
+      ref_name: string
+    }
+    RefStateConflictErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'ref_state_conflict'
+        detail: components['schemas']['RefStateConflictDetailV2']
+        message: string
+      }
+    }
     ResourceLimitDetailV2: {
       actual: number | string
       issues?: components['schemas']['ValidationIssueV2'][]
@@ -1081,6 +1151,14 @@ export interface components {
         detail: components['schemas']['ResourceLimitDetailV2']
         message: string
       }
+    }
+    RestoreRefRequestV2: {
+      expected_version: string
+    }
+    RestoreRefResultV2: {
+      ref: components['schemas']['RefMetadataV2']
+      /** @enum {string} */
+      status: 'restored' | 'already_active'
     }
     RunMetadataV2: {
       cache_key: string
@@ -2290,6 +2368,104 @@ export interface operations {
       }
     }
   }
+  listDeletedRefsV2: {
+    parameters: {
+      query?: {
+        cursor?: string | null
+        limit?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Cursor-paginated deleted V2 refs */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['DeletedRefPageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Invalid Ref page request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
   getLineageV2: {
     parameters: {
       query?: {
@@ -2710,6 +2886,304 @@ export interface operations {
         }
       }
       /** @description Invalid Ref update request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  deleteRefV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DeleteRefRequestV2']
+      }
+    }
+    responses: {
+      /** @description Deleted or already-deleted V2 ref */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['DeleteRefResultV2']
+        }
+      }
+      /** @description Malformed Ref delete request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 Ref was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Ref state compare-and-set conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RefStateConflictErrorResponseV2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid Ref delete request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  restoreRefV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RestoreRefRequestV2']
+      }
+    }
+    responses: {
+      /** @description Restored or already-active V2 ref */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RestoreRefResultV2']
+        }
+      }
+      /** @description Malformed Ref delete request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 Ref was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Ref state compare-and-set conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RefStateConflictErrorResponseV2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid Ref delete request */
       422: {
         headers: {
           'Cache-Control': 'private, no-store'

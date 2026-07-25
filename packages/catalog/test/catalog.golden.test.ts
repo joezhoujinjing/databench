@@ -9,6 +9,7 @@ import {
   V2CatalogInputError,
   V2CatalogLineageCycleError,
   V2CatalogRefConflictError,
+  V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
 } from '../src/index.js'
 
@@ -982,6 +983,159 @@ describe('V2Catalog', () => {
       numRecords: 1n,
       message: 'moved to gamma',
     })
+  })
+
+  test('moves refs to recoverable trash and restores them without deleting immutable metadata', async () => {
+    const input = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
+    await v2Catalog.registerCommittedLayout(input)
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    await v2Catalog.compareAndSetRef({
+      namespaceId,
+      name: 'delete-me',
+      newVersion: input.snapshot.version,
+      expectedVersion: null,
+      message: null,
+    })
+
+    await expect(
+      v2Catalog.deleteRef({
+        namespaceId,
+        name: 'delete-me',
+        expectedVersion: fixtureVersion('beta'),
+      }),
+    ).rejects.toMatchObject({
+      name: 'V2CatalogRefStateConflictError',
+      operation: 'delete',
+      currentState: 'active',
+    })
+    const deleted = await v2Catalog.deleteRef({
+      namespaceId,
+      name: 'delete-me',
+      expectedVersion: input.snapshot.version,
+    })
+    if (deleted.status === 'missing') throw new Error('seeded ref was not deleted')
+    expect(deleted).toMatchObject({
+      status: 'deleted',
+      row: {
+        namespaceId,
+        name: 'delete-me',
+        version: input.snapshot.version,
+        deletedAt: expect.any(Date),
+      },
+    })
+    await expect(
+      v2Catalog.deleteRef({
+        namespaceId,
+        name: 'delete-me',
+        expectedVersion: input.snapshot.version,
+      }),
+    ).resolves.toMatchObject({ status: 'already_deleted', row: deleted.row })
+
+    expect(await v2Catalog.getRef(namespaceId, 'delete-me')).toBeNull()
+    expect(await v2Catalog.resolveRef(namespaceId, 'delete-me')).toBe('delete-me')
+    expect(await v2Catalog.getDeletedRef(namespaceId, 'delete-me')).toMatchObject({
+      version: input.snapshot.version,
+      deletedAt: expect.any(Date),
+    })
+    await expect(v2Catalog.listRefs(namespaceId, null, 10)).resolves.toEqual({
+      rows: [],
+      nextName: null,
+    })
+    await expect(v2Catalog.listDeletedRefs(namespaceId, null, 10)).resolves.toMatchObject({
+      rows: [{ name: 'delete-me', version: input.snapshot.version }],
+      nextName: null,
+    })
+    expect(await v2Catalog.getSnapshot(input.snapshot.version)).not.toBeNull()
+    expect(
+      await v2Catalog.getLayout(input.snapshot.version, input.layout.layoutVersion),
+    ).not.toBeNull()
+
+    await expect(
+      v2Catalog.restoreRef({
+        namespaceId,
+        name: 'delete-me',
+        expectedVersion: fixtureVersion('beta'),
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogRefStateConflictError)
+    const restored = await v2Catalog.restoreRef({
+      namespaceId,
+      name: 'delete-me',
+      expectedVersion: input.snapshot.version,
+    })
+    if (restored.status === 'missing') throw new Error('deleted ref was not restored')
+    expect(restored).toMatchObject({
+      status: 'restored',
+      row: { name: 'delete-me', version: input.snapshot.version, deletedAt: null },
+    })
+    await expect(
+      v2Catalog.restoreRef({
+        namespaceId,
+        name: 'delete-me',
+        expectedVersion: input.snapshot.version,
+      }),
+    ).resolves.toMatchObject({ status: 'already_active', row: restored.row })
+    expect(await v2Catalog.getDeletedRef(namespaceId, 'delete-me')).toBeNull()
+    expect(await v2Catalog.getRef(namespaceId, 'delete-me')).toMatchObject({
+      version: input.snapshot.version,
+      deletedAt: null,
+    })
+  })
+
+  test('serializes concurrent ref move and delete so only one CAS transition wins', async () => {
+    const alpha = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
+    const beta = registration('beta', [withParents(fixtureRevision('inputBeta'))])
+    await v2Catalog.registerCommittedLayout(alpha)
+    await v2Catalog.registerCommittedLayout(beta)
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    await v2Catalog.compareAndSetRef({
+      namespaceId,
+      name: 'move-delete-race',
+      newVersion: alpha.snapshot.version,
+      expectedVersion: null,
+      message: null,
+    })
+
+    const [deleted, moved] = await Promise.allSettled([
+      v2Catalog.deleteRef({
+        namespaceId,
+        name: 'move-delete-race',
+        expectedVersion: alpha.snapshot.version,
+      }),
+      v2Catalog.compareAndSetRef({
+        namespaceId,
+        name: 'move-delete-race',
+        newVersion: beta.snapshot.version,
+        expectedVersion: alpha.snapshot.version,
+        message: 'concurrent move',
+      }),
+    ])
+
+    expect({
+      statuses: [deleted.status, moved.status].sort(),
+      deleted: deleted.status === 'fulfilled' ? deleted.value : deleted.reason,
+      moved: moved.status === 'fulfilled' ? moved.value : moved.reason,
+      active: await v2Catalog.getRef(namespaceId, 'move-delete-race'),
+      trashed: await v2Catalog.getDeletedRef(namespaceId, 'move-delete-race'),
+    }).toMatchObject({ statuses: ['fulfilled', 'rejected'] })
+    if (deleted.status === 'fulfilled') {
+      expect(deleted.value).toMatchObject({ status: 'deleted' })
+      expect(moved.status === 'rejected' ? moved.reason : null).toBeInstanceOf(
+        V2CatalogRefConflictError,
+      )
+      expect(await v2Catalog.getRef(namespaceId, 'move-delete-race')).toBeNull()
+      expect(await v2Catalog.getDeletedRef(namespaceId, 'move-delete-race')).toMatchObject({
+        version: alpha.snapshot.version,
+      })
+    } else {
+      expect(deleted.reason).toBeInstanceOf(V2CatalogRefStateConflictError)
+      expect(moved.status === 'fulfilled' ? moved.value : null).toMatchObject({
+        version: beta.snapshot.version,
+      })
+      expect(await v2Catalog.getRef(namespaceId, 'move-delete-race')).toMatchObject({
+        version: beta.snapshot.version,
+      })
+      expect(await v2Catalog.getDeletedRef(namespaceId, 'move-delete-race')).toBeNull()
+    }
   })
 
   test('rejects refs to snapshots without a committed layout', async () => {

@@ -1,20 +1,25 @@
 import { readFileSync } from 'node:fs'
 import {
+  type DeleteRefResultV2 as CatalogDeleteRefResultV2,
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
   type CatalogIdentityClaimRowV2,
   type CatalogLayoutRowV2,
   type CatalogRefPageV2,
   type CatalogRefRowV2,
+  type RestoreRefResultV2 as CatalogRestoreRefResultV2,
   type CatalogRunPageV2,
   type CatalogRunRowV2,
   type CatalogSnapshotRowV2,
   type CompareAndSetRefV2,
+  type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
+  type RestoreRefV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
   V2CatalogRefConflictError,
+  V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
 } from '@databench/catalog'
 import { DEFAULT_V2_DATASET_LIMITS, V2Dataset, type V2DatasetLimits } from '@databench/engine'
@@ -673,6 +678,107 @@ describe('V2Workspace refs facade', () => {
       name: 'RefConflictErrorV2',
       detail: { new_version: newVersion, new_dataset_committed: true },
     })
+  })
+
+  test('deletes refs with CAS, keeps retries idempotent, and maps concurrent moves', async () => {
+    const rig = createRig()
+    const expectedVersion = 'd'.repeat(64)
+    const currentVersion = 'e'.repeat(64)
+    rig.catalog.refs.set('main', refRow('main', expectedVersion, null))
+
+    await expect(
+      rig.workspace.deleteRef('main', { expected_version: expectedVersion }),
+    ).resolves.toEqual({
+      status: 'deleted',
+      ref: {
+        name: 'main',
+        version: expectedVersion,
+        num_records: 0,
+        message: null,
+        updated_at: NOW.toISOString(),
+        deleted_at: NOW.toISOString(),
+      },
+    })
+    await expect(rig.workspace.getRef('main')).resolves.toBeNull()
+    await expect(rig.workspace.getDeletedRef('main')).resolves.toMatchObject({
+      name: 'main',
+      version: expectedVersion,
+      deleted_at: NOW.toISOString(),
+    })
+    await expect(
+      rig.workspace.deleteRef('main', { expected_version: expectedVersion }),
+    ).resolves.toMatchObject({ status: 'already_deleted' })
+
+    await expect(
+      rig.workspace.restoreRef('main', { expected_version: expectedVersion }),
+    ).resolves.toMatchObject({
+      status: 'restored',
+      ref: { name: 'main', version: expectedVersion },
+    })
+    await expect(rig.workspace.getDeletedRef('main')).resolves.toBeNull()
+    await expect(rig.workspace.getRef('main')).resolves.toMatchObject({
+      name: 'main',
+      version: expectedVersion,
+    })
+    await expect(
+      rig.workspace.restoreRef('main', { expected_version: expectedVersion }),
+    ).resolves.toMatchObject({ status: 'already_active' })
+
+    rig.catalog.refs.set('main', refRow('main', currentVersion, null))
+    rig.catalog.failures.delete = new V2CatalogRefStateConflictError({
+      namespaceId: NAMESPACE_ID,
+      refName: 'main',
+      expectedVersion,
+      currentVersion,
+      currentState: 'active',
+      operation: 'delete',
+    })
+    await expect(
+      rig.workspace.deleteRef('main', { expected_version: expectedVersion }),
+    ).rejects.toMatchObject({
+      name: 'RefStateConflictErrorV2',
+      code: 'ref_state_conflict',
+      detail: {
+        ref_name: 'main',
+        expected_version: expectedVersion,
+        current_version: currentVersion,
+        current_state: 'active',
+        operation: 'delete',
+      },
+    })
+  })
+
+  test('paginates deleted refs separately and rejects cursors from the active view', async () => {
+    const rig = createRig()
+    const activeVersion = 'a'.repeat(64)
+    const deletedVersion = 'b'.repeat(64)
+    rig.catalog.listPages.set(null, {
+      rows: [refRow('active', activeVersion, null)],
+      nextName: 'active',
+    })
+    rig.catalog.deletedListPages.set(null, {
+      rows: [refRow('deleted', deletedVersion, 'removed', NOW)],
+      nextName: 'deleted',
+    })
+
+    const activePage = await rig.workspace.listRefs({ cursor: null, limit: 1 })
+    const deletedPage = await rig.workspace.listDeletedRefs({ cursor: null, limit: 1 })
+    expect(deletedPage.items).toEqual([
+      {
+        name: 'deleted',
+        version: deletedVersion,
+        num_records: 0,
+        message: 'removed',
+        updated_at: NOW.toISOString(),
+        deleted_at: NOW.toISOString(),
+      },
+    ])
+    await expect(
+      rig.workspace.listDeletedRefs({ cursor: activePage.next_cursor, limit: 1 }),
+    ).rejects.toMatchObject({ name: 'ValidationError' })
+    await expect(
+      rig.workspace.listRefs({ cursor: deletedPage.next_cursor, limit: 1 }),
+    ).rejects.toMatchObject({ name: 'ValidationError' })
   })
 
   test('reports a missing standalone ref target as not found', async () => {
@@ -1809,8 +1915,9 @@ class FakeCatalog implements V2WorkspaceCatalog {
   readonly runs = new Map<string, CatalogRunRowV2>()
   readonly claims = new Map<string, CatalogIdentityClaimRowV2>()
   readonly listPages = new Map<string | null, CatalogRefPageV2>()
+  readonly deletedListPages = new Map<string | null, CatalogRefPageV2>()
   readonly registrations: RegisterLayoutV2[] = []
-  readonly failures: { register?: unknown; cas?: unknown } = {}
+  readonly failures: { register?: unknown; cas?: unknown; delete?: unknown; restore?: unknown } = {}
   transformConflictOutput: string | undefined
   #nextRunSequence = 1n
 
@@ -1928,7 +2035,16 @@ class FakeCatalog implements V2WorkspaceCatalog {
   readonly getRef = vi.fn(
     async (_namespaceId: string, name: string): Promise<CatalogRefRowV2 | null> => {
       this.events.push('getRef')
-      return this.refs.get(name) ?? null
+      const row = this.refs.get(name)
+      return row?.deletedAt === null ? row : null
+    },
+  )
+
+  readonly getDeletedRef = vi.fn(
+    async (_namespaceId: string, name: string): Promise<CatalogRefRowV2 | null> => {
+      this.events.push('getDeletedRef')
+      const row = this.refs.get(name)
+      return row?.deletedAt instanceof Date ? row : null
     },
   )
 
@@ -1938,6 +2054,27 @@ class FakeCatalog implements V2WorkspaceCatalog {
     const row = refRow(input.name, input.newVersion, input.message)
     this.refs.set(input.name, row)
     return row
+  })
+
+  readonly deleteRef = vi.fn(async (input: DeleteRefV2): Promise<CatalogDeleteRefResultV2> => {
+    this.events.push('deleteRef')
+    if (this.failures.delete !== undefined) throw this.failures.delete
+    const current = this.refs.get(input.name)
+    if (current === undefined) return { status: 'missing' }
+    if (current.version !== input.expectedVersion) {
+      throw new V2CatalogRefStateConflictError({
+        namespaceId: input.namespaceId,
+        refName: input.name,
+        expectedVersion: input.expectedVersion,
+        currentVersion: current.version,
+        currentState: current.deletedAt === null ? 'active' : 'deleted',
+        operation: 'delete',
+      })
+    }
+    if (current.deletedAt !== null) return { status: 'already_deleted', row: current }
+    const row = { ...current, deletedAt: NOW }
+    this.refs.set(input.name, row)
+    return { status: 'deleted', row }
   })
 
   readonly listRefs = vi.fn(
@@ -1950,6 +2087,38 @@ class FakeCatalog implements V2WorkspaceCatalog {
       return this.listPages.get(afterName) ?? { rows: [], nextName: null }
     },
   )
+
+  readonly listDeletedRefs = vi.fn(
+    async (
+      _namespaceId: string,
+      afterName: string | null,
+      _limit: number,
+    ): Promise<CatalogRefPageV2> => {
+      this.events.push('listDeletedRefs')
+      return this.deletedListPages.get(afterName) ?? { rows: [], nextName: null }
+    },
+  )
+
+  readonly restoreRef = vi.fn(async (input: RestoreRefV2): Promise<CatalogRestoreRefResultV2> => {
+    this.events.push('restoreRef')
+    if (this.failures.restore !== undefined) throw this.failures.restore
+    const current = this.refs.get(input.name)
+    if (current === undefined) return { status: 'missing' }
+    if (current.version !== input.expectedVersion) {
+      throw new V2CatalogRefStateConflictError({
+        namespaceId: input.namespaceId,
+        refName: input.name,
+        expectedVersion: input.expectedVersion,
+        currentVersion: current.version,
+        currentState: current.deletedAt === null ? 'active' : 'deleted',
+        operation: 'restore',
+      })
+    }
+    if (current.deletedAt === null) return { status: 'already_active', row: current }
+    const row = { ...current, deletedAt: null }
+    this.refs.set(input.name, row)
+    return { status: 'restored', row }
+  })
 }
 
 interface TestRig {
@@ -2129,8 +2298,21 @@ function makeSelectedSftRecord(idDigit: string): PostTrainingRecordV2 {
   }
 }
 
-function refRow(name: string, version: string, message: string | null): CatalogRefRowV2 {
-  return { namespaceId: NAMESPACE_ID, name, version, numRecords: 0n, message, updatedAt: NOW }
+function refRow(
+  name: string,
+  version: string,
+  message: string | null,
+  deletedAt: Date | null = null,
+): CatalogRefRowV2 {
+  return {
+    namespaceId: NAMESPACE_ID,
+    name,
+    version,
+    numRecords: 0n,
+    message,
+    updatedAt: NOW,
+    deletedAt,
+  }
 }
 
 function artifactDigest(datasetVersion: string): string {

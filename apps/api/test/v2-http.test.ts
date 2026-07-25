@@ -11,6 +11,7 @@ import {
   type PostTrainingRecordV2,
   PostTrainingRecordV2Schema,
   RefConflictErrorV2,
+  RefStateConflictErrorV2,
   ServiceUnavailableError,
   UnsupportedProfileError,
 } from '@databench/schema'
@@ -104,7 +105,7 @@ describe('V2 HTTP API', () => {
       .filter(([path]) => path.startsWith('/v2/'))
       .flatMap(([path, item]) =>
         Object.keys(item)
-          .filter((method) => ['get', 'post', 'put'].includes(method))
+          .filter((method) => ['delete', 'get', 'post', 'put'].includes(method))
           .map((method) => `${method.toUpperCase()} ${path}`),
       )
       .sort()
@@ -164,6 +165,10 @@ describe('V2 HTTP API', () => {
     const putRefConflict = document.paths['/v2/refs/{name}']?.put?.responses[409]
     expect(JSON.stringify(putRefConflict)).toContain('RefConflictErrorResponseV2')
     expect(JSON.stringify(putRefConflict)).not.toContain('DeterminismConflictErrorResponseV2')
+    const deleteRefConflict = document.paths['/v2/refs/{name}']?.delete?.responses[409]
+    expect(JSON.stringify(deleteRefConflict)).toContain('RefStateConflictErrorResponseV2')
+    const restoreRefConflict = document.paths['/v2/refs/{name}:restore']?.post.responses[409]
+    expect(JSON.stringify(restoreRefConflict)).toContain('RefStateConflictErrorResponseV2')
   })
 
   test('reports enabled V2 capability diagnostics without opening dependencies', async () => {
@@ -335,6 +340,66 @@ describe('V2 HTTP API', () => {
     )
     expect(moved.status).toBe(200)
     expect(await json(moved)).toMatchObject({ name: 'main', version: OTHER_VERSION })
+
+    const deleted = await app.fetch(
+      request('/v2/refs/main', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ expected_version: VERSION }),
+      }),
+    )
+    expect(deleted.status).toBe(200)
+    expect(await json(deleted)).toEqual({
+      status: 'deleted',
+      ref: {
+        name: 'main',
+        version: VERSION,
+        num_records: 1,
+        message: null,
+        updated_at: '2026-07-24T00:00:00.000Z',
+        deleted_at: '2026-07-24T01:00:00.000Z',
+      },
+    })
+    expect(fake.state.deleteRefRequest).toEqual({ expected_version: VERSION })
+
+    fake.state.deleteRefFailure = new RefStateConflictErrorV2({
+      ref_name: 'main',
+      expected_version: VERSION,
+      current_version: OTHER_VERSION,
+      current_state: 'active',
+      operation: 'delete',
+    })
+    const deleteConflict = await app.fetch(
+      request('/v2/refs/main', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ expected_version: VERSION }),
+      }),
+    )
+    expect(deleteConflict.status).toBe(409)
+    expect(await json(deleteConflict)).toMatchObject({
+      error: {
+        code: 'ref_state_conflict',
+        detail: { current_version: OTHER_VERSION, current_state: 'active', operation: 'delete' },
+      },
+    })
+
+    fake.state.deleteRefFailure = undefined
+    const restored = await app.fetch(
+      request('/v2/refs/main:restore', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ expected_version: VERSION }),
+      }),
+    )
+    expect({ status: restored.status, body: await json(restored) }).toMatchObject({
+      status: 200,
+      body: {
+        status: 'restored',
+        ref: { name: 'main', version: VERSION },
+      },
+    })
+    expect(fake.state.restoreRefRequest).toEqual({ expected_version: VERSION })
   })
 
   test('serves registries, cursor refs, and bounded lineage with query coercion', async () => {
@@ -352,6 +417,12 @@ describe('V2 HTTP API', () => {
     )
     expect(refs.items).toHaveLength(1)
     expect(fake.state.refPageRequest).toEqual({ cursor: null, limit: 5 })
+
+    const deletedRefs = await json<{ items: unknown[]; next_cursor: string | null }>(
+      await app.fetch(request('/v2/deleted-refs?limit=5')),
+    )
+    expect(deletedRefs.items).toHaveLength(1)
+    expect(fake.state.deletedRefPageRequest).toEqual({ cursor: null, limit: 5 })
 
     const lineage = await json<{ root_dataset_version: string }>(
       await app.fetch(request('/v2/lineage/main?max_depth=3&max_nodes=9')),
@@ -605,6 +676,9 @@ describe('V2 HTTP API', () => {
 
 interface FakeState {
   blockExport: boolean
+  deletedRefPageRequest: unknown
+  deleteRefFailure: unknown
+  deleteRefRequest: unknown
   exportFailure: unknown
   exportIteratorClosed: boolean
   exportSignal: AbortSignal | undefined
@@ -616,12 +690,16 @@ interface FakeState {
   publishedIngests: number
   recordPageRequest: unknown
   refPageRequest: unknown
+  restoreRefRequest: unknown
   transformCalls: number
 }
 
 function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
   const state: FakeState = {
     blockExport: false,
+    deletedRefPageRequest: undefined,
+    deleteRefFailure: undefined,
+    deleteRefRequest: undefined,
     exportFailure: undefined,
     exportIteratorClosed: false,
     exportSignal: undefined,
@@ -633,6 +711,7 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
     publishedIngests: 0,
     recordPageRequest: undefined,
     refPageRequest: undefined,
+    restoreRefRequest: undefined,
     transformCalls: 0,
   }
   const converter = {
@@ -657,6 +736,10 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
     num_records: 1,
     message: null,
     updated_at: '2026-07-24T00:00:00.000Z',
+  }
+  const deletedRef = {
+    ...ref,
+    deleted_at: '2026-07-24T01:00:00.000Z',
   }
 
   const workspace = {
@@ -782,8 +865,15 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
       state.refPageRequest = requestInput
       return { items: [ref], next_cursor: null }
     },
+    async listDeletedRefs(requestInput: unknown) {
+      state.deletedRefPageRequest = requestInput
+      return { items: [deletedRef], next_cursor: null }
+    },
     async getRef(name: string) {
       return name === ref.name ? ref : null
+    },
+    async getDeletedRef(name: string) {
+      return name === deletedRef.name ? deletedRef : null
     },
     async putRef(name: string, requestInput: unknown) {
       const put = requestInput as { new_version: string; message: string | null }
@@ -794,6 +884,15 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
         message: put.message,
         updated_at: '2026-07-24T00:00:00.000Z',
       }
+    },
+    async deleteRef(name: string, requestInput: unknown) {
+      state.deleteRefRequest = requestInput
+      if (state.deleteRefFailure !== undefined) throw state.deleteRefFailure
+      return { status: 'deleted' as const, ref: { ...deletedRef, name } }
+    },
+    async restoreRef(name: string, requestInput: unknown) {
+      state.restoreRefRequest = requestInput
+      return { status: 'restored' as const, ref: { ...ref, name } }
     },
     async lineage(_refOrVersion: string, requestInput: unknown) {
       state.lineageRequest = requestInput
