@@ -153,7 +153,7 @@ class DataJuicerBatchAdapter:
                 retained_path,
                 output_target.max_size,
             )
-            yield _progress_event("output_ready", output_count, input_count)
+            yield _progress_event("output_ready", input_count, input_count)
             _raise_if_stopped(context)
             descriptor = await asyncio.to_thread(
                 upload_artifact,

@@ -134,6 +134,12 @@ async def test_real_data_juicer_100_row_semantics_and_cleanup() -> None:
             "progress",
             "completed",
         ]
+        progress = [event.progress for event in events if event.WhichOneof("event") == "progress"]
+        assert [event.phase for event in progress] == ["input_ready", "output_ready"]
+        assert [(event.completed_units, event.total_units) for event in progress] == [
+            (0, len(rows)),
+            (len(rows), len(rows)),
+        ]
         terminal = events[-1].completed.outputs[0]
         assert terminal.record_count == len(expected)
         assert terminal.digest == hashlib.sha256(server.output_bytes or b"").hexdigest()

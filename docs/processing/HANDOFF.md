@@ -1,8 +1,8 @@
 # Worker / Data-Juicer 接入交接
 
 - **交接日期：** 2026-07-25
-- **当前阶段：** P0-P6 已完成；固定 `basic-clean-v1` 已形成 REST/Web/canonical 闭环
-- **下一步：** P7 — 全仓、真实依赖与浏览器最终验收
+- **当前阶段：** P0-P7 已完成；固定 `basic-clean-v1` 已通过最终 Gate
+- **后续：** 按本文交接；V16/V17 状态仍保持未完成
 - **详细方案：** [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md)
 - **决策：**
   [ADR 0010](../decisions/0010-python-processing-service-grpc.md)
@@ -37,7 +37,7 @@ identities，并通过现有 v2 Store/Catalog 发布正式 Dataset、Run、cache
 | Workspace canonical finalizer | 已实现；exact retained → original revisions → Dataset/Run/lineage |
 | batch transform REST/Web | 已实现；提交、分页读取、轮询、取消、显式重试、结果/血缘入口 |
 | production Worker 装配 | 已实现；Store config 自动接 staging/projector/finalizer/cleaner |
-| 下一切片 | P7 final gate |
+| 最终验收 | P7 已完成；repo + Postgres/MinIO/Worker/browser 全通过 |
 
 P1 Gate（2026-07-25）：Python 2/2 tests 与 source/wheel import smoke、TS↔Python 5/5
 integration tests、确定性 codegen、原生 ARM64 preflight 全部通过；全仓 lint 351 files、build
@@ -75,6 +75,25 @@ production runtime 默认装配和 Workspace 公共 job facade。并发 ref move
 `SELECT ... JOIN ... FOR UPDATE` 可见性竞态已改为先锁 ref 主行、再读取完整行，真实 Postgres
 连续 10 轮、每轮 32/32 通过。全仓 lint 367 files、build 13/13、typecheck 22/22、test
 22/22、OpenAPI 11/11、v2 status 与 `git diff --check` 通过。
+
+P7 Gate（2026-07-25）：原生 ARM64 Python 3.11.15、uv 0.11.1；Worker 16/16 tests
+通过（另有 1 个显式 benchmark skip），source/wheel import 正常。真实 Postgres + MinIO + gRPC
+7/7 通过。固定 Data-Juicer benchmark：10k 6.583 秒，保留 8,000；100k 34.674 秒，保留
+80,000；100k repeat 32.807 秒且 retained output SHA-256 完全一致。产品 API 100k canonical
+E2E 输入 100,000、输出 80,000、过滤 20,000，Worker `started → finished` 约 41.95 秒；输出
+Dataset、Run 和 exact lineage 均可读，重复提交复用同一 job 且 attempt 不增加。
+
+浏览器验收覆盖 Worker disabled 稳定 503 且不产生脏任务、任务完成和结果/血缘入口、API/Web
+重启后的任务持久化、100k cancel、Worker 中断安全 failed、Worker 重启后显式 retry 完成，以及
+completed 进度固定显示 100%。cleanup fence 未清除时的 retry 现在返回稳定
+`409 transform_job_state_conflict`，区分 `not_retryable` 与 `cleanup_pending`，不再退化成 500。
+最终全仓 lint 368 files、build 13/13、typecheck 22/22、test 22/22（真实 MinIO 启用）、
+OpenAPI 11/11、v2 status、peer、Worker codegen 和 `git diff --check` 全部通过。100k 产品 Gate
+可用以下命令复现：
+
+```bash
+pnpm test:worker:product-e2e
+```
 
 桌面实验目录：
 
@@ -333,7 +352,7 @@ canonical 算法保持单一实现。Worker 未配置或缺少 `data_juicer.batc
 | P4 ✅ | Data-Juicer adapter | 100/10k/100k determinism/cancel 通过 |
 | P5 ✅ | canonical finalizer | output Dataset/Run/cache/lineage 通过 |
 | P6 ✅ | REST/Web；CLI 延后 | 用户可提交、刷新、取消、重试、进入结果/血缘 |
-| P7 | final gate | repo + Postgres/MinIO/Worker/browser 全通过 |
+| P7 ✅ | final gate | repo + Postgres/MinIO/Worker/browser 全通过 |
 
 一个 accepted Step 一个 commit/PR；当前 gate 失败时不进入下一步。
 

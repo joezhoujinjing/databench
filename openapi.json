@@ -795,6 +795,9 @@
           },
           {
             "$ref": "#/components/schemas/RefStateConflictErrorResponseV2"
+          },
+          {
+            "$ref": "#/components/schemas/TransformJobStateConflictErrorResponseV2"
           }
         ]
       },
@@ -3692,6 +3695,74 @@
           "phase",
           "completed_units",
           "total_units"
+        ],
+        "type": "object"
+      },
+      "TransformJobStateConflictDetailV2": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "pattern": "^job_[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "not_retryable",
+              "cleanup_pending"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "leased",
+              "running",
+              "finalizing",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "job_id",
+          "status"
+        ],
+        "type": "object"
+      },
+      "TransformJobStateConflictErrorResponseV2": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "enum": [
+                  "transform_job_state_conflict"
+                ],
+                "type": "string"
+              },
+              "detail": {
+                "$ref": "#/components/schemas/TransformJobStateConflictDetailV2"
+              },
+              "message": {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "detail"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
         ],
         "type": "object"
       },
@@ -10604,7 +10675,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse409V2"
+                  "$ref": "#/components/schemas/TransformJobStateConflictErrorResponseV2"
                 }
               }
             },
@@ -10958,7 +11029,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse409V2"
+                  "$ref": "#/components/schemas/TransformJobStateConflictErrorResponseV2"
                 }
               }
             },

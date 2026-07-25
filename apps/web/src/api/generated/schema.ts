@@ -645,6 +645,7 @@ export interface components {
       | components['schemas']['LayoutConflictErrorResponseV2']
       | components['schemas']['RefConflictErrorResponseV2']
       | components['schemas']['RefStateConflictErrorResponseV2']
+      | components['schemas']['TransformJobStateConflictErrorResponseV2']
     ErrorResponse422V2:
       | components['schemas']['ValidationErrorResponseV2']
       | components['schemas']['UnsupportedProfileErrorResponseV2']
@@ -1338,6 +1339,21 @@ export interface components {
       phase: string
       total_units: number | null
     } | null
+    TransformJobStateConflictDetailV2: {
+      job_id: string
+      /** @enum {string} */
+      reason: 'not_retryable' | 'cleanup_pending'
+      /** @enum {string} */
+      status: 'queued' | 'leased' | 'running' | 'finalizing' | 'completed' | 'failed' | 'cancelled'
+    }
+    TransformJobStateConflictErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'transform_job_state_conflict'
+        detail: components['schemas']['TransformJobStateConflictDetailV2']
+        message: string
+      }
+    }
     TransformJobV2: {
       attempt: number
       cache_hit: boolean
@@ -3626,7 +3642,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['ErrorResponse409V2']
+          'application/json': components['schemas']['TransformJobStateConflictErrorResponseV2']
         }
       }
       /** @description Invalid transform job identifier */
@@ -3747,7 +3763,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['ErrorResponse409V2']
+          'application/json': components['schemas']['TransformJobStateConflictErrorResponseV2']
         }
       }
       /** @description Invalid transform job identifier */

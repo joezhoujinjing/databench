@@ -1,6 +1,6 @@
 # Worker 与 Data-Juicer 接入技术方案
 
-- **状态：** Accepted design；P0-P6 已完成，下一步 P7 final gate
+- **状态：** Accepted design；P0-P7 已完成并通过最终 Gate
 - **日期：** 2026-07-25
 - **决策：**
   [ADR 0010 — Long-running Python Worker over internal gRPC](../decisions/0010-python-processing-service-grpc.md)
@@ -189,8 +189,8 @@ flowchart LR
 
 ## 5. 权威目录
 
-P1 的 Proto/Worker/client、P2 的 job 控制面、P3 的临时数据面、P4 的 Data-Juicer adapter 和
-P5 的 canonical finalizer 已落地；P6 产品面文件仍是 planned。
+P1 的 Proto/Worker/client、P2 的 job 控制面、P3 的临时数据面、P4 的 Data-Juicer adapter、
+P5 的 canonical finalizer 和 P6 的 REST/Web 产品面均已落地。
 
 ```text
 proto/
@@ -237,7 +237,7 @@ packages/store/src/v2/
 ├─ worker-staging.ts
 └─ worker-staging-keys.ts
 
-apps/api/src/routes/v2/transform-jobs.ts  planned：P6
+apps/api/src/routes/v2/transform-jobs.ts
 ```
 
 Generated Python import 必须正常工作于 source tree 和 wheel：
@@ -1099,14 +1099,18 @@ read/audit/lineage 与 exact cleanup；原生 ARM64 Python Worker + Data-Juicer 
 finalizer，完整生成可读 Dataset、Run 和 lineage。全仓 lint/build/typecheck/test/OpenAPI/status/peer
 通过。
 
-### P6 — 产品面
+### P6 — 产品面（已完成）
 
 - `/v2` routes、OpenAPI、generated client；
 - Transform 页最小提交/进度/取消/结果；
-- 可选 CLI job commands；
+- CLI job commands 延后，不扩大本切片；
 - 无 composer、无自定义配置。
 
-### P7 — 最终 Gate
+Gate：Schema、Workspace、API、Web tests 和全仓 gate 通过；Worker disabled 返回稳定 503 且不创建
+任务，enabled production runtime 自动装配 staging/projector/finalizer/cleaner。浏览器可提交、轮询、
+取消、显式 retry，并进入结果 Dataset 和 lineage。
+
+### P7 — 最终 Gate（已完成）
 
 - lint/build/typecheck/test/openapi/v2 status；
 - native Worker tests；
@@ -1114,6 +1118,20 @@ finalizer，完整生成可读 Dataset、Run 和 lineage。全仓 lint/build/typ
 - restart/cancel/cache/determinism；
 - browser lifecycle；
 - ADR 0012 offline gate 不在本 Step，除非另行修订。
+
+实际结果：原生 ARM64 Python 3.11.15、uv 0.11.1；Worker 16/16 tests、真实 Postgres + MinIO +
+gRPC 7/7。Data-Juicer 10k 为 6.583 秒，100k 为 34.674 秒，100k repeat 为 32.807 秒且 SHA-256
+一致。产品 API 100k canonical E2E 输入 100,000、输出 80,000，Worker 执行约 41.95 秒；重复提交
+命中同一 job。浏览器覆盖 disabled 503、完成、重启持久化、100k cancel、Worker 中断、重启后
+显式 retry、结果/血缘入口与 completed 100% 进度。cleanup fence retry 冲突使用稳定
+`409 transform_job_state_conflict` 契约。最终全仓 lint/build/typecheck/test/OpenAPI/status/peer、
+Worker codegen 与 diff check 全通过。
+
+可复现的 100k 产品 Gate：
+
+```bash
+pnpm test:worker:product-e2e
+```
 
 ## 20. 第一版验收标准
 

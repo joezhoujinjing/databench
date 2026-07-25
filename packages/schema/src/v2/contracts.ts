@@ -59,6 +59,25 @@ export const RefNameV2Schema = z
 
 export const RefOrVersionV2Schema = z.union([DigestHexSchema, RefNameV2Schema])
 
+export const TransformJobStateConflictDetailV2Schema = z
+  .strictObject({
+    reason: z.enum(['not_retryable', 'cleanup_pending']),
+    job_id: z.string().regex(/^job_[0-9a-f]{64}$/),
+    status: z.enum([
+      'queued',
+      'leased',
+      'running',
+      'finalizing',
+      'completed',
+      'failed',
+      'cancelled',
+    ]),
+  })
+  .meta({ id: 'TransformJobStateConflictDetailV2' })
+export type TransformJobStateConflictDetailV2 = z.infer<
+  typeof TransformJobStateConflictDetailV2Schema
+>
+
 export const PostTrainingV2LimitsSchema = z
   .strictObject({
     max_record_bytes: z.number().int().safe().nonnegative(),
@@ -697,6 +716,10 @@ const RefStateConflictErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
   'ref_state_conflict',
   RefStateConflictDetailV2Schema,
 )
+const TransformJobStateConflictErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
+  'transform_job_state_conflict',
+  TransformJobStateConflictDetailV2Schema,
+)
 const UnsupportedProfileErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
   'unsupported_profile',
   UnsupportedProfileDetailV2Schema,
@@ -742,6 +765,7 @@ export const ErrorBodyV2Schema = z
     LayoutConflictErrorBodyV2Schema,
     RefConflictErrorBodyV2Schema,
     RefStateConflictErrorBodyV2Schema,
+    TransformJobStateConflictErrorBodyV2Schema,
     UnsupportedProfileErrorBodyV2Schema,
     FidelityErrorBodyV2Schema,
     IntegrityErrorBodyV2Schema,
@@ -821,6 +845,14 @@ export const RefStateConflictErrorResponseV2Schema = createErrorResponseV2Schema
 )
 export type RefStateConflictErrorResponseV2 = z.infer<typeof RefStateConflictErrorResponseV2Schema>
 
+export const TransformJobStateConflictErrorResponseV2Schema = createErrorResponseV2Schema(
+  'TransformJobStateConflictErrorResponseV2',
+  TransformJobStateConflictErrorBodyV2Schema,
+)
+export type TransformJobStateConflictErrorResponseV2 = z.infer<
+  typeof TransformJobStateConflictErrorResponseV2Schema
+>
+
 export const FidelityErrorResponseV2Schema = createErrorResponseV2Schema(
   'FidelityErrorResponseV2',
   FidelityErrorBodyV2Schema,
@@ -880,6 +912,7 @@ export const ErrorResponse409V2Schema = z
     LayoutConflictErrorResponseV2Schema,
     RefConflictErrorResponseV2Schema,
     RefStateConflictErrorResponseV2Schema,
+    TransformJobStateConflictErrorResponseV2Schema,
   ])
   .meta({ id: 'ErrorResponse409V2' })
 export type ErrorResponse409V2 = z.infer<typeof ErrorResponse409V2Schema>
@@ -936,6 +969,16 @@ export class RefStateConflictErrorV2 extends ConflictError {
   constructor(detailInput: RefStateConflictDetailV2) {
     const detail = Object.freeze(RefStateConflictDetailV2Schema.parse(detailInput))
     super(`V2 ref ${detail.operation} compare-and-set conflict for ${detail.ref_name}`, detail)
+  }
+}
+
+export class TransformJobStateConflictErrorV2 extends ConflictError {
+  override readonly name = 'TransformJobStateConflictErrorV2'
+  override readonly code = 'transform_job_state_conflict'
+
+  constructor(detailInput: TransformJobStateConflictDetailV2) {
+    const detail = Object.freeze(TransformJobStateConflictDetailV2Schema.parse(detailInput))
+    super(`V2 transform job state conflict for ${detail.job_id}`, detail)
   }
 }
 

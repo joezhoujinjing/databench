@@ -48,6 +48,7 @@ describe('V2 transform form helpers', () => {
       finished_at: null,
     }
     expect(transformJobProgressPercent(job)).toBe(70)
+    expect(transformJobProgressPercent({ ...job, status: 'completed' })).toBe(100)
     expect(
       transformJobProgressPercent({ ...job, progress: { ...job.progress, total_units: null } }),
     ).toBeNull()

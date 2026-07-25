@@ -1675,7 +1675,8 @@ describe('V2Workspace transform job product facade', () => {
     const retried = await rig.workspace.retryTransformJob(firstJob.id)
     expect(retried).toMatchObject({ status: 'queued', finished_at: null })
     await expect(rig.workspace.retryTransformJob(firstJob.id)).rejects.toMatchObject({
-      code: 'conflict',
+      code: 'transform_job_state_conflict',
+      detail: { reason: 'not_retryable', job_id: firstJob.id, status: 'queued' },
     })
     await expect(rig.workspace.cancelTransformJob(`job_${'f'.repeat(64)}`)).rejects.toMatchObject({
       code: 'not_found',

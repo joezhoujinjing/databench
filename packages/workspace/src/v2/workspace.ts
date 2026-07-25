@@ -55,7 +55,6 @@ import {
   AuditResultV2Schema,
   assertExportFidelityAcceptedV2,
   CapacityExceededError,
-  ConflictError,
   type ConverterAnalysisV2,
   type ConverterDescriptorV2,
   ConverterDescriptorV2Schema,
@@ -135,6 +134,7 @@ import {
   TransformJobPageRequestV2Schema,
   type TransformJobPageV2,
   TransformJobPageV2Schema,
+  TransformJobStateConflictErrorV2,
   type TransformJobV2,
   V2_LINEAGE_MAX_DEPTH,
   V2_LINEAGE_MAX_NODES,
@@ -655,7 +655,8 @@ export class V2Workspace {
       throw new NotFoundError(`Transform job was not found: ${id}`, { job_id: id })
     }
     if (existing.status !== 'failed' && existing.status !== 'cancelled') {
-      throw new ConflictError('Transform job is not eligible for retry', {
+      throw new TransformJobStateConflictErrorV2({
+        reason: 'not_retryable',
         job_id: id,
         status: existing.status,
       })
@@ -670,7 +671,8 @@ export class V2Workspace {
     if (row === null) {
       const current = await this.getTransformJob(id, context)
       if (current?.status === 'queued') return current
-      throw new ConflictError('Transform job cleanup has not finished', {
+      throw new TransformJobStateConflictErrorV2({
+        reason: 'cleanup_pending',
         job_id: id,
         status: current?.status ?? existing.status,
       })

@@ -16,6 +16,7 @@ import {
   RefStateConflictDetailV2Schema,
   ResourceLimitDetailV2Schema,
   ServiceUnavailableDetailV2Schema,
+  TransformJobStateConflictDetailV2Schema,
   UnsupportedProfileDetailV2Schema,
   ValidationErrorDetailV2Schema,
 } from '@databench/schema'
@@ -44,6 +45,7 @@ type ErrorCode =
   | 'ref_state_conflict'
   | 'service_unavailable'
   | 'too_many_requests'
+  | 'transform_job_state_conflict'
   | 'unauthorized'
   | 'unprocessable_entity'
   | 'unsupported_profile'
@@ -270,6 +272,12 @@ function normalizeV2Error(
         code: 'ref_state_conflict',
         message,
         detail: RefStateConflictDetailV2Schema.parse(detail),
+      }
+    case 'transform_job_state_conflict':
+      return {
+        code: 'transform_job_state_conflict',
+        message,
+        detail: TransformJobStateConflictDetailV2Schema.parse(detail),
       }
     case 'unsupported_profile':
       return {

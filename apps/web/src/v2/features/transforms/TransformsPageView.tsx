@@ -283,6 +283,7 @@ function TransformJobRow({
 }
 
 export function transformJobProgressPercent(job: TransformJobV2): number | null {
+  if (job.status === 'completed') return 100
   const progress = job.progress
   if (progress === null || progress.total_units === null || progress.total_units === 0) return null
   return Math.min(100, Math.round((progress.completed_units / progress.total_units) * 100))

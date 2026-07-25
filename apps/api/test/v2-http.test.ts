@@ -13,6 +13,7 @@ import {
   RefConflictErrorV2,
   RefStateConflictErrorV2,
   ServiceUnavailableError,
+  TransformJobStateConflictErrorV2,
   UnsupportedProfileError,
 } from '@databench/schema'
 import { postTrainingV2Capability } from '@databench/workspace'
@@ -460,6 +461,24 @@ describe('V2 HTTP API', () => {
       status: 202,
       body: { id: JOB_ID, status: 'queued' },
     })
+
+    fake.state.transformJobRetryFailure = new TransformJobStateConflictErrorV2({
+      reason: 'cleanup_pending',
+      job_id: JOB_ID,
+      status: 'failed',
+    })
+    const retryConflict = await app.fetch(
+      request(`/v2/transform-jobs/${JOB_ID}:retry`, { method: 'POST' }),
+    )
+    expect({ status: retryConflict.status, body: await json(retryConflict) }).toMatchObject({
+      status: 409,
+      body: {
+        error: {
+          code: 'transform_job_state_conflict',
+          detail: { reason: 'cleanup_pending', job_id: JOB_ID, status: 'failed' },
+        },
+      },
+    })
   })
 
   test('serves registries, cursor refs, and bounded lineage with query coercion', async () => {
@@ -758,6 +777,7 @@ interface FakeState {
     finished_at: string | null
   }
   transformJobCreates: number
+  transformJobRetryFailure: unknown
 }
 
 function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
@@ -785,6 +805,7 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
       finished_at: null,
     },
     transformJobCreates: 0,
+    transformJobRetryFailure: undefined,
   }
   const converter = {
     name: 'canonical-jsonl' as const,
@@ -958,6 +979,7 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
     },
     async retryTransformJob(id: string) {
       if (id !== JOB_ID) return null
+      if (state.transformJobRetryFailure !== undefined) throw state.transformJobRetryFailure
       state.transformJob = { id: JOB_ID, status: 'queued', finished_at: null }
       return publicTransformJob(state.transformJob)
     },
