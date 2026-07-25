@@ -96,6 +96,32 @@ GM1b3/GM2，不在这里提前宣称可用。
 只把原始电缆 Excel 和自然语言指令交给 agent，分别完成：直接导入；先看样例并修改后导入；只生成
 canonical JSONL。用户不手工制作中间 JSONL。
 
+**结果：✅ 2026-07-25 已完成。** 当前 Codex 目标开发 agent 在真实 Postgres、MinIO 与 API TCP
+endpoint `http://127.0.0.1:18080` 上完成：
+
+- 通过 spreadsheet runtime 重新只读导入原始 `.xlsx`，生成 499 行、716,367 bytes 的 0600 临时
+  draft；workbook BLAKE3 在验收前后均为
+  `27762b6e7c866b166a5b25c9fc329e78f3250206f8a11cd244dc49545f6f3b48`，draft BLAKE3 为
+  `76d426e6157e3e1ba3fc86676973b80238ecc38f9c5c3bb595111d6702d1bd0b`；
+- 调用 `contract_get(canonical-draft-import@1.0.0)` 后，不经过 preview 直接流式 PUT draft，得到
+  dataset version `9e59b4edfd42e3c24fe4e03c698717c034734377931091dfef5f20e3891a101c`；
+  `dataset_show` 返回 499 条，export 得到 858,083 bytes canonical JSONL，再导入保持同一 version；
+- 按“不要固定 system”的反馈机械移除全部 system content，再次 preview 返回 499 条、3 条样例与
+  digest `f361437b189f9edf2300481d3983ddce77b6956803e90f39efa92d935127ca82`；携带该 digest
+  导入得到 version `4bee431343b9c15cf6bd460f17dd380b88d058f78051b880f157b5d3f269686d`；
+- 按“只生成 JSONL”意图直接 materialize，流式保存 499 行、869,061 bytes canonical JSONL；响应
+  给出的 prospective version 为
+  `61ce13c4c731f3254b51c6f62ed0d5564bf7abda81aa2a9871d23751a629fb17`，随后
+  `dataset_show` 明确 not found，证明未发布 dataset；
+- 两条 dataset import 的 `ref_update` 都是 `not_requested`。验收后停止临时 API，删除独立 test
+  schema 与 4 个精确 MinIO test objects，并将 agent-owned 临时目录移入废纸篓；没有覆盖用户已有
+  JSONL，也没有触碰 public catalog。
+
+这些 exact versions 是本次持久 Workspace namespace 内的验收证据。Draft managed IDs 包含
+namespace；全新 test schema 会创建新的 namespace UUID，因此不能把这些值误写成跨 namespace
+fixed vectors。自动测试锁定原始 draft bytes/digests，并在同一 namespace 内断言
+materialize/import/export/reimport 的 exact version 一致性。
+
 ### GM2 内网离线验收
 
 在断开公网、使用实际内网 DNS/Caddy 地址的目标 agent 环境重跑 GM1b3 生命周期，确认不访问

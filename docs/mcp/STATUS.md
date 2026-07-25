@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- mcp-status
-current_step: M1b3
-last_completed_step: M1b2
+current_step: M2
+last_completed_step: M1b3
 mcp_runtime_enabled: false
 auth_mode: none-implemented-disabled
 offline_release_authorized: scoped-after-GM2
@@ -14,8 +14,9 @@ offline_release_authorized: scoped-after-GM2
 
 - **开发分支:** `feat/mcp-excel-import`
 - **代码基线:** `main@258bacaf673a0395c8fb3d769bd4bf6f78dcde56`
-- **当前 Step:** M1b3——M1b2 已过 GM1b2，下一步实现 draft import 与真实 Excel 闭环
-- **MCP runtime:** M1b2 staged canonical + canonical-draft preview/materialize runtime 与 `auth_mode=none` 已实现；部署中保持关闭
+- **当前 Step:** M2——M1b3 已过 GM1b3，下一步为匿名内网离线启用与 scoped release gate
+- **MCP runtime:** M1b3 staged canonical + canonical-draft preview/materialize/import full surface 与
+  `auth_mode=none` 已实现；部署中保持关闭
 - **V16/V17:** 状态不变，仍未完成
 - **发布边界:** owner 只授权 GM2 后进入 ADR 0012 的匿名可信内网离线通道；未授权公网部署
 
@@ -26,8 +27,8 @@ offline_release_authorized: scoped-after-GM2
 | M0 | ADR、计划、真实 Excel 与 agent preflight | ✅ | `7dcfb5f` | GM0 | 规范、preflight、全仓 gates 与独立 review 通过 |
 | M1a | Canonical MCP/companion 纵切 | ✅ | `2f562e7` | GM1a | staged runtime 完成，MCP 配置保持 disabled |
 | M1b1 | Canonical draft contract 与 no-write preview | ✅ | `a57217c` | GM1b1 | draft import/materialize 仍不可用 |
-| M1b2 | Deterministic identity 与 materialize | ✅ | 本次提交 | GM1b2 | draft import 仍不可用 |
-| M1b3 | Draft import 与真实 Excel 闭环 | ⬜ | | GM1b3 | 下一 accepted Step |
+| M1b2 | Deterministic identity 与 materialize | ✅ | `8cf9aeb` | GM1b2 | draft import 仍不可用 |
+| M1b3 | Draft import 与真实 Excel 闭环 | ✅ | 本次提交 | GM1b3 | staged full surface，部署仍 disabled |
 | M2 | 内网离线启用与 scoped release gate | ⬜ | | GM2 | 不完成 V16/V17 |
 
 ## M0 Gate 记录
@@ -131,6 +132,38 @@ offline_release_authorized: scoped-after-GM2
   `pnpm offline:check` 与 `pnpm peers check` 通过；OpenAPI 保持不变。两路独立 review 按架构正确性
   与 agent UX/MVP 简洁性复核，修复未消费 output lease、claim order、temp reservation 竞态与在线
   retry guidance 后无剩余 P0/P1/P2/P3，未引入 draft import、认证、审批状态机或独立服务。
+
+## M1b3 Gate 记录
+
+- `V2Workspace.addCanonicalDraftJsonl()` 只组合现有 materialize → `addJsonl()` 路径；成功、失败与
+  dispose 均释放 materialization lease，固定 `ref=null`。materialize 后 import 会重放 claims，并在
+  同一 Workspace namespace 内得到相同 canonical IDs 与 dataset version。
+- `data_process_prepare` 完成 draft `import-dataset` branch，返回
+  `side_effects=["identity_claims","dataset_publish"]`；draft import/materialize 均支持 exact raw-byte
+  `expected_input_digest` guard。首期六分支 tool surface 已冻结，preview 仍是 agent 按意图选择的
+  no-write 工具，不是审批状态机。
+- 真实电缆 fixture 锁定 499 行、716,367 bytes draft 及 BLAKE3
+  `76d426e6157e3e1ba3fc86676973b80238ecc38f9c5c3bb595111d6702d1bd0b`。真实 Postgres + MinIO
+  自动生命周期覆盖：无 preview 直接导入；移除 system 后 preview 3 条并携带 digest 导入；只
+  materialize JSONL 后确认 dataset not found，再导入 canonical JSONL；另覆盖 digest mismatch、
+  later-invalid no-publish、no-ref 与 export/reimport 同 version。
+- 当前 Codex 目标开发 agent 从原始 `.xlsx` 重新生成临时 draft，经真实 MCP Client、API TCP
+  `http://127.0.0.1:18080` 与 companion streamed PUT/GET 完成三条人工生命周期。Direct import
+  version 为 `9e59b4edfd42e3c24fe4e03c698717c034734377931091dfef5f20e3891a101c`；修改后 import
+  version 为 `4bee431343b9c15cf6bd460f17dd380b88d058f78051b880f157b5d3f269686d`；JSONL-only
+  prospective version 为 `61ce13c4c731f3254b51c6f62ed0d5564bf7abda81aa2a9871d23751a629fb17`，并确认未发布
+  dataset。两个 import 的 `ref_update` 均为 `not_requested`。
+- 人工验收后停止临时 API、删除独立 test schema 与 4 个精确 MinIO objects，并将 agent-owned
+  临时目录移入废纸篓；原 workbook digest 验收前后不变，未覆盖用户已有 Desktop JSONL。完整证据
+  见 [AGENT-PREFLIGHT.md](AGENT-PREFLIGHT.md)。
+- Workspace 112 passed / 4 skipped、Schema 209 passed；API 普通 suite 82 passed / 3 skipped，真实
+  PostgreSQL + MinIO suite 85/85 passed。`git diff --check`、`pnpm lint`（371 files）、`pnpm build`
+  （13 tasks）、`pnpm typecheck`（22 tasks）、`pnpm test`（22 tasks）、`pnpm openapi:check`
+  （11 tasks）、`pnpm v2:status:check`、`pnpm offline:check` 与 `pnpm peers check` 全部通过；
+  OpenAPI 保持不变。
+- 两路独立 review 按架构正确性与 agent UX/MVP 简洁性复核；补强 invalid no-publish、base draft
+  digest guard 与 import/materialize response-loss replay 文案后，无剩余 P0/P1/P2/P3。未引入认证、
+  权限、独立 MCP 服务、服务端 Excel parser 或审批状态机；M2 前部署仍保持 disabled。
 
 ## 状态更新规则
 

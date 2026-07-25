@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 
 export type ApiV2Workspace = Pick<
   V2Workspace,
+  | 'addCanonicalDraftJsonl'
   | 'addJsonl'
   | 'audit'
   | 'describeDataset'

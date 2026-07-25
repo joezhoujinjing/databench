@@ -1,8 +1,8 @@
 # 项目结构与包边界（权威）
 
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
-> v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。已接受但尚在实施的
-> MCP agent 导入计划见 `docs/mcp/`；在对应 Step 完成前不属于当前 runtime surface。
+> v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP agent 导入 M1b3 staged
+> runtime 已实现但默认关闭；M2 部署启用计划见 `docs/mcp/`。
 
 ## 顶层目录
 
@@ -75,8 +75,7 @@ tooling/v1-retirement 是显式 maintenance 边界
 - `apps/api`、`apps/cli → workspace, schema`
 - `apps/web` 不 import 后端包
 
-MCP M1a 已内嵌 `apps/api`，M1b1-M1b3 继续扩展同一边界；依赖关系仍是
-`apps/api → workspace, schema`。不得为了
+MCP M1a-M1b3 已内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
 MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访问层。
 
 ## 硬边界

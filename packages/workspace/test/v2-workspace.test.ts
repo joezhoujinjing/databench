@@ -1,4 +1,7 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
@@ -36,11 +39,12 @@ import {
   RefConflictErrorV2,
   V2_LINEAGE_CURSOR_MAX_CHARS,
 } from '@databench/schema'
-import type {
-  PreparedArtifactV2,
-  AuditResultV2 as StoreAuditResultV2,
-  V2OperationContext,
-  V2Store,
+import {
+  type PreparedArtifactV2,
+  type AuditResultV2 as StoreAuditResultV2,
+  type V2OperationContext,
+  type V2Store,
+  V2TempStore,
 } from '@databench/store'
 import { describe, expect, test, vi } from 'vitest'
 import {
@@ -422,6 +426,55 @@ describe('V2Workspace publish orchestration', () => {
 
     expect(result.dataset_version).toBe(expected.version)
     expect(rig.events).toEqual(['prepare', 'commit', 'register', 'discard'])
+  })
+
+  test('replays materialized draft claims and publishes without updating a ref', async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), 'databench-v2-draft-import-'))
+    try {
+      const tempStore = new V2TempStore({ tempRoot, safetyMarginBytes: 0 })
+      const rig = createRig({}, undefined, undefined, undefined, tempStore)
+      const raw = new TextEncoder().encode(`${JSON.stringify(makeDraftRecord('draft import'))}\n`)
+      const expectedInputDigest = hashArtifactBytes(raw)
+      const materialized = await rig.workspace.materializeCanonicalDraftJsonl(byteSource(raw), {
+        expectedInputDigest,
+      })
+      for await (const _chunk of materialized.bytes) {
+        // Drain the sealed output to exercise the same claim set before import.
+      }
+      expect(rig.catalog.claims).toHaveLength(1)
+      rig.events.length = 0
+
+      const imported = await rig.workspace.addCanonicalDraftJsonl(byteSource(raw), {
+        expectedInputDigest,
+      })
+
+      expect(imported).toMatchObject({
+        dataset_version: materialized.datasetVersion,
+        ref_update: { status: 'not_requested' },
+      })
+      expect(rig.catalog.claims).toHaveLength(1)
+      expect(rig.events).toEqual(['claim', 'prepare', 'commit', 'register', 'discard'])
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  test('rejects a later-invalid draft before claims or dataset publication', async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), 'databench-v2-invalid-draft-import-'))
+    try {
+      const tempStore = new V2TempStore({ tempRoot, safetyMarginBytes: 0 })
+      const rig = createRig({}, undefined, undefined, undefined, tempStore)
+      const raw = new TextEncoder().encode(`${JSON.stringify(makeDraftRecord('valid prefix'))}\n{`)
+
+      await expect(rig.workspace.addCanonicalDraftJsonl(byteSource(raw))).rejects.toMatchObject({
+        code: 'bad_request',
+      })
+
+      expect(rig.catalog.claims).toHaveLength(0)
+      expect(rig.events).toEqual(['namespace'])
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
   })
 
   test('consumes the file part before awaiting asynchronous multipart options', async () => {
@@ -2177,6 +2230,7 @@ function createRig(
   transformRegistry?: V2TransformRegistry,
   converterRegistry?: V2ConverterRegistry,
   cache?: V2DatasetCache,
+  tempStore?: V2TempStore,
 ): TestRig {
   const events: string[] = []
   const store = new FakeStore(events)
@@ -2188,6 +2242,7 @@ function createRig(
     store,
     cursorSecret: CURSOR_SECRET,
     transformLimits,
+    ...(tempStore === undefined ? {} : { tempStore }),
     ...(transformRegistry === undefined ? {} : { transformRegistry }),
     ...(converterRegistry === undefined ? {} : { converterRegistry }),
     ...(cache === undefined ? {} : { cache }),

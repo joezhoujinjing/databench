@@ -1,0 +1,31 @@
+{
+  "source_workbook": {
+    "filename": "电缆_DEMO_20260723.xlsx",
+    "blake3": "27762b6e7c866b166a5b25c9fc329e78f3250206f8a11cd244dc49545f6f3b48",
+    "sheet": "Sheet1",
+    "used_range": "A1:C500",
+    "headers": ["SPU_ID", "COMBINED_GOODS_INFO", "ATTR_JSON"],
+    "record_count": 499
+  },
+  "base_draft": {
+    "blake3": "76d426e6157e3e1ba3fc86676973b80238ecc38f9c5c3bb595111d6702d1bd0b",
+    "bytes": 716367,
+    "record_count": 499,
+    "canonical_bytes": 858083
+  },
+  "revised_no_system_draft": {
+    "blake3": "f361437b189f9edf2300481d3983ddce77b6956803e90f39efa92d935127ca82",
+    "bytes": 560679,
+    "record_count": 499
+  },
+  "jsonl_only_draft": {
+    "blake3": "e2554c6670fac047fb221e938fcaaf88ba94c3ce84602fa9569d36cc010ccf65",
+    "bytes": 727345,
+    "record_count": 499,
+    "canonical_bytes": 869061
+  },
+  "dataset_identity": {
+    "scope": "workspace-namespace",
+    "assertion": "The real lifecycle asserts exact materialize, import, export, and reimport equality within one persistent namespace; reset test schemas intentionally create a new namespace UUID, so dataset versions and canonical digests are not cross-namespace fixed vectors."
+  }
+}

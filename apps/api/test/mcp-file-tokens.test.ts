@@ -47,6 +47,28 @@ describe('MCP file token registry', () => {
     expect(registry.size).toBe(0)
   })
 
+  test('snapshots a canonical draft import digest guard', () => {
+    const registry = createRegistry()
+    const metadata = {
+      kind: 'process' as const,
+      format: 'canonical-draft-jsonl-v1' as const,
+      action: 'import-dataset' as const,
+      expectedInputDigest: 'a'.repeat(64),
+    }
+    const prepared = registry.prepare(metadata)
+    metadata.expectedInputDigest = 'b'.repeat(64)
+
+    const active = registry.begin(prepared.token, 'process')
+    if (active.busy) throw new Error('expected active draft import token')
+    expect(active.metadata).toEqual({
+      kind: 'process',
+      format: 'canonical-draft-jsonl-v1',
+      action: 'import-dataset',
+      expectedInputDigest: 'a'.repeat(64),
+    })
+    active.finish()
+  })
+
   test('expires ready tokens and sweeps them before applying capacity', () => {
     let now = 1_000
     const registry = createRegistry({ maxEntries: 1, ttlMs: 10, now: () => now })

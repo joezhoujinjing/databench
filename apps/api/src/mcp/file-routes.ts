@@ -97,11 +97,20 @@ export function registerMcpFileRoutes(
         return response
       }
 
-      const result = await getV2Workspace(context).addJsonl(
-        bytes,
-        { ref: null, expected_ref_version: null, message: null },
-        { signal: deadline.signal },
-      )
+      const result =
+        active.metadata.format === 'canonical-draft-jsonl-v1'
+          ? await getV2Workspace(context).addCanonicalDraftJsonl(
+              bytes,
+              active.metadata.expectedInputDigest === undefined
+                ? {}
+                : { expectedInputDigest: active.metadata.expectedInputDigest },
+              { signal: deadline.signal },
+            )
+          : await getV2Workspace(context).addJsonl(
+              bytes,
+              { ref: null, expected_ref_version: null, message: null },
+              { signal: deadline.signal },
+            )
       return context.json(McpCanonicalImportResultSchema.parse(result), 200)
     } catch (error) {
       throw deadline.mapError(error)

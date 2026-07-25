@@ -566,6 +566,31 @@ export class V2Workspace {
     })
   }
 
+  async addCanonicalDraftJsonl(
+    source: AsyncIterable<Uint8Array>,
+    options: V2CanonicalDraftMaterializeOptions = {},
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<IngestResultV2> {
+    const materialized = await this.materializeCanonicalDraftJsonl(source, options, context)
+    let result: IngestResultV2
+    try {
+      result = await this.addJsonl(
+        materialized.bytes,
+        { ref: null, expected_ref_version: null, message: null },
+        context,
+      )
+    } catch (error) {
+      try {
+        await materialized.dispose()
+      } catch (cleanupError) {
+        attachSuppressed(error, cleanupError)
+      }
+      throw error
+    }
+    await materialized.dispose()
+    return result
+  }
+
   listTransforms(): readonly Readonly<TransformDescriptorV2>[] {
     return Object.freeze(
       this.#transformRegistry

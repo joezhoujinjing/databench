@@ -57,10 +57,22 @@ describe('MCP v2 schemas', () => {
       action: 'validate-preview',
       preview_records: 3,
     })
-    expect(() =>
+    expect(
       McpDataProcessPrepareInputSchema.parse({
         format: 'canonical-draft-jsonl-v1',
         action: 'import-dataset',
+        expected_input_digest: DIGEST,
+      }),
+    ).toEqual({
+      format: 'canonical-draft-jsonl-v1',
+      action: 'import-dataset',
+      expected_input_digest: DIGEST,
+    })
+    expect(() =>
+      McpDataProcessPrepareInputSchema.parse({
+        format: 'canonical-jsonl',
+        action: 'import-dataset',
+        expected_input_digest: DIGEST,
       }),
     ).toThrow()
     expect(() =>
@@ -132,6 +144,19 @@ describe('MCP v2 schemas', () => {
         side_effects: [],
       }),
     ).toMatchObject({ format: 'canonical-draft-jsonl-v1', side_effects: [] })
+    expect(
+      McpDataProcessPreparedSchema.parse({
+        ...base,
+        format: 'canonical-draft-jsonl-v1',
+        action: 'import-dataset',
+        response_kind: 'json-ingest-result',
+        side_effects: ['identity_claims', 'dataset_publish'],
+      }),
+    ).toMatchObject({
+      format: 'canonical-draft-jsonl-v1',
+      action: 'import-dataset',
+      side_effects: ['identity_claims', 'dataset_publish'],
+    })
     expect(() =>
       McpDataProcessPreparedSchema.parse({
         ...base,
@@ -162,7 +187,18 @@ describe('MCP v2 schemas', () => {
           required: ['format', 'action'],
         },
         {
-          properties: { action: { const: 'import-dataset' } },
+          properties: {
+            action: { const: 'import-dataset' },
+            format: { const: 'canonical-jsonl' },
+          },
+          additionalProperties: false,
+        },
+        {
+          properties: {
+            action: { const: 'import-dataset' },
+            format: { const: 'canonical-draft-jsonl-v1' },
+            expected_input_digest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+          },
           additionalProperties: false,
         },
         {
@@ -197,12 +233,27 @@ describe('MCP v2 schemas', () => {
         {
           properties: {
             action: { const: 'import-dataset' },
+            format: { const: 'canonical-jsonl' },
             response_kind: { const: 'json-ingest-result' },
             side_effects: {
               type: 'array',
               minItems: 1,
               maxItems: 1,
               items: { type: 'string', const: 'dataset_publish' },
+            },
+          },
+        },
+        {
+          properties: {
+            action: { const: 'import-dataset' },
+            format: { const: 'canonical-draft-jsonl-v1' },
+            response_kind: { const: 'json-ingest-result' },
+            side_effects: {
+              type: 'array',
+              prefixItems: [
+                { type: 'string', const: 'identity_claims' },
+                { type: 'string', const: 'dataset_publish' },
+              ],
             },
           },
         },
@@ -228,8 +279,15 @@ describe('MCP v2 schemas', () => {
       true,
     )
     expect(validateInput({ format: 'canonical-draft-jsonl-v1', action: 'import-dataset' })).toBe(
-      false,
+      true,
     )
+    expect(
+      validateInput({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'import-dataset',
+        expected_input_digest: DIGEST,
+      }),
+    ).toBe(true)
     expect(
       validateInput({
         format: 'canonical-draft-jsonl-v1',
@@ -258,12 +316,30 @@ describe('MCP v2 schemas', () => {
     expect(
       validateOutput({
         ...preparedBase,
+        format: 'canonical-draft-jsonl-v1',
+        action: 'import-dataset',
+        response_kind: 'json-ingest-result',
+        side_effects: ['identity_claims', 'dataset_publish', 'dataset_publish'],
+      }),
+    ).toBe(false)
+    expect(
+      validateOutput({
+        ...preparedBase,
         format: 'canonical-jsonl',
         action: 'import-dataset',
         response_kind: 'json-ingest-result',
         side_effects: [],
       }),
     ).toBe(false)
+    expect(
+      validateOutput({
+        ...preparedBase,
+        format: 'canonical-draft-jsonl-v1',
+        action: 'import-dataset',
+        response_kind: 'json-ingest-result',
+        side_effects: ['identity_claims', 'dataset_publish'],
+      }),
+    ).toBe(true)
     expect(
       validateOutput({
         ...preparedBase,

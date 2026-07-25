@@ -21,6 +21,13 @@ export interface CanonicalDraftMaterializeProcessMetadata {
   readonly expectedInputDigest?: string
 }
 
+export interface CanonicalDraftImportProcessMetadata {
+  readonly kind: 'process'
+  readonly format: 'canonical-draft-jsonl-v1'
+  readonly action: 'import-dataset'
+  readonly expectedInputDigest?: string
+}
+
 export interface CanonicalExportMetadata {
   readonly kind: 'export'
   readonly datasetVersion: string
@@ -31,6 +38,7 @@ export interface CanonicalExportMetadata {
 export type McpFileTokenMetadata =
   | ValidationPreviewProcessMetadata
   | CanonicalImportProcessMetadata
+  | CanonicalDraftImportProcessMetadata
   | CanonicalDraftMaterializeProcessMetadata
   | CanonicalExportMetadata
 

@@ -1,8 +1,8 @@
 # 具体目录布局（文件级，权威）
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
-> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M1a 的 staged
-> runtime 已实现但保持 disabled；后续目标布局仍以 `docs/mcp/TECHNICAL-DESIGN.md` 为准。
+> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M1b3 的 staged
+> runtime 已实现但保持 disabled；M2 部署目标布局仍以 `docs/mcp/TECHNICAL-DESIGN.md` 为准。
 
 ## `apps/api`
 
@@ -17,7 +17,7 @@ apps/api/
 │  ├─ openapi.ts               OpenAPI 元信息与 server URL
 │  ├─ response.ts              REST/MCP 共用 response stream 与附件 header
 │  ├─ mcp/
-│  │  ├─ register.ts           stateless MCP server 与四个 staged tools
+│  │  ├─ register.ts           stateless MCP server 与四个 tools
 │  │  ├─ config.ts · origin.ts disabled-by-default config 与 Origin 防护
 │  │  ├─ contracts.ts          canonical contract JSON Schema projection
 │  │  ├─ file-tokens.ts        process/export 一次性 token registry
@@ -47,7 +47,8 @@ apps/api/
 │  ├─ v2-http.integration.test.ts
 │  ├─ v2-multipart.test.ts
 │  ├─ v2-schema-openapi.test.ts
-│  └─ v2-transport.test.ts
+│  ├─ v2-transport.test.ts
+│  └─ golden/fixtures/         真实 Excel 派生 draft 与 namespace-independent expected metadata
 ├─ Dockerfile
 ├─ package.json
 └─ tsconfig.json
@@ -157,7 +158,7 @@ src/
    ├─ record/content/candidate/preference/signal/tool schemas
    ├─ revision/provenance/manifest/identity schemas
    ├─ transform/converter/projection contracts
-   ├─ mcp.ts                    staged MCP tool/result contracts
+   ├─ mcp.ts                    MCP tool/result contracts
    ├─ reader/raw-json/json-value verification
    ├─ contracts.type-test.ts
    └─ index.ts
@@ -260,8 +261,8 @@ src/
 ```
 
 这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
-deterministic identity/materialize、persist、transform、CAS ref、record/dataset lineage、audit、
-converter inspect/export 与取消语义。
+deterministic identity/materialize/import、persist、transform、CAS ref、record/dataset lineage、
+audit、converter inspect/export 与取消语义。
 
 ## Tooling 与根目录
 
@@ -300,4 +301,5 @@ docs/mcp/
 └─ AGENT-PREFLIGHT.md    目标 agent/真实 Excel 能力证据
 ```
 
-M1a runtime 已按上文实际落点登记；M1b 文件只在对应 Step 实现后加入本文。
+M1b3 runtime 与真实 Excel fixture 已按上文实际落点登记；部署配置仍保持 disabled，M2 才处理匿名
+内网启用、Caddy 与离线发布 gate。

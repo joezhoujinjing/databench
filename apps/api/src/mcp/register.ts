@@ -25,10 +25,11 @@ import type { McpFileTokenRegistry } from './file-tokens.js'
 const MCP_INSTRUCTIONS = [
   'Process existing canonical JSONL directly, or map raw Excel and CSV rows into canonical-draft-jsonl-v1 without Databench-managed IDs.',
   'Call contract_get with name canonical-jsonl for canonical input or canonical-draft-import for draft input; upload drafts with format canonical-draft-jsonl-v1, and do not place file bytes in MCP arguments.',
-  'Canonical draft supports validate-preview and materialize-jsonl; draft dataset import is not available yet.',
-  'Use data_process_prepare to obtain a one-time PUT URL for validation preview, canonical dataset import, or draft materialization.',
-  'For materialize-jsonl, stream the PUT response to the requested canonical JSONL file; expected_input_digest, when used, must be the preview input_digest and guards the exact re-uploaded bytes. If the response is lost, prepare again and retry the same exact bytes; identities replay safely.',
-  'Preview is optional: choose it when mapping is uncertain or a sample would help; do not treat it as an approval state machine.',
+  'Canonical draft supports validate-preview, import-dataset, and materialize-jsonl.',
+  'Use data_process_prepare to obtain a one-time PUT URL for validation preview, dataset import, or draft materialization.',
+  'Choose by user intent: import-dataset publishes a Databench dataset; materialize-jsonl returns canonical JSONL without publishing a dataset; validate-preview is optional when mapping is uncertain or a sample would help, not an approval state machine.',
+  'For draft import-dataset or materialize-jsonl, expected_input_digest, when used, must be the preview input_digest and guards the exact re-uploaded bytes. If a response is lost, prepare again and retry the same exact bytes; import returns the same dataset version and materialize returns the same canonical JSONL.',
+  'For materialize-jsonl, stream the PUT response to the requested canonical JSONL file.',
   'Use dataset_show with an exact dataset version and dataset_export_canonical_prepare for a one-time canonical JSONL GET URL.',
   'The current workspace is anonymous and grants full access; it is intended only for a trusted internal network.',
 ].join(' ')
@@ -115,7 +116,7 @@ function createMcpServer(
     {
       title: 'Prepare canonical JSONL processing',
       description:
-        'Create a one-time PUT URL. canonical draft supports validate-preview or materialize-jsonl; optional expected_input_digest guards previewed bytes; canonical import-dataset publishes a dataset.',
+        'Create a one-time PUT URL. canonical draft supports validate-preview, import-dataset, or materialize-jsonl; optional expected_input_digest guards previewed bytes.',
       inputSchema: McpDataProcessPrepareToolInputSchema,
       outputSchema: McpDataProcessPreparedToolOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
@@ -140,11 +141,20 @@ function createMcpServer(
                     ? {}
                     : { expectedInputDigest: operation.expected_input_digest }),
                 }
-              : {
-                  kind: 'process' as const,
-                  format: operation.format,
-                  action: operation.action,
-                },
+              : operation.format === 'canonical-draft-jsonl-v1'
+                ? {
+                    kind: 'process' as const,
+                    format: operation.format,
+                    action: operation.action,
+                    ...(operation.expected_input_digest === undefined
+                      ? {}
+                      : { expectedInputDigest: operation.expected_input_digest }),
+                  }
+                : {
+                    kind: 'process' as const,
+                    format: operation.format,
+                    action: operation.action,
+                  },
         )
         const result = McpDataProcessPreparedSchema.parse({
           method: 'PUT',
@@ -165,7 +175,9 @@ function createMcpServer(
               ? []
               : operation.action === 'materialize-jsonl'
                 ? ['identity_claims']
-                : ['dataset_publish'],
+                : operation.format === 'canonical-draft-jsonl-v1'
+                  ? ['identity_claims', 'dataset_publish']
+                  : ['dataset_publish'],
         })
         return toolResult(result)
       })

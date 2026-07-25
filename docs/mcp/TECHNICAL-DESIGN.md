@@ -910,6 +910,12 @@ fixed canonical draft
 → materialized JSONL 再 import 得到相同 IDs/version
 ```
 
+Draft entity IDs 是 Workspace namespace-scoped identity。自动测试会锁定 workbook attestation、draft
+exact bytes/digests 和机械修改结果，并在同一 namespace 内断言 materialize/import/export/reimport
+的 exact version 相等；每次 reset 后创建新 namespace UUID 的 test schema 不把 dataset version 或
+canonical digest伪装成跨 namespace fixed vector。人工验收另记录其实际持久 namespace 返回的 exact
+versions。
+
 人工产品验收才从真实 `.xlsx` 与具备 Excel 读取能力的 code agent 开始：
 
 ```text

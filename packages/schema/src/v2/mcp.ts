@@ -108,6 +108,12 @@ const McpCanonicalImportPrepareInputSchema = z.strictObject({
   action: z.literal('import-dataset'),
 })
 
+const McpCanonicalDraftImportPrepareInputSchema = z.strictObject({
+  format: z.literal(CANONICAL_DRAFT_FORMAT_V1),
+  action: z.literal('import-dataset'),
+  expected_input_digest: DigestHexSchema.optional(),
+})
+
 const McpCanonicalDraftMaterializePrepareInputSchema = z.strictObject({
   format: z.literal(CANONICAL_DRAFT_FORMAT_V1),
   action: z.literal('materialize-jsonl'),
@@ -115,9 +121,10 @@ const McpCanonicalDraftMaterializePrepareInputSchema = z.strictObject({
 })
 
 export const McpDataProcessPrepareInputSchema = z
-  .discriminatedUnion('action', [
+  .union([
     McpPreviewPrepareInputSchema,
     McpCanonicalImportPrepareInputSchema,
+    McpCanonicalDraftImportPrepareInputSchema,
     McpCanonicalDraftMaterializePrepareInputSchema,
   ])
   .meta({ id: 'McpDataProcessPrepareInput' })
@@ -171,6 +178,14 @@ const McpCanonicalImportPreparedSchema = z.strictObject({
   side_effects: z.array(z.literal('dataset_publish')).length(1),
 })
 
+const McpCanonicalDraftImportPreparedSchema = z.strictObject({
+  ...McpPreparedFileOperationShape,
+  format: z.literal(CANONICAL_DRAFT_FORMAT_V1),
+  action: z.literal('import-dataset'),
+  response_kind: z.literal('json-ingest-result'),
+  side_effects: z.tuple([z.literal('identity_claims'), z.literal('dataset_publish')]),
+})
+
 const McpCanonicalDraftMaterializePreparedSchema = z.strictObject({
   ...McpPreparedFileOperationShape,
   format: z.literal(CANONICAL_DRAFT_FORMAT_V1),
@@ -180,9 +195,10 @@ const McpCanonicalDraftMaterializePreparedSchema = z.strictObject({
 })
 
 export const McpDataProcessPreparedSchema = z
-  .discriminatedUnion('action', [
+  .union([
     McpPreviewPreparedSchema,
     McpCanonicalImportPreparedSchema,
+    McpCanonicalDraftImportPreparedSchema,
     McpCanonicalDraftMaterializePreparedSchema,
   ])
   .meta({ id: 'McpDataProcessPrepared' })
@@ -194,7 +210,7 @@ export const McpDataProcessPreparedToolOutputSchema = z
     format: z.enum([MCP_CANONICAL_FORMAT, CANONICAL_DRAFT_FORMAT_V1]),
     action: z.enum(['validate-preview', 'import-dataset', 'materialize-jsonl']),
     response_kind: z.enum(['json-preview', 'json-ingest-result', 'canonical-jsonl']),
-    side_effects: z.array(z.enum(['dataset_publish', 'identity_claims'])).max(1),
+    side_effects: z.array(z.enum(['dataset_publish', 'identity_claims'])).max(2),
   })
   .superRefine((input, context) => {
     if (!McpDataProcessPreparedSchema.safeParse(input).success) {
@@ -271,8 +287,13 @@ export type McpDatasetExportCanonicalPrepared = z.infer<
 
 function jsonSchemaOneOf(schema: z.ZodType, io: 'input' | 'output'): readonly unknown[] {
   const projection = z.toJSONSchema(schema, { io })
-  if (!Array.isArray(projection.oneOf)) {
-    throw new TypeError('Expected a discriminated union JSON Schema projection')
+  const branches = Array.isArray(projection.oneOf)
+    ? projection.oneOf
+    : Array.isArray(projection.anyOf)
+      ? projection.anyOf
+      : undefined
+  if (branches === undefined) {
+    throw new TypeError('Expected a union JSON Schema projection')
   }
   const definitions =
     projection.$defs !== undefined &&
@@ -280,7 +301,7 @@ function jsonSchemaOneOf(schema: z.ZodType, io: 'input' | 'output'): readonly un
     projection.$defs !== null
       ? (projection.$defs as Record<string, unknown>)
       : {}
-  return projection.oneOf.map((branch) => inlineLocalJsonSchemaRefs(branch, definitions, new Set()))
+  return branches.map((branch) => inlineLocalJsonSchemaRefs(branch, definitions, new Set()))
 }
 
 function inlineLocalJsonSchemaRefs(

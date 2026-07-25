@@ -109,7 +109,15 @@ describe('MCP canonical vertical slice', () => {
     await client.connect(transport)
     try {
       expect(client.getInstructions()).toContain('map raw Excel and CSV rows')
-      expect(client.getInstructions()).toContain('draft dataset import is not available yet')
+      expect(client.getInstructions()).toContain(
+        'Canonical draft supports validate-preview, import-dataset, and materialize-jsonl',
+      )
+      expect(client.getInstructions()).toContain(
+        'import-dataset publishes a Databench dataset; materialize-jsonl returns canonical JSONL without publishing a dataset',
+      )
+      expect(client.getInstructions()).toContain(
+        'import returns the same dataset version and materialize returns the same canonical JSONL',
+      )
       const tools = await client.listTools()
       expect(tools.tools.map(({ name }) => name)).toEqual([
         'contract_get',
@@ -129,7 +137,18 @@ describe('MCP canonical vertical slice', () => {
             },
           },
           {
-            properties: { action: { const: 'import-dataset' } },
+            properties: {
+              action: { const: 'import-dataset' },
+              format: { const: 'canonical-jsonl' },
+            },
+            additionalProperties: false,
+          },
+          {
+            properties: {
+              action: { const: 'import-dataset' },
+              format: { const: 'canonical-draft-jsonl-v1' },
+              expected_input_digest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+            },
             additionalProperties: false,
           },
           {
@@ -163,7 +182,18 @@ describe('MCP canonical vertical slice', () => {
           {
             properties: {
               action: { const: 'import-dataset' },
+              format: { const: 'canonical-jsonl' },
               response_kind: { const: 'json-ingest-result' },
+            },
+          },
+          {
+            properties: {
+              action: { const: 'import-dataset' },
+              format: { const: 'canonical-draft-jsonl-v1' },
+              response_kind: { const: 'json-ingest-result' },
+              side_effects: {
+                prefixItems: [{ const: 'identity_claims' }, { const: 'dataset_publish' }],
+              },
             },
           },
           {
@@ -326,11 +356,33 @@ describe('MCP canonical vertical slice', () => {
       expect(fake.state.materializeCalls).toBe(1)
       expect(fake.state.materializeExpectedDigest).toBe(INPUT_DIGEST)
 
-      const unavailableDraftImport = await client.callTool({
-        name: 'data_process_prepare',
-        arguments: { format: 'canonical-draft-jsonl-v1', action: 'import-dataset' },
+      const draftImportPrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: {
+            format: 'canonical-draft-jsonl-v1',
+            action: 'import-dataset',
+            expected_input_digest: INPUT_DIGEST,
+          },
+        }),
+      )
+      expect(draftImportPrepared).toMatchObject({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'import-dataset',
+        response_kind: 'json-ingest-result',
+        side_effects: ['identity_claims', 'dataset_publish'],
       })
-      expect(unavailableDraftImport.isError).toBe(true)
+      const draftImported = await app.fetch(
+        new Request(String(draftImportPrepared.put_url), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: draftLine(),
+        }),
+      )
+      expect(draftImported.status).toBe(200)
+      expect(await draftImported.json()).toMatchObject({ dataset_version: VERSION })
+      expect(fake.state.draftImportCalls).toBe(1)
+      expect(fake.state.draftImportExpectedDigest).toBe(INPUT_DIGEST)
 
       const importPrepared = structured(
         await client.callTool({
@@ -836,6 +888,8 @@ describe('MCP canonical vertical slice', () => {
 
 interface FakeState {
   describeError?: unknown
+  draftImportCalls: number
+  draftImportExpectedDigest?: string
   draftPreviewCalls: number
   exportGate?: Promise<void>
   exportIgnoresAbort?: boolean
@@ -850,6 +904,7 @@ interface FakeState {
 
 function fakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
   const state: FakeState = {
+    draftImportCalls: 0,
     draftPreviewCalls: 0,
     importCalls: 0,
     materializeCalls: 0,
@@ -895,6 +950,19 @@ function fakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
     async addJsonl(source: AsyncIterable<Uint8Array>) {
       await collect(source)
       state.importCalls += 1
+      return {
+        dataset_version: VERSION,
+        manifest,
+        ref_update: { status: 'not_requested' as const },
+      }
+    },
+    async addCanonicalDraftJsonl(
+      source: AsyncIterable<Uint8Array>,
+      options: { expectedInputDigest?: string },
+    ) {
+      await collect(source)
+      state.draftImportCalls += 1
+      state.draftImportExpectedDigest = options.expectedInputDigest
       return {
         dataset_version: VERSION,
         manifest,
