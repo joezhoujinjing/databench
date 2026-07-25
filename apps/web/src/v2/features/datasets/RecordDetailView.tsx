@@ -18,8 +18,7 @@ export function V2RecordDetailView({ view }: { view: RecordViewV2 }) {
             </Link>
           </Button>
         }
-        description={t('v2.record.description')}
-        title={view.record.id}
+        title={t('v2.record.detailTitle')}
       />
       <RecordView view={view} />
     </PageShell>

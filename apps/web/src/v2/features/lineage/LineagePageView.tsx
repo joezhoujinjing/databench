@@ -50,7 +50,6 @@ export function V2LineagePageView({
             </Link>
           </Button>
         }
-        description={t('v2.lineage.description')}
         title={t('v2.lineage.title')}
       />
       <Surface>

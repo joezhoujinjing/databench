@@ -46,7 +46,7 @@ export function V2TransformsPageView() {
 
   return (
     <PageShell>
-      <PageHeader description={t('v2.transforms.description')} title={t('v2.transforms.title')} />
+      <PageHeader title={t('v2.transforms.title')} />
       <div className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
         <Surface className="h-fit overflow-hidden">
           <SurfaceHeader>
