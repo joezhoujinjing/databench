@@ -64,7 +64,8 @@ export function UnifiedRecordView({ view }: { view: RecordViewV2 }) {
 
       <CandidatesView candidates={record.candidates} />
       <PreferenceRelations relations={record.preference_relations} />
-      <ToolsAndVerification record={record} />
+      <Tools record={record} />
+      <Verification record={record} />
       <Provenance record={record} />
 
       <LazySection title={t('v2.record.rawJson')}>
@@ -74,74 +75,78 @@ export function UnifiedRecordView({ view }: { view: RecordViewV2 }) {
   )
 }
 
-export function ToolsAndVerification({ record }: { record: PostTrainingRecordV2 }) {
+export function Tools({ record }: { record: PostTrainingRecordV2 }) {
   const { t } = useTranslation()
 
   return (
-    <LazySection title={t('v2.record.toolsAndVerification')}>
+    <LazySection count={record.tools.length} title={t('v2.record.tools')}>
       {() => {
         const coverage = collectCallCoverage(record)
         return (
-          <div className="space-y-5">
-            <section className="space-y-3">
-              <h3 className="font-medium text-sm">{t('v2.record.tools')}</h3>
-              {record.tools.length === 0 ? (
-                <p className="text-dim-foreground text-sm">{t('v2.record.noTools')}</p>
-              ) : (
-                <ol className="space-y-3">
-                  {record.tools.map((tool) => {
-                    const stats = coverage.get(tool.name) ?? { calls: 0, responses: 0 }
-                    return (
-                      <li className="rounded-[4px] border border-border p-3" key={tool.name}>
-                        <div className="mb-3 flex flex-wrap items-center gap-2">
-                          <Badge tone="blue">{tool.name}</Badge>
-                          <span className="text-dim-foreground text-xs">
-                            {t('v2.record.callCoverage', stats)}
-                          </span>
-                        </div>
-                        <Field
-                          label={t('v2.record.toolDescription')}
-                          value={tool.description ?? t('v2.record.none')}
+          <div className="space-y-3">
+            {record.tools.length === 0 ? (
+              <p className="text-dim-foreground text-sm">{t('v2.record.noTools')}</p>
+            ) : (
+              <ol className="space-y-3">
+                {record.tools.map((tool) => {
+                  const stats = coverage.get(tool.name) ?? { calls: 0, responses: 0 }
+                  return (
+                    <li className="rounded-[4px] border border-border p-3" key={tool.name}>
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <Badge tone="blue">{tool.name}</Badge>
+                        <span className="text-dim-foreground text-xs">
+                          {t('v2.record.callCoverage', stats)}
+                        </span>
+                      </div>
+                      <Field
+                        label={t('v2.record.toolDescription')}
+                        value={tool.description ?? t('v2.record.none')}
+                      />
+                      <div className="mt-3">
+                        <JsonValueView
+                          label={t('v2.record.inputSchema')}
+                          value={tool.input_schema}
                         />
-                        <div className="mt-3">
-                          <JsonValueView
-                            label={t('v2.record.inputSchema')}
-                            value={tool.input_schema}
-                          />
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ol>
-              )}
-            </section>
-
-            <section className="space-y-3 border-border border-t pt-4">
-              <h3 className="font-medium text-sm">{t('v2.record.verification')}</h3>
-              {record.verification === null ? (
-                <p className="text-dim-foreground text-sm">{t('v2.record.none')}</p>
-              ) : (
-                <div className="space-y-2 text-sm">
-                  <Field label={t('v2.record.verifier')} value={record.verification.verifier} />
-                  <Field
-                    label={t('v2.record.verifierVersion')}
-                    value={record.verification.verifier_version}
-                  />
-                  <JsonValueView
-                    label={t('v2.record.groundTruth')}
-                    value={record.verification.ground_truth}
-                  />
-                  <JsonValueView
-                    label={t('v2.record.constraint')}
-                    value={record.verification.constraint}
-                  />
-                  <JsonValueView label={t('v2.record.config')} value={record.verification.config} />
-                </div>
-              )}
-            </section>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
           </div>
         )
       }}
+    </LazySection>
+  )
+}
+
+export function Verification({ record }: { record: PostTrainingRecordV2 }) {
+  const { t } = useTranslation()
+
+  return (
+    <LazySection title={t('v2.record.verification')}>
+      {() =>
+        record.verification === null ? (
+          <p className="text-dim-foreground text-sm">{t('v2.record.none')}</p>
+        ) : (
+          <div className="space-y-2 text-sm">
+            <Field label={t('v2.record.verifier')} value={record.verification.verifier} />
+            <Field
+              label={t('v2.record.verifierVersion')}
+              value={record.verification.verifier_version}
+            />
+            <JsonValueView
+              label={t('v2.record.groundTruth')}
+              value={record.verification.ground_truth}
+            />
+            <JsonValueView
+              label={t('v2.record.constraint')}
+              value={record.verification.constraint}
+            />
+            <JsonValueView label={t('v2.record.config')} value={record.verification.config} />
+          </div>
+        )
+      }
     </LazySection>
   )
 }

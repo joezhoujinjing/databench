@@ -7,6 +7,7 @@ export { MountedSignalHistory, SignalHistory, SignalValue } from './SignalHistor
 export {
   collectCallCoverage,
   Provenance,
-  ToolsAndVerification,
+  Tools,
   UnifiedRecordView,
+  Verification,
 } from './UnifiedRecordView.js'

@@ -92,6 +92,14 @@ describe('Unified Record V2', () => {
     expect(relationsHtml).toContain('abstain')
   })
 
+  test('presents tools and verification as independent record sections', () => {
+    const html = renderToStaticMarkup(<UnifiedRecordView view={view} />)
+
+    expect(html).toContain('>Tools</span>')
+    expect(html).toContain('>Verification</span>')
+    expect(html).not.toContain('Tools and verification')
+  })
+
   test('keeps call IDs trajectory-scoped when candidates reuse them for different tools', () => {
     const coverage = collectCallCoverage(view.record)
     expect(coverage.get('lookup')).toEqual({ calls: 1, responses: 1 })

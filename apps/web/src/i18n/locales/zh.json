@@ -321,7 +321,6 @@
       "leftCandidate": "左侧候选",
       "rightCandidate": "右侧候选",
       "criterion": "判定标准",
-      "toolsAndVerification": "工具与验证",
       "tools": "工具",
       "noTools": "没有工具",
       "callCoverage": "{{calls}} 次调用 / {{responses}} 次响应",

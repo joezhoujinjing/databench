@@ -321,7 +321,6 @@
       "leftCandidate": "Left candidate",
       "rightCandidate": "Right candidate",
       "criterion": "Criterion",
-      "toolsAndVerification": "Tools and verification",
       "tools": "Tools",
       "noTools": "No tools",
       "callCoverage": "{{calls}} calls / {{responses}} responses",
