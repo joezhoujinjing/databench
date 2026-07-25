@@ -1,8 +1,8 @@
 # Worker / Data-Juicer 接入交接
 
 - **交接日期：** 2026-07-25
-- **当前阶段：** P0-P3 已完成；Worker 临时数据面已通过真实 MinIO/ARM64 Python gate
-- **下一步：** P4 — Data-Juicer 1.5.3 adapter 与固定 `basic-clean-v1`
+- **当前阶段：** P0-P4 已完成；固定 `basic-clean-v1` 已通过真实 Data-Juicer/MinIO/gRPC gate
+- **下一步：** P5 — canonical finalizer 与原子发布
 - **详细方案：** [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md)
 - **决策：**
   [ADR 0010](../decisions/0010-python-processing-service-grpc.md)
@@ -24,7 +24,7 @@ identities，并通过现有 v2 Store/Catalog 发布正式 Dataset、Run、cache
 | 当前同步 `V2TransformDefinition.run()` | 已实现，保持不变 |
 | Worker ADR/技术方案 | 已按 v2-only 修订 |
 | `proto/databench/worker/v1` | 已实现；Buf lint 与 TS/Python deterministic codegen |
-| `workers/python` | 已实现 foundation；health、registry、RunJob/CancelJob、test fixture |
+| `workers/python` | 已实现通用 runtime；health、registry、受控子进程、artifact I/O、adapters |
 | Workspace Worker client | 已实现 internal transport-neutral contract + gRPC adapter |
 | `transform_jobs_v2` | 已实现；真实 Postgres lease/CAS/cleanup fence |
 | Workspace dispatcher | 已实现；单槽 claim、capability gate、事件映射、异常 EOF、durable cancel |
@@ -32,9 +32,9 @@ identities，并通过现有 v2 Store/Catalog 发布正式 Dataset、Run、cache
 | Worker staging Store | 已实现；exact keys、signed URL、bounded read/delete |
 | Workspace projection/result reader | 已实现；`record-text-v1` + strict retained subset |
 | Dispatcher staging cleanup | 已实现；object → row keys → lease fence 顺序 |
-| Data-Juicer monorepo adapter | 尚未创建 |
+| Data-Juicer monorepo adapter | 已实现；1.5.3、固定 allowlist、无运行时安装/网络 |
 | batch transform REST/Web | 尚未创建 |
-| 下一切片 | P4 Data-Juicer adapter |
+| 下一切片 | P5 canonical finalizer |
 
 P1 Gate（2026-07-25）：Python 2/2 tests 与 source/wheel import smoke、TS↔Python 5/5
 integration tests、确定性 codegen、原生 ARM64 preflight 全部通过；全仓 lint 351 files、build
@@ -50,6 +50,13 @@ tests 通过；错误 method、Content-Type、过期 URL 和 cleanup failure 均
 files、build 13/13、typecheck 22/22、test 22/22、OpenAPI 11/11、v2 status、peer 与
 `git diff --check` 通过。
 
+P4 Gate（2026-07-25）：Python 16/16 tests（另有 1 个显式 benchmark gate）、真实 100-row
+semantic fixture、10k cancel、deadline/process-group/network/runtime-install 边界，以及真实 MinIO +
+gRPC 7/7 integration tests 通过。精确 `basic-clean-v1` benchmark：10k 9.081 秒；100k
+31.130 秒；100k repeat 31.394 秒，两次 100k retained output SHA-256 完全一致。全仓 lint 363
+files、build 13/13、typecheck 22/22、test 22/22、OpenAPI 11/11、v2 status、Worker
+source/wheel/codegen 与 `git diff --check` 通过。
+
 桌面实验目录：
 
 ```text
@@ -61,7 +68,7 @@ files、build 13/13、typecheck 22/22、test 22/22、OpenAPI 11/11、v2 status�
 - `py-data-juicer==1.5.3`；
 - native ARM64 Python 3.11.15；
 - native `uv 0.11.1`；
-- `np=1` 100k 约 61.512 秒；
+- monorepo 精确 `basic-clean-v1`、完整 adapter 路径下 100k 约 31.1 秒；
 - 100k repeat deterministic；
 - 500k 约 311.738 秒，但超过当前 canonical 100k limit，只是 Worker benchmark。
 
@@ -230,7 +237,7 @@ workers/python/src/databench/worker/v1/worker_pb2_grpc.py
 
 source tree 和 wheel 都必须 import 成功；generated 不手改。
 
-## 9. 已落地文件范围（P1-P3）
+## 9. 已落地文件范围（P1-P4）
 
 P1 只做 Worker foundation：
 
@@ -246,6 +253,9 @@ workers/python/
 ├─ uv.lock
 ├─ Dockerfile
 ├─ src/databench_worker/
+│  ├─ adapters/data_juicer.py
+│  ├─ runtime/artifacts.py · subprocess.py
+│  └─ data_juicer_child.py
 ├─ src/databench/worker/v1/
 └─ tests/
 
@@ -267,15 +277,14 @@ packages/store/src/v2/
 └─ worker-staging.ts
 
 packages/workspace/src/
-├─ internal/worker/staging.ts
+├─ internal/worker/staging.ts · data-juicer.ts
 └─ v2/batch-transform.ts
 ```
 
 根 `package.json`、`pnpm-workspace.yaml`、`turbo.json`、CI 和 ignore 可为 codegen/gates 调整。
 
-P3 结束后仍未实现：
+P4 结束后仍未实现：
 
-- Data-Juicer dependency；
 - canonical finalizer；
 - REST/Web。
 
@@ -302,7 +311,7 @@ P3 结束后仍未实现：
 | P1 ✅ | Proto + Worker skeleton + client | fake capability 跨语言通过 |
 | P2 ✅ | transform job/Catalog/dispatcher lifecycle | fake client 下 durable state machine 通过 |
 | P3 ✅ | staging signed URL + projection/result reader | real MinIO round-trip 通过 |
-| P4 | Data-Juicer adapter | 100/10k/100k determinism/cancel 通过 |
+| P4 ✅ | Data-Juicer adapter | 100/10k/100k determinism/cancel 通过 |
 | P5 | canonical finalizer | output Dataset/Run/cache/lineage 通过 |
 | P6 | REST/Web/可选 CLI | 用户可提交、刷新、取消、进入结果 |
 | P7 | final gate | repo + Postgres/MinIO/Worker/browser 全通过 |

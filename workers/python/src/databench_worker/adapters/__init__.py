@@ -1,0 +1,1 @@
+"""Allowlisted Python capability adapters."""

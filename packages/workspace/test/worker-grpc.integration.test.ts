@@ -11,6 +11,7 @@ import { promisify } from 'node:util'
 import { CreateBucketCommand, DeleteBucketCommand, S3Client } from '@aws-sdk/client-s3'
 import type { CatalogTransformJobRowV2 } from '@databench/catalog'
 import { V2Dataset } from '@databench/engine'
+import type { RecordRevisionV2 } from '@databench/schema'
 import {
   S3ConditionalObjectStoreV2,
   WORKER_STAGING_JSONL_MEDIA_TYPE,
@@ -18,17 +19,27 @@ import {
 } from '@databench/store'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import type { WorkerProtocolError, WorkerRunJobRequest } from '../src/internal/worker/client.js'
+import {
+  compileBasicCleanWorkerParametersV1,
+  DATA_JUICER_BATCH_CAPABILITY_V1,
+  DATA_JUICER_BATCH_PARAMETER_SCHEMA_V1,
+} from '../src/internal/worker/data-juicer.js'
 import { GrpcWorkerClient } from '../src/internal/worker/grpc-client.js'
 import {
   WorkerStagingJobCleanerV1,
   WorkerStagingJobPreparerV1,
 } from '../src/internal/worker/staging.js'
-import { writeWorkerRecordTextJsonlV1 } from '../src/v2/batch-transform.js'
+import {
+  readWorkerRetainedJsonlV1,
+  writeWorkerRecordTextJsonlV1,
+} from '../src/v2/batch-transform.js'
 
 const RUN_INTEGRATION = process.env.RUN_WORKER_INTEGRATION_TESTS === '1'
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const WORKER_ROOT = resolve(REPO_ROOT, 'workers/python')
 const INPUT = Buffer.from('fixture-copy-cross-language')
+let dataJuicerInput = Buffer.alloc(0)
+let dataJuicerUploaded = Buffer.alloc(0)
 let artifactBaseUrl = ''
 const execFileAsync = promisify(execFile)
 
@@ -55,6 +66,24 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
         request.on('data', (chunk: Buffer) => chunks.push(chunk))
         request.on('end', () => {
           uploaded = Buffer.concat(chunks)
+          response.writeHead(204)
+          response.end()
+        })
+        return
+      }
+      if (request.method === 'GET' && request.url === '/data-juicer-input') {
+        response.writeHead(200, {
+          'content-length': dataJuicerInput.byteLength,
+          'content-type': WORKER_STAGING_JSONL_MEDIA_TYPE,
+        })
+        response.end(dataJuicerInput)
+        return
+      }
+      if (request.method === 'PUT' && request.url === '/data-juicer-output') {
+        const chunks: Buffer[] = []
+        request.on('data', (chunk: Buffer) => chunks.push(chunk))
+        request.on('end', () => {
+          dataJuicerUploaded = Buffer.concat(chunks)
           response.writeHead(204)
           response.end()
         })
@@ -107,6 +136,15 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
     const response = await client.describeCapabilities()
     expect(response.workerVersion).toBe('0.1.0')
     expect(response.capabilities).toEqual([
+      {
+        name: DATA_JUICER_BATCH_CAPABILITY_V1,
+        version: '1',
+        mode: 'batch',
+        parameterSchemaName: DATA_JUICER_BATCH_PARAMETER_SCHEMA_V1,
+        parameterSchemaVersion: '1',
+        inputs: [{ name: 'input', mediaType: WORKER_STAGING_JSONL_MEDIA_TYPE }],
+        outputs: [{ name: 'output', mediaType: WORKER_STAGING_JSONL_MEDIA_TYPE }],
+      },
       {
         name: 'fixture.copy',
         version: '1',
@@ -164,7 +202,7 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
     })
   })
 
-  test('round-trips record-text-v1 through real MinIO signed URLs and exact cleanup', async () => {
+  test('runs basic-clean@1 through real MinIO signed URLs and exact cleanup', async () => {
     const bucket = `databench-worker-${randomUUID()}`
     const root = await mkdtemp(join(tmpdir(), 'databench-worker-minio-'))
     const config = minioConfig(bucket)
@@ -188,10 +226,18 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
 
     try {
       const dataset = V2Dataset.fromRecords([
-        workerRecord('1', ' first '),
-        workerRecord('2', '第二条'),
+        workerRecord(
+          '1',
+          '   Shared\ttext with enough deterministic characters for the fixed filter.   ',
+        ),
+        workerRecord('2', 'Shared text with enough deterministic characters for the fixed filter.'),
+        workerRecord('3', 'too short'),
+        workerRecord(
+          '4',
+          'A different record with enough deterministic characters for the fixed filter.',
+        ),
       ])
-      const job = workerJob(jobId, dataset.version, dataset.length)
+      const job = workerJob(jobId, dataset.version, dataset.length, 'basic-clean')
       let stagingKeys: { readonly inputKey: string; readonly outputKey: string } | null = null
       const preparer = new WorkerStagingJobPreparerV1({
         catalog: {
@@ -207,11 +253,7 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
             return writeWorkerRecordTextJsonlV1(dataset.records(), { signal })
           },
         },
-        parameters: () => ({
-          schemaName: 'databench.worker.fixture-copy-parameters',
-          schemaVersion: '1',
-          utf8Json: Buffer.from('{"mode":"complete","steps":1}'),
-        }),
+        parameters: compileBasicCleanWorkerParametersV1,
         maxOutputBytes: 1024 * 1024,
       })
       const prepared = await preparer.prepare({
@@ -239,7 +281,7 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
         jobId,
         attempt: 1,
         leaseToken: job.leaseToken ?? randomBytes(32),
-        capabilityName: 'fixture.copy',
+        capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
         capabilityVersion: '1',
         ...prepared,
         deadlineUnixMs: Date.now() + 10_000,
@@ -247,8 +289,11 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
         events.push(event)
       }
       const completed = events.at(-1)
+      if (completed?.type === 'failed') {
+        throw new Error(`Data-Juicer failed: ${completed.code}: ${completed.message}`)
+      }
       expect(completed?.type).toBe('completed')
-      if (completed?.type !== 'completed') throw new Error('fixture did not complete')
+      if (completed?.type !== 'completed') throw new Error('Data-Juicer did not complete')
       const output = completed.outputs[0]
       if (!output) throw new Error('fixture output descriptor is missing')
 
@@ -264,7 +309,18 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
           { expectedSize: source.size, expectedDigest: source.digest },
         ),
       )
-      expect(outputBytes).toEqual(inputBytes)
+      const inputRevisions = [...dataset.records()]
+      const retained = await readWorkerRetainedJsonlV1(chunks(outputBytes), inputRevisions, {
+        terminal: {
+          size: output.size,
+          digest: output.digest,
+          recordCount: output.recordCount,
+        },
+      })
+      expect(retained.map((revision) => revision.record.id)).toEqual(
+        expectedBasicClean(inputRevisions).map((revision) => revision.record.id),
+      )
+      expect(outputBytes).not.toEqual(inputBytes)
 
       const expiring = new WorkerStagingStoreV1({
         objectStore,
@@ -297,6 +353,69 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
       admin.destroy()
       await rm(root, { recursive: true, force: true })
     }
+  }, 20_000)
+
+  test('cancels a 10k Data-Juicer gRPC execution and does not upload output', async () => {
+    dataJuicerInput = dataJuicerRows(10_000)
+    dataJuicerUploaded = Buffer.alloc(0)
+    const request: WorkerRunJobRequest = {
+      executionId: 'execution-data-juicer-cancel',
+      jobId: 'job-data-juicer-cancel',
+      attempt: 1,
+      leaseToken: randomBytes(32),
+      capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
+      capabilityVersion: '1',
+      parameters: compileBasicCleanWorkerParametersV1({
+        op: 'basic-clean',
+        opVersion: '1',
+        params: {},
+        capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
+        capabilityVersion: '1',
+      }),
+      inputs: [
+        {
+          name: 'input',
+          readUrl: `${artifactBaseUrl}/data-juicer-input`,
+          mediaType: WORKER_STAGING_JSONL_MEDIA_TYPE,
+          size: dataJuicerInput.byteLength,
+          digest: createHash('sha256').update(dataJuicerInput).digest('hex'),
+        },
+      ],
+      outputs: [
+        {
+          name: 'output',
+          writeUrl: `${artifactBaseUrl}/data-juicer-output`,
+          mediaType: WORKER_STAGING_JSONL_MEDIA_TYPE,
+          maxSize: 1024 * 1024,
+        },
+      ],
+      deadlineUnixMs: Date.now() + 30_000,
+    }
+    let markInputReady: (() => void) | undefined
+    const inputReady = new Promise<void>((resolveReady) => {
+      markInputReady = resolveReady
+    })
+    const eventsPromise = (async () => {
+      const events = []
+      for await (const event of client.runJob(request)) {
+        events.push(event)
+        if (event.type === 'progress' && event.phase === 'input_ready') markInputReady?.()
+      }
+      return events
+    })()
+
+    await inputReady
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 100))
+    await expect(
+      client.cancelJob({
+        executionId: request.executionId,
+        attempt: request.attempt,
+        leaseToken: request.leaseToken,
+      }),
+    ).resolves.toBe('stopped')
+    const events = await eventsPromise
+    expect(events.at(-1)?.type).toBe('cancelled')
+    expect(dataJuicerUploaded).toHaveLength(0)
   }, 20_000)
 
   test('cancels only the matching execution token', async () => {
@@ -430,15 +549,20 @@ function workerRecord(suffix: string, text: string) {
   }
 }
 
-function workerJob(id: string, inputVersion: string, inputCount: number): CatalogTransformJobRowV2 {
+function workerJob(
+  id: string,
+  inputVersion: string,
+  inputCount: number,
+  op: 'fixture-copy' | 'basic-clean' = 'fixture-copy',
+): CatalogTransformJobRowV2 {
   return {
     id,
     cacheKey: id.slice(4),
-    op: 'fixture-copy',
+    op,
     opVersion: '1',
     params: {},
     inputVersion,
-    capabilityName: 'fixture.copy',
+    capabilityName: op === 'basic-clean' ? DATA_JUICER_BATCH_CAPABILITY_V1 : 'fixture.copy',
     capabilityVersion: '1',
     inputCount: BigInt(inputCount),
     status: 'leased',
@@ -464,6 +588,40 @@ async function collect(source: AsyncIterable<Uint8Array>): Promise<Buffer> {
   const chunks: Buffer[] = []
   for await (const chunk of source) chunks.push(Buffer.from(chunk))
   return Buffer.concat(chunks)
+}
+
+async function* chunks(bytes: Uint8Array): AsyncIterableIterator<Uint8Array> {
+  yield bytes
+}
+
+function expectedBasicClean(revisions: readonly RecordRevisionV2[]): readonly RecordRevisionV2[] {
+  const seen = new Set<string>()
+  return revisions.filter((revision) => {
+    const text = revision.record.contents
+      .flatMap((content) => content.parts)
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join('\n')
+      .trim()
+      .replace(/[\t\u2000-\u200a\u00a0\u202f\u205f\u3000\u200b-\u200d\u2060\ufffc\u0084]/g, ' ')
+    if (text.length < 40 || seen.has(text)) return false
+    seen.add(text)
+    return true
+  })
+}
+
+function dataJuicerRows(count: number): Buffer {
+  const lines: string[] = []
+  for (let index = 0; index < count; index += 1) {
+    lines.push(
+      `${JSON.stringify({
+        record_id: `rec_${index.toString(16).padStart(64, '0')}`,
+        record_digest: (count + index).toString(16).padStart(64, '0'),
+        text: `Record ${index} has enough deterministic characters for the cancellation fixture.`,
+      })}\n`,
+    )
+  }
+  return Buffer.from(lines.join(''))
 }
 
 async function readFirstLine(child: ChildProcessWithoutNullStreams): Promise<string> {

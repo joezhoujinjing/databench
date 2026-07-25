@@ -1,6 +1,6 @@
 # Worker 与 Data-Juicer 接入技术方案
 
-- **状态：** Accepted design；P0-P3 已完成，下一步 P4 Data-Juicer adapter
+- **状态：** Accepted design；P0-P4 已完成，下一步 P5 canonical finalizer
 - **日期：** 2026-07-25
 - **决策：**
   [ADR 0010 — Long-running Python Worker over internal gRPC](../decisions/0010-python-processing-service-grpc.md)
@@ -66,7 +66,7 @@ Workspace 内部 helper，供同步 transform 和 batch finalizer 共同调用�
 ### 3.2 当前同步 transform 不能直接承载 Worker
 
 `V2TransformDefinition.run()` 当前在 HTTP 请求内接收内存 `V2Dataset`，返回另一个
-`V2Dataset`，然后立即提交。Data-Juicer 100k 的实测约 61.5 秒，因此不能把 gRPC 调用塞进
+`V2Dataset`，然后立即提交。Data-Juicer 100k 的 P4 实测约 31 秒，因此不能把 gRPC 调用塞进
 现有 `run()`。
 
 新增平行的内部 contract：
@@ -161,8 +161,8 @@ flowchart LR
 
 ## 5. 权威目录
 
-P1 的 Proto/Worker/client、P2 的 job 控制面和 P3 的临时数据面已落地；其余目录仍按对应
-Step 创建，不能把计划中的 P4-P6 文件误写成当前实现。
+P1 的 Proto/Worker/client、P2 的 job 控制面、P3 的临时数据面和 P4 的 Data-Juicer adapter
+已落地；其余目录仍按对应 Step 创建，不能把计划中的 P5-P6 文件误写成当前实现。
 
 ```text
 proto/
@@ -180,10 +180,9 @@ workers/python/
 │  │  ├─ grpc_server.py
 │  │  ├─ registry.py
 │  │  ├─ runner.py
+│  │  ├─ data_juicer_child.py
 │  │  ├─ runtime/
 │  │  │  ├─ artifacts.py
-│  │  │  ├─ cancellation.py
-│  │  │  ├─ progress.py
 │  │  │  └─ subprocess.py
 │  │  └─ adapters/
 │  │     └─ data_juicer.py
@@ -200,6 +199,7 @@ packages/ops/src/v2/batch/
 packages/workspace/src/
 ├─ internal/worker/
 │  ├─ client.ts
+│  ├─ data-juicer.ts
 │  ├─ grpc-client.ts
 │  ├─ dispatcher.ts
 │  └─ generated/
@@ -284,6 +284,8 @@ capability:    data_juicer.batch@1
 operation version `1` 固定以下全部行为：
 
 - `py-data-juicer==1.5.3`；
+- Data-Juicer 1.5.3 eager/lazy runtime 实际必需的 `ray[default]==2.56.1` 与
+  `torch==2.8.0` 显式进入 `uv.lock`，child 禁止运行时安装；
 - `record-text-v1` 投影；
 - `basic-clean-v1` 执行计划；
 - Data-Juicer `np=1`；
@@ -972,17 +974,19 @@ signed URL, lease token, sample text, full parameter bytes, traceback in public 
 - 网络关闭仍能完成；
 - cancel 与 deadline 能终止。
 
-实验数据作为容量依据：
+P4 使用精确 `basic-clean-v1`、完整 adapter、local HTTP artifact transfer 与 retained writer 的
+实测结果：
 
 | rows | `np=1` 时间 | 吞吐 |
 |---:|---:|---:|
-| 10k | 7.139 s | 1,401 rows/s |
-| 100k | 61.512 s | 1,626 rows/s |
-| 500k | 311.738 s | 1,604 rows/s |
+| 10k | 9.081 s | 1,101 rows/s |
+| 100k | 31.130 s | 3,212 rows/s |
+| 100k repeat | 31.394 s | 3,185 rows/s |
 
-这些数据来自原实验 plan（其中还包含后来删除的 `quality` filter），用于证明必须异步和初步
-估算容量，不是 `basic-clean-v1` 的 golden。P4 必须用本文精确 plan 重新测量。500k 只保留
-Worker benchmark，不作为当前 Databench E2E，因为超过 100k canonical limit。
+两次 100k 均 retained 80,000 行，output SHA-256 都是
+`5731cb84c63d40503ec6f6997260ab361ca32b4eb7b274236856c2ac19ad3de9`。数据用于容量基线；
+semantic correctness 由独立 100-row golden 覆盖。500k 只保留旧实验容量证据，不作为当前
+Databench E2E，因为超过 100k canonical limit。
 
 ### 18.7 跨层 E2E
 
@@ -1047,7 +1051,7 @@ Gate：Store/Catalog/dispatcher 单元测试覆盖 exact key、CAS、retry fence
 size/digest、严格 projection/result reader；真实 MinIO + ARM64 Python fixture 覆盖 signed
 GET/PUT、错误 method/Content-Type、过期 URL、gRPC copy、TS readback 与 exact cleanup。
 
-### P4 — Data-Juicer
+### P4 — Data-Juicer（已完成）
 
 - pin 1.5.3/uv lock；
 - adapter/allowlist/subprocess；

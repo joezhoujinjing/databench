@@ -12,6 +12,7 @@ from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 from databench.worker.v1 import worker_pb2_grpc
 
 from . import __version__
+from .adapters.data_juicer import DataJuicerBatchAdapter
 from .fixture import FixtureCopyAdapter
 from .registry import CapabilityRegistry
 from .runner import WorkerService
@@ -19,6 +20,7 @@ from .runner import WorkerService
 
 async def serve(listen: str) -> None:
     registry = CapabilityRegistry()
+    registry.register(DataJuicerBatchAdapter())
     if os.environ.get("DATABENCH_WORKER_ENABLE_TEST_CAPABILITIES") == "1":
         registry.register(FixtureCopyAdapter())
 

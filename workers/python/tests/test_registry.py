@@ -1,4 +1,5 @@
 from databench.worker.v1 import worker_pb2, worker_pb2_grpc
+from databench_worker.adapters.data_juicer import DataJuicerBatchAdapter
 from databench_worker.fixture import FixtureCopyAdapter
 from databench_worker.registry import CapabilityRegistry
 
@@ -12,7 +13,9 @@ def test_registry_is_sorted_and_rejects_duplicates() -> None:
     registry = CapabilityRegistry()
     adapter = FixtureCopyAdapter()
     registry.register(adapter)
-    assert registry.descriptors() == (adapter.descriptor,)
+    data_juicer = DataJuicerBatchAdapter()
+    registry.register(data_juicer)
+    assert registry.descriptors() == (data_juicer.descriptor, adapter.descriptor)
 
     try:
         registry.register(adapter)
