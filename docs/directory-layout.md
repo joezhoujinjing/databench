@@ -1,7 +1,8 @@
 # 具体目录布局（文件级，权威）
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
-> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。
+> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP 目标布局只在
+> `docs/mcp/TECHNICAL-DESIGN.md` 中记录；M1a 未完成前不得把目标文件写成当前实现。
 
 ## `apps/api`
 
@@ -274,3 +275,16 @@ prisma/
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。
+
+## MCP 文档（实施中）
+
+```text
+docs/mcp/
+├─ TECHNICAL-DESIGN.md   已接受的最终技术边界
+├─ PLAN.md               M0-M2 accepted steps 与 gates
+├─ STATUS.md             当前真实进度；runtime enabled 状态
+└─ AGENT-PREFLIGHT.md    目标 agent/真实 Excel 能力证据
+```
+
+对应 runtime 目录尚未实现。完成 M1a/M1b 后，必须在同一 Step 更新本文件为实际落点，不预先
+登记不存在的 `apps/api/src/mcp` 或 schema/workspace 文件。

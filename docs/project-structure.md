@@ -1,7 +1,8 @@
 # 项目结构与包边界（权威）
 
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
-> v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。
+> v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。已接受但尚在实施的
+> MCP agent 导入计划见 `docs/mcp/`；在对应 Step 完成前不属于当前 runtime surface。
 
 ## 顶层目录
 
@@ -29,6 +30,7 @@ databench-ts/
 │  └─ offline/          ADR 0012 Ubuntu 单机离线发布
 ├─ scripts/             repo gate、测试 schema 与辅助脚本
 └─ docs/
+   └─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
 ```
 
 `v2` 仍出现在 REST 路径、数据库表、对象 key、类型和测试名中。它是稳定协议/持久化命名，
@@ -72,6 +74,9 @@ tooling/v1-retirement 是显式 maintenance 边界
 - `workspace → engine, io, ops, store, catalog, schema, hashing`
 - `apps/api`、`apps/cli → workspace, schema`
 - `apps/web` 不 import 后端包
+
+MCP M1a-M1b3 计划内嵌 `apps/api`，依赖边界仍是 `apps/api → workspace, schema`。不得为了
+MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访问层。
 
 ## 硬边界
 

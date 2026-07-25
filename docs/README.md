@@ -10,6 +10,18 @@
 - [conventions.md](conventions.md) — 确定性、契约、测试与协作规则。
 - [tech-stack.md](tech-stack.md) — 当前已实现技术栈。
 
+## MCP Agent 导入（实施中）
+
+- [ADR 0015](decisions/0015-internal-agent-mcp-ingest.md) — API 内嵌 MCP、四个 tools、匿名
+  可信内网与 agent 自主编排。
+- [ADR 0016](decisions/0016-canonical-draft-raw-adapter-identity.md) — canonical draft 的
+  deterministic IDs、claims 与重放语义。
+- [MCP 技术方案](mcp/TECHNICAL-DESIGN.md) — 已接受的最终边界与验收。
+- [MCP 实施计划](mcp/PLAN.md) / [状态](mcp/STATUS.md) — M0-M2 的真实进度。
+- [目标 agent 预检](mcp/AGENT-PREFLIGHT.md) — Excel 与 MCP/HTTP 客户端能力证据。
+
+MCP runtime 当前尚未实现或启用；不得把 accepted 文档当成现有产品入口。
+
 ## 产品切换
 
 - [ADR 0013](decisions/0013-v2-product-cutover-and-v1-retirement.md) — v2 成为唯一
