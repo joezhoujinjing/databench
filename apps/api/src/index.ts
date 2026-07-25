@@ -22,6 +22,7 @@ export function createAppFromConfig(config: ApiConfig) {
     ...(config.databaseUrl !== undefined ? { databaseUrl: config.databaseUrl } : {}),
     ...(config.openApiServerUrl !== undefined ? { openApiServerUrl: config.openApiServerUrl } : {}),
     corsOrigins: config.corsOrigins,
+    mcp: config.mcp,
     storeConfig: config.storeConfig,
     v2CursorSecret: config.v2CursorSecret,
     version: config.version,
@@ -45,4 +46,9 @@ if (isEntrypoint()) {
   })
 
   console.log(`databench api listening on :${config.port}`)
+  if (config.mcp.enabled) {
+    console.warn(
+      'WARNING: Databench MCP is anonymous with full access; use only on a trusted network',
+    )
+  }
 }

@@ -75,7 +75,8 @@ tooling/v1-retirement 是显式 maintenance 边界
 - `apps/api`、`apps/cli → workspace, schema`
 - `apps/web` 不 import 后端包
 
-MCP M1a-M1b3 计划内嵌 `apps/api`，依赖边界仍是 `apps/api → workspace, schema`。不得为了
+MCP M1a 已内嵌 `apps/api`，M1b1-M1b3 继续扩展同一边界；依赖关系仍是
+`apps/api → workspace, schema`。不得为了
 MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访问层。
 
 ## 硬边界

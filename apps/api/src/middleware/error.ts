@@ -185,7 +185,8 @@ function httpExceptionResponse(error: HTTPException, context: Context<ApiEnv>): 
 }
 
 function isV2Request(context: Context<ApiEnv>): boolean {
-  return new URL(context.req.url).pathname.startsWith('/v2/')
+  const pathname = new URL(context.req.url).pathname
+  return pathname.startsWith('/v2/') || pathname.startsWith('/mcp-files/')
 }
 
 function normalizeV2Error(
@@ -301,7 +302,7 @@ function normalizeV2Error(
       return {
         code: 'too_many_requests',
         message,
-        detail: { retry_after_seconds: null },
+        detail: normalizeTooManyRequests(detail),
       }
     case 'service_unavailable':
       return {
@@ -318,6 +319,14 @@ function normalizeV2Error(
         message: 'internal server error',
         detail: { reason: 'unexpected_error' },
       }
+  }
+}
+
+function normalizeTooManyRequests(detail: unknown) {
+  const value = asRecord(detail)?.retry_after_seconds
+  return {
+    retry_after_seconds:
+      typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null,
   }
 }
 
@@ -408,9 +417,10 @@ function normalizeNotFound(context: Context<ApiEnv>, detail: unknown) {
       return { kind, value: boundedValue(value) }
     }
   }
+  const pathname = new URL(context.req.url).pathname
   return {
     kind: 'route' as const,
-    value: boundedValue(new URL(context.req.url).pathname),
+    value: pathname.startsWith('/mcp-files/') ? '/mcp-files/*' : boundedValue(pathname),
   }
 }
 

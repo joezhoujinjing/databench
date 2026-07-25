@@ -22,6 +22,7 @@ import {
 } from '@databench/engine'
 import {
   canonicalJsonV2,
+  createArtifactHasher,
   hashV2TransformCache,
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
@@ -77,7 +78,12 @@ import {
   type JsonObjectV2,
   type LineagePageRequestV2,
   LineagePageRequestV2Schema,
+  MCP_MAX_PREVIEW_RECORDS,
+  type McpCanonicalValidationPreviewResult,
+  McpCanonicalValidationPreviewResultSchema,
   NotFoundError,
+  type PostTrainingRecordV2,
+  PostTrainingRecordV2Schema,
   type PostTrainingV2Capability,
   type PostTrainingV2Limits,
   type PutRefRequestV2,
@@ -96,6 +102,7 @@ import {
   RefOrVersionV2Schema,
   type RefPageV2,
   RefPageV2Schema,
+  ResourceLimitError,
   type RunMetadataV2,
   RunMetadataV2Schema,
   type RunTransformRequestV2,
@@ -174,6 +181,11 @@ export interface V2WorkspaceCatalog {
 }
 
 export interface V2WorkspaceOperationOptions extends V2OperationContext {}
+
+export interface V2CanonicalJsonlPreviewOptions {
+  readonly previewRecords?: number
+  readonly maxResponseBytes: number
+}
 
 export interface V2TransformLimits {
   readonly max_input_datasets: number
@@ -416,6 +428,58 @@ export class V2Workspace {
       if (optionsFailure !== NO_ASYNC_OPTIONS_FAILURE) throw optionsFailure
       throw error
     }
+  }
+
+  async previewCanonicalJsonl(
+    source: AsyncIterable<Uint8Array>,
+    optionsInput: V2CanonicalJsonlPreviewOptions,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<Readonly<McpCanonicalValidationPreviewResult>> {
+    context.signal?.throwIfAborted()
+    const options = snapshotCanonicalPreviewOptions(optionsInput)
+    const hasher = createArtifactHasher()
+    const previewRecordIds: string[] = []
+    let recordCount = 0
+    const operationOptions = operationContext(context.signal)
+    const parsed = readCanonicalJsonlV2(hashCanonicalSource(source, hasher, context.signal), {
+      limits: {
+        maxBytes: this.#datasetLimits.max_record_bytes,
+        maxDepth: this.#jsonlLimits.max_nesting_depth,
+      },
+      maxTransportBytes: this.#jsonlLimits.max_request_bytes,
+      ...operationOptions,
+    })
+    const observed = observePreviewRecords(parsed, previewRecordIds, options.previewRecords, () => {
+      recordCount += 1
+    })
+
+    const dataset = await V2Dataset.fromAsyncRecords(
+      observed,
+      this.#datasetLimits,
+      operationOptions,
+    )
+    context.signal?.throwIfAborted()
+    const records = previewRecordIds.map((recordId) => {
+      const revision = dataset.get(recordId)
+      if (revision === null) {
+        throw new IntegrityError('Canonical preview record is missing from the validated dataset', {
+          reason: 'canonical_preview_record_missing',
+          record_id: recordId,
+        })
+      }
+      return PostTrainingRecordV2Schema.parse(revision.record)
+    })
+    return fitCanonicalPreviewResult(
+      {
+        format: 'canonical-jsonl',
+        input_digest: hasher.digestHex(),
+        record_count: recordCount,
+        records,
+        records_truncated: false,
+      },
+      options.previewRecords,
+      options.maxResponseBytes,
+    )
   }
 
   listTransforms(): readonly Readonly<TransformDescriptorV2>[] {
@@ -1925,6 +1989,85 @@ function registeredObjectMissing(
     Object.defineProperty(error, 'cause', { configurable: true, value: cause })
   }
   return error
+}
+
+function snapshotCanonicalPreviewOptions(
+  input: V2CanonicalJsonlPreviewOptions,
+): Readonly<Required<V2CanonicalJsonlPreviewOptions>> {
+  if (input === null || typeof input !== 'object') {
+    throw new TypeError('Canonical JSONL preview options must be an object')
+  }
+  const previewRecords = input.previewRecords ?? 3
+  if (
+    !Number.isSafeInteger(previewRecords) ||
+    previewRecords < 0 ||
+    previewRecords > MCP_MAX_PREVIEW_RECORDS
+  ) {
+    throw new TypeError(
+      `Canonical JSONL previewRecords must be between 0 and ${MCP_MAX_PREVIEW_RECORDS}`,
+    )
+  }
+  if (!Number.isSafeInteger(input.maxResponseBytes) || input.maxResponseBytes <= 0) {
+    throw new TypeError('Canonical JSONL maxResponseBytes must be a positive safe integer')
+  }
+  return Object.freeze({ previewRecords, maxResponseBytes: input.maxResponseBytes })
+}
+
+async function* hashCanonicalSource(
+  source: AsyncIterable<Uint8Array>,
+  hasher: ReturnType<typeof createArtifactHasher>,
+  signal: AbortSignal | undefined,
+): AsyncIterableIterator<Uint8Array> {
+  signal?.throwIfAborted()
+  for await (const chunk of source) {
+    signal?.throwIfAborted()
+    if (!(chunk instanceof Uint8Array)) {
+      throw new TypeError('Canonical JSONL source must yield Uint8Array chunks')
+    }
+    hasher.update(chunk)
+    yield chunk
+    signal?.throwIfAborted()
+  }
+}
+
+async function* observePreviewRecords(
+  source: AsyncIterable<PostTrainingRecordV2>,
+  recordIds: string[],
+  limit: number,
+  onRecord: () => void,
+): AsyncIterableIterator<PostTrainingRecordV2> {
+  for await (const record of source) {
+    onRecord()
+    if (recordIds.length < limit) recordIds.push(record.id)
+    yield record
+  }
+}
+
+function fitCanonicalPreviewResult(
+  input: McpCanonicalValidationPreviewResult,
+  requestedRecords: number,
+  maxResponseBytes: number,
+): Readonly<McpCanonicalValidationPreviewResult> {
+  const records = [...input.records]
+  while (true) {
+    const result = McpCanonicalValidationPreviewResultSchema.parse({
+      ...input,
+      records,
+      records_truncated: records.length < Math.min(input.record_count, requestedRecords),
+    })
+    // This JSON is transport sizing only. Identity serialization remains exclusively
+    // owned by @databench/hashing.
+    const responseBytes = Buffer.byteLength(JSON.stringify(result), 'utf8')
+    if (responseBytes <= maxResponseBytes) return deepFreeze(result)
+    if (records.length === 0) {
+      throw new ResourceLimitError('Canonical preview exceeds the response byte limit', {
+        resource: 'preview_response_bytes',
+        limit: maxResponseBytes,
+        actual: responseBytes,
+      })
+    }
+    records.pop()
+  }
 }
 
 export function postTrainingV2Capability(

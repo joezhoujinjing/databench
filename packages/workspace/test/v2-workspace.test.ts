@@ -18,6 +18,7 @@ import {
   V2CatalogTargetNotCommittedError,
 } from '@databench/catalog'
 import { DEFAULT_V2_DATASET_LIMITS, V2Dataset, type V2DatasetLimits } from '@databench/engine'
+import { hashArtifactBytes } from '@databench/hashing'
 import { createDefaultV2ConverterRegistry, type V2ConverterRegistry } from '@databench/io'
 import {
   AppendEvidenceV2ParamsSchema,
@@ -192,6 +193,91 @@ test('locks the V10 transform, lineage, race, and capacity golden policy', () =>
       attempted_dataset_committed: true,
       ref_moved: false,
     },
+  })
+})
+
+describe('V2Workspace canonical JSONL preview', () => {
+  test('hashes exact bytes, validates the whole file, preserves order, and performs no writes', async () => {
+    const rig = createRig()
+    const first = makeRecord('1', 'first preview record')
+    const second = makeRecord('2', 'second preview record')
+    const bytes = new TextEncoder().encode(
+      `${JSON.stringify(first)}\n\n${JSON.stringify(second)}\n`,
+    )
+
+    const result = await rig.workspace.previewCanonicalJsonl(
+      (async function* () {
+        yield bytes.subarray(0, 17)
+        yield bytes.subarray(17, 103)
+        yield bytes.subarray(103)
+      })(),
+      { previewRecords: 2, maxResponseBytes: 1024 * 1024 },
+    )
+
+    expect(result).toMatchObject({
+      format: 'canonical-jsonl',
+      input_digest: hashArtifactBytes(bytes),
+      record_count: 2,
+      records_truncated: false,
+    })
+    expect(result.records.map(({ id }) => id)).toEqual([first.id, second.id])
+    expect(Object.isFrozen(result)).toBe(true)
+    expect(Object.isFrozen(result.records)).toBe(true)
+    expect(rig.events).toEqual([])
+  })
+
+  test('drops only whole preview records to fit the response budget', async () => {
+    const rig = createRig()
+    const input = new TextEncoder().encode(
+      `${JSON.stringify(makeRecord('3', 'x'.repeat(2_000)))}\n`,
+    )
+    const metadataOnlyBytes = Buffer.byteLength(
+      JSON.stringify({
+        format: 'canonical-jsonl',
+        input_digest: hashArtifactBytes(input),
+        record_count: 1,
+        records: [],
+        records_truncated: true,
+      }),
+      'utf8',
+    )
+
+    const result = await rig.workspace.previewCanonicalJsonl(byteSource(input), {
+      previewRecords: 1,
+      maxResponseBytes: metadataOnlyBytes,
+    })
+
+    expect(result.records).toEqual([])
+    expect(result.records_truncated).toBe(true)
+    expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(metadataOnlyBytes)
+    expect(rig.events).toEqual([])
+  })
+
+  test('rejects a later invalid record and observes abort without publishing', async () => {
+    const rig = createRig()
+    const first = makeRecord('4', 'valid first record')
+    const duplicate = { ...makeRecord('5', 'duplicate id'), id: first.id }
+    const invalid = new TextEncoder().encode(
+      `${JSON.stringify(first)}\n${JSON.stringify(duplicate)}\n`,
+    )
+
+    await expect(
+      rig.workspace.previewCanonicalJsonl(byteSource(invalid), {
+        previewRecords: 1,
+        maxResponseBytes: 1024 * 1024,
+      }),
+    ).rejects.toBeDefined()
+
+    const controller = new AbortController()
+    controller.abort(new DOMException('cancel preview', 'AbortError'))
+    await expect(
+      rig.workspace.previewCanonicalJsonl(
+        byteSource(new TextEncoder().encode(`${JSON.stringify(first)}\n`)),
+        { previewRecords: 1, maxResponseBytes: 1024 * 1024 },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(rig.events).toEqual([])
   })
 })
 
@@ -2022,6 +2108,10 @@ function createRig(
 
 function noRef() {
   return { ref: null, expected_ref_version: null, message: null } as const
+}
+
+async function* byteSource(input: Uint8Array): AsyncIterableIterator<Uint8Array> {
+  yield input
 }
 
 async function prepareMockedConverterExport(

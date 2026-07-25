@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { type V2WorkspaceOpenOptions, v2ObjectStoreConfigFromEnv } from '@databench/workspace'
 import { z } from 'zod'
+import { type McpRuntimeConfig, mcpConfigFromEnv } from './mcp/config.js'
 
 // Read the service version from the monorepo root package.json rather than
 // hard-coding it, so a single bump there propagates to /health and /version.
@@ -29,6 +30,7 @@ const EnvSchema = z.object({
 export interface ApiConfig {
   readonly corsOrigins: readonly string[]
   readonly databaseUrl?: string
+  readonly mcp: McpRuntimeConfig
   readonly openApiServerUrl?: string
   readonly port: number
   readonly storeConfig: NonNullable<V2WorkspaceOpenOptions['storeConfig']>
@@ -44,6 +46,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     corsOrigins: parsed.DATABENCH_CORS_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    mcp: mcpConfigFromEnv(env),
     port: parsed.PORT,
     storeConfig: v2ObjectStoreConfigFromEnv(env),
     v2CursorSecret: parsed.DATABENCH_V2_CURSOR_SECRET,

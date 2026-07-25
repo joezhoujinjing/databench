@@ -20,7 +20,8 @@
 - [MCP 实施计划](mcp/PLAN.md) / [状态](mcp/STATUS.md) — M0-M2 的真实进度。
 - [目标 agent 预检](mcp/AGENT-PREFLIGHT.md) — Excel 与 MCP/HTTP 客户端能力证据。
 
-MCP runtime 当前尚未实现或启用；不得把 accepted 文档当成现有产品入口。
+MCP M1a canonical staged runtime 已通过 GM1a 但默认关闭；原始 Excel/CSV 闭环仍待
+M1b1-M1b3，不得把分支代码或 accepted 文档当成当前已发布产品入口。
 
 ## 产品切换
 

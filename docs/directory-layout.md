@@ -1,8 +1,8 @@
 # 具体目录布局（文件级，权威）
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
-> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP 目标布局只在
-> `docs/mcp/TECHNICAL-DESIGN.md` 中记录；M1a 未完成前不得把目标文件写成当前实现。
+> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M1a 的 staged
+> runtime 已实现但保持 disabled；后续目标布局仍以 `docs/mcp/TECHNICAL-DESIGN.md` 为准。
 
 ## `apps/api`
 
@@ -15,6 +15,14 @@ apps/api/
 │  ├─ config.ts                DB、Store、CORS、cursor、PORT 配置
 │  ├─ context.ts               Hono context 中的 V2Workspace
 │  ├─ openapi.ts               OpenAPI 元信息与 server URL
+│  ├─ response.ts              REST/MCP 共用 response stream 与附件 header
+│  ├─ mcp/
+│  │  ├─ register.ts           stateless MCP server 与四个 staged tools
+│  │  ├─ config.ts · origin.ts disabled-by-default config 与 Origin 防护
+│  │  ├─ contracts.ts          canonical contract JSON Schema projection
+│  │  ├─ file-tokens.ts        process/export 一次性 token registry
+│  │  ├─ file-streams.ts       timeout、abort 与 cleanup
+│  │  └─ file-routes.ts        /mcp-files/process|export
 │  ├─ middleware/
 │  │  ├─ cors.ts
 │  │  ├─ error.ts              领域错误 → 统一 HTTP error envelope
@@ -34,6 +42,7 @@ apps/api/
 ├─ test/
 │  ├─ app-support.test.ts
 │  ├─ errors.test.ts
+│  ├─ mcp-config.test.ts · mcp-file-tokens.test.ts · mcp.test.ts
 │  ├─ v2-http.test.ts
 │  ├─ v2-http.integration.test.ts
 │  ├─ v2-multipart.test.ts
@@ -44,7 +53,8 @@ apps/api/
 └─ tsconfig.json
 ```
 
-公开业务路径只有 `/v2/*`。meta routes 不带版本。`apps/api` 只 import
+公开业务路径只有 `/v2/*`。meta routes 不带版本。MCP enabled 时另注册 `/mcp` 与
+`/mcp-files/*`，它们不进入 OpenAPI。`apps/api` 只 import
 `@databench/workspace` 与 `@databench/schema`，不得直连下层数据包。
 
 ## `apps/cli`
@@ -147,6 +157,7 @@ src/
    ├─ record/content/candidate/preference/signal/tool schemas
    ├─ revision/provenance/manifest/identity schemas
    ├─ transform/converter/projection contracts
+   ├─ mcp.ts                    staged MCP tool/result contracts
    ├─ reader/raw-json/json-value verification
    ├─ contracts.type-test.ts
    └─ index.ts
@@ -246,8 +257,8 @@ src/
    └─ index.ts
 ```
 
-这是应用访问数据的唯一可信编排边界，拥有 ingest、persist、transform、CAS ref、
-record/dataset lineage、audit、converter inspect/export 与取消语义。
+这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical no-write preview、persist、transform、
+CAS ref、record/dataset lineage、audit、converter inspect/export 与取消语义。
 
 ## Tooling 与根目录
 
@@ -286,5 +297,4 @@ docs/mcp/
 └─ AGENT-PREFLIGHT.md    目标 agent/真实 Excel 能力证据
 ```
 
-对应 runtime 目录尚未实现。完成 M1a/M1b 后，必须在同一 Step 更新本文件为实际落点，不预先
-登记不存在的 `apps/api/src/mcp` 或 schema/workspace 文件。
+M1a runtime 已按上文实际落点登记；M1b 文件只在对应 Step 实现后加入本文。

@@ -139,22 +139,22 @@ http://<内网 Databench 地址>/api/mcp
 
 ### 4.2 模块边界
 
-拟新增：
+M1a 实际落点（后续 draft branches 继续扩展同一组文件）：
 
 ```text
 apps/api/src/mcp/
-├─ register.ts          MCP server、tool registry 与 /mcp route
+├─ register.ts          MCP server、四个 tools 与 /mcp route
+├─ config.ts            disabled-by-default runtime config
 ├─ contracts.ts         contract projection；不手写 canonical schema
-├─ process-tokens.ts    小型一次性 PUT token registry
-├─ export-tokens.ts     小型一次性 GET token registry
+├─ file-tokens.ts       process/export 共用的一次性 token registry
+├─ file-streams.ts      upload/export deadline、abort 与 cleanup
 ├─ file-routes.ts       /mcp-files/process|export
-├─ tools/
-│  ├─ contract-get.ts
-│  ├─ data-process-prepare.ts
-│  ├─ dataset-show.ts
-│  └─ dataset-export-canonical-prepare.ts
-└─ errors.ts            领域错误 → MCP/companion HTTP 安全错误
+└─ origin.ts            strict Origin middleware
 ```
+
+M1a 保持这些职责为七个短文件，没有为四个 tool 各建一层目录，也没有新建 MCP 专用错误 taxonomy；
+companion HTTP 继续复用 API 的 typed error middleware。通用 response stream 与 Content-Disposition
+helper 位于 `apps/api/src/response.ts`，避免 MCP 反向依赖 `/v2` route 实现。
 
 规则：
 
@@ -806,7 +806,11 @@ request → future auth middleware → MCP/file handler
 
 ## 11. 错误语义
 
-MCP tool 参数错误使用 MCP `InvalidParams`。`/mcp-files/*` companion HTTP 使用当前
+Malformed JSON、JSON-RPC envelope 与未知 protocol method 继续使用 MCP JSON-RPC error。官方
+TypeScript SDK 的高层 `McpServer.registerTool()` 会把 tool-specific Zod 参数错误转换为标准
+`CallToolResult`，其中 `isError=true`；它不是 transport-level `InvalidParams` response。成功结果仍在
+handler 内通过 `@databench/schema` 的命名 strict schema parse，SDK 再校验 advertised output
+schema。`/mcp-files/*` companion HTTP 使用当前
 `ErrorResponseV2Schema` 的统一 envelope，不为 MCP route 创建第二套错误外形：
 
 ```json

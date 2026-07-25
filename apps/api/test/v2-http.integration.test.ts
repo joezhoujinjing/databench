@@ -3,6 +3,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { V2Workspace } from '@databench/workspace'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { createTestApp } from './test-app.js'
 
@@ -185,6 +187,113 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
     expect(exportedText).toContain(FIRST_ID)
     expect(exportedText).not.toContain(SECOND_ID)
   })
+
+  test('MCP preview → import → show → canonical export → idempotent reimport', async () => {
+    const app = createTestApp({
+      v2Workspace: workspace,
+      mcp: {
+        enabled: true,
+        authMode: 'none',
+        publicBaseUrl: 'http://localhost',
+        allowedOrigins: [],
+        maxJsonBytes: 1024 * 1024,
+        maxPreviewResponseBytes: 1024 * 1024,
+        maxTokens: 128,
+        maxActiveFileOperations: 2,
+        tokenTtlMs: 15 * 60 * 1000,
+        fileIdleTimeoutMs: 60 * 1000,
+        fileTotalTimeoutMs: 30 * 60 * 1000,
+      },
+    })
+    const client = new Client({ name: 'databench-integration', version: '1' }, { capabilities: {} })
+    const transport = new StreamableHTTPClientTransport(new URL('http://localhost/mcp'), {
+      fetch: (input, init) => app.fetch(new Request(input, init)),
+    })
+    await client.connect(transport)
+    try {
+      const jsonl = `${fixtureRecords.map((record) => JSON.stringify(record)).join('\n')}\n`
+      const contract = await client.callTool({
+        name: 'contract_get',
+        arguments: { name: 'canonical-jsonl' },
+      })
+      expect(contract.isError).not.toBe(true)
+
+      const previewPrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: {
+            format: 'canonical-jsonl',
+            action: 'validate-preview',
+            preview_records: 2,
+          },
+        }),
+      )
+      const preview = await app.fetch(
+        new Request(String(previewPrepared.put_url), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: jsonl,
+        }),
+      )
+      expect(preview.status).toBe(200)
+      expect(await responseJson(preview)).toMatchObject({ record_count: 3 })
+
+      const importPrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: { format: 'canonical-jsonl', action: 'import-dataset' },
+        }),
+      )
+      const imported = await responseJson<{ dataset_version: string }>(
+        await app.fetch(
+          new Request(String(importPrepared.put_url), {
+            method: 'PUT',
+            headers: { 'content-type': 'application/x-ndjson' },
+            body: jsonl,
+          }),
+        ),
+      )
+      expect(imported.dataset_version).toBe(cliFixture.expected_dataset_version)
+
+      const shown = await client.callTool({
+        name: 'dataset_show',
+        arguments: { dataset_version: imported.dataset_version },
+      })
+      expect(shown.structuredContent).toMatchObject({
+        dataset_version: imported.dataset_version,
+        manifest: { num_records: 3 },
+      })
+
+      const exportPrepared = structured(
+        await client.callTool({
+          name: 'dataset_export_canonical_prepare',
+          arguments: { dataset_version: imported.dataset_version },
+        }),
+      )
+      const exported = await app.fetch(new Request(String(exportPrepared.get_url)))
+      expect(exported.status).toBe(200)
+      const exportedJsonl = await exported.text()
+
+      const reimportPrepared = structured(
+        await client.callTool({
+          name: 'data_process_prepare',
+          arguments: { format: 'canonical-jsonl', action: 'import-dataset' },
+        }),
+      )
+      const reimported = await responseJson<{ dataset_version: string }>(
+        await app.fetch(
+          new Request(String(reimportPrepared.put_url), {
+            method: 'PUT',
+            headers: { 'content-type': 'application/x-ndjson' },
+            body: exportedJsonl,
+          }),
+        ),
+      )
+      expect(reimported.dataset_version).toBe(imported.dataset_version)
+    } finally {
+      await client.close()
+    }
+  })
 })
 
 function request(path: string, init?: RequestInit): Request {
@@ -193,4 +302,11 @@ function request(path: string, init?: RequestInit): Request {
 
 async function responseJson<T = Record<string, unknown>>(response: Response): Promise<T> {
   return (await response.json()) as T
+}
+
+function structured(result: {
+  structuredContent?: Record<string, unknown>
+}): Record<string, unknown> {
+  if (result.structuredContent === undefined) throw new Error('Expected structured MCP result')
+  return result.structuredContent
 }
