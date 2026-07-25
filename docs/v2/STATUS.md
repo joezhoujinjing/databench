@@ -420,8 +420,9 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - Store环境配置迁入明确的v2配置模块，`V2Workspace.open()`继续组合OSS或S3 conditional adapter；
   新增配置测试覆盖OSS默认值、S3/MinIO配置、partial credentials与未知provider fail-closed；
 - `src/v2`、`V2*`、`*_v2`、`objects/v2/`、`record-json-v1`、identity creation profile `*-v1`
-  与`databench-v2-temp-v1`均作为已发布v2协议/持久化标识原样保留；Processing第一版artifact-only
-  边界也不属于本次产品v1退役范围；
+  与`databench-v2-temp-v1`均作为已发布v2协议/持久化标识原样保留；当时尚未实现的 Processing
+  设计也不属于本次产品v1退役代码范围，其 artifact-only 方案后来由 2026-07-25 ADR 0010
+  Worker 修订取代；
 - Prisma旧models、现有数据库表/行及对象存储legacy keys均未删除或修改，明确留给R4的dry-run清单、
   digest与operator确认流程；本Step没有执行任何持久化清理；
 - v2定向suite通过：Hashing 25、Schema 198、Engine 46、Parquet raw-byte matrix 8、IO 41、Ops 10、

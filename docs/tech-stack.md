@@ -19,8 +19,10 @@
 | API streaming | Web Streams + bounded multipart parsing |
 | Tests | Vitest; real Postgres/MinIO integration gates |
 
-The current core/domain/public API has no Python runtime. The retired Processing
-worker design is preserved only in its ADR/design history.
+The currently implemented core/domain/public API has no Python runtime. ADR 0010
+now plans an optional long-running Python Worker over internal gRPC; it is not
+implemented until its independently gated steps land. TypeScript remains the
+domain, identity, publication and public API authority.
 
 ## Frontend
 

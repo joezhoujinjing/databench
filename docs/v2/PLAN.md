@@ -44,7 +44,8 @@ review，不在代码 PR 中偷偷漂移。
 - v1→v2 自动 migration、ID 映射、双写或 Python golden parity；
 - provider/raw import adapters；首期 ingest只接收已有 canonical ID 的 v2 JSONL；
 - Lance、embedding、向量索引、sidecar写入、promoted/nested Parquet layout；
-- annotation workflow、异步 job平台、distributed compute；
+- annotation workflow、通用异步 job平台、distributed compute；ADR 0010 的后续修订只窄增
+  一个单 dispatcher/单 Worker slot 的 batch transform job，不改变本计划的通用平台非目标；
 - retention、GC、legal hold、destructive redaction；
 - 多租户 catalog；v2.0 一个 catalog/object namespace是一个 trusted workspace boundary；
 - 生产部署与 S22；仍受现有 D3 API托管平台决策门约束。
@@ -565,7 +566,8 @@ Step可以因 gate失败暂停；不能为了赶进度降低确定性、完整�
 - canonical/TRL/ms-swift converters有实际 bytes golden和 fidelity gates；
 - API、CLI、Web完整闭环，所有 wire类型来自 generated contract；
 - auth/tenant/cache、untrusted content与下载安全边界通过；
-- Postgres无 record payload，v2无 sidecar/Lance/Python/第三状态服务；
+- Postgres无 record payload，V0-V15 基线无 sidecar/Lance/Python/第三状态服务；ADR 0010
+  后续规划的可选 Worker 不是 catalog/identity authority，落地状态由独立 P0-P7 gate记录；
 - v1现有 tests、objects、tables、routes与UI保持兼容；
 - `docs/v2/STATUS.md`、OpenAPI、generated client和用户文档同步；
 - GV-final后由 owner另行确认 capability enable/cutover。

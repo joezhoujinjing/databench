@@ -60,11 +60,11 @@ an external HTTP service. M3 Lance is TS-native (`@lancedb/lancedb`).
 
 At the time of this decision, Python was required **only** if the owner later
 mandated reusing a Python-native framework itself rather than its capability.
-ADR-0010 subsequently applies that escape hatch to Data-Juicer through an
-optional long-running internal gRPC Processing Service. It remains outside the
-TS core; Zod/public REST, versions, refs, runs, cache and lineage remain TS-owned.
-Other frameworks such as distilabel or Ray Data are still deferred and require
-separate adapter review.
+ADR-0010 subsequently applies that escape hatch through an optional long-running
+internal gRPC Worker. Data-Juicer is its first allowlisted capability, not the
+service boundary. Worker remains outside the TS core; Zod/public REST, versions,
+refs, runs, cache and lineage remain TS-owned. Other Python frameworks are still
+deferred and require separate adapter plus TypeScript orchestration review.
 
 ## Consequences
 

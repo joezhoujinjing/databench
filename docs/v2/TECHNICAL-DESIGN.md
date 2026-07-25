@@ -56,7 +56,8 @@ v2.0 必须提供:
 
 - v1 自动迁移、双写或 v1→v2 ID 映射;
 - nested Parquet 查询优化、全局 record search index;
-- annotation workflow、异步 job platform、distributed compute;
+- annotation workflow、通用异步 job platform、distributed compute；ADR 0010 的后续修订只
+  窄增一个单 dispatcher/单 Worker slot 的 batch transform job，仍不授权通用调度平台;
 - retention/GC/legal hold/destructive redaction;
 - 生产部署平台选择。
 

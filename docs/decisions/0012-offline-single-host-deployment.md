@@ -8,6 +8,8 @@
   [ADR 0011](0011-identity-hashing-versioning-v2.md)
 - **产品/API/冒烟修订:** [ADR 0013](0013-v2-product-cutover-and-v1-retirement.md)
   将产品面改为 v2-only；以下决策文字已按该后续 ADR 更新
+- **Worker 澄清:** 2026-07-25 ADR 0010 重新规划的可选 Worker 不自动进入本离线包；加入时
+  需要本 ADR 的独立窄修订和新 gate
 - **详细方案:**
   [内网单机离线发布方案](../deployment/offline-single-host-plan.zh-CN.md)
 
@@ -21,7 +23,8 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
 1. 新增与现有发布并列的 `deploy/offline/**` 通道。联网 Apple Silicon Mac 使用 Docker
    Buildx 构建完整 `linux/amd64` 离线包，目标固定为 Ubuntu 22.04 LTS amd64。
 2. 离线拓扑固定为 Web/Caddy、Node API、PostgreSQL 17、MinIO 与一次性 MinIO/migration
-   任务。不包含 Docker bootstrap 或已退役的 Python Processing Worker。
+   任务。不包含 Docker bootstrap，也不自动包含 ADR 0010 后续规划的可选 Worker；若要加入，
+   必须另行窄修订本 ADR 并重跑完整离线 bundle/smoke gate。
 3. ADR 0008 的 production OSS 选择继续适用于现有阿里云环境；本 ADR 允许 MinIO 作为隔离
    内网单机 production 数据面。业务代码仍只通过 `Store` 接口和
    `DATABENCH_OBJECT_STORE=s3` 选择后端。MinIO bucket 不启用 versioning，API 使用

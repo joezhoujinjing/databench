@@ -1,587 +1,369 @@
-# ADR 0010 — Python Processing Service over internal gRPC
+# ADR 0010 — Long-running Python Worker over internal gRPC
 
-- **Status:** Accepted — owner confirmed the long-running Python service, gRPC
-  transport, synchronous short tasks, asynchronous batch jobs, and the
-  Proto/Zod boundary on 2026-07-23; owner further confirmed TS-client →
-  Python-server direction, no v1 canonical finalizer, no initial LLM, and
-  local/private-network-only v1. Same-day review amendment locks the importable
-  generated namespace, deterministic v1 stream failure, durable cancel-first
-  semantics, and cleanup fencing for the single worker slot
-- **Date:** 2026-07-23
+- **Status:** Accepted — owner accepted the original Python/gRPC boundary on
+  2026-07-23 and amended it on 2026-07-25 after the v2-only product cutover.
+  The amendment renames the service to **Worker**, makes it a generic Python
+  capability host, removes the retired v1/artifact-only product design, and
+  authorizes one narrow asynchronous v2 Data-Juicer transform that publishes a
+  canonical Dataset through TypeScript.
+- **Date:** 2026-07-23; amended 2026-07-25
 - **Deciders:** owner
-- **Amends:** [ADR-0001](0001-rebuild-as-ts-monorepo.md) Python boundary
+- **Amends:** [ADR 0001](0001-rebuild-as-ts-monorepo.md) Python boundary
 - **Depends on:**
-  [ADR-0002](0002-http-framework.md),
-  [ADR-0003](0003-storage-postgres-object-store.md),
-  [ADR-0008](0008-object-store-aliyun-oss.md), and
-  [ADR-0009](0009-canonical-post-training-record-v2.md)
+  [ADR 0002](0002-http-framework.md),
+  [ADR 0003](0003-storage-postgres-object-store.md),
+  [ADR 0008](0008-object-store-aliyun-oss.md),
+  [ADR 0009](0009-canonical-post-training-record-v2.md),
+  [ADR 0011](0011-identity-hashing-versioning-v2.md), and
+  [ADR 0013](0013-v2-product-cutover-and-v1-retirement.md)
+- **Detailed design:**
+  [Worker and Data-Juicer integration](../processing/TECHNICAL_DESIGN.md)
 
 ## Context
 
-Databench owns versioned datasets, immutable content-addressed storage, refs,
-transform caching, and lineage. Its core and public product surfaces are
-TypeScript. Some external processing frameworks that the product may integrate,
-starting with Data-Juicer, are Python-native and are expensive to start for every
-request. Future integrations may have the same constraint.
+Databench is now a v2-only product. TypeScript owns the public REST/OpenAPI
+surface, canonical record validation, Dataset identity, immutable object
+publication, transform cache, Run metadata, lineage and Refs. The current
+`V2Workspace.runTransform()` implementation is an eager, request-scoped path:
+it materializes `V2Dataset`, executes a deterministic TypeScript operation and
+publishes the result before returning HTTP 200.
 
-The product needs two execution shapes:
+Some useful computation frameworks are Python-native. Data-Juicer is the first
+integration, but it must not determine the shape or name of the long-lived
+service because later features may need unrelated Python libraries. Embedding
+Python into Node or spawning a fresh Python CLI for every request would weaken
+health, cancellation, dependency isolation and warm-start performance.
 
-1. **Synchronous short tasks**, such as processing one or a few small records or
-   previewing an operator. The caller waits for the result.
-2. **Asynchronous batch jobs**, such as cleaning, filtering, deduplicating,
-   desensitizing, or extracting a large dataset. The API returns a durable job ID
-   immediately while processing continues with progress, cancellation, manual
-   retry, and recovery.
+The local Data-Juicer 1.5.3 evaluation also proves that its useful batch path is
+not a synchronous HTTP transform: `np=1` processed 100,000 rows in about 61.5
+seconds and 500,000 rows in about 311.7 seconds. The current canonical Dataset
+limit remains 100,000 records / 512 MiB, so 500,000 rows are a Worker benchmark,
+not an authorized Databench end-to-end Dataset size.
 
-Embedding Python into the Node process would cross the existing dependency and
-runtime boundary. Starting a Python CLI subprocess per request would repeatedly
-pay import/model initialization cost, make cancellation and health checks weak,
-and complicate production isolation. Giving Python direct access to the catalog
-or canonical object keys would create a second owner of Databench identity,
-storage, and lineage.
-
-The owner has selected **gRPC** rather than internal REST for communication with
-Python. The existing Hono REST/OpenAPI surface remains the public product API.
+The original ADR predated the completed v2 finalizer and v1 product retirement.
+Its `/v1/processing/*`, v1 Dataset input and artifact-only completion model are
+therefore obsolete and are replaced by this amendment.
 
 ## Decision
 
-### 0. Keep the first version deliberately small
+### 1. Add one optional long-running service named Worker
 
-The first implementation is a **single-owner, trusted-environment** deployment,
-not a multi-tenant processing platform. It runs one API deployment and one
-Python Processing Service replica. It does not add tenants/projects, per-user
-authorization, quotas, a general scheduler, a job-attempt history table, or an
-external queue.
-
-The initial execution surface is deliberately narrow:
-
-- a generic deterministic fixture/operator preview through `ProcessInline`, used
-  to prove the transport and validation path without selecting a product-domain
-  processor or making an LLM/provider call;
-- asynchronous, non-LLM Data-Juicer batch processing through `RunJob`, producing
-  developer/test staging artifacts until the canonical v2 finalizer is ready.
-
-The architecture preserves stable seams for later scale, but a future use case
-must justify each added mechanism. In particular, multi-replica Python routing,
-bidirectional job streams, automatic replay of paid LLM work, multi-tenancy,
-fine-grained authorization/quotas, LLM-backed processors, and separate dispatcher
-deployments are not part of v1. No v1 Dataset importer is added merely to bridge
-the period before canonical v2 lands.
-
-### 1. Add one long-running Python execution plane
-
-Add a monorepo-owned service at:
+The service is called **Worker** in code and architecture documentation. It
+is a monorepo-owned Python process at:
 
 ```text
-workers/processing-python/
-  pyproject.toml
-  uv.lock
-  .python-version
-  Dockerfile
-  src/databench_worker/
-    grpc_server.py
-    job_runner.py
-    registry.py
-    adapters/
-      data_juicer.py
-  src/databench/processing/v1/
-    processing_pb2.py
-    processing_pb2_grpc.py
-  tests/
+workers/python/
 ```
 
-The first adapter is Data-Juicer. Future Python-native processors belong behind
-the same capability registry and transport instead of becoming separate product
-backends. Only explicitly registered processor names and versions may run; the
-protocol must not accept arbitrary Python modules, shell commands, or import
-paths from a caller.
-
-The service uses native ARM64 Python 3.11.15 initially, managed by native
-`uv 0.11.1`, with
-`pyproject.toml`, `.python-version`, and committed `uv.lock`. On Apple Silicon,
-the codegen/runtime preflight must reject an x86_64 `uv` or Python and must not
-fall back to the Rosetta tools under `/usr/local`. Tooling may accept an explicit
-native `uv` executable path, but it must not depend on another project directory.
-The container image is multi-architecture and pins the same Python minor and
-dependency lock used by development and CI.
-
-Data-Juicer is imported as a library inside the long-running process. Its
-dependencies and supported operators are installed and pinned when the image is
-built. Runtime package installation is disabled. Network access is denied by
-default and enabled only for an explicitly configured processor that requires a
-model/provider endpoint.
-
-### 2. Keep the public API HTTP and the internal execution transport gRPC
-
-The product topology is:
+It is a generic host for explicitly registered Python capabilities. Its first
+capability is:
 
 ```text
-apps/web
-   │ public REST/OpenAPI
-   ▼
-apps/api (Hono)
-   │
-   ▼
-@databench/workspace ── internal gRPC ──► processing-python
-   │                                          │
-   ├── Postgres job/catalog control plane     └── Data-Juicer/adapters
-   └── OSS/MinIO artifact and dataset plane          │
-                 ▲────────────────────────────────────┘ signed URLs only
+data_juicer.batch@1
 ```
 
-`apps/api` continues to depend only on `@databench/workspace` and
-`@databench/schema`. It never imports gRPC-generated code or a Python client
-directly. `@databench/workspace` owns a transport-neutral `ProcessingClient`
-interface; its internal gRPC implementation uses the generated TypeScript stub.
+Future capabilities may be added behind the same Worker protocol only after
+their TypeScript orchestration, input/output contract, resource limits and
+security review are defined. Worker never accepts arbitrary Python modules,
+functions, scripts, shell commands, package installation or import paths.
 
-The Python process is the gRPC server. It listens on an internal-only endpoint,
-default port `50051`. Production does not publish that port to the Internet.
-Local native development may bind it to loopback; container deployments expose
-it only on the private Compose/orchestrator network.
+### 2. Keep all Databench business authority in TypeScript
 
-### 3. Proto is the internal transport source; Zod remains the domain source
+TypeScript remains solely responsible for:
 
-The gRPC source of truth lives at:
+- resolving a Ref to an exact input Dataset version;
+- mapping canonical records into an execution-specific temporary format;
+- selecting and versioning the product transform definition;
+- computing the transform cache key and deterministic Run ID;
+- creating and updating durable transform jobs;
+- validating Worker output against the exact input revisions;
+- constructing the output `V2Dataset`;
+- calculating record/Dataset/artifact identities through existing code;
+- committing immutable objects and registering Run/lineage;
+- exposing REST, CLI and Web behavior.
+
+Worker does not understand Dataset, Ref, canonical record, candidate, lineage,
+cache or publication semantics. It does not connect to Postgres, does not hold
+long-lived OSS/MinIO credentials, does not calculate Databench identities and
+cannot write `objects/v2/` canonical keys.
+
+Worker necessarily contains technical adapter logic: capability registration,
+parameter safety checks, downloads/uploads, temporary files, subprocess or
+library execution, progress, cancellation, deadlines and cleanup. These are
+execution responsibilities, not a second Databench business layer.
+
+### 3. Use internal gRPC; keep public HTTP/OpenAPI
+
+The topology is:
 
 ```text
-proto/databench/processing/v1/processing.proto
+Web / CLI
+    │ public /v2 REST or in-process Workspace
+    ▼
+TypeScript Workspace
+    ├── Postgres: transform job + catalog control plane
+    ├── OSS/MinIO: temporary exchange + canonical data plane
+    └── internal gRPC ──► Worker ──► capability adapter
 ```
 
-The `.proto` file is the **only source of the internal transport contract** and
-generates both TypeScript and Python bindings. Generated files are never edited
-by hand, and CI verifies that generated output is current and that the Proto
-schema passes lint/compatibility checks.
+TypeScript is the gRPC client and Worker is the gRPC server. The browser never
+uses gRPC. `apps/api` and `apps/cli` continue to depend only on Workspace and
+Schema; generated Proto types remain private to Workspace.
 
-The file-system path deliberately matches the Proto package
-`databench.processing.v1`, satisfying Buf's package-directory rule. With
-`proto/` as the include root and the worker's `src/` as
-the Python output root, `grpcio-tools` generates importable modules at
-`databench.processing.v1.processing_pb2` and
-`databench.processing.v1.processing_pb2_grpc`. Generated Python imports must
-work from both the source tree and an installed wheel without import rewriting
-or `PYTHONPATH` manipulation.
-
-This does not change the existing Databench contract rule:
-
-- **Zod in `@databench/schema`** owns Databench domain models, business
-  validation, public REST request/response models, and OpenAPI generation.
-- **Proto** owns only transport messages between TypeScript and Python.
-- The Workspace boundary maps generated Proto DTOs to Zod domain values and
-  validates them before any persistence, version calculation, or public
-  response.
-- Python may use Pydantic for local configuration and adapter validation, but a
-  Pydantic model is not a second definition of the Databench domain model.
-
-Canonical Databench records are not modeled field-by-field in Proto. When a
-processor returns a domain-shaped JSON result, the transport carries UTF-8 JSON
-bytes plus a schema name/version. Workspace parses those bytes through the
-matching Zod schema. This prevents a second canonical schema and avoids losing
-JSON numeric representation through `google.protobuf.Struct` before Databench
-identity rules run.
-
-### 4. Define synchronous and asynchronous RPCs separately
-
-The initial service surface is conceptually:
-
-```proto
-service ProcessingService {
-  rpc DescribeCapabilities(DescribeCapabilitiesRequest)
-      returns (DescribeCapabilitiesResponse);
-
-  rpc ProcessInline(ProcessInlineRequest)
-      returns (ProcessInlineResponse);
-
-  rpc RunJob(RunJobRequest)
-      returns (stream JobEvent);
-
-  rpc CancelJob(CancelJobRequest)
-      returns (CancelJobResponse);
-}
-```
-
-The implementation also serves the standard gRPC health service. Python uses
-the bindings supplied by the pinned `grpcio-health-checking` dependency; the
-standard health Proto is not copied into `processing.proto` and v1 Workspace
-does not generate or call a separate TS health client. Workspace readiness uses
-the bounded `DescribeCapabilities` RPC. Exact Processing message fields are
-specified in the Proto change, but the following semantics are locked here.
-
-#### `ProcessInline`
-
-- Intended for one or a few small records, operator previews, and short
-  bounded processing.
-- Uses a unary request/response and an explicit deadline.
-- Carries small text/JSON payloads directly in gRPC.
-- Returns a structured result for Workspace to validate with Zod.
-- Does not create a Databench dataset version by default. A product operation
-  that saves the result must explicitly pass it through Workspace persistence.
-- The initial inline fixture/processor is deterministic and makes no
-  LLM/provider calls. Domain-specific and LLM-backed inline processors are later,
-  separately reviewed adapters rather than architecture requirements.
-
-#### `RunJob`
-
-- Intended for dataset-scale or long-running processing.
-- Receives a durable Databench job ID, attempt/lease token, versioned processor
-  specification, artifact descriptors, and output write targets.
-- Returns a server stream of typed events such as accepted, started, progress,
-  heartbeat, artifact-created, completed, failed, and cancelled.
-- The originating public HTTP request does not stay open. It returns a job
-  resource immediately; the TS dispatcher consumes the gRPC stream in the
-  background.
-- A lost stream is not proof that the processor itself failed, but v1 has no
-  artifact reconciliation algorithm. Without one valid terminal event followed
-  by gRPC `OK` EOF, Databench deterministically marks the still-current attempt
-  failed and requires an explicit new job; it never guesses success from an
-  orphan upload.
-
-The initial deployment has one Python replica and a configured maximum job
-deadline. Signed artifact URLs live longer than that deadline plus a safety
-buffer, so v1 does not need mid-stream URL refresh or a bidirectional RPC. A
-user cancellation first wins a durable conditional transition in Postgres;
-only then does TS cancel the active gRPC call and invoke `CancelJob` to drain the
-execution. If measured job durations or
-multi-replica routing invalidate these assumptions, `RunJob` may evolve to a
-bidirectional v2 RPC without changing the public REST/domain contract.
-
-`CancelJob` is idempotent cleanup at the Python execution layer. Databench
-remains the authority for the durable cancelled state and rejects completion
-from a stale attempt. Its response can release the database drain fence only
-when it explicitly confirms that the matching execution has stopped or is
-absent and the worker's single batch slot is idle; a token mismatch must never
-stop another execution.
-
-### 5. Keep Postgres as the durable job queue
-
-Do not add Redis, RabbitMQ, or another durable queue. Postgres remains the
-control plane, consistent with ADR-0003. The initial implementation uses one
-`processing_jobs` catalog model for the current job state and lease; it does not
-add attempt/event history tables. The minimum logical fields are:
+The internal transport source is:
 
 ```text
-id
-processor / processor_version
-status
-params_json
-input_versions / input_artifacts
-output_ref
-output_artifacts
-output_version
-attempt / max_attempts
-lease_owner / lease_token / lease_expires_at
-progress_json
-error_json
-created_at / started_at / finished_at / updated_at
+proto/databench/worker/v1/worker.proto
+package databench.worker.v1;
 ```
 
-Sample payloads, complete logs, Data-Juicer statistics, and generated datasets
-must not be stored in Postgres. JSON columns contain only bounded control-plane
-metadata and artifact descriptors.
+The protocol version is independent from the Databench product/API version.
+Generated sources are deterministic, committed and never edited manually.
 
-One small dispatcher loop starts and stops with the API process lifecycle (not
-from request middleware). It claims queued work in a short Postgres transaction,
-sets a time-bounded lease, commits that transaction, and only then invokes
-`RunJob`; no database transaction stays open across gRPC execution. The lease
-and conditional update shape preserves the option to run multiple dispatchers
-later without requiring that complexity in v1.
+### 4. Proto owns transport; Zod owns product and domain contracts
 
-The v1 default is `max_attempts = 1`. Lease expiry marks an execution failed;
-the owner may submit a new job manually. Only TypeScript-owned `finalizing` may
-retry automatically because it reuses an existing artifact and does not rerun
-Python or incur new model/provider cost. Processor-declared automatic retry,
-resume/checkpoint, and paid asynchronous LLM execution are deferred.
+Proto defines only generic Worker transport concepts:
 
-Every streamed event carries the job ID, attempt, and lease token. Catalog
-updates and finalization are conditional on the current lease token. Output
-artifacts use attempt-specific staging keys, so a late/stale Python attempt
-cannot overwrite or finalize the current attempt.
+- capability name/version;
+- bounded JSON parameter bytes plus schema identifier;
+- input artifact descriptors and output targets;
+- attempt/lease token;
+- accepted/started/progress/heartbeat/terminal events;
+- cancellation result and safe technical errors.
 
-The same lease token is also the durable execution-cleanup handle. A normal
-terminal event followed by `OK` EOF proves the worker execution has stopped and
-may clear it. A TS-side cancellation, lease expiry, deadline, protocol failure,
-or non-OK stream termination writes the public terminal state and
-`finished_at`, but retains the attempt/token as a cleanup-pending fence. Claim
-must reject every row with such a fence, including terminal rows. The dispatcher
-retries `CancelJob` across API restarts and clears the fence by CAS only after
-the worker confirms its single slot is idle. A cleanup timeout therefore does
-not permit the next job to be claimed and does not consume another job attempt
-through `RESOURCE_EXHAUSTED`.
+Proto must not define Databench canonical records, Data-Juicer presets, public
+transform job resources or REST DTOs. Those remain Zod-owned. Workspace maps
+between generated transport values and validated domain values at both
+directions. Python may use Pydantic for local adapter/config validation, but it
+is not a second public/domain schema source.
 
-The initial durable state machine is:
+### 5. Implement only one fixed Data-Juicer vertical slice first
+
+The first product operation is a named asynchronous v2 transform:
 
 ```text
-queued → leased → running → uploading → finalizing → completed
-             │         │          │           │
-             └─────────┴──────────┴───────────┴── failed
-                       lease expiry or execution failure
-
-uploading → completed                           artifact-only developer job
-
-queued / leased / running / uploading → cancelled
-finalizing → finalizing                 idempotent TS retry
+basic-clean@1
 ```
 
-`finalizing` is a TypeScript-owned state. It validates and imports already
-produced artifacts and can be retried without rerunning an expensive processor
-when the staging output is intact.
+It has one exact input Dataset, no public parameters and one TS-owned fixed
+execution plan named `basic-clean-v1`. There is no operator composer, custom
+field selector, arbitrary YAML, custom preset, LLM call or runtime dependency
+installation in this phase.
 
-### 6. Use gRPC as the control plane, not the bulk data plane
+The operation is selection-only. TypeScript projects each input revision into:
 
-Small inline inputs, configuration, status, progress, bounded summaries, and
-error details may travel in protobuf messages. Dataset bytes, large JSONL,
-Parquet, complete logs, Data-Juicer statistics, and intermediate state do not.
+```json
+{"record_id":"rec_...","record_digest":"...","text":"..."}
+```
 
-Batch data moves through OSS/MinIO with short-lived, least-privilege signed URLs:
+Worker/Data-Juicer returns only retained identities:
+
+```json
+{"record_id":"rec_...","record_digest":"..."}
+```
+
+TypeScript verifies that results are unique members of the exact input set and
+rebuilds the output from the original canonical records. Data-Juicer-modified
+text is never published in this version, so record identity mode is preserve.
+
+### 6. Add a narrow asynchronous v2 transform job, not a Processing product
+
+The public concept is a **transform job** under the existing Transform product.
+It is not a restored Processing surface. Web top-level navigation remains
+Dataset / Ingest / Transform and REST remains `/v2/*`.
+
+The first implementation uses one API process, one in-process dispatcher, one
+Worker replica and one active batch slot. Postgres is the durable queue; no
+Redis, RabbitMQ, external workflow engine or separate dispatcher deployment is
+added.
+
+A mutable transform job and an immutable successful Run are different things:
+
+- Job tracks queued/running/finalizing/failed/cancelled execution state.
+- Run exists only after canonical output publication succeeds and remains the
+  existing cache/lineage authority.
+
+`completed` means the canonical output Dataset and Run are registered. A
+Worker terminal event or uploaded file alone is never product completion.
+
+### 7. Reuse the current v2 publication path
+
+After valid retained identities are loaded, TypeScript builds a `V2Dataset` and
+reuses/refactors the existing publication invariants:
+
+1. Store `prepare()` and conditional `commit()`;
+2. catalog layout registration plus `V2Run` registration in one transaction;
+3. deterministic conflict handling for the same cache key;
+4. read-after-register verification;
+5. optional Ref movement remains a separate CAS operation.
+
+The first batch-job API does not move a Ref automatically. It returns the
+immutable output Dataset version; users may adopt it with the existing Ref CAS
+surface after review. This removes Ref conflict handling from the first Worker
+slice without weakening publication semantics.
+
+### 8. Use temporary object-store exchange for large inputs and outputs
+
+Large rows do not travel inside gRPC. Workspace creates attempt-scoped exact
+keys under a non-canonical namespace, writes the input and issues short-lived
+signed URLs. Worker gets only those URLs.
 
 ```text
-processing/jobs/<job-id>/attempts/<attempt>/input.*
-processing/jobs/<job-id>/attempts/<attempt>/uploads/<target-token>/output.*
-processing/jobs/<job-id>/attempts/<attempt>/uploads/<target-token>/stats.json
-processing/jobs/<job-id>/attempts/<attempt>/uploads/<target-token>/logs.jsonl
-processing/jobs/<job-id>/attempts/<attempt>/artifacts/output.*
-processing/jobs/<job-id>/attempts/<attempt>/artifacts/stats.json
-processing/jobs/<job-id>/attempts/<attempt>/artifacts/logs.jsonl
+staging/worker/v1/<job-id>/<attempt>/input.jsonl
+staging/worker/v1/<job-id>/<attempt>/output.jsonl
 ```
 
-The keys above are staging/sidecar keys, not canonical dataset keys. `uploads/`
-is worker-writable and attempt/target-scoped; `artifacts/` is conditionally
-sealed and never worker-writable. The Python service receives signed read/write targets and does not receive database
-credentials, long-lived object-store credentials, or permission to choose
-canonical `objects/<hash>/...` keys. URL values are secrets: they are redacted
-from logs and expire after a bounded interval.
+Staging output is not a user-facing artifact and is never authoritative. After
+Worker stops writing, TypeScript reads it once with size/digest limits,
+validates it, finalizes the canonical Dataset and deletes the exact temporary
+keys. No staging seal/copy subsystem is required for this first slice because a
+completed job never references staging. Cleanup must use exact known keys,
+never prefix deletion.
 
-The URL issuer and Python worker must use an endpoint reachable from the worker;
-signed URL hosts are not rewritten after signing. Local native execution may use
-loopback MinIO, while an all-container topology uses the MinIO service endpoint.
+### 9. Keep durable cancellation and stale-attempt fencing
 
-For v1, signed URL lifetime is derived from the configured maximum job deadline
-plus a safety buffer. Artifact-only success keeps the sealed staging artifacts
-for the configured development retention period because no canonical object is
-published. Failed/cancelled uploads and orphan sealed objects are removed by an
-explicit namespace-restricted maintenance command initially rather than a new
-background service. A future v2 finalizer may remove disposable staging objects
-only after its canonical object is durable.
+The dispatcher claims queued work with a short Postgres transaction and
+`FOR UPDATE SKIP LOCKED`, assigns an attempt and random lease token, and renews
+using database time. Every event and terminal transition is conditional on
+job ID + attempt + lease token + non-expired lease.
 
-### 7. Databench alone will finalize versions, refs, cache, and lineage
+Cancellation first commits a durable conditional job transition, then cancels
+the gRPC call and invokes Worker cleanup. A cancelled/failed attempt retains a
+cleanup fence until Worker confirms the matching execution is stopped or
+absent. A stale token cannot stop or complete a newer attempt. The first version
+does not automatically retry failed work; a user may explicitly retry the same
+deterministic job only after its cleanup fence is cleared.
 
-Python returns only staged artifacts, typed execution status, and bounded
-summaries. The following publication sequence becomes active only after the v2
-prerequisite gates described below are met; artifact-only developer jobs skip
-it. On a publishable successful execution, Workspace:
+A Worker `completed` event is only a candidate. Workspace requires the valid
+terminal event followed by gRPC `OK` EOF, then verifies the output. Any abnormal
+EOF, protocol violation, deadline or lost lease fails the current attempt; it
+never guesses success from an orphan upload.
 
-1. verifies the current job attempt/lease;
-2. reads the produced staging artifact;
-3. validates and normalizes it through the relevant Zod/domain importer;
-4. constructs the Databench dataset/record representation;
-5. computes canonical identity and version using Databench hashing rules;
-6. writes the immutable canonical object and manifest;
-7. records the run/cache/lineage edge;
-8. conditionally updates the requested ref, if any;
-9. marks the job completed with `output_version`.
+### 10. API entrypoint owns runtime lifecycle
 
-Canonical object persistence happens first and is idempotent. Dataset/run/job
-catalog updates and an optional ref update then happen in one Postgres control-
-plane transaction conditional on the current lease token. If `output_ref` is
-requested, job creation captures its current version and finalization uses
-compare-and-set; a late job never silently overwrites a ref that changed while
-it was running. A ref conflict preserves `output_version` and is reported to the
-owner for an explicit follow-up choice.
+The current request middleware lazily opens `V2Workspace`; that is insufficient
+for a background dispatcher. Worker integration adds an explicit optional
+runtime composition owned by the real API entrypoint:
 
-Python must never calculate or assert the authoritative Databench dataset
-version, mutate refs, write catalog runs, or publish canonical object keys. DVC,
-if later exposed by this service, may publish an explicit exported artifact but
-does not replace Databench semantic versioning or lineage.
+1. open `V2Workspace`;
+2. create gRPC Worker client;
+3. start dispatcher;
+4. start Hono server;
+5. on shutdown, stop intake, drain/cancel within a deadline, close Worker
+   client, close Workspace and close the HTTP server.
 
-ADR-0009's sidecar boundary remains in force: full Data-Juicer statistics,
-intermediate state, large traces, dedup graphs, and similar workflow artifacts
-remain sidecars keyed by job/record/candidate identity. Only stable, bounded
-fields selected by the domain model enter canonical records.
+`createApp()`, OpenAPI generation and tests remain side-effect free: they do not
+start timers, connect to Worker or launch a dispatcher.
 
-There is deliberately **no v1 batch finalizer**. Until ADR-0009's
-identity/version ADR and v2 plan gates are met, Data-Juicer batch execution is a
-developer/test path that may complete with staging `output_artifacts` but has no
-authoritative `output_version`, ref update, or lineage edge. `ProcessInline`
-returns validated structured JSON without creating a canonical dataset.
+### 11. Keep the first deployment local/private and optional
 
-Processor responses still carry a schema name/version. Once canonical v2
-identity and physical layout are accepted, a v2 finalizer implements the steps
-above without changing the gRPC service boundary. Public product behavior must
-not present an artifact-only developer job as a published Databench dataset.
+Worker is disabled unless explicitly configured. Local native development binds
+gRPC to loopback; containers expose it only on a private network. The initial
+implementation does not make this capability Internet-facing, multi-tenant or
+multi-replica.
 
-### 8. Preserve the monorepo dependency boundary
+ADR 0012's existing offline release does not automatically gain Worker. Adding
+the Worker image and lifecycle to that release requires a separate narrow ADR
+0012 amendment and offline bundle verification.
 
-The expected TypeScript additions are:
+### 12. Pin the Python runtime and dependencies
 
-```text
-packages/schema/src/processing.ts          # domain/public API Zod contracts
-packages/catalog/src/processing-jobs.ts   # bounded job metadata and leases
-packages/workspace/src/processing.ts       # orchestration and finalization
-packages/workspace/src/internal/grpc/      # generated client adapter (private)
-apps/api/src/routes/processing-jobs.ts     # public REST job surface
-apps/web/src/features/processing/          # job UX, added in a later phase
-```
+The first implementation uses native ARM64 Python 3.11.15 and native
+`uv 0.11.1` for Apple Silicon development, with committed `.python-version`,
+`pyproject.toml` and `uv.lock`. It must reject Rosetta Python/uv under
+`/usr/local`. CI/container builds use the same Python minor and lock.
 
-This does not add a dependency from `apps/api` to catalog, store, gRPC, or
-generated Proto code. Catalog remains Prisma-only and transport-agnostic.
-Workspace is the only layer that composes catalog, store, domain validation, and
-the processing transport.
+The first adapter pins `py-data-juicer==1.5.3`, runs with `np=1`, disables
+runtime installation and denies network access by default. A dependency that
+cannot safely coexist in this environment may later use another Worker
+deployment speaking the same protocol; the first version does not build worker
+pool routing.
 
-Existing synchronous `/v1/transforms/{name}/run` behavior is not changed. The
-new asynchronous public surface is separate, conceptually:
+## Explicitly out of scope
 
-```text
-POST /v1/processing/jobs
-GET  /v1/processing/jobs/{id}
-POST /v1/processing/jobs/{id}:cancel
-```
+- operator composition or custom Data-Juicer YAML;
+- user-selectable canonical fields or JSONPath;
+- publishing Data-Juicer-rewritten text;
+- LLM/provider execution;
+- multi-tenancy, quotas or per-user scheduling;
+- multiple Worker replicas or distributed compute;
+- automatic retries;
+- general-purpose arbitrary Python execution;
+- adding Worker to the ADR 0012 offline bundle;
+- raising the current 100k / 512 MiB canonical Dataset limits.
 
-Short product operations may expose purpose-specific HTTP endpoints that call
-`ProcessInline`; the web UI never calls Python gRPC directly.
+## Alternatives rejected
 
-### 9. Isolate execution, errors, and observability
+### Import Python into Node
 
-- The Python gRPC server separates network I/O from a bounded execution pool so
-  CPU/memory-heavy processors cannot block health checks and cancellation.
-- Each request/job carries `request_id`, `trace_id`, processor name/version, and
-  for jobs the job ID, attempt, and lease token.
-- Large logs are artifacts. Postgres stores only bounded progress and the final
-  normalized error summary.
-- Python gRPC status codes are transport details. Workspace maps them to typed
-  domain errors; only `apps/api` maps domain errors to the public HTTP error
-  envelope.
-- Python exception traces are retained in protected logs/artifacts and are not
-  returned verbatim to the browser.
-- Inline deadlines, maximum message bytes, job heartbeat/lease duration,
-  per-processor concurrency, memory, and CPU are explicit configuration with
-  bounded defaults. Exact values are selected and tested during implementation.
+Rejected because it couples runtimes, deployment and failure isolation inside
+the API process.
 
-### 10. Secure the internal channel
+### Spawn a fresh CLI for every request
 
-The initial Processing feature is for a single owner on loopback/local Compose
-or a trusted private network. Plaintext gRPC is allowed only there. Processing
-routes are disabled unless the Python target is explicitly configured, and v1
-must not expose them through an Internet-facing deployment. No public auth,
-shared-token scheme, or multi-tenant authorization system is introduced in this
-phase.
+Rejected because imports and environment initialization repeat, cancellation
+and health are weak, and future Python capabilities would duplicate wrappers.
 
-Production gRPC must run only on a private service network with authenticated
-transport. The exact mTLS versus TLS-plus-service-credential mechanism is chosen
-with the hosting platform rather than implemented speculatively in the local
-v1.
+### Create a Data-Juicer-specific service
 
-The public browser token is not reused as the worker credential. Secrets are
-injected at deployment time, never stored in job parameters or Proto artifacts,
-and never included in progress/error messages.
+Rejected because Data-Juicer is only the first Python capability. The Worker
+transport and runtime are generic; Data-Juicer remains an adapter.
 
-This ADR does not decide the still-open API/worker hosting platform. The design
-requires long-running containers, internal networking, native ARM64/amd64
-images, configurable CPU/memory, and no edge/FaaS runtime. The platform decision
-remains a separate deployment ADR/gate.
+### Let Worker own Databench Dataset publication
 
-### 11. Explicitly deferred extensions
+Rejected because it would create a second authority for canonical schema,
+identity, Store keys, Run and lineage.
 
-The following are extension points, not v1 implementation requirements:
+### Send the complete dataset through gRPC messages
 
-- multiple Python replicas and worker-aware cancellation/routing;
-- bidirectional job streams and mid-job signed URL refresh;
-- `processing_job_attempts` / event-history tables;
-- automatic retries, checkpoints, and resumable processors;
-- all LLM-backed processors, including inline and asynchronous batch processing;
-- multi-tenancy, projects, per-user RBAC, quotas, and billing controls;
-- a separate TS dispatcher service, Redis, RabbitMQ, or a workflow engine;
-- cross-job processing cache/deduplication;
-- automated staging-artifact retention/garbage-collection service;
-- any v1 canonical finalizer or compatibility importer;
-- canonical v2 finalization before ADR-0009's prerequisite decisions land.
+Rejected for batch work because it adds transport buffering, message-size and
+reconnect complexity. Existing OSS/MinIO is already the large-object data plane.
 
-Adding one of these later must preserve the current public REST/Zod contract,
-versioned Proto compatibility, and Databench ownership of finalization.
+### Keep artifact-only completion
 
-## Rejected alternatives
+Rejected because canonical v2 publication, Run, cache and lineage now exist.
+An artifact-only result would create a second, incomplete product state.
 
-### Import Python or use in-process FFI from Node
+### Add Redis or a workflow engine
 
-Rejected. It couples two runtimes and native dependency stacks in the core API
-process, weakens isolation, and violates the existing Python boundary.
-
-### Spawn `dj-process` or a Python script for every operation
-
-Rejected. It repeats interpreter/import/model startup, makes health and
-cancellation coarse, and is unsuitable for a reusable multi-adapter service.
-
-### Use internal REST/JSON instead of gRPC
-
-Rejected by owner decision. Public REST remains unchanged; internal Python
-execution uses typed gRPC with streaming progress and deadlines.
-
-### Send complete datasets through gRPC streaming
-
-Rejected. It creates avoidable memory/backpressure/message-limit pressure and
-duplicates the existing object-storage data plane. gRPC carries control and
-small payloads; object storage carries bulk artifacts.
-
-### Let Python access Postgres or canonical object-store keys directly
-
-Rejected. It would create a second catalog/version/lineage owner and make stale
-attempts capable of publishing authoritative state.
-
-### Let Pydantic mirror the Databench domain model
-
-Rejected. Zod remains the handwritten domain source. Proto/Pydantic types are
-transport or adapter-local validation only.
-
-### Add Redis or an external queue
-
-Rejected for the initial design. Postgres leases provide the required durable
-queue while preserving the two-stateful-service architecture. Revisit only with
-measured contention or scheduling requirements that Postgres cannot satisfy.
+Rejected for the single dispatcher/single slot design. Postgres leases are
+sufficient and preserve the current stateful-service boundary.
 
 ## Consequences
 
-- **+** Python-native frameworks can be integrated without putting Python in the
-  TS core or exposing them directly to the UI.
-- **+** One warm service amortizes Data-Juicer imports, models, and caches.
-- **+** Unary and server-streaming gRPC cover quick previews and observable long
-  jobs without changing the public REST contract.
-- **+** Postgres leases and attempt-scoped artifacts make dispatch recoverable
-  without another durable queue.
-- **+** Databench remains the single authority for validation, identity,
-  versions, refs, cache, and lineage.
-- **+** The Python service is stateless with respect to authoritative product
-  data and can be scaled/replaced independently.
-- **−** The repository gains a second language toolchain, Proto generation, and
-  cross-language compatibility tests.
-- **−** Long-running gRPC streams, cancellation, lease expiry, and stale-attempt
-  fencing require careful integration tests.
-- **−** Signed URL generation must be implemented for both Aliyun OSS and local
-  S3/MinIO adapters, with worker-reachable endpoints.
-- **−** A Python dependency/image policy is required to prevent adapter extras
-  from producing an unmaintainable single environment.
+- **+** Python libraries can be added without entering the TypeScript core.
+- **+** Data-Juicer becomes a normal v2 transform with Dataset/Run/lineage.
+- **+** Worker remains replaceable and stateless with respect to authoritative
+  product data.
+- **+** The first slice has one fixed operation and no premature composer.
+- **−** The repository gains Python, Proto and cross-language gates.
+- **−** API startup/shutdown and durable background work become more complex.
+- **−** OSS and S3/MinIO adapters need bounded temporary object and signed URL
+  support in addition to canonical conditional objects.
+- **−** Long-running cancellation, lease expiry and abnormal EOF need real
+  Postgres/MinIO/Worker integration tests.
 
 ## Implementation order
 
-This ADR authorizes the architecture, not an unreviewed all-at-once code change.
-Implementation should be split into independently gated changes:
+Each accepted step is a separate commit/PR and must pass its gate before the
+next begins:
 
-1. Proto v1, deterministic TS/Python generation, capability messages, standard
-   health binding source policy, native-toolchain/import smoke, and wire-vector
-   contract tests.
-2. Native Python 3.11/`uv` worker skeleton plus a TS `ProcessingClient` fake and
-   gRPC adapter; implement standard Python health and a minimal normal
-   `RunJob` terminal-to-`OK EOF` test here.
-3. Deterministic, non-LLM `ProcessInline` end-to-end with a generic fixture and
-   Zod validation; do not introduce a domain-specific product schema here.
-4. One processing-job table, one API-lifecycle dispatcher loop, single-attempt
-   leasing, durable cleanup fencing, and cancellation/stale-result/crash tests.
-5. OSS/MinIO staging artifacts and signed URLs, then the full `RunJob` stream
-   automaton and abnormal-EOF/seal-crash tests.
-6. Data-Juicer adapter with pinned operators/dependencies and no runtime install,
-   initially producing developer/test artifacts only.
-7. Pause canonical publication until ADR-0009's prerequisites land; then add an
-   idempotent v2 Workspace finalizer into dataset/run/ref/lineage.
-8. Add local/private processing REST routes and UI; do not expose the feature as
-   an Internet-facing or published-dataset workflow before the relevant gates.
-
-Each public contract change still follows Zod → OpenAPI → generated web client,
-and each Proto change regenerates and verifies both language bindings in the
-same change.
+1. **P0 — documentation alignment:** this ADR amendment, detailed design, v2
+   non-goal amendment and planned layout.
+2. **P1 — Worker foundation:** Proto, deterministic TS/Python generation,
+   native toolchain, Python package, health/capabilities, gRPC client and a
+   test-only deterministic capability.
+3. **P2 — transform job control:** Zod/OpenAPI job contracts, Prisma migration,
+   Catalog CAS/lease methods and API-entrypoint dispatcher lifecycle using a
+   fake Worker client.
+4. **P3 — temporary data plane:** exact staging keys, signed GET/PUT, bounded
+   verification/cleanup and a fake capability end-to-end.
+5. **P4 — Data-Juicer adapter:** pinned 1.5.3, fixed `basic-clean-v1`, `np=1`,
+   selection-only input/output and 100/10k/100k tests.
+6. **P5 — canonical finalizer:** retained-subset validation, output
+   `V2Dataset`, shared publish helpers, atomic job+Run registration, cache and
+   lineage tests.
+7. **P6 — product surface:** `/v2` transform-job REST, generated client and a
+   minimal Transform-page submit/progress/cancel/result flow.
+8. **P7 — final gate:** full repository gates plus real Postgres, MinIO,
+   Worker, restart/cancel/determinism and browser lifecycle smoke.

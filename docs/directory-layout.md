@@ -274,3 +274,34 @@ prisma/
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。
+
+## Worker 规划布局（ADR 0010，尚未实现）
+
+以下是后续 P1-P6 的权威落点；目录落地前不得在当前状态文档中宣称 Worker runtime 已存在：
+
+```text
+proto/
+├─ buf.yaml
+├─ buf.gen.yaml
+└─ databench/worker/v1/worker.proto
+
+workers/python/
+├─ .python-version
+├─ pyproject.toml
+├─ uv.lock
+├─ Dockerfile
+├─ src/
+│  ├─ databench_worker/        server、registry、runtime、adapters
+│  └─ databench/worker/v1/     generated Python bindings
+└─ tests/
+
+packages/ops/src/v2/batch/     batch definition/registry；首个 Data-Juicer selection transform
+packages/store/src/v2/worker-staging*.ts
+packages/workspace/src/internal/worker/  client/dispatcher/generated TS bindings
+packages/workspace/src/v2/batch-transform.ts
+apps/api/src/routes/v2/transform-jobs.ts
+```
+
+Proto/generated code 只在 Workspace internal 与 Worker generated package 出现。`apps/api`、
+`apps/cli` 和 `apps/web` 不导入 generated Proto；公共 contract 仍为 Zod → OpenAPI → generated
+Web client。完整边界与每个实施切片见 `docs/processing/TECHNICAL_DESIGN.md`。
