@@ -78,10 +78,11 @@ Web 不 import 后端包，只消费由 OpenAPI 生成的类型。
 - Transform 产生 immutable output dataset、run metadata 和 record lineage。
 - Export 先 inspect fidelity plan，再由调用方明确接受 digest 后流式输出。
 
-退役的 v1 Recipe/Vocabulary/Processing 产品实现不在当前 runtime 中。ADR 0010 后续规划的
-可选 Worker 是新的内部执行边界，不恢复 Processing 产品：Worker 只运行 allowlisted Python
-capability，Workspace 仍负责 canonical Dataset、Run、cache 和 lineage。该 Worker 尚未实现，
-当前已部署拓扑仍只有 TypeScript API、Postgres 与对象存储。
+退役的 v1 Recipe/Vocabulary/Processing 产品实现不在当前 runtime 中。ADR 0010 的可选 Worker
+是新的内部执行边界，不恢复 Processing 产品：Worker 只运行 allowlisted Python capability，
+Workspace 仍负责 canonical Dataset、Run、cache 和 lineage。P1 已完成 Proto、通用 Python
+server 与 Workspace internal client；Job、staging、Data-Juicer 和应用生命周期尚未接入，当前
+已部署拓扑仍只有 TypeScript API、Postgres 与对象存储。
 
 ## 部署
 

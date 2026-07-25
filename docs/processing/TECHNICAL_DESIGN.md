@@ -1,6 +1,6 @@
 # Worker 与 Data-Juicer 接入技术方案
 
-- **状态：** Accepted design；P0 文档修订，运行时代码尚未开始
+- **状态：** Accepted design；P0-P1 已完成，下一步 P2 Job 控制面
 - **日期：** 2026-07-25
 - **决策：**
   [ADR 0010 — Long-running Python Worker over internal gRPC](../decisions/0010-python-processing-service-grpc.md)
@@ -147,9 +147,10 @@ flowchart LR
 | API | REST 映射、entrypoint 生命周期 | 直连 Catalog/Store/gRPC |
 | Worker | 通用执行 runtime 与 adapter | Databench identity、PG、canonical keys |
 
-## 5. 计划目录
+## 5. 权威目录
 
-这些目录在对应 Step 实现；P0 只记录落点，不伪造已存在代码。
+P1 的 Proto、Worker package 和 Workspace internal client 已落地；其余目录仍按对应 Step 创建，
+不能把计划中的 P2-P6 文件误写成当前实现。
 
 ```text
 proto/
@@ -988,7 +989,7 @@ ingest exact Dataset
 
 ## 19. 实施切片
 
-### P0 — 文档对齐（当前）
+### P0 — 文档对齐（已完成）
 
 - 修订 ADR 0010；
 - 重写本文与 HANDOFF；
@@ -997,7 +998,7 @@ ingest exact Dataset
 
 Gate：链接、术语、v1/artifact-only 残留和 `git diff --check`。
 
-### P1 — Worker 基础
+### P1 — Worker 基础（已完成）
 
 - `databench.worker.v1` Proto/Buf/codegen；
 - `workers/python` 原生工具链与最小 server；
@@ -1005,6 +1006,9 @@ Gate：链接、术语、v1/artifact-only 残留和 `git diff --check`。
 - TS transport-neutral client + gRPC implementation；
 - `fixture.copy@1` 仅用于测试；
 - 不建 job 表、不接 Data-Juicer。
+
+Gate：Buf lint 与确定性双语言 codegen、Python source/wheel import、标准 health、正常复制、
+matching token 取消、异常 EOF、原生 ARM64 Python/uv preflight，以及当前全仓 gate。
 
 ### P2 — Job 控制面
 

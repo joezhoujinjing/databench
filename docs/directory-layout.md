@@ -275,9 +275,9 @@ prisma/
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。
 
-## Worker 规划布局（ADR 0010，尚未实现）
+## Worker 布局（ADR 0010）
 
-以下是后续 P1-P6 的权威落点；目录落地前不得在当前状态文档中宣称 Worker runtime 已存在：
+P1 foundation 已落地；标为“planned”的目录只在对应 P2-P6 实现后成为 runtime：
 
 ```text
 proto/
@@ -295,11 +295,11 @@ workers/python/
 │  └─ databench/worker/v1/     generated Python bindings
 └─ tests/
 
-packages/ops/src/v2/batch/     batch definition/registry；首个 Data-Juicer selection transform
-packages/store/src/v2/worker-staging*.ts
-packages/workspace/src/internal/worker/  client/dispatcher/generated TS bindings
-packages/workspace/src/v2/batch-transform.ts
-apps/api/src/routes/v2/transform-jobs.ts
+packages/ops/src/v2/batch/     planned：batch definition 与首个 Data-Juicer transform
+packages/store/src/v2/worker-staging*.ts  planned：受限 staging 数据面
+packages/workspace/src/internal/worker/  已实现 client/generated；dispatcher planned
+packages/workspace/src/v2/batch-transform.ts  planned
+apps/api/src/routes/v2/transform-jobs.ts       planned
 ```
 
 Proto/generated code 只在 Workspace internal 与 Worker generated package 出现。`apps/api`、

@@ -3,6 +3,7 @@ packages:
   - "packages/*"
   - "tooling/*"
 allowBuilds:
+  '@bufbuild/buf': true
   '@prisma/engines': true
   prisma: true
   # esbuild ships its native binary via an install script (used by tsup); pnpm 11
@@ -10,3 +11,4 @@ allowBuilds:
   # dependency with one must be listed here or installs fail on a clean machine/CI.
   esbuild: true
   lefthook: true
+  protobufjs: true

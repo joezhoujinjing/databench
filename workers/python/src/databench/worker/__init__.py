@@ -1,0 +1,1 @@
+"""Worker protocol namespace."""

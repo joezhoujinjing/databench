@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!openapi.json"]
+    "includes": ["**", "!openapi.json", "!packages/workspace/src/internal/worker/generated"]
   },
   "formatter": {
     "enabled": true,

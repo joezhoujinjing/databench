@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling==1.28.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "databench-worker"
+version = "0.1.0"
+description = "Databench generic Python capability worker"
+requires-python = "==3.11.*"
+dependencies = [
+  "grpcio==1.83.0",
+  "grpcio-health-checking==1.83.0",
+  "protobuf==7.35.1",
+]
+
+[project.scripts]
+databench-worker = "databench_worker.grpc_server:main"
+
+[dependency-groups]
+dev = [
+  "grpcio-tools==1.83.0",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/databench", "src/databench_worker"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

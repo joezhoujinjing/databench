@@ -7,6 +7,32 @@ on:
       - main
 
 jobs:
+  worker-foundation:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.11.15
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.11.1
+
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --directory workers/python --frozen
+      - run: pnpm codegen:worker:check
+      - run: pnpm test:worker:python
+      - run: pnpm --filter @databench/workspace test:worker
+
   validate:
     runs-on: ubuntu-latest
     steps:

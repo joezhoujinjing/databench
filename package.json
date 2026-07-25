@@ -9,11 +9,14 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "codegen:worker": "bash scripts/generate-worker-proto.sh",
+    "codegen:worker:check": "bash scripts/check-worker-proto-generated.sh",
     "dev": "turbo run dev --parallel",
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:worker:python": "bash workers/python/scripts/check-package.sh",
     "v2:status:check": "node scripts/check-v2-status.mjs",
     "v1:retire": "pnpm --filter @databench/v1-retirement retire",
     "openapi:check": "turbo run openapi:check",
@@ -22,6 +25,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",
+    "@bufbuild/buf": "1.72.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@types/node": "^24.0.0",
@@ -29,6 +33,7 @@
     "pg": "^8.22.0",
     "prisma": "^7.8.0",
     "tsup": "^8.3.0",
+    "ts-proto": "2.12.0",
     "turbo": "^2.5.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0"

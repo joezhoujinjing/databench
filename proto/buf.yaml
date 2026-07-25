@@ -1,0 +1,12 @@
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+  except:
+    # The accepted transport contract calls each streamed response a JobEvent.
+    - RPC_RESPONSE_STANDARD_NAME
+breaking:
+  use:
+    - FILE

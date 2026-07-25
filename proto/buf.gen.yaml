@@ -1,0 +1,12 @@
+version: v2
+clean: true
+plugins:
+  - local: protoc-gen-ts_proto
+    out: packages/workspace/src/internal/worker/generated
+    opt:
+      - env=node
+      - esModuleInterop=true
+      - outputServices=grpc-js
+      - useOptionals=messages
+      - useExactTypes=false
+      - importSuffix=.js

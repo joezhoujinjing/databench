@@ -1,8 +1,8 @@
 # Worker / Data-Juicer 接入交接
 
 - **交接日期：** 2026-07-25
-- **当前阶段：** P0 技术方案已按最新 v2-only 代码重写；运行时代码尚未开始
-- **下一步：** P1 — Worker Proto、双语言生成、原生 Python package 和最小 gRPC skeleton
+- **当前阶段：** P0-P1 已完成；Worker foundation 已落地但尚未接入产品 runtime
+- **下一步：** P2 — transform job Catalog 状态机与 fake Worker dispatcher
 - **详细方案：** [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md)
 - **决策：**
   [ADR 0010](../decisions/0010-python-processing-service-grpc.md)
@@ -23,13 +23,18 @@ identities，并通过现有 v2 Store/Catalog 发布正式 Dataset、Run、cache
 | v2 Dataset/Store/Run/cache/lineage/Ref | 已实现，必须复用 |
 | 当前同步 `V2TransformDefinition.run()` | 已实现，保持不变 |
 | Worker ADR/技术方案 | 已按 v2-only 修订 |
-| `proto/databench/worker/v1` | 尚未创建 |
-| `workers/python` | 尚未创建 |
+| `proto/databench/worker/v1` | 已实现；Buf lint 与 TS/Python deterministic codegen |
+| `workers/python` | 已实现 foundation；health、registry、RunJob/CancelJob、test fixture |
+| Workspace Worker client | 已实现 internal transport-neutral contract + gRPC adapter |
 | `transform_jobs_v2` | 尚未创建 |
 | Worker staging Store | 尚未创建 |
 | Data-Juicer monorepo adapter | 尚未创建 |
 | batch transform REST/Web | 尚未创建 |
-| 下一切片 | P1 Worker foundation |
+| 下一切片 | P2 Job control plane |
+
+P1 Gate（2026-07-25）：Python 2/2 tests 与 source/wheel import smoke、TS↔Python 5/5
+integration tests、确定性 codegen、原生 ARM64 preflight 全部通过；全仓 lint 351 files、build
+13/13、typecheck 22/22、test 22/22、OpenAPI 11/11、v2 status 与 `git diff --check` 通过。
 
 桌面实验目录：
 

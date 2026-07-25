@@ -16,10 +16,13 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --sourcemap --clean && tsc --emitDeclarationOnly",
+    "test:worker": "RUN_WORKER_INTEGRATION_TESTS=1 vitest run test/worker-grpc.integration.test.ts",
     "typecheck": "tsc --noEmit",
     "test": "node ../../scripts/with-test-db-schema.mjs --reset databench_test_workspace pnpm --dir ../.. exec prisma migrate deploy && node ../../scripts/with-test-db-schema.mjs databench_test_workspace vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@bufbuild/protobuf": "2.13.0",
+    "@grpc/grpc-js": "1.14.4",
     "@databench/catalog": "workspace:*",
     "@databench/engine": "workspace:*",
     "@databench/hashing": "workspace:*",

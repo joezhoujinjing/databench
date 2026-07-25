@@ -40,9 +40,9 @@ CLI: databench dataset|converter|transform|ref|lineage ...
 REST: /v2/...
 ```
 
-## 已接受的 Worker 规划（尚未实现）
+## Worker 执行边界
 
-ADR 0010 在当前 v2-only 基线上规划两个新顶层目录：
+ADR 0010 P1 已在当前 v2-only 基线上落地两个顶层目录：
 
 ```text
 proto/                  internal Worker gRPC 唯一 transport source
@@ -56,9 +56,10 @@ apps/api → workspace → internal generated gRPC client → Worker
 Worker → allowlisted Python capability adapter
 ```
 
-Data-Juicer 是第一个 adapter。Worker 不依赖 TS packages、不访问 Postgres、不持有对象存储
-长期凭据，也不拥有 canonical identity/publication。相应目录只有在 ADR 0010 P1 后才是当前
-runtime；P0 阶段以 `docs/processing/` 为计划真源。
+Data-Juicer 是第一个计划中的 runtime adapter。Worker 不依赖 TS packages、不访问 Postgres、
+不持有对象存储长期凭据，也不拥有 canonical identity/publication。当前只完成通用 server、
+Proto/client、health 和 test-only `fixture.copy@1`；Job、staging、Data-Juicer 与产品面仍未实现。
+进度与后续施工边界以 `docs/processing/` 为真源。
 
 ## 依赖方向
 

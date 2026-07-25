@@ -1,5 +1,9 @@
 # Dependencies
 node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
 # Build outputs
 dist/
@@ -13,6 +17,7 @@ coverage/
 .DS_Store
 .claude/
 .codex/
+.codex-tmp/
 .shareone_history.json
 .playwright-cli/
 output/
