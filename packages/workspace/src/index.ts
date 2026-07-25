@@ -16,10 +16,12 @@ export {
   IncompleteWorkerJobFinalizer,
   type PreparedWorkerRunJob,
   UnavailableWorkerJobPreparer,
+  type WorkerCleanupContext,
   WorkerDispatcher,
   type WorkerDispatcherCatalog,
   type WorkerDispatcherOptions,
   type WorkerFinalizationContext,
+  type WorkerJobCleaner,
   type WorkerJobFinalizer,
   type WorkerJobPreparer,
   type WorkerPreparationContext,
@@ -30,4 +32,12 @@ export {
   openWorkerRuntime,
   type WorkerRuntime,
 } from './internal/worker/runtime.js'
+export {
+  UnavailableWorkerJobCleaner,
+  type WorkerStagingCatalogV1,
+  type WorkerStagingInputProjectorV1,
+  WorkerStagingJobCleanerV1,
+  WorkerStagingJobPreparerV1,
+  type WorkerStagingJobPreparerV1Options,
+} from './internal/worker/staging.js'
 export * from './v2/index.js'

@@ -29,6 +29,8 @@ function hasWorkerCatalogMethods(value: object): value is WorkerDispatcherCatalo
     'markTransformJobFailed',
     'markTransformJobCancelled',
     'requestTransformJobCancellation',
+    'setTransformJobStagingKeys',
+    'clearTransformJobStagingKeys',
     'clearTransformJobLeaseFence',
     'failExpiredTransformJobLeases',
     'findTransformJobCleanupFence',

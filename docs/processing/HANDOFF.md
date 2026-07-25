@@ -1,8 +1,8 @@
 # Worker / Data-Juicer 接入交接
 
 - **交接日期：** 2026-07-25
-- **当前阶段：** P0-P2 已完成；Worker 控制面已接入真实 API entrypoint
-- **下一步：** P3 — exact-key staging、投影与 retained result reader
+- **当前阶段：** P0-P3 已完成；Worker 临时数据面已通过真实 MinIO/ARM64 Python gate
+- **下一步：** P4 — Data-Juicer 1.5.3 adapter 与固定 `basic-clean-v1`
 - **详细方案：** [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md)
 - **决策：**
   [ADR 0010](../decisions/0010-python-processing-service-grpc.md)
@@ -29,10 +29,12 @@ identities，并通过现有 v2 Store/Catalog 发布正式 Dataset、Run、cache
 | `transform_jobs_v2` | 已实现；真实 Postgres lease/CAS/cleanup fence |
 | Workspace dispatcher | 已实现；单槽 claim、capability gate、事件映射、异常 EOF、durable cancel |
 | API runtime owner | 已实现；Worker disabled 无副作用，enabled 显式 start/stop |
-| Worker staging Store | 尚未创建 |
+| Worker staging Store | 已实现；exact keys、signed URL、bounded read/delete |
+| Workspace projection/result reader | 已实现；`record-text-v1` + strict retained subset |
+| Dispatcher staging cleanup | 已实现；object → row keys → lease fence 顺序 |
 | Data-Juicer monorepo adapter | 尚未创建 |
 | batch transform REST/Web | 尚未创建 |
-| 下一切片 | P3 temporary data plane |
+| 下一切片 | P4 Data-Juicer adapter |
 
 P1 Gate（2026-07-25）：Python 2/2 tests 与 source/wheel import smoke、TS↔Python 5/5
 integration tests、确定性 codegen、原生 ARM64 preflight 全部通过；全仓 lint 351 files、build
@@ -41,6 +43,12 @@ integration tests、确定性 codegen、原生 ARM64 preflight 全部通过；�
 P2 Gate（2026-07-25）：Prisma migration、真实 Postgres 27/27 Catalog tests、fake Worker
 dispatcher 4/4 tests、API lifecycle/DTO tests 通过；全仓 lint 355 files、build 13/13、typecheck
 22/22、test 22/22、OpenAPI 11/11、v2 status、peer 与 `git diff --check` 通过。
+
+P3 Gate（2026-07-25）：真实 Postgres 28/28 Catalog tests、Store staging/OSS/S3 tests、
+projection/retained/dispatcher tests，以及真实 MinIO + native ARM64 Python Worker 6/6 integration
+tests 通过；错误 method、Content-Type、过期 URL 和 cleanup failure 均 fail closed。全仓 lint 361
+files、build 13/13、typecheck 22/22、test 22/22、OpenAPI 11/11、v2 status、peer 与
+`git diff --check` 通过。
 
 桌面实验目录：
 
@@ -222,7 +230,7 @@ workers/python/src/databench/worker/v1/worker_pb2_grpc.py
 
 source tree 和 wheel 都必须 import 成功；generated 不手改。
 
-## 9. 已落地文件范围（P1-P2）
+## 9. 已落地文件范围（P1-P3）
 
 P1 只做 Worker foundation：
 
@@ -250,15 +258,23 @@ packages/workspace/src/internal/worker/
 └─ generated/
 
 prisma/migrations/0007_transform_jobs_v2/
+prisma/migrations/0008_worker_staging_v1/
 apps/api/src/config.ts
 apps/api/src/index.ts
+
+packages/store/src/v2/
+├─ worker-staging-keys.ts
+└─ worker-staging.ts
+
+packages/workspace/src/
+├─ internal/worker/staging.ts
+└─ v2/batch-transform.ts
 ```
 
 根 `package.json`、`pnpm-workspace.yaml`、`turbo.json`、CI 和 ignore 可为 codegen/gates 调整。
 
-P2 结束后仍未实现：
+P3 结束后仍未实现：
 
-- Store staging；
 - Data-Juicer dependency；
 - canonical finalizer；
 - REST/Web。
@@ -285,7 +301,7 @@ P2 结束后仍未实现：
 |---|---|---|
 | P1 ✅ | Proto + Worker skeleton + client | fake capability 跨语言通过 |
 | P2 ✅ | transform job/Catalog/dispatcher lifecycle | fake client 下 durable state machine 通过 |
-| P3 | staging signed URL | real MinIO round-trip 通过 |
+| P3 ✅ | staging signed URL + projection/result reader | real MinIO round-trip 通过 |
 | P4 | Data-Juicer adapter | 100/10k/100k determinism/cancel 通过 |
 | P5 | canonical finalizer | output Dataset/Run/cache/lineage 通过 |
 | P6 | REST/Web/可选 CLI | 用户可提交、刷新、取消、进入结果 |

@@ -2,6 +2,7 @@ import type {
   CatalogTransformJobRowV2,
   ClaimTransformJobV2,
   FailTransformJobV2,
+  SetTransformJobStagingKeysV2,
   TransformJobLeaseV2,
   UpdateTransformJobProgressV2,
 } from '@databench/catalog'
@@ -19,6 +20,7 @@ import {
   IncompleteWorkerJobFinalizer,
   WorkerDispatcher,
   type WorkerDispatcherCatalog,
+  type WorkerJobCleaner,
   type WorkerJobPreparer,
 } from '../src/internal/worker/dispatcher.js'
 
@@ -116,9 +118,82 @@ describe('WorkerDispatcher', () => {
     expect(catalog.transitions).toContain('cancel-requested')
     expect(catalog.transitions).toContain('fence-cleared')
   })
+
+  test('deletes exact staging before clearing keys and the cleanup fence', async () => {
+    const catalog = new FakeCatalog()
+    catalog.row = {
+      ...catalog.row,
+      inputKey: `staging/worker/v1/${catalog.row.id}/1/input.jsonl`,
+      outputKey: `staging/worker/v1/${catalog.row.id}/1/output.jsonl`,
+    }
+    const client = new FakeClient(async function* () {
+      yield event('accepted')
+      yield event('started')
+      yield {
+        type: 'failed',
+        timestampUnixMs: Date.now(),
+        code: 'fixture',
+        message: 'x',
+        retryable: false,
+      }
+    })
+    const cleaner: WorkerJobCleaner = {
+      async cleanup() {
+        catalog.transitions.push('objects-deleted')
+      },
+    }
+    const dispatcher = createDispatcher(catalog, client, cleaner)
+
+    await dispatcher.start()
+    await waitUntil(() => catalog.row.leaseToken === null)
+    await dispatcher.stop()
+
+    expect(catalog.transitions.slice(-3)).toEqual([
+      'objects-deleted',
+      'staging-cleared',
+      'fence-cleared',
+    ])
+  })
+
+  test('retains the cleanup fence when exact staging deletion fails', async () => {
+    const catalog = new FakeCatalog()
+    catalog.row = {
+      ...catalog.row,
+      inputKey: `staging/worker/v1/${catalog.row.id}/1/input.jsonl`,
+      outputKey: `staging/worker/v1/${catalog.row.id}/1/output.jsonl`,
+    }
+    const client = new FakeClient(async function* () {
+      yield {
+        type: 'failed',
+        timestampUnixMs: Date.now(),
+        code: 'fixture',
+        message: 'x',
+        retryable: false,
+      }
+    })
+    const cleaner: WorkerJobCleaner = {
+      async cleanup() {
+        throw new Error('object store unavailable')
+      },
+    }
+    const dispatcher = createDispatcher(catalog, client, cleaner)
+
+    await dispatcher.start()
+    await waitUntil(() => catalog.row.status === 'failed')
+    await new Promise<void>((resolve) => setTimeout(resolve, 10))
+    await dispatcher.stop()
+
+    expect(catalog.row.leaseToken).toBe(TOKEN)
+    expect(catalog.transitions).not.toContain('staging-cleared')
+    expect(catalog.transitions).not.toContain('fence-cleared')
+  })
 })
 
-function createDispatcher(catalog: FakeCatalog, client: FakeClient): WorkerDispatcher {
+function createDispatcher(
+  catalog: FakeCatalog,
+  client: FakeClient,
+  cleaner: WorkerJobCleaner = { async cleanup() {} },
+): WorkerDispatcher {
   const preparer: WorkerJobPreparer = {
     async prepare() {
       return {
@@ -137,6 +212,7 @@ function createDispatcher(catalog: FakeCatalog, client: FakeClient): WorkerDispa
     client,
     preparer,
     finalizer: new IncompleteWorkerJobFinalizer(),
+    cleaner,
     leaseOwner: 'dispatcher.test',
     leaseMs: 100,
     heartbeatMs: 20,
@@ -207,6 +283,12 @@ class FakeCatalog implements WorkerDispatcherCatalog {
     return true
   }
 
+  async setTransformJobStagingKeys(input: SetTransformJobStagingKeysV2) {
+    if (!this.active(input) || this.row.status !== 'leased') return false
+    this.row = { ...this.row, inputKey: input.inputKey, outputKey: input.outputKey }
+    return true
+  }
+
   async markTransformJobFinalizing(input: TransformJobLeaseV2) {
     if (!this.active(input) || this.row.status !== 'running') return null
     this.row = { ...this.row, status: 'finalizing' }
@@ -245,6 +327,15 @@ class FakeCatalog implements WorkerDispatcherCatalog {
     if (!this.active(input) || !['failed', 'cancelled'].includes(this.row.status)) return false
     this.row = { ...this.row, leaseOwner: null, leaseToken: null, leaseExpiresAt: null }
     this.transitions.push('fence-cleared')
+    return true
+  }
+
+  async clearTransformJobStagingKeys(input: TransformJobLeaseV2) {
+    if (!this.active(input) || !['failed', 'cancelled'].includes(this.row.status)) return false
+    if (this.row.inputKey !== null || this.row.outputKey !== null) {
+      this.transitions.push('staging-cleared')
+    }
+    this.row = { ...this.row, inputKey: null, outputKey: null }
     return true
   }
 

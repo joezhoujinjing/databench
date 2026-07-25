@@ -1,4 +1,13 @@
 export {
+  DEFAULT_WORKER_RETAINED_MAX_BYTES_V1,
+  DEFAULT_WORKER_RETAINED_MAX_LINE_BYTES_V1,
+  type ReadWorkerRetainedJsonlV1Options,
+  readWorkerRetainedJsonlV1,
+  type WorkerRetainedTerminalV1,
+  type WriteWorkerRecordTextJsonlV1Options,
+  writeWorkerRecordTextJsonlV1,
+} from './batch-transform.js'
+export {
   DEFAULT_V2_CACHE_MAX_PENDING_LOADS,
   DEFAULT_V2_DATASET_CACHE_MAX_ENTRY_WEIGHT,
   V2_DATASET_CACHE_RECORD_OVERHEAD_BYTES,

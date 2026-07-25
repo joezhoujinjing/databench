@@ -1,6 +1,6 @@
 # Worker 与 Data-Juicer 接入技术方案
 
-- **状态：** Accepted design；P0-P2 已完成，下一步 P3 临时数据面
+- **状态：** Accepted design；P0-P3 已完成，下一步 P4 Data-Juicer adapter
 - **日期：** 2026-07-25
 - **决策：**
   [ADR 0010 — Long-running Python Worker over internal gRPC](../decisions/0010-python-processing-service-grpc.md)
@@ -118,6 +118,17 @@ attempt/token CAS、durable cancel、cleanup fence 和显式 retry。样本、Da
 shutdown 时停止 intake、dispatcher 和 Workspace。Worker 默认关闭且不创建 client/timer；
 `createApp()`、OpenAPI 导出和注入 Workspace 的测试仍保持无副作用。
 
+### 3.6 P3 已增加临时数据面
+
+Store 已实现 attempt-scoped exact key、conditional input create、签名 GET/PUT、bounded
+HEAD/read、SHA-256 size/digest 验证和 exact delete；OSS 与 S3/MinIO adapter 共用同一 contract。
+Workspace 已实现 `record-text-v1` writer、strict retained reader、可注入 staging preparer/cleaner，
+dispatcher 只有在 Worker 确认 stopped/absent 且 exact staging 清理成功后才清除 cleanup fence。
+
+P3 不创建 Data-Juicer adapter，也不把临时输出发布成 Dataset。真实 ARM64 Python
+`fixture.copy@1` 已通过 MinIO signed URL 往返；错误 method、Content-Type 和过期 URL 均 fail
+closed。
+
 ## 4. 总体架构
 
 ```mermaid
@@ -150,8 +161,8 @@ flowchart LR
 
 ## 5. 权威目录
 
-P1 的 Proto/Worker/client 与 P2 的 DTO、job migration、dispatcher/runtime、API lifecycle 已落地；
-其余目录仍按对应 Step 创建，不能把计划中的 P3-P6 文件误写成当前实现。
+P1 的 Proto/Worker/client、P2 的 job 控制面和 P3 的临时数据面已落地；其余目录仍按对应
+Step 创建，不能把计划中的 P4-P6 文件误写成当前实现。
 
 ```text
 proto/
@@ -543,8 +554,10 @@ job_id + attempt + lease_token + lease_expires_at > database_now()
 2. 停止接受该 attempt 的普通事件；
 3. 取消 gRPC call；
 4. 调用 `CancelJob(execution_id, attempt, lease_token)`；
-5. Worker 确认 matching execution stopped/absent 后才清除 lease token；
-6. 删除 exact staging keys。
+5. Worker 确认 matching execution stopped/absent；
+6. 删除 input/output exact staging objects；
+7. 清除 row 中的 exact staging keys；
+8. 最后清除 lease token，释放全局 slot。
 
 如果 Worker 不可达，cancelled/failed row 保留 lease token 作为 drain fence；dispatcher 周期性重试
 幂等 `CancelJob`。只有 Worker 明确返回 matching execution 已停止/不存在且 slot idle，或者运维先
@@ -1023,12 +1036,16 @@ Gate：真实 Postgres 覆盖并发创建、global slot、DB-clock expiry、stal
 和 cache hit；fake Worker 覆盖 progress、missing capability、abnormal EOF 和 shutdown cancel；API
 覆盖 disabled 无副作用、enabled start/stop 与私网配置。全仓 gate 通过。
 
-### P3 — 临时数据面
+### P3 — 临时数据面（已完成）
 
 - Store exact staging keys、signed URLs、bounded read/delete；
 - projection writer 和 retained result reader；
 - fake capability 跑 staging round-trip；
 - 真实 MinIO gate。
+
+Gate：Store/Catalog/dispatcher 单元测试覆盖 exact key、CAS、retry fence、bounded
+size/digest、严格 projection/result reader；真实 MinIO + ARM64 Python fixture 覆盖 signed
+GET/PUT、错误 method/Content-Type、过期 URL、gRPC copy、TS readback 与 exact cleanup。
 
 ### P4 — Data-Juicer
 

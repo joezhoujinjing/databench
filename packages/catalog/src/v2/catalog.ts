@@ -41,6 +41,7 @@ import type {
   RegisterTransformResultV2,
   RestoreRefResultV2,
   RestoreRefV2,
+  SetTransformJobStagingKeysV2,
   TransformJobLeaseV2,
   UpdateTransformJobProgressV2,
 } from './types.js'
@@ -478,6 +479,26 @@ export class V2Catalog {
     return rows.length === 1
   }
 
+  async setTransformJobStagingKeys(input: SetTransformJobStagingKeysV2): Promise<boolean> {
+    validateTransformJobLease(input)
+    validateStagingKeys(input)
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET "input_key" = ${input.inputKey}, "output_key" = ${input.outputKey},
+          "updated_at" = clock_timestamp()
+      WHERE
+        "id" = ${input.id} AND
+        "attempt" = ${input.attempt} AND
+        "lease_token" = ${Buffer.from(input.leaseToken)} AND
+        "lease_expires_at" > clock_timestamp() AND
+        "status" = 'leased' AND
+        (("input_key" IS NULL AND "output_key" IS NULL) OR
+          ("input_key" = ${input.inputKey} AND "output_key" = ${input.outputKey}))
+      RETURNING "id"
+    `)
+    return rows.length === 1
+  }
+
   async markTransformJobFinalizing(
     input: TransformJobLeaseV2,
   ): Promise<CatalogTransformJobRowV2 | null> {
@@ -539,6 +560,22 @@ export class V2Catalog {
       UPDATE "transform_jobs_v2"
       SET "lease_owner" = NULL, "lease_token" = NULL, "lease_expires_at" = NULL,
           "updated_at" = clock_timestamp()
+      WHERE
+        "id" = ${input.id} AND
+        "attempt" = ${input.attempt} AND
+        "lease_token" = ${Buffer.from(input.leaseToken)} AND
+        "input_key" IS NULL AND "output_key" IS NULL AND
+        "status" IN ('failed', 'cancelled')
+      RETURNING "id"
+    `)
+    return rows.length === 1
+  }
+
+  async clearTransformJobStagingKeys(input: TransformJobLeaseV2): Promise<boolean> {
+    validateTransformJobLease(input)
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET "input_key" = NULL, "output_key" = NULL, "updated_at" = clock_timestamp()
       WHERE
         "id" = ${input.id} AND
         "attempt" = ${input.attempt} AND
@@ -1580,6 +1617,13 @@ function validateTransformJobLease(input: TransformJobLeaseV2): void {
   }
   if (!(input.leaseToken instanceof Uint8Array) || input.leaseToken.byteLength !== 32) {
     throw new V2CatalogInputError('Transform job lease token must contain exactly 32 bytes')
+  }
+}
+
+function validateStagingKeys(input: SetTransformJobStagingKeysV2): void {
+  const prefix = `staging/worker/v1/${input.id}/${input.attempt}`
+  if (input.inputKey !== `${prefix}/input.jsonl` || input.outputKey !== `${prefix}/output.jsonl`) {
+    throw new V2CatalogInputError('Transform job staging keys do not match the exact attempt')
   }
 }
 

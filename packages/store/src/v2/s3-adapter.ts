@@ -1,6 +1,7 @@
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   type GetObjectCommandOutput,
   HeadBucketCommand,
@@ -10,6 +11,7 @@ import {
   type S3ClientConfig,
   S3ServiceException,
 } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { DomainError } from '@databench/schema'
 import type {
   ConditionalCreateInput,
@@ -21,6 +23,11 @@ import type {
 } from './contracts.js'
 import { ObjectStoreFailureErrorV2 } from './contracts.js'
 import { abortError, throwIfAborted } from './runtime.js'
+import type {
+  WorkerStagingHeadV1,
+  WorkerStagingObjectStoreV1,
+  WorkerStagingPresignInputV1,
+} from './worker-staging.js'
 
 export const DEFAULT_V2_PROVIDER_REQUEST_TIMEOUT_MS = 30_000
 
@@ -28,6 +35,7 @@ export interface S3ConditionalObjectStoreV2Config {
   readonly bucket: string
   readonly region: string
   readonly endpoint?: string
+  readonly workerEndpoint?: string
   readonly accessKeyId?: string
   readonly secretAccessKey?: string
   readonly forcePathStyle?: boolean
@@ -35,9 +43,12 @@ export interface S3ConditionalObjectStoreV2Config {
   readonly client?: S3Client
 }
 
-export class S3ConditionalObjectStoreV2 implements ConditionalObjectStoreV2 {
+export class S3ConditionalObjectStoreV2
+  implements ConditionalObjectStoreV2, WorkerStagingObjectStoreV1
+{
   readonly #bucket: string
   readonly #client: S3Client
+  readonly #signingClient: S3Client
   readonly #requestTimeoutMs: number
 
   constructor(config: S3ConditionalObjectStoreV2Config) {
@@ -47,6 +58,10 @@ export class S3ConditionalObjectStoreV2 implements ConditionalObjectStoreV2 {
       config.requestTimeoutMs ?? DEFAULT_V2_PROVIDER_REQUEST_TIMEOUT_MS,
     )
     this.#client = config.client ?? new S3Client(buildS3ClientConfig(config))
+    this.#signingClient =
+      config.workerEndpoint === undefined
+        ? this.#client
+        : new S3Client(buildS3ClientConfig({ ...config, endpoint: config.workerEndpoint }))
   }
 
   async conditionalCreate(input: ConditionalCreateInput): Promise<ConditionalCreateResult> {
@@ -120,6 +135,78 @@ export class S3ConditionalObjectStoreV2 implements ConditionalObjectStoreV2 {
       }
     }
     throw new ObjectStoreFailureErrorV2('Unable to inspect S3 object', undefined, 's3')
+  }
+
+  async headStaging(
+    key: string,
+    context: V2OperationContext = {},
+  ): Promise<Readonly<WorkerStagingHeadV1> | null> {
+    throwIfAborted(context.signal)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const requestSignal = requestAbortSignal(context.signal, this.#requestTimeoutMs)
+      try {
+        const output = await this.#client.send(
+          new HeadObjectCommand({ Bucket: this.#bucket, Key: key }),
+          { abortSignal: requestSignal },
+        )
+        throwIfAborted(context.signal)
+        const size = output.ContentLength
+        if (
+          typeof size !== 'number' ||
+          !Number.isSafeInteger(size) ||
+          size < 0 ||
+          typeof output.ContentType !== 'string'
+        ) {
+          throw new ObjectStoreFailureErrorV2(
+            'S3 returned invalid Worker staging metadata',
+            undefined,
+            's3',
+          )
+        }
+        return Object.freeze({ size, contentType: output.ContentType })
+      } catch (error) {
+        if (context.signal?.aborted) throw abortError(context.signal.reason)
+        if (isS3HeadMissing(error)) return null
+        if (error instanceof ObjectStoreFailureErrorV2) throw error
+        if (attempt === 0 && isS3Ambiguous(error, requestSignal)) continue
+        throw new ObjectStoreFailureErrorV2('Unable to inspect S3 staging object', error, 's3')
+      }
+    }
+    throw new ObjectStoreFailureErrorV2('Unable to inspect S3 staging object', undefined, 's3')
+  }
+
+  async presignStaging(input: WorkerStagingPresignInputV1): Promise<string> {
+    const expiresIn = positiveSafeInteger('expiresInSeconds', input.expiresInSeconds)
+    try {
+      const command =
+        input.method === 'GET'
+          ? new GetObjectCommand({ Bucket: this.#bucket, Key: input.key })
+          : new PutObjectCommand({
+              Bucket: this.#bucket,
+              ContentType: input.contentType,
+              Key: input.key,
+            })
+      return await getSignedUrl(this.#signingClient, command, {
+        expiresIn,
+        ...(input.method === 'PUT' ? { signableHeaders: new Set(['content-type']) } : {}),
+      })
+    } catch (error) {
+      throw new ObjectStoreFailureErrorV2('Unable to sign S3 staging request', error, 's3')
+    }
+  }
+
+  async deleteStaging(key: string, context: V2OperationContext = {}): Promise<void> {
+    throwIfAborted(context.signal)
+    const requestSignal = requestAbortSignal(context.signal, this.#requestTimeoutMs)
+    try {
+      await this.#client.send(new DeleteObjectCommand({ Bucket: this.#bucket, Key: key }), {
+        abortSignal: requestSignal,
+      })
+      throwIfAborted(context.signal)
+    } catch (error) {
+      if (context.signal?.aborted) throw abortError(context.signal.reason)
+      throw new ObjectStoreFailureErrorV2('Unable to delete S3 staging object', error, 's3')
+    }
   }
 
   async download(input: ObjectDownloadInputV2): Promise<'downloaded' | 'not_found'> {

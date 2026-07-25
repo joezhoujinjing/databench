@@ -9,7 +9,8 @@ export const V2_TEMP_OWNER_MARKER = 'databench-v2-temp-v1\n'
 export const DEFAULT_V2_TEMP_STALE_AGE_MS = 24 * 60 * 60 * 1000
 export const DEFAULT_V2_TEMP_SAFETY_MARGIN_BYTES = 512 * 1024 * 1024
 
-const TEMP_NAME_PATTERN = /^databench-v2-(prepare|read)-[0-9a-f-]{36}\.parquet$/
+const TEMP_NAME_PATTERN =
+  /^databench-v2-(?:(?:prepare|read)-[0-9a-f-]{36}\.parquet|worker-(?:input|output)-[0-9a-f-]{36}\.jsonl)$/
 const OWNER_CANDIDATE_PATTERN = /^\.databench-v2-owner-[0-9a-f-]{36}\.tmp$/
 
 export interface V2TempStoreConfig {
@@ -90,10 +91,14 @@ export class V2TempStore {
     })
   }
 
-  async create(kind: 'prepare' | 'read', signal?: AbortSignal): Promise<V2TempFile> {
+  async create(
+    kind: 'prepare' | 'read' | 'worker-input' | 'worker-output',
+    signal?: AbortSignal,
+  ): Promise<V2TempFile> {
     await this.initialize()
     throwIfAborted(signal)
-    const path = join(this.#root, `databench-v2-${kind}-${randomUUID()}.parquet`)
+    const extension = kind.startsWith('worker-') ? 'jsonl' : 'parquet'
+    const path = join(this.#root, `databench-v2-${kind}-${randomUUID()}.${extension}`)
     const handle = await open(
       path,
       constants.O_CREAT | constants.O_EXCL | constants.O_RDWR | constants.O_NOFOLLOW,

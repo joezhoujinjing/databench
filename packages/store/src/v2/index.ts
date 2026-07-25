@@ -21,3 +21,5 @@ export {
   FileBackedV2Store,
   type FileBackedV2StoreConfig,
 } from './store.js'
+export * from './worker-staging.js'
+export * from './worker-staging-keys.js'

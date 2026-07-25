@@ -18,6 +18,7 @@ export function v2ObjectStoreConfigFromEnv(
       bucket: env.S3_BUCKET ?? 'databench',
       region: env.S3_REGION ?? 'us-east-1',
       ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT } : {}),
+      ...(env.S3_WORKER_ENDPOINT ? { workerEndpoint: env.S3_WORKER_ENDPOINT } : {}),
       ...(env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY
         ? {
             accessKeyId: env.S3_ACCESS_KEY_ID,

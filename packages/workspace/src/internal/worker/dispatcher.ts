@@ -4,6 +4,7 @@ import type {
   CatalogTransformJobRowV2,
   ClaimTransformJobV2,
   FailTransformJobV2,
+  SetTransformJobStagingKeysV2,
   TransformJobLeaseV2,
   UpdateTransformJobProgressV2,
 } from '@databench/catalog'
@@ -29,6 +30,8 @@ export interface WorkerDispatcherCatalog {
   markTransformJobFailed(input: FailTransformJobV2): Promise<CatalogTransformJobRowV2 | null>
   markTransformJobCancelled(input: TransformJobLeaseV2): Promise<CatalogTransformJobRowV2 | null>
   requestTransformJobCancellation(id: string): Promise<CatalogTransformJobRowV2 | null>
+  setTransformJobStagingKeys(input: SetTransformJobStagingKeysV2): Promise<boolean>
+  clearTransformJobStagingKeys(input: TransformJobLeaseV2): Promise<boolean>
   clearTransformJobLeaseFence(input: TransformJobLeaseV2): Promise<boolean>
   failExpiredTransformJobLeases(): Promise<number>
   findTransformJobCleanupFence(): Promise<CatalogTransformJobRowV2 | null>
@@ -72,11 +75,21 @@ export interface WorkerJobFinalizer {
   finalize(context: WorkerFinalizationContext): Promise<void>
 }
 
+export interface WorkerCleanupContext {
+  readonly job: CatalogTransformJobRowV2
+  readonly lease: TransformJobLeaseV2
+}
+
+export interface WorkerJobCleaner {
+  cleanup(context: WorkerCleanupContext): Promise<void>
+}
+
 export interface WorkerDispatcherOptions {
   readonly catalog: WorkerDispatcherCatalog
   readonly client: WorkerClient
   readonly preparer: WorkerJobPreparer
   readonly finalizer: WorkerJobFinalizer
+  readonly cleaner: WorkerJobCleaner
   readonly leaseOwner?: string
   readonly leaseMs?: number
   readonly heartbeatMs?: number
@@ -98,6 +111,7 @@ export class WorkerDispatcher {
   readonly #client: WorkerClient
   readonly #preparer: WorkerJobPreparer
   readonly #finalizer: WorkerJobFinalizer
+  readonly #cleaner: WorkerJobCleaner
   readonly #claim: ClaimTransformJobV2
   readonly #heartbeatMs: number
   readonly #pollMs: number
@@ -113,6 +127,7 @@ export class WorkerDispatcher {
     this.#client = options.client
     this.#preparer = options.preparer
     this.#finalizer = options.finalizer
+    this.#cleaner = options.cleaner
     const leaseMs = options.leaseMs ?? DEFAULT_LEASE_MS
     this.#heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS
     this.#pollMs = options.pollMs ?? DEFAULT_POLL_MS
@@ -353,7 +368,13 @@ export class WorkerDispatcher {
       leaseToken: job.leaseToken,
     })
     if (result === 'stopped' || result === 'not_found') {
-      await this.#catalog.clearTransformJobLeaseFence(lease)
+      await this.#cleaner.cleanup({ job, lease })
+      if (!(await this.#catalog.clearTransformJobStagingKeys(lease))) {
+        throw new LeaseLostError()
+      }
+      if (!(await this.#catalog.clearTransformJobLeaseFence(lease))) {
+        throw new LeaseLostError()
+      }
     }
   }
 }

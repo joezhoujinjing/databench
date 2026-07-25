@@ -1335,6 +1335,27 @@ describe('V2Catalog transform jobs', () => {
     })
     if (!claimed?.leaseToken) throw new Error('claim did not return a lease token')
     const lease = { id: claimed.id, attempt: claimed.attempt, leaseToken: claimed.leaseToken }
+    const inputKey = `staging/worker/v1/${lease.id}/${lease.attempt}/input.jsonl`
+    const outputKey = `staging/worker/v1/${lease.id}/${lease.attempt}/output.jsonl`
+    const stale = { ...lease, leaseToken: new Uint8Array(32).fill(4) }
+
+    await expect(
+      v2Catalog.setTransformJobStagingKeys({ ...stale, inputKey, outputKey }),
+    ).resolves.toBe(false)
+    await expect(
+      v2Catalog.setTransformJobStagingKeys({
+        ...lease,
+        inputKey: `${inputKey}/../wrong`,
+        outputKey,
+      }),
+    ).rejects.toThrow('exact attempt')
+    await expect(
+      v2Catalog.setTransformJobStagingKeys({ ...lease, inputKey, outputKey }),
+    ).resolves.toBe(true)
+    await expect(v2Catalog.getTransformJob(lease.id)).resolves.toMatchObject({
+      inputKey,
+      outputKey,
+    })
 
     await expect(v2Catalog.requestTransformJobCancellation(queued.id)).resolves.toMatchObject({
       status: 'cancelled',
@@ -1347,9 +1368,12 @@ describe('V2Catalog transform jobs', () => {
       }),
     ).resolves.toBeNull()
     await expect(v2Catalog.retryTransformJob(queued.id)).resolves.toBeNull()
-    await expect(
-      v2Catalog.clearTransformJobLeaseFence({ ...lease, leaseToken: new Uint8Array(32).fill(4) }),
-    ).resolves.toBe(false)
+    await expect(v2Catalog.clearTransformJobStagingKeys(stale)).resolves.toBe(false)
+    await expect(v2Catalog.clearTransformJobLeaseFence(stale)).resolves.toBe(false)
+    await expect(v2Catalog.clearTransformJobLeaseFence(lease)).resolves.toBe(false)
+    await expect(v2Catalog.retryTransformJob(queued.id)).resolves.toBeNull()
+    await expect(v2Catalog.clearTransformJobStagingKeys(lease)).resolves.toBe(true)
+    await expect(v2Catalog.retryTransformJob(queued.id)).resolves.toBeNull()
     await expect(v2Catalog.clearTransformJobLeaseFence(lease)).resolves.toBe(true)
     await expect(v2Catalog.retryTransformJob(queued.id)).resolves.toMatchObject({
       id: queued.id,
@@ -1357,6 +1381,33 @@ describe('V2Catalog transform jobs', () => {
       attempt: 1,
       leaseToken: null,
     })
+  })
+
+  test('database rejects staging keys that do not exactly match the current attempt', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const queued = await v2Catalog.createOrReadTransformJob(transformJobInput('b'.repeat(64)))
+    const claimed = await v2Catalog.claimNextTransformJob({
+      leaseOwner: 'dispatcher.test',
+      leaseDurationMs: 30_000,
+    })
+    if (!claimed?.leaseToken) throw new Error('claim did not return a lease token')
+
+    for (const inputKey of [
+      'input.jsonl',
+      `staging/worker/v1/${queued.id}/2/input.jsonl`,
+      `staging/worker/v1/${queued.id}/1/../input.jsonl`,
+    ]) {
+      await expect(
+        prisma.$executeRaw`
+          UPDATE "transform_jobs_v2"
+          SET "input_key" = ${inputKey},
+              "output_key" = ${`staging/worker/v1/${queued.id}/1/output.jsonl`}
+          WHERE "id" = ${queued.id}
+        `,
+      ).rejects.toThrow()
+    }
   })
 
   test('materializes cache-hit jobs only from an existing matching immutable run', async () => {

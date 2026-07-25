@@ -11,6 +11,11 @@ import type {
 } from './contracts.js'
 import { ObjectStoreFailureErrorV2 } from './contracts.js'
 import { abortError, throwIfAborted } from './runtime.js'
+import type {
+  WorkerStagingHeadV1,
+  WorkerStagingObjectStoreV1,
+  WorkerStagingPresignInputV1,
+} from './worker-staging.js'
 
 export const DEFAULT_V2_OSS_REQUEST_TIMEOUT_MS = 30_000
 
@@ -48,6 +53,8 @@ export interface OssConditionalClientV2 {
   get(name: string, destination: Writable, options: OssRequestOptionsV2): Promise<unknown>
   getObjectMeta(name: string, options: OssRequestOptionsV2): Promise<OssObjectMetaResultV2>
   getBucketInfo(name: string, options: OssRequestOptionsV2): Promise<OssBucketInfoResultV2>
+  signatureUrl?(name: string, options: Readonly<Record<string, unknown>>): string
+  delete?(name: string, options: OssRequestOptionsV2): Promise<unknown>
 }
 
 interface OssClientOptionsV2 {
@@ -93,7 +100,9 @@ export class OssBucketVersioningUnsupportedErrorV2 extends ServiceUnavailableErr
   }
 }
 
-export class OssConditionalObjectStoreV2 implements ConditionalObjectStoreV2 {
+export class OssConditionalObjectStoreV2
+  implements ConditionalObjectStoreV2, WorkerStagingObjectStoreV1
+{
   readonly #config: OssConditionalObjectStoreV2Config
   readonly #bucket: string
   readonly #requestTimeoutMs: number
@@ -119,11 +128,11 @@ export class OssConditionalObjectStoreV2 implements ConditionalObjectStoreV2 {
     }
 
     throwIfAborted(input.signal)
-    if (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0) {
+    if (!Number.isSafeInteger(input.contentLength) || input.contentLength < 0) {
       return {
         status: 'failure',
         error: new TypeError(
-          'OSS conditional create contentLength must be a positive safe integer',
+          'OSS conditional create contentLength must be a non-negative safe integer',
         ),
       }
     }
@@ -198,6 +207,73 @@ export class OssConditionalObjectStoreV2 implements ConditionalObjectStoreV2 {
         throw error
       }
       throw new ObjectStoreFailureErrorV2('Unable to inspect OSS object', error, 'oss')
+    }
+  }
+
+  async headStaging(
+    key: string,
+    context: V2OperationContext = {},
+  ): Promise<Readonly<WorkerStagingHeadV1> | null> {
+    throwIfAborted(context.signal)
+    try {
+      const result = await this.#oss().getObjectMeta(key, { timeout: this.#requestTimeoutMs })
+      throwIfAborted(context.signal)
+      const contentType = headerValue(result.res.headers, 'content-type')
+      if (contentType === null) {
+        throw new ObjectStoreFailureErrorV2(
+          'OSS returned missing Worker staging content type',
+          undefined,
+          'oss',
+        )
+      }
+      return Object.freeze({ size: parseContentLength(result.res.headers), contentType })
+    } catch (error) {
+      if (context.signal?.aborted) throw abortError(context.signal.reason)
+      if (isOssMissingObject(error)) return null
+      if (error instanceof ObjectStoreFailureErrorV2) throw error
+      throw new ObjectStoreFailureErrorV2('Unable to inspect OSS staging object', error, 'oss')
+    }
+  }
+
+  async presignStaging(input: WorkerStagingPresignInputV1): Promise<string> {
+    const client = this.#oss()
+    const signer = client.signatureUrl
+    if (!signer) {
+      throw new ObjectStoreFailureErrorV2(
+        'OSS client cannot sign staging requests',
+        undefined,
+        'oss',
+      )
+    }
+    try {
+      return signer.call(client, input.key, {
+        expires: positiveSafeInteger('expiresInSeconds', input.expiresInSeconds),
+        method: input.method,
+        'Content-Type': input.contentType,
+      })
+    } catch (error) {
+      throw new ObjectStoreFailureErrorV2('Unable to sign OSS staging request', error, 'oss')
+    }
+  }
+
+  async deleteStaging(key: string, context: V2OperationContext = {}): Promise<void> {
+    throwIfAborted(context.signal)
+    const client = this.#oss()
+    const remove = client.delete
+    if (!remove) {
+      throw new ObjectStoreFailureErrorV2(
+        'OSS client cannot delete staging objects',
+        undefined,
+        'oss',
+      )
+    }
+    try {
+      await remove.call(client, key, { timeout: this.#requestTimeoutMs })
+      throwIfAborted(context.signal)
+    } catch (error) {
+      if (context.signal?.aborted) throw abortError(context.signal.reason)
+      if (isOssMissingObject(error)) return
+      throw new ObjectStoreFailureErrorV2('Unable to delete OSS staging object', error, 'oss')
     }
   }
 
@@ -366,6 +442,14 @@ function parseContentLength(
     )
   }
   return size
+}
+
+function headerValue(
+  headers: Readonly<Record<string, string | number | undefined>>,
+  name: string,
+): string | null {
+  const value = headers[name] ?? headers[name.toLowerCase()]
+  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function requiredString(name: string, value: string): string {

@@ -209,12 +209,14 @@ src/
    ├─ oss-adapter.ts
    ├─ s3-adapter.ts
    ├─ temp-store.ts
+   ├─ worker-staging.ts · worker-staging-keys.ts
    ├─ config.ts
    └─ index.ts
 ```
 
-只管理 `objects/v2/` immutable artifacts/manifests。写入必须 conditional create；
-测试用临时落盘也遵守相同 key 和提交语义。
+管理 `objects/v2/` immutable artifacts/manifests，以及不进入 canonical identity 的
+`staging/worker/v1/` exact temporary objects。canonical 写入和 staging input 均 conditional
+create；staging 只允许 attempt-scoped exact read/delete，禁止 prefix delete。
 
 ## `packages/catalog`
 
@@ -236,8 +238,12 @@ lineage 与 refs 的数据模型在根 `prisma/schema.prisma`。
 ```text
 src/
 ├─ index.ts
+├─ internal/worker/
+│  ├─ client.ts · grpc-client.ts · dispatcher.ts · runtime.ts
+│  ├─ staging.ts · workspace-access.ts
+│  └─ generated/
 └─ v2/
-   ├─ workspace.ts
+   ├─ workspace.ts · batch-transform.ts
    ├─ identity-allocator.ts
    ├─ cache.ts · cursor.ts
    ├─ mappings.ts
@@ -271,7 +277,8 @@ prisma/
    ├─ 0004_v2_run_lineage_sequence/
    ├─ 0005_retire_v1_catalog/
    ├─ 0006_recoverable_ref_trash/
-   └─ 0007_transform_jobs_v2/
+   ├─ 0007_transform_jobs_v2/
+   └─ 0008_worker_staging_v1/
 ```
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
@@ -279,7 +286,8 @@ R4 maintenance tool和 forward migration必须保留，供尚未执行退役的�
 
 ## Worker 布局（ADR 0010）
 
-P1 foundation 与 P2 job 控制面已落地；标为“planned”的目录只在对应 P3-P6 实现后成为 runtime：
+P1 foundation、P2 job 控制面与 P3 临时数据面已落地；标为“planned”的目录只在对应 P4-P6
+实现后成为 runtime：
 
 ```text
 proto/
@@ -298,9 +306,9 @@ workers/python/
 └─ tests/
 
 packages/ops/src/v2/batch/     planned：batch definition 与首个 Data-Juicer transform
-packages/store/src/v2/worker-staging*.ts  planned：受限 staging 数据面
-packages/workspace/src/internal/worker/  已实现 client/generated/dispatcher/runtime
-packages/workspace/src/v2/batch-transform.ts  planned
+packages/store/src/v2/worker-staging*.ts  已实现 exact-key staging 数据面
+packages/workspace/src/internal/worker/  已实现 client/generated/dispatcher/runtime/staging
+packages/workspace/src/v2/batch-transform.ts  已实现 projection 与 strict retained reader
 apps/api/src/routes/v2/transform-jobs.ts       planned
 ```
 

@@ -218,6 +218,11 @@ export interface UpdateTransformJobProgressV2 extends TransformJobLeaseV2 {
   readonly progress: CatalogTransformJobProgressV2
 }
 
+export interface SetTransformJobStagingKeysV2 extends TransformJobLeaseV2 {
+  readonly inputKey: string
+  readonly outputKey: string
+}
+
 export interface FailTransformJobV2 extends TransformJobLeaseV2 {
   readonly error: CatalogTransformJobErrorV2
 }

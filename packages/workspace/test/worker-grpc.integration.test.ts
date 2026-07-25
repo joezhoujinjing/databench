@@ -1,14 +1,29 @@
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from 'node:child_process'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { once } from 'node:events'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
-import { dirname, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
+import { CreateBucketCommand, DeleteBucketCommand, S3Client } from '@aws-sdk/client-s3'
+import type { CatalogTransformJobRowV2 } from '@databench/catalog'
+import { V2Dataset } from '@databench/engine'
+import {
+  S3ConditionalObjectStoreV2,
+  WORKER_STAGING_JSONL_MEDIA_TYPE,
+  WorkerStagingStoreV1,
+} from '@databench/store'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import type { WorkerProtocolError, WorkerRunJobRequest } from '../src/internal/worker/client.js'
 import { GrpcWorkerClient } from '../src/internal/worker/grpc-client.js'
+import {
+  WorkerStagingJobCleanerV1,
+  WorkerStagingJobPreparerV1,
+} from '../src/internal/worker/staging.js'
+import { writeWorkerRecordTextJsonlV1 } from '../src/v2/batch-transform.js'
 
 const RUN_INTEGRATION = process.env.RUN_WORKER_INTEGRATION_TESTS === '1'
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
@@ -149,6 +164,141 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
     })
   })
 
+  test('round-trips record-text-v1 through real MinIO signed URLs and exact cleanup', async () => {
+    const bucket = `databench-worker-${randomUUID()}`
+    const root = await mkdtemp(join(tmpdir(), 'databench-worker-minio-'))
+    const config = minioConfig(bucket)
+    const admin = new S3Client({
+      credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+      endpoint: config.endpoint,
+      forcePathStyle: true,
+      maxAttempts: 1,
+      region: config.region,
+    })
+    await admin.send(new CreateBucketCommand({ Bucket: bucket }))
+    const objectStore = new S3ConditionalObjectStoreV2(config)
+    const staging = new WorkerStagingStoreV1({
+      objectStore,
+      tempRoot: root,
+      maxBytes: 1024 * 1024,
+      signedUrlTtlMs: 60_000,
+    })
+    const jobId = `job_${'a'.repeat(64)}`
+    const ref = { jobId, attempt: 1 }
+
+    try {
+      const dataset = V2Dataset.fromRecords([
+        workerRecord('1', ' first '),
+        workerRecord('2', '第二条'),
+      ])
+      const job = workerJob(jobId, dataset.version, dataset.length)
+      let stagingKeys: { readonly inputKey: string; readonly outputKey: string } | null = null
+      const preparer = new WorkerStagingJobPreparerV1({
+        catalog: {
+          async setTransformJobStagingKeys(input) {
+            expect(input).toMatchObject({ id: job.id, attempt: job.attempt })
+            stagingKeys = { inputKey: input.inputKey, outputKey: input.outputKey }
+            return true
+          },
+        },
+        staging,
+        projector: {
+          project(_job, signal) {
+            return writeWorkerRecordTextJsonlV1(dataset.records(), { signal })
+          },
+        },
+        parameters: () => ({
+          schemaName: 'databench.worker.fixture-copy-parameters',
+          schemaVersion: '1',
+          utf8Json: Buffer.from('{"mode":"complete","steps":1}'),
+        }),
+        maxOutputBytes: 1024 * 1024,
+      })
+      const prepared = await preparer.prepare({
+        job,
+        executionId: 'execution-minio-roundtrip',
+        signal: new AbortController().signal,
+        deadlineUnixMs: Date.now() + 10_000,
+      })
+      const source = prepared.inputs[0]
+      const target = prepared.outputs[0]
+      if (!source || !target || !stagingKeys) throw new Error('staging preparation is incomplete')
+
+      const wrongMethod = await fetch(source.readUrl, { method: 'PUT', body: 'not-allowed' })
+      expect(wrongMethod.ok).toBe(false)
+      const wrongContentType = await fetch(target.writeUrl, {
+        method: 'PUT',
+        headers: { 'content-type': 'text/plain' },
+        body: 'not-allowed',
+      })
+      expect(wrongContentType.ok).toBe(false)
+
+      const events = []
+      for await (const event of client.runJob({
+        executionId: 'execution-minio-roundtrip',
+        jobId,
+        attempt: 1,
+        leaseToken: job.leaseToken ?? randomBytes(32),
+        capabilityName: 'fixture.copy',
+        capabilityVersion: '1',
+        ...prepared,
+        deadlineUnixMs: Date.now() + 10_000,
+      })) {
+        events.push(event)
+      }
+      const completed = events.at(-1)
+      expect(completed?.type).toBe('completed')
+      if (completed?.type !== 'completed') throw new Error('fixture did not complete')
+      const output = completed.outputs[0]
+      if (!output) throw new Error('fixture output descriptor is missing')
+
+      const outputBytes = await collect(
+        staging.readExact(
+          { ...ref, logicalName: 'output' },
+          { expectedSize: output.size, expectedDigest: output.digest },
+        ),
+      )
+      const inputBytes = await collect(
+        staging.readExact(
+          { ...ref, logicalName: 'input' },
+          { expectedSize: source.size, expectedDigest: source.digest },
+        ),
+      )
+      expect(outputBytes).toEqual(inputBytes)
+
+      const expiring = new WorkerStagingStoreV1({
+        objectStore,
+        tempRoot: join(root, 'expiring'),
+        maxBytes: 1024 * 1024,
+        signedUrlTtlMs: 1,
+      })
+      const expiringSource = await expiring.signRead(ref, {
+        key: stagingKeys.inputKey,
+        mediaType: WORKER_STAGING_JSONL_MEDIA_TYPE,
+        size: source.size,
+        digest: source.digest,
+      })
+      await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 1_200))
+      expect((await fetch(expiringSource.readUrl)).ok).toBe(false)
+
+      if (!job.leaseToken) throw new Error('fixture lease token is missing')
+      await new WorkerStagingJobCleanerV1(staging).cleanup({
+        job: { ...job, inputKey: stagingKeys.inputKey, outputKey: stagingKeys.outputKey },
+        lease: { id: job.id, attempt: job.attempt, leaseToken: job.leaseToken },
+      })
+      await expect(staging.statExact({ ...ref, logicalName: 'input' })).resolves.toBeNull()
+      await expect(staging.statExact({ ...ref, logicalName: 'output' })).resolves.toBeNull()
+    } finally {
+      await Promise.allSettled([
+        staging.deleteExact({ ...ref, logicalName: 'input' }),
+        staging.deleteExact({ ...ref, logicalName: 'output' }),
+      ])
+      await admin.send(new DeleteBucketCommand({ Bucket: bucket }))
+      admin.destroy()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+
   test('cancels only the matching execution token', async () => {
     const request = requestFor('cancel', 'wait_for_cancel')
     let markStarted: (() => void) | undefined
@@ -235,6 +385,85 @@ function requestFor(suffix: string, mode: string): WorkerRunJobRequest {
     ],
     deadlineUnixMs: Date.now() + 10_000,
   }
+}
+
+function minioConfig(bucket: string) {
+  return {
+    bucket,
+    region: process.env.S3_REGION ?? 'us-east-1',
+    endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
+    workerEndpoint: process.env.S3_WORKER_ENDPOINT ?? 'http://localhost:9000',
+    accessKeyId: process.env.S3_ACCESS_KEY_ID ?? 'databench',
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? 'databench-secret',
+    forcePathStyle: true,
+  }
+}
+
+function workerRecord(suffix: string, text: string) {
+  return {
+    schema_version: '2.0.0' as const,
+    id: `rec_${suffix.repeat(64)}`,
+    contents: [
+      {
+        role: 'user' as const,
+        parts: [
+          {
+            type: 'text' as const,
+            text,
+            thought: false,
+            thought_signature: null,
+            part_metadata: {},
+          },
+        ],
+        loss_weight: null,
+      },
+    ],
+    candidates: [],
+    preference_relations: [],
+    tools: [],
+    verification: null,
+    source: null,
+    lang: null,
+    lineage: null,
+    tags: [],
+    extra: {},
+  }
+}
+
+function workerJob(id: string, inputVersion: string, inputCount: number): CatalogTransformJobRowV2 {
+  return {
+    id,
+    cacheKey: id.slice(4),
+    op: 'fixture-copy',
+    opVersion: '1',
+    params: {},
+    inputVersion,
+    capabilityName: 'fixture.copy',
+    capabilityVersion: '1',
+    inputCount: BigInt(inputCount),
+    status: 'leased',
+    attempt: 1,
+    leaseOwner: 'integration.test',
+    leaseToken: randomBytes(32),
+    leaseExpiresAt: new Date(Date.now() + 30_000),
+    progress: null,
+    inputKey: null,
+    outputKey: null,
+    outputCount: null,
+    outputVersion: null,
+    cacheHit: false,
+    error: null,
+    createdAt: new Date(),
+    startedAt: null,
+    finishedAt: null,
+    updatedAt: new Date(),
+  }
+}
+
+async function collect(source: AsyncIterable<Uint8Array>): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const chunk of source) chunks.push(Buffer.from(chunk))
+  return Buffer.concat(chunks)
 }
 
 async function readFirstLine(child: ChildProcessWithoutNullStreams): Promise<string> {

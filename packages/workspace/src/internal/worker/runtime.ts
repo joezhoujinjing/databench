@@ -4,10 +4,12 @@ import {
   IncompleteWorkerJobFinalizer,
   UnavailableWorkerJobPreparer,
   WorkerDispatcher,
+  type WorkerJobCleaner,
   type WorkerJobFinalizer,
   type WorkerJobPreparer,
 } from './dispatcher.js'
 import { GrpcWorkerClient } from './grpc-client.js'
+import { UnavailableWorkerJobCleaner } from './staging.js'
 import { workerCatalogFor } from './workspace-access.js'
 
 export interface OpenWorkerRuntimeOptions {
@@ -21,6 +23,7 @@ export interface OpenWorkerRuntimeOptions {
   readonly client?: WorkerClient
   readonly preparer?: WorkerJobPreparer
   readonly finalizer?: WorkerJobFinalizer
+  readonly cleaner?: WorkerJobCleaner
 }
 
 export interface WorkerRuntime {
@@ -45,6 +48,7 @@ export async function openWorkerRuntime(options: OpenWorkerRuntimeOptions): Prom
       client,
       preparer: options.preparer ?? new UnavailableWorkerJobPreparer(),
       finalizer: options.finalizer ?? new IncompleteWorkerJobFinalizer(),
+      cleaner: options.cleaner ?? new UnavailableWorkerJobCleaner(),
       ...(options.jobDeadlineMs === undefined ? {} : { jobDeadlineMs: options.jobDeadlineMs }),
       ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }),
       ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),

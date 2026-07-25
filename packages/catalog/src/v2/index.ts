@@ -43,6 +43,7 @@ export type {
   RegisterTransformResultV2,
   RestoreRefResultV2,
   RestoreRefV2,
+  SetTransformJobStagingKeysV2,
   TransformJobLeaseV2,
   UpdateTransformJobProgressV2,
 } from './types.js'
