@@ -53,9 +53,9 @@ log "starting API and Web"
 compose_for_release "$RELEASE_DIR" up -d api web
 wait_container_healthy databench-offline-api 180 || die "API did not become healthy"
 wait_container_healthy databench-offline-web 120 || die "Web gateway did not start"
-run_doctor "$RELEASE_DIR" >/dev/null || die "backend doctor check failed"
 wait_gateway "$RELEASE_DIR" 120 || die "Caddy did not proxy API health"
 DATABENCH_RELEASE_DIR="$RELEASE_DIR" "${RELEASE_DIR}/smoke.sh"
+run_doctor "$RELEASE_DIR" >/dev/null || die "backend doctor check failed"
 
 if [ -L "$DATABENCH_CURRENT_LINK" ]; then
   write_state_value previous-version "$TARGET_VERSION"

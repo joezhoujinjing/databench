@@ -50,6 +50,29 @@ grep -Fq '/api/v2/datasets/system-offline-smoke-v2' "${SCRIPT_DIR}/smoke/gateway
   fail 'offline smoke does not cover the distinct v2 API path'
 grep -Fq "document.servers[0]?.url !== '/api'" "${SCRIPT_DIR}/smoke/gateway.mjs" ||
   fail 'offline smoke does not verify the external OpenAPI server URL'
+grep -Fq 'databench dataset audit system-offline-smoke-v2' "${SCRIPT_DIR}/smoke.sh" ||
+  fail 'offline smoke does not audit the committed v2 dataset'
+grep -Fq 'databench ref show system-offline-smoke-v2' "${SCRIPT_DIR}/lib/health.sh" ||
+  fail 'offline doctor does not verify the retained smoke ref in PostgreSQL'
+grep -Fq 'databench dataset audit system-offline-smoke-v2' "${SCRIPT_DIR}/lib/health.sh" ||
+  fail 'offline doctor does not verify the retained smoke dataset in object storage'
+if rg -n 'databench meta doctor' \
+  "${SCRIPT_DIR}/lib" "${SCRIPT_DIR}"/*.sh "${SCRIPT_DIR}/databenchctl"; then
+  fail 'offline runtime still invokes the retired meta doctor command'
+fi
+install_smoke_line="$(grep -nF '"${RELEASE_DIR}/smoke.sh"' "${SCRIPT_DIR}/install.sh" | cut -d: -f1)"
+install_doctor_line="$(grep -nF 'run_doctor "$RELEASE_DIR"' "${SCRIPT_DIR}/install.sh" | cut -d: -f1)"
+[ "$install_smoke_line" -lt "$install_doctor_line" ] ||
+  fail 'first install must create the retained smoke dataset before running doctor'
+if rg -n \
+  'databench v2|databench dataset add|/api/v1/|system-offline-smoke-v1|smoke/v1\.jsonl|v1/v2' \
+  "${SCRIPT_DIR}/smoke.sh" \
+  "${SCRIPT_DIR}/smoke/gateway.mjs" \
+  "${SCRIPT_DIR}/README.zh-CN.md" \
+  "${SCRIPT_DIR}/DEPLOYMENT-GUIDE.zh-CN.md" \
+  "${SCRIPT_DIR}/TROUBLESHOOTING.zh-CN.md"; then
+  fail 'offline release still references a retired v1 product surface'
+fi
 
 for document in README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md; do
   [ -f "${SCRIPT_DIR}/${document}" ] || fail "offline document is missing: $document"

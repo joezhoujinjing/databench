@@ -12,6 +12,11 @@ import type { ExportPlanV2 } from './types.js'
 const plan = fixture.export_plan as ExportPlanV2
 
 describe('V2 export streaming', () => {
+  test('uses the versionless product CLI command', () => {
+    expect(exportCliCommand(plan)).toMatch(/^databench dataset export /u)
+    expect(exportCliCommand(plan)).not.toContain('databench v2')
+  })
+
   test('streams to a file only after a matching successful response', async () => {
     const writes: Uint8Array[] = []
     const writable = {

@@ -230,7 +230,7 @@ sudo ./install.sh
 7. 创建 MinIO bucket、应用用户和 bucket-scoped policy；
 8. 执行 `prisma migrate deploy`；
 9. 启动 API 和 Web；
-10. 执行 doctor、Caddy proxy 检查和固定 v1/v2 生命周期 smoke；
+10. 执行 doctor、Caddy proxy 检查和固定数据集生命周期 smoke；
 11. 安装 `/usr/local/bin/databenchctl`。
 
 安装期间出现的密码不会输出到终端或日志。
@@ -275,7 +275,6 @@ doctor 成功的精确输出为：
 curl -fsS http://127.0.0.1/api/health
 curl -fsS http://127.0.0.1/api/version
 curl -fsS http://127.0.0.1/api/capabilities
-curl -fsS 'http://127.0.0.1/api/v1/refs?limit=1'
 curl -fsS 'http://127.0.0.1/api/v2/refs?limit=1'
 curl -fsS 'http://127.0.0.1/api/v2/transforms'
 curl -fsS 'http://127.0.0.1/datasets' | grep -F '<div id="root"></div>'
@@ -457,7 +456,7 @@ sudo ./upgrade.sh
 4. 导入新镜像；
 5. 执行 migration；
 6. 启动目标版本；
-7. 执行 doctor、gateway 和 v1/v2 smoke；
+7. 执行 doctor、gateway 和数据集生命周期 smoke；
 8. 全部成功后才原子切换 `current`。
 
 成功后检查：
@@ -574,7 +573,7 @@ sudo databenchctl doctor
 curl -fsS http://127.0.0.1/api/version
 ```
 
-再从获准内网客户端访问 Web，抽查已有 v1/v2 数据仍可读取。重启验收不应执行重新安装。
+再从获准内网客户端访问 Web，抽查已有数据仍可读取。重启验收不应执行重新安装。
 
 ## 15. 上线验收清单
 

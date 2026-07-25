@@ -1,69 +1,56 @@
-# Tech stack — current (Python) → target (TypeScript)
+# Tech stack — current v2-only implementation
 
-> Companion to [architecture.md](architecture.md) and
-> [decisions/0001](decisions/0001-rebuild-as-ts-monorepo.md). Package status
-> verified against npm as of 2026-06; see [feasibility/](feasibility/).
+> This file describes the implemented stack after ADR 0013 product cutover.
+> Earlier Python-to-TypeScript evaluations remain under `docs/feasibility/` and
+> `docs/migration/` as historical records.
 
-## Backend — what to replace
+## Backend
 
-| Layer | Current (Python) | Target (TypeScript) | Notes |
-|---|---|---|---|
-| Language / runtime | Python ≥3.10 | **TypeScript / Node ≥20** (Bun optional) | web-standard handlers ⇒ edge-capable |
-| Package mgr / build | `uv` + `hatchling` | **pnpm workspaces + Turborepo + `tsup`** | monorepo tooling |
-| Dataframe engine | **Polars** | **`nodejs-polars`** (primary) | same Rust core; every op maps 1:1 |
-| Analytical SQL / out-of-core | *(implicit Polars; roadmap → Ray Data)* | **`@duckdb/node-api`** (DuckDB Neo) | larger-than-memory + SQL fallback + duckdb-wasm in UI |
-| Arrow interchange | **PyArrow** | **`apache-arrow`** (JS) | zero-copy IPC; polars emits Arrow |
-| Parquet IO | Polars / PyArrow | **`nodejs-polars`** (or DuckDB `COPY`) | avoid stale `parquetjs` for the core |
-| Content hashing | **blake3** (blake2b fallback) | **`hash-wasm`** (blake3) | `@hashbuf/blake3` alt; canonical-JSON + `hashUnordered` are trivial TS |
-| Schema / validation | **Pydantic v2** | **`zod` v4** | `z.discriminatedUnion('kind', …)` |
-| OpenAPI source | FastAPI `app.openapi()` | **`@hono/zod-openapi`** | spec generated from the same zod schemas — one source of truth |
-| Catalog DB (control plane) | SQLite (stdlib `sqlite3`, WAL) | **Postgres** + **Prisma ORM** (Rust-free TS/WASM client; driver adapter `@prisma/adapter-pg`/`-neon`) | managed in prod (Neon/RDS), Docker locally; ADR-0003 / ADR-0004 |
-| Blob store (data plane) | local Parquet (fs, atomic rename) | **object storage** (S3/R2; **MinIO** locally) behind a `Store` interface | content-addressed write-once; S3 `PUT` is atomic |
-| Lineage DAG | recursive Python walk | recursive **SQL CTE** (`WITH RECURSIVE`) via Prisma **TypedSQL** / `$queryRaw` | Prisma's query API has no native recursive CTE — escape to raw SQL for this one query |
-| Web framework | **FastAPI** | **Hono** (recommended, ADR-0002) | NestJS / Fastify are alternatives |
-| HTTP server | `uvicorn` | Node http via Hono adapter | — |
-| Multipart upload | `python-multipart` | Hono `c.req.parseBody` | built-in |
-| NDJSON streaming | Starlette `StreamingResponse` | Web Streams (Hono) | first-class |
-| Tests | `pytest` + `httpx` | **`vitest`** | handlers are fetch fns ⇒ easy to test |
-| OpenAPI export script | `scripts/export_openapi.py` | `tooling/openapi-export` | deterministic dump (sorted keys) |
-
-## Roadmap items (M2 / M3)
-
-| Capability | Current plan (Python) | Target (TypeScript) | Verdict |
-|---|---|---|---|
-| M3 vector backend | Lance | **`@lancedb/lancedb`** | TS-native |
-| M2 synthesis | distilabel | **Vercel AI SDK / provider SDKs** over `Dataset`/`Workspace` | TS-native (capability, not the framework) |
-| M2 annotation | Argilla | external **Argilla server over REST** | stack-agnostic; integrate via HTTP |
-| Distributed scaling | Ray Data | **DuckDB out-of-core** covers the real need | Ray only as an *optional* `workers/python-*` sidecar if true cluster execution is ever mandated |
-| External data processing | Data-Juicer | Optional native Python 3.11 Processing Service behind internal gRPC | Authorized by ADR-0010; v1 sealed staging artifacts only, no canonical publication |
-
-## Frontend — greenfield rewrite (React + Vite SPA, ADR-0006)
-
-`apps/web` is a **full rewrite**, **not** a port of the existing UI. Pure REST
-client (no SSR). Stack (see [decisions/0006](decisions/0006-frontend-stack.md)):
-
-| 层 | 选择 |
+| Layer | Choice |
 |---|---|
-| 框架/构建 | React 19 + **Vite** SPA |
-| 路由 | **TanStack Router**(类型安全文件路由) |
-| server state / 虚拟化 | **TanStack Query** + **TanStack Virtual** |
-| 组件/样式 | **shadcn/ui + Tailwind v4** + lucide-react |
-| API 客户端 | **openapi-typescript + openapi-fetch**(消费 `apps/api` 的 openapi.json) |
-| 表单 | react-hook-form + zod |
-| lineage 可视化 | **React Flow**(`@xyflow/react`) |
-| i18n | i18next + react-i18next（en/zh） |
-| 测试/规范 | Vitest + Testing Library + Biome |
+| Runtime | TypeScript + Node 22 LTS, pure ESM |
+| Monorepo/build | pnpm workspaces + Turborepo + tsup |
+| HTTP/OpenAPI | Hono + `@hono/zod-openapi` |
+| Validation | Zod v4 |
+| Identity | RFC 8785 JCS + BLAKE3 |
+| Dataset artifact | hyparquet + hyparquet-writer + zstd-wasm |
+| Catalog | PostgreSQL 17 + Prisma driver adapter |
+| Object storage | Aliyun OSS; S3-compatible MinIO for local/offline |
+| API streaming | Web Streams + bounded multipart parsing |
+| Tests | Vitest; real Postgres/MinIO integration gates |
 
-It consumes the backend only through the generated client (contract-first,
-unchanged). The original `databench-ui` (React 18 + Vite + TS, at
-`~/Desktop/databench/databench-ui/`) is the **feature reference**, not the
-codebase being moved.
+The current core/domain/public API has no Python runtime. The retired Processing
+worker design is preserved only in its ADR/design history.
 
-## Python boundary
+## Frontend
 
-Zero inside the core/domain/public API. ADR-0010 now authorizes one optional
-`workers/processing-python` service because the owner selected Data-Juicer the
-framework itself. TypeScript remains the public REST/domain/publication owner;
-the worker communicates only through internal Proto/gRPC and signed artifacts.
-distilabel, Ray Data, LLM processors, arbitrary Python modules and distributed
-runtimes remain deferred. See [architecture.md → Python boundary](architecture.md).
+| Layer | Choice |
+|---|---|
+| Framework/build | React 19 + Vite |
+| Routing | TanStack Router |
+| Server state | TanStack Query |
+| Virtualization | TanStack Virtual |
+| UI/style | Tailwind v4 + local shadcn-style primitives + lucide-react |
+| API client | openapi-typescript + openapi-fetch |
+| Forms | react-hook-form + Zod |
+| Lineage | React Flow (`@xyflow/react`) |
+| i18n | i18next + react-i18next |
+| Tests | Vitest |
+
+The Web app is a REST-only SPA and imports no backend package. Product routes are
+unversioned; the generated client consumes the stable `/v2` API contract.
+
+## Tooling and deployment
+
+| Area | Choice |
+|---|---|
+| Lint/format | Biome |
+| Git hooks | Lefthook |
+| OpenAPI | deterministic `tooling/openapi-export` |
+| Local services | Docker Compose Postgres + MinIO |
+| Hosted object store | Aliyun OSS |
+| Offline single host | Docker Compose + Caddy + Postgres + MinIO |
+| Public cloud API host | pending D3 owner decision |
+
+V16/V17 recovery/security/capacity work remains separate from the product
+cutover and is not implied by this implemented stack.

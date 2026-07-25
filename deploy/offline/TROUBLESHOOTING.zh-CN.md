@@ -262,7 +262,7 @@ docker inspect --format '{{.State.Status}}' databench-offline-api
 - 本机正常、客户端失败：检查现场防火墙、路由和允许 CIDR；
 - 本机也失败且 Web running：检查 Caddy 日志和 API 状态；
 - 502：通常是 API 未运行或尚未 healthy；
-- SPA 能打开但 API 请求失败：检查请求 URL 是否为 `/api/v1/*`、`/api/v2/*`、
+- SPA 能打开但 API 请求失败：检查请求 URL 是否为 `/api/v2/*`、
   `/api/version`，且响应 `Content-Type` 是 JSON。
 
 ### 7.3 页面正常，但 API 返回 HTML 或显示“后端不可达”

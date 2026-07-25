@@ -4,7 +4,6 @@ const apiPaths = [
   '/api/version',
   '/api/capabilities',
   '/api/openapi.json',
-  '/api/v1/refs',
   '/api/v2/refs?limit=1',
 ]
 

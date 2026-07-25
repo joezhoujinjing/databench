@@ -90,7 +90,7 @@ cd databench-offline-1.1.0-linux-amd64
 sudo ./upgrade.sh
 ```
 
-升级会停止 API、创建一致性备份、导入镜像、迁移数据库，再运行 doctor 和固定 v1/v2 生命周期
+升级会停止 API、创建一致性备份、导入镜像、迁移数据库，再运行 doctor 和固定数据集生命周期
 冒烟。任一步失败会自动恢复 previous release。普通向后兼容迁移可以直接回滚应用镜像：
 
 ```bash

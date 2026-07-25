@@ -1,168 +1,109 @@
-# databench — Target Architecture (all-TypeScript monorepo)
+# Databench 当前架构
 
-> Status: target design for the greenfield rebuild. Decided 2026-06-29; Python
-> processing boundary amended by ADR-0010 on 2026-07-23.
-> Feasibility verdict: **`FEASIBLE-ALL-TS`** (see [decisions/0001](decisions/0001-rebuild-as-ts-monorepo.md)).
-> Core/domain/public API Python surface: **zero**. The owner has separately
-> authorized one optional long-running Python Processing Service behind internal
-> gRPC for Data-Juicer and future explicitly allowlisted Python-native adapters.
+> 当前产品已按 ADR 0013 切换为 v2-only。Web 和 CLI 使用无版本产品入口；
+> REST、数据库、对象布局与内部类型保留稳定的 v2 协议命名。
 
-## What databench is
+## 系统目标
 
-Infrastructure for managing **LLM post-training data**: versioned datasets,
-automatic lineage, reproducible training mixtures. A thin **control plane**
-(catalog, Postgres) over a content-addressed **data plane** (immutable Parquet
-blobs on object storage), with a pure-function **transform/enrichment** engine
-and a hashable **recipe** (mixture) as the bridge to training.
+Databench 管理 LLM post-training 数据：immutable versioned datasets、record/dataset
+lineage、确定性 transforms、可审计导入和显式 fidelity 的导出。
 
-**Deployment:** a hosted, horizontally-scaled service — N stateless Hono API
-replicas over exactly **two stateful services**: **Postgres** (catalog) and
-**object storage** (Parquet data plane). Production uses RDS + Aliyun OSS; local
-development and ADR 0012's isolated offline single-host deployment use Postgres + MinIO via the
-S3-compatible adapter. `nodejs-polars`,
-DuckDB, Arrow and Lance are in-process libraries, not infrastructure — DuckDB
-reads Parquet directly from object storage via `httpfs`. Local runs the same
-shape via docker-compose (`postgres` + `minio`). No SQLite. See
-[decisions/0003](decisions/0003-storage-postgres-object-store.md).
+系统分为：
 
-ADR-0010 adds one stateless Processing worker and one API-process dispatcher for
-local/trusted-private execution. It does not add another stateful service:
-Postgres remains the job control plane and object storage remains the bulk data
-plane. The worker is not part of canonical publication and is disabled unless
-explicitly configured.
+- control plane：Postgres catalog，只存 identity、snapshot/layout metadata、run、
+  lineage 与 refs；
+- data plane：对象存储中的 immutable Parquet artifacts 与 manifests；
+- application plane：无状态 Hono API、in-process CLI 和 React/Vite Web。
 
-## Monorepo layout
+样本 payload 不进入 Postgres。
 
-**`~/Desktop/databench-ts/` is the monorepo root** (a fresh greenfield repo).
-The legacy Python backend and the original `databench-ui` stay at
-`~/Desktop/databench/` as **reference + golden-test source** (the Python
-`bench/` catalog.db + store live at `~/Desktop/databench/databench/bench/`).
-Tooling: **pnpm workspaces + Turborepo**, TypeScript project references, `tsup`
-for package builds.
+## 运行形态
 
-```
-databench-ts/                      (monorepo root)
-├─ apps/
-│  ├─ api/            HTTP service → /health, /version, /capabilities, /v1/*
-│  │                  emits openapi.json (the UI's contract). See ADR-0002.
-│  └─ web/            frontend — GREENFIELD REWRITE (stack TBD); still consumes
-│                     the same /v1 contract via openapi-typescript
-├─ proto/              internal databench.processing.v1 transport source
-├─ packages/
-│  ├─ schema/         zod discriminated union (sft|preference|rl|trajectory),
-│  │                  Message/ToolCall/Rollout/Candidate, Manifest, COLUMNS;
-│  │                  single source for runtime validation + OpenAPI + TS types
-│  ├─ hashing/        blake3 (hash-wasm); v1 canonical JSON + hashUnordered;
-│  │                  v2 RFC 8785 JCS + profile-separated identity (ADR-0011)
-│  ├─ engine/         nodejs-polars adapter: dedup, filter_by_signal, sample_n,
-│  │                  recipe mix, arrow(), parquet IO; DuckDB adapter alongside
-│  ├─ store/          content-addressed write-once Parquet store + manifests
-│  │                  on OBJECT STORAGE (S3/R2; MinIO local), behind a Store
-│  │                  interface; v1 objects/<version[:2]>/; v2 artifact-digest
-│  │                  blobs + conditional manifest commit (ADR-0011)
-│  ├─ catalog/        POSTGRES + Prisma; datasets/runs/refs tables;
-│  │                  lineage DAG via WITH RECURSIVE (TypedSQL/$queryRaw)
-│  ├─ io/             JSONL ingest + per-line kind auto-detection + export
-│  ├─ ops/            transform registry (decorator/object), enrichments
-│  └─ workspace/      ties store+catalog; run / materialize / lineage / export
-├─ tooling/
-│  ├─ openapi-export/ boots apps/api, dumps deterministic openapi.json
-│                     (sorted keys, fixed indent) — replaces the Python
-│                     scripts/export_openapi.py
-│  └─ proto/          deterministic TS/Python generation + Buf checks
-├─ workers/
-│  └─ processing-python/ optional long-running internal gRPC worker,
-│                        never imported by core TS
-└─ docs/              this folder
+```text
+┌────────────────────┐
+│ React/Vite Web SPA │
+│ versionless routes │
+└─────────┬──────────┘
+          │ generated OpenAPI client
+          ▼
+┌────────────────────┐
+│ Hono API            │
+│ meta + /v2 REST     │
+└─────────┬──────────┘
+          │ Workspace
+          ▼
+┌───────────────────────────────────────────────┐
+│ Engine · IO · Ops · Store · Catalog          │
+└─────────────────┬───────────────────┬─────────┘
+                  │                   │
+                  ▼                   ▼
+             PostgreSQL        OSS / S3 / MinIO
+
+CLI ───────────────► Workspace
 ```
 
-The frontend (`apps/web`) is a **greenfield rewrite** (stack TBD — see open
-decisions), **not** a port of `databench-ui`. It still consumes the backend
-purely through the generated client: `gen:client` runs `openapi-typescript`
-against `apps/api`'s `openapi.json` (contract-first, unchanged). The original
-`databench-ui` (at `~/Desktop/databench/databench-ui/`) is the **feature
-reference** for the rewrite.
+API 和 CLI 都只经 `@databench/workspace` + `@databench/schema` 触达领域能力。
+Web 不 import 后端包，只消费由 OpenAPI 生成的类型。
 
-## The engine bet
+## 产品入口与协议
 
-**`nodejs-polars` is the primary dataframe engine.** Rationale:
-
-- Every operation the current backend performs maps 1:1 to the Node binding —
-  verified against the `nodejs-polars@0.25.1` typings: `str.jsonPathMatch`,
-  `cast(strict)`, `filter`, `sample({n, seed})`, `unique({subset, keep,
-  maintainOrder})`, `select`, `concat`, `height`, parquet read/write,
-  `toArrow`, lazy `collect`, `groupBy`.
-- It owns **Parquet and Arrow in one dependency**, preserving the
-  `Polars + Arrow boundary` design.
-- Same Rust core as the Python original → matching numeric/semantic behavior.
-- The engine's actual job is small: the current backend is **eager** Polars
-  doing `construct → (dedup | json-extract+cast+filter | sample | select+concat)
-  → iterate/arrow/parquet`. No lazy query plan, window, or join anywhere.
-
-**`@duckdb/node-api` (DuckDB Neo) stays resident** for three non-speculative
-jobs — not a fallback we hope never to use:
-
-1. **Out-of-core `materialize`** of large recipes — the all-TS answer to the
-   roadmap's "single-node Polars → Ray Data" scaling line.
-2. **`@duckdb/duckdb-wasm`** lets `apps/web` query Parquet slices **in-browser**
-   for M3 exploration.
-3. A **drop-in replacement for every engine op** (all of them are trivially SQL:
-   `DISTINCT ON`, `json_extract`, `CAST`, `WHERE`, `USING SAMPLE n
-   REPEATABLE(seed)`, `UNION ALL`), which de-risks the one shaky dependency.
-
-## Per-capability stack (all TS-native)
-
-| Capability | Package |
+| 层 | 当前入口 |
 |---|---|
-| Schema / discriminated unions / OpenAPI source | `zod` v4 + `@hono/zod-openapi` |
-| blake3 + order-independent versioning | `hash-wasm` (or `@hashbuf/blake3`) |
-| Content-addressed write-once store | object storage (Aliyun OSS hosted production; MinIO local and ADR 0012 offline production via S3 adapter) behind a `Store` interface |
-| Parquet read/write | `nodejs-polars` (or DuckDB `COPY`/`read_parquet`) |
-| Arrow interchange | `apache-arrow` + polars IPC |
-| Catalog + lineage | **Postgres** + **Prisma**, lineage via `WITH RECURSIVE` (TypedSQL/`$queryRaw`) |
-| JSONL ingest + kind detection | pure TS |
-| HTTP service + UI-compatible OpenAPI | `hono` + `@hono/zod-openapi` (ADR-0002) |
-| M3 Lance backend | `@lancedb/lancedb` |
-| Optional Python-native processing | internal gRPC + native Python 3.11/`uv`; Postgres jobs + signed OSS/MinIO artifacts (ADR-0010) |
+| Web | `/datasets`、`/ingest`、`/transforms` 及其详情子路由 |
+| CLI | `databench dataset|converter|transform|ref|lineage ...` |
+| REST | `/health`、`/version`、`/capabilities`、`/v2/*` |
+| Postgres | `*_v2` catalog tables |
+| Object store | `objects/v2/` |
 
-## Python boundary
+这里的 v2 是稳定协议/持久化边界。它不会因为 UI 不显示版本而被重命名，也不表示还有
+可用的 v1 产品面。
 
-The core/domain/public API remains all TypeScript: no in-process FFI, no Python
-subprocess inside Node, and no Python import in a TS package. ADR-0010 now
-authorizes one optional `workers/processing-python` service because the owner
-explicitly selected reuse of Data-Juicer as a Python-native framework.
+## 数据身份与 artifact
 
-The boundary is strict: `@databench/workspace` is the only internal gRPC client;
-Zod remains the domain/public contract source; Proto is internal transport only;
-Python has no Postgres or long-lived object-store credentials and receives only
-bounded control messages plus short-lived signed artifact targets. TS alone owns
-versions, manifests, refs, cache keys, runs, and lineage. V1 produces sealed
-staging artifacts and has no canonical finalizer. The UI never talks to Python
-directly, and the worker is never an in-process dependency or a core data path.
+- RFC 8785 JCS 和 BLAKE3 是身份基础。
+- identity hash 必须带明确 domain、profile 和 schema envelope。
+- record revision、dataset version、run/cache 与 artifact digest 各自有独立语义。
+- `record-json-v1` 是当前 Parquet 布局格式名，不是旧产品 API v1。
+- artifact 与 manifest 使用 conditional create；同一 key 不允许覆盖。
+- Ref 更新使用 compare-and-set，避免并发静默覆盖。
 
-Additional Python frameworks such as distilabel or Ray remain deferred. They
-may be added only as explicitly registered adapters behind this same boundary,
-with a separate review of dependencies, resources, and security; ADR-0010 does
-not authorize arbitrary modules, YAML, shell execution, runtime installation,
-LLM processors, or distributed runtimes.
+完整 fixed vectors 与不变量见 ADR 0011 和 `docs/v2/TECHNICAL-DESIGN.md`。
 
-## Biggest risk + first action
+## 数据处理
 
-**Risk: `nodejs-polars` maturity vs Python Polars** — same Rust core but a
-thinner, less-exercised binding (release cadence lag, sparser docs, NAPI
-prebuilt edge cases, and the weaker Arrow handoff vs Python's `polars →
-pyarrow.Table`). It is *capability-complete* for everything databench does, but
-it is the dependency most likely to surface a sharp edge.
+- `@databench/engine` 使用 `hyparquet`、`hyparquet-writer` 和
+  `@bokuweb/zstd-wasm` 编解码受约束的确定性 Parquet layout。
+- `@databench/ops` 提供五个版本化、确定性的内置 transform。
+- `@databench/io` 负责 canonical JSONL 和 converter registry。
+- Transform 产生 immutable output dataset、run metadata 和 record lineage。
+- Export 先 inspect fidelity plan，再由调用方明确接受 digest 后流式输出。
 
-The risk is **bounded, not existential**: DuckDB covers every op one-for-one, so
-a worst case is an engine *swap*, not a redesign.
+退役的 v1 Recipe/Vocabulary/Processing 实现不在当前 runtime 中。相应 ADR、迁移清单和
+review 文档保留为历史决策记录。
 
-**First action — spike the engine before anything else**, with golden tests
-locking the four things that actually decide "all-TS works":
+## 部署
 
-1. **Parquet round-trip** of the all-`Utf8` canonical layout (write in TS, read
-   back, and cross-read against a Python-written file).
-2. **Seeded sampling determinism** (`sample(seed)` reproducibility — recipes
-   depend on it).
-3. **JSONPath signal filtering** (`str.jsonPathMatch` + non-strict float cast).
-4. **Version-hash stability** (`hashUnordered` byte-identical to the spec).
+有状态依赖始终只有：
+
+1. Postgres；
+2. 对象存储。
+
+当前 adapter：
+
+- hosted production：Aliyun OSS；
+- local development：Postgres + MinIO；
+- ADR 0012 offline single host：Docker Compose 内的 Postgres + MinIO，Caddy 仅发布
+  Web 入口并把外部 `/api/*` 去前缀转发到 API。
+
+公共云 API 托管平台仍受 D3 owner 决策门约束。ADR 0012 的 Ubuntu 单机离线通道是独立
+已接受路径，不代表 V16/V17 recovery/security/capacity gate 已完成。
+
+## 不变量
+
+1. 所有 wire schema 只在 `@databench/schema` 定义一次。
+2. OpenAPI 从 API route schema 确定性生成，前端 client 由该文档生成。
+3. 参与身份的序列化只走 `@databench/hashing`，不得用裸 `JSON.stringify` 构造 hash
+   输入。
+4. Catalog 不依赖领域包；应用不绕过 Workspace。
+5. 对象是 immutable，refs 是可变指针；二者不能混为一层。
+6. 产品切换 R0-R5 不自动完成 V16/V17，也不扩大 D3 的部署授权。

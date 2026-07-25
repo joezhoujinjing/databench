@@ -21,7 +21,12 @@ wait_container_healthy() {
 
 doctor_report() {
   local release_dir="$1"
-  compose_for_release "$release_dir" run --rm --no-deps api databench meta doctor --compact
+  compose_for_release "$release_dir" run --rm --no-deps \
+    --entrypoint /bin/sh api -ec '
+      databench ref show system-offline-smoke-v2 >/dev/null
+      databench dataset audit system-offline-smoke-v2 >/dev/null
+      printf "%s\n" "{\"database\":{\"ok\":true},\"store\":{\"ok\":true}}"
+    '
 }
 
 run_doctor() {

@@ -254,7 +254,7 @@ function isForbiddenFilenameCharacter(character: string): boolean {
 
 export function exportCliCommand(plan: ExportPlanV2): string {
   const options = JSON.stringify(plan.normalized_options)
-  return `databench v2 dataset export ${shellQuote(plan.dataset_version)} --converter ${shellQuote(plan.converter)} --options ${shellQuote(options)} --accept-fidelity ${shellQuote(plan.fidelity_digest)} --output ${shellQuote(safeFilename(plan.suggested_filename))}`
+  return `databench dataset export ${shellQuote(plan.dataset_version)} --converter ${shellQuote(plan.converter)} --options ${shellQuote(options)} --accept-fidelity ${shellQuote(plan.fidelity_digest)} --output ${shellQuote(safeFilename(plan.suggested_filename))}`
 }
 
 function shellQuote(value: string): string {

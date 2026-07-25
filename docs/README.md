@@ -1,117 +1,53 @@
-# databench docs
+# Databench docs
 
-Design and decision records for the all-TypeScript monorepo rebuild.
+## 当前实现先读
 
-## Start here
+- [HANDOFF.md](HANDOFF.md) — 当前状态、红线与 R5 gate。
+- [v2/STATUS.md](v2/STATUS.md) — v2 与产品切换的真实进度。
+- [architecture.md](architecture.md) — 当前 v2-only 系统形态。
+- [project-structure.md](project-structure.md) — 包边界与依赖 DAG。
+- [directory-layout.md](directory-layout.md) — 当前文件落点。
+- [conventions.md](conventions.md) — 确定性、契约、测试与协作规则。
+- [tech-stack.md](tech-stack.md) — 当前已实现技术栈。
 
-- **[architecture.md](architecture.md)** — target monorepo layout, the engine
-  bet (`nodejs-polars` + DuckDB), per-capability stack, the Python boundary, the
-  biggest risk and the first action.
-- **[tech-stack.md](tech-stack.md)** — current (Python) → target (TypeScript)
-  technology mapping, layer by layer.
-- **[project-structure.md](project-structure.md)** — authoritative monorepo
-  layout, per-package internal template, and the **dependency-direction rules**
-  (the anti-drift core). Read before creating any package.
-- **[directory-layout.md](directory-layout.md)** — file-level layout of every
-  app/package (incl. the full Hono `apps/api` internal structure), each file
-  tagged with the feature IDs it carries. Read before creating any file.
-- **[conventions.md](conventions.md)** — naming, TS/module rules, the
-  **determinism discipline** (canonicalJson / blake3 / banker's rounding tied to
-  the golden gates), error mapping, contract-single-source, testing, env config,
-  git. Read before writing any code.
+## 产品切换
 
-## Decisions (ADRs)
+- [ADR 0013](decisions/0013-v2-product-cutover-and-v1-retirement.md) — v2 成为唯一
+  产品面，v1 退役。
+- [产品切换技术方案](v2/PRODUCT-CUTOVER-TECHNICAL-DESIGN.md) — 边界与验收标准。
+- [产品切换实施计划](v2/CUTOVER-PLAN.md) — R0-R5。
+- [v1 退役 runbook](v2/V1-RETIREMENT-RUNBOOK.md) — R4 显式数据清理流程；只用于
+  尚未执行退役的安装环境。
 
-- **[0001 — Rebuild as a TS monorepo](decisions/0001-rebuild-as-ts-monorepo.md)**
-  — the decision + feasibility verdict (`FEASIBLE-ALL-TS`). *Accepted.*
-- **[0002 — HTTP framework: Hono vs NestJS](decisions/0002-http-framework.md)**
-  — **Hono**. *Accepted.*
-- **[0003 — Storage: Postgres catalog + object-storage data plane](decisions/0003-storage-postgres-object-store.md)**
-  — two stateful services (PG + object storage), no SQLite. *Accepted.*
-- **[0004 — Toolchain & conventions](decisions/0004-toolchain-and-conventions.md)**
-  — pnpm + Turborepo, Node 22 + Vitest, Biome, Prisma, GitHub Actions. *Accepted.*
-- **[0005 — Infrastructure & deployment](decisions/0005-infrastructure-and-deployment.md)**
-  — Supabase Postgres, GCS object storage (S3-compat), API host TBD. *Accepted.*
-- **[0006 — Frontend stack](decisions/0006-frontend-stack.md)**
-  — React + Vite SPA, shadcn/ui + Tailwind, TanStack Router/Query/Virtual. *Accepted.*
-- **[0007 — Agent-facing CLI](decisions/0007-agent-cli.md)**
-  — thick, in-process CLI over the same Workspace boundary. *Accepted.*
-- **[0008 — Aliyun OSS production + MinIO local](decisions/0008-object-store-aliyun-oss.md)**
-  — native OSS in production and the S3 adapter for local MinIO. *Accepted.*
-- **[0009 — Canonical post-training record v2](decisions/0009-canonical-post-training-record-v2.md)**
-  — one canonical record with derived trainer/task views. *Accepted for v2.*
-- **[0010 — Python Processing Service over internal gRPC](decisions/0010-python-processing-service-grpc.md)**
-  — long-running Python execution plane, Proto transport, Postgres job leases,
-  and object-storage batch artifacts while Databench retains version/lineage
-  ownership. *Accepted.*
-- **[0011 — v2 identity, hashing, and versioning](decisions/0011-identity-hashing-versioning-v2.md)**
-  — separates stable logical IDs, canonical record digests, logical dataset versions,
-  and physical artifact digests. *Accepted for v2.*
+## v2 协议
 
-## v2 design references
+- [ADR 0009](decisions/0009-canonical-post-training-record-v2.md) — canonical
+  post-training record。
+- [ADR 0011](decisions/0011-identity-hashing-versioning-v2.md) — identity、
+  hashing 与 versioning。
+- [v2 技术方案](v2/TECHNICAL-DESIGN.md) — 已接受协议设计。
+- [v2 实施计划](v2/PLAN.md) — V0-V17；V16/V17 仍保持真实未完成状态。
+- [扩展 schema 参考](v2/canonical-record-extended-profile.md) — 非规范候选。
 
-- **[v2 technical design](v2/TECHNICAL-DESIGN.md)**
-  — v2 package/runtime、Parquet/manifest/catalog、Workspace/API，以及完整 Web vertical
-  slice、exact-version cache、Unified Record renderer 与 fidelity workflow。*Accepted.*
-- **[v2 implementation plan](v2/PLAN.md)**
-  — additive v2 delivery sequence, package placement, physical layout, catalog/API rollout,
-  and gates V0-V17. *Accepted; implementation starts at V0.*
-- **[Canonical Record v2 扩展设计参考](v2/canonical-record-extended-profile.md)**
-  — v2.0 最小 schema 暂不采用的候选字段、Part variants、适用边界与未来纳入条件。
-  *Non-normative reference.*
+## 部署
 
-## Processing
+- [ADR 0012](decisions/0012-offline-single-host-deployment.md) — Ubuntu 单机离线部署。
+- [离线发布方案](deployment/offline-single-host-plan.zh-CN.md)。
+- [阿里云 ECS 中文 runbook](deployment/aliyun-ecs.zh-CN.md)。
+- [Aliyun ECS English runbook](deployment/aliyun-ecs.md)。
 
-- **[Processing Service 交接包](processing/HANDOFF.md)**
-  — 当前状态、权威文件顺序、锁定边界、P1–P6 切片、P1 首 PR 范围、验收清单与可直接
-  交给实现者的 kickoff prompt。**交接从这里开始。**
-- **[Processing Service 技术方案](processing/TECHNICAL_DESIGN.md)**
-  — 在当前 monorepo 中落地内部 gRPC Python worker、同步短任务、Postgres
-  batch job、OSS/MinIO 暂存工件和 Data-Juicer adapter 的分步设计。*Revised draft.*
+公共云 API 托管平台仍受 D3 owner 决策门约束。离线通道是独立授权，不会自动完成
+V16/V17。
 
-## Deployment
+## 历史记录
 
-- **[阿里云 ECS 部署手册](deployment/aliyun-ecs.zh-CN.md)** — 中文生产部署
-  runbook，覆盖 GitHub Actions、ECS、RDS、OSS/CDN、GoDaddy DNS、首发检查、
-  日常部署、回滚和排障。
-- **[Aliyun ECS Deployment Runbook](deployment/aliyun-ecs.md)** — English
-  deployment runbook for the same production setup.
+以下内容保留用于解释迁移与已接受决策，不代表当前 runtime surface：
 
-## Migration (Python → TS)
+- `docs/migration/` — Python → TypeScript 与 v1 parity 的完成记录；
+- `docs/feasibility/` — 初始可行性评估；
+- `docs/reviews/`、`docs/spikes/` — 当时的 review 和实验；
+- [ADR 0010](decisions/0010-python-processing-service-grpc.md) 与
+  `docs/processing/` — 已退役 Processing 方案的历史记录；
+- ADR 0001-0008 — 重写阶段的基础决策，其中被后续 ADR 修订的部分以后续 ADR 为准。
 
-- **[HANDOFF.md](HANDOFF.md)** — **implementation handoff** for the agent that
-  will build this (goal mode): current state, must-reads, hard rules, decision-gate
-  defaults, environment gotchas, Definition of Done, check-in protocol, and a
-  ready-to-paste kickoff prompt. **Give this to the implementing agent.**
-- **[migration/PLAN.md](migration/PLAN.md)** — **the end-to-end execution plan**
-  (M0..M6, steps S0..S22 + decision gates), tying the backend and frontend
-  inventories into one ordered, one-PR-per-step checklist. **Start here to execute.**
-- [migration/STATUS.md](migration/STATUS.md) — live per-step progress tracker
-  (maintained by the implementing agent).
-
-- **[migration/feature-inventory.md](migration/feature-inventory.md)** — the
-  authoritative migration plan: all ~101 features indexed, dependency-sorted into
-  13 phases with per-feature checkboxes and golden-test gates. **Start here when
-  migrating.**
-- [migration/inventory-domain.md](migration/inventory-domain.md) — 74
-  domain/data-layer features, every hidden rule + acceptance test.
-- [migration/inventory-service.md](migration/inventory-service.md) — service /
-  contract / behavior features + the contract↔implementation reconciliation
-  (including the now-implemented `vocabularies` contract).
-- **[migration/frontend-inventory.md](migration/frontend-inventory.md)** — the
-  authoritative **frontend** rewrite plan (`apps/web`): phases FE-0..FE-5 +
-  checkboxes + acceptance gates, backed by `_frontend-pages.md` (pages/flows) and
-  `_frontend-shell.md` (components/api/i18n/shell + 118 i18n keys).
-
-## Feasibility evidence
-
-Source material behind ADR-0001 — two independent evaluators + cross-review:
-
-- [00-brief.md](feasibility/00-brief.md) — the question both evaluators answered
-- [01-eval-claude.md](feasibility/01-eval-claude.md) — Claude's report (+ Round 2)
-- [02-eval-codex.md](feasibility/02-eval-codex.md) — Codex's report (+ Round 2)
-
-Both converged on **`FEASIBLE-ALL-TS`** for the core/domain/public API; that
-surface remains Python-free. ADR-0010 later authorizes a separate optional
-Python Processing Service for explicitly selected Python-native frameworks such
-as Data-Juicer, without importing Python into the TS core.
+旧参考仓库 `~/Desktop/databench/` 始终只读。

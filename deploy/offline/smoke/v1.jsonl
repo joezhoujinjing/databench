@@ -1,1 +1,0 @@
-{"kind":"sft","source":"system-offline-smoke","messages":[{"role":"user","content":"offline deployment smoke","name":null,"tool_calls":null,"tool_call_id":null},{"role":"assistant","content":"ok","name":null,"tool_calls":null,"tool_call_id":null}],"meta":{"fixture":"v1"},"signals":{}}
