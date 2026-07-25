@@ -42,7 +42,7 @@ REST: /v2/...
 
 ## Worker 执行边界
 
-ADR 0010 P1 已在当前 v2-only 基线上落地两个顶层目录：
+ADR 0010 P1-P2 已在当前 v2-only 基线上落地 Worker foundation 与控制面：
 
 ```text
 proto/                  internal Worker gRPC 唯一 transport source
@@ -57,8 +57,9 @@ Worker → allowlisted Python capability adapter
 ```
 
 Data-Juicer 是第一个计划中的 runtime adapter。Worker 不依赖 TS packages、不访问 Postgres、
-不持有对象存储长期凭据，也不拥有 canonical identity/publication。当前只完成通用 server、
-Proto/client、health 和 test-only `fixture.copy@1`；Job、staging、Data-Juicer 与产品面仍未实现。
+不持有对象存储长期凭据，也不拥有 canonical identity/publication。当前已完成通用 server、
+Proto/client、health、test-only `fixture.copy@1`、`transform_jobs_v2`、dispatcher 和 API entrypoint
+lifecycle；staging、Data-Juicer、canonical finalizer 与产品面仍未实现。
 进度与后续施工边界以 `docs/processing/` 为真源。
 
 ## 依赖方向

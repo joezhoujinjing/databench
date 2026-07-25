@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'vitest'
+import type { V2Workspace, WorkerRuntime } from '@databench/workspace'
+import { describe, expect, test, vi } from 'vitest'
 import { createApp, createOpenApiDocument } from '../src/app.js'
-import { createAppFromConfig, loadConfig } from '../src/index.js'
+import { createAppFromConfig, loadConfig, startApiRuntime } from '../src/index.js'
 import { createTestApp } from './test-app.js'
 
 describe('api support', () => {
@@ -33,6 +34,30 @@ describe('api support', () => {
     expect(config.corsOrigins).toEqual(['https://one.example', 'https://two.example'])
     expect(config.openApiServerUrl).toBe('/api')
     expect(config.storeConfig).toMatchObject({ kind: 's3', bucket: 'v2-config-test' })
+    expect(config.worker).toMatchObject({
+      enabled: false,
+      target: '127.0.0.1:50051',
+      leaseMs: 30_000,
+      heartbeatMs: 10_000,
+    })
+  })
+
+  test('accepts only coherent private Worker runtime configuration', () => {
+    const base = {
+      DATABENCH_OBJECT_STORE: 's3',
+      DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+      DATABENCH_WORKER_ENABLED: 'true',
+      S3_BUCKET: 'v2-config-test',
+    }
+    expect(
+      loadConfig({ ...base, DATABENCH_WORKER_TARGET: '10.20.30.40:50051' }).worker,
+    ).toMatchObject({
+      enabled: true,
+      target: '10.20.30.40:50051',
+    })
+    expect(() => loadConfig({ ...base, DATABENCH_WORKER_TARGET: '8.8.8.8:50051' })).toThrow()
+    expect(() => loadConfig({ ...base, DATABENCH_WORKER_LEASE_MS: '20000' })).toThrow()
+    expect(() => loadConfig({ ...base, DATABENCH_WORKER_SIGNED_URL_TTL_MS: '910000' })).toThrow()
   })
 
   test('meta routes expose the v2-only health, version, and capability contract', async () => {
@@ -161,6 +186,90 @@ describe('api support', () => {
 
     const openApi = await getJson<OpenApiDocument>(app.fetch(request('/openapi.json')))
     expect(openApi.servers).toEqual([{ url: '/api' }])
+  })
+
+  test('real runtime lifecycle never constructs Worker machinery while disabled', async () => {
+    const workspace = {
+      close: vi.fn(async () => {}),
+    } as unknown as V2Workspace
+    const openWorkspace = vi.fn(async () => workspace)
+    const openWorker = vi.fn()
+    const runtime = await startApiRuntime(
+      {
+        corsOrigins: [],
+        port: 0,
+        storeConfig: { bucket: 'unused', region: 'us-east-1' },
+        v2CursorSecret: 'databench-api-v2-test-cursor-secret',
+        version: '1.0.0',
+        workspaceRoot: './bench-test',
+        worker: {
+          enabled: false,
+          target: '127.0.0.1:50051',
+          jobDeadlineMs: 900_000,
+          leaseMs: 30_000,
+          heartbeatMs: 10_000,
+          terminalEofMs: 5_000,
+          signedUrlTtlMs: 1_200_000,
+          shutdownMs: 30_000,
+        },
+      },
+      {
+        openWorkspace,
+        openWorkerRuntime: openWorker,
+        serve: (await import('@hono/node-server')).serve,
+      },
+    )
+
+    expect(openWorkspace).toHaveBeenCalledOnce()
+    expect(openWorker).not.toHaveBeenCalled()
+    await runtime.close()
+    expect(workspace.close).toHaveBeenCalledOnce()
+  })
+
+  test('enabled runtime starts Worker before HTTP and stops Worker before Workspace', async () => {
+    const events: string[] = []
+    const workspace = {
+      close: vi.fn(async () => {
+        events.push('workspace:close')
+      }),
+    } as unknown as V2Workspace
+    const worker: WorkerRuntime = {
+      async start() {
+        events.push('worker:start')
+      },
+      async stop() {
+        events.push('worker:stop')
+      },
+    }
+    const runtime = await startApiRuntime(
+      {
+        corsOrigins: [],
+        port: 0,
+        storeConfig: { bucket: 'unused', region: 'us-east-1' },
+        v2CursorSecret: 'databench-api-v2-test-cursor-secret',
+        version: '1.0.0',
+        workspaceRoot: './bench-test',
+        worker: {
+          enabled: true,
+          target: '127.0.0.1:50051',
+          jobDeadlineMs: 900_000,
+          leaseMs: 30_000,
+          heartbeatMs: 10_000,
+          terminalEofMs: 5_000,
+          signedUrlTtlMs: 1_200_000,
+          shutdownMs: 30_000,
+        },
+      },
+      {
+        openWorkspace: async () => workspace,
+        openWorkerRuntime: async () => worker,
+        serve: (await import('@hono/node-server')).serve,
+      },
+    )
+    events.push('http:started')
+    await runtime.close()
+
+    expect(events).toEqual(['worker:start', 'http:started', 'worker:stop', 'workspace:close'])
   })
 
   test('openapi document is generated from registered zod routes with error responses', () => {

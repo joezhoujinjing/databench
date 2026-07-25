@@ -150,3 +150,74 @@ export interface CatalogRefPageV2 {
   readonly rows: readonly CatalogRefRowV2[]
   readonly nextName: string | null
 }
+
+export type CatalogTransformJobStatusV2 =
+  | 'queued'
+  | 'leased'
+  | 'running'
+  | 'finalizing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export interface CatalogTransformJobProgressV2 {
+  readonly phase: string
+  readonly completedUnits: bigint
+  readonly totalUnits: bigint | null
+}
+
+export interface CatalogTransformJobErrorV2 {
+  readonly code: string
+  readonly message: string
+  readonly retryable: boolean
+}
+
+export interface CreateTransformJobV2 {
+  readonly id: string
+  readonly cacheKey: string
+  readonly op: string
+  readonly opVersion: string
+  readonly params: Readonly<Record<string, CatalogJsonValueV2>>
+  readonly inputVersion: string
+  readonly capabilityName: string
+  readonly capabilityVersion: string
+  readonly inputCount: bigint
+}
+
+export interface CatalogTransformJobRowV2 extends CreateTransformJobV2 {
+  readonly status: CatalogTransformJobStatusV2
+  readonly attempt: number
+  readonly leaseOwner: string | null
+  readonly leaseToken: Uint8Array | null
+  readonly leaseExpiresAt: Date | null
+  readonly progress: CatalogTransformJobProgressV2 | null
+  readonly inputKey: string | null
+  readonly outputKey: string | null
+  readonly outputCount: bigint | null
+  readonly outputVersion: string | null
+  readonly cacheHit: boolean
+  readonly error: CatalogTransformJobErrorV2 | null
+  readonly createdAt: Date
+  readonly startedAt: Date | null
+  readonly finishedAt: Date | null
+  readonly updatedAt: Date
+}
+
+export interface ClaimTransformJobV2 {
+  readonly leaseOwner: string
+  readonly leaseDurationMs: number
+}
+
+export interface TransformJobLeaseV2 {
+  readonly id: string
+  readonly attempt: number
+  readonly leaseToken: Uint8Array
+}
+
+export interface UpdateTransformJobProgressV2 extends TransformJobLeaseV2 {
+  readonly progress: CatalogTransformJobProgressV2
+}
+
+export interface FailTransformJobV2 extends TransformJobLeaseV2 {
+  readonly error: CatalogTransformJobErrorV2
+}

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { openWorkerRuntime, V2Workspace, type WorkerRuntime } from '@databench/workspace'
 import { serve } from '@hono/node-server'
 import { createApp, createOpenApiDocument } from './app.js'
 import { type ApiConfig, loadConfig } from './config.js'
@@ -29,6 +30,87 @@ export function createAppFromConfig(config: ApiConfig) {
   })
 }
 
+export interface ApiRuntime {
+  readonly server: ReturnType<typeof serve>
+  close(): Promise<void>
+}
+
+interface ApiRuntimeDependencies {
+  readonly openWorkspace: typeof V2Workspace.open
+  readonly openWorkerRuntime: typeof openWorkerRuntime
+  readonly serve: typeof serve
+}
+
+const DEFAULT_RUNTIME_DEPENDENCIES: ApiRuntimeDependencies = {
+  openWorkspace: V2Workspace.open,
+  openWorkerRuntime,
+  serve,
+}
+
+export async function startApiRuntime(
+  config: ApiConfig,
+  dependencies: ApiRuntimeDependencies = DEFAULT_RUNTIME_DEPENDENCIES,
+): Promise<ApiRuntime> {
+  const workspace = await dependencies.openWorkspace({
+    root: config.workspaceRoot,
+    cursorSecret: config.v2CursorSecret,
+    storeConfig: config.storeConfig,
+    ...(config.databaseUrl === undefined ? {} : { databaseUrl: config.databaseUrl }),
+  })
+  let workerRuntime: WorkerRuntime | null = null
+  let server: ReturnType<typeof serve> | null = null
+  try {
+    if (config.worker?.enabled === true) {
+      workerRuntime = await dependencies.openWorkerRuntime({
+        workspace,
+        target: config.worker.target,
+        jobDeadlineMs: config.worker.jobDeadlineMs,
+        leaseMs: config.worker.leaseMs,
+        heartbeatMs: config.worker.heartbeatMs,
+        terminalEofMs: config.worker.terminalEofMs,
+      })
+      await workerRuntime.start()
+    }
+    const app = createApp({
+      v2Workspace: workspace,
+      ...(config.openApiServerUrl === undefined
+        ? {}
+        : { openApiServerUrl: config.openApiServerUrl }),
+      corsOrigins: config.corsOrigins,
+      version: config.version,
+      workspaceRoot: config.workspaceRoot,
+    })
+    server = dependencies.serve({ fetch: app.fetch, port: config.port })
+  } catch (error) {
+    await workerRuntime?.stop().catch(() => undefined)
+    await workspace.close().catch(() => undefined)
+    throw error
+  }
+
+  const openedServer = server
+  if (openedServer === null) throw new Error('API server did not start')
+  let closePromise: Promise<void> | null = null
+  return {
+    server: openedServer,
+    async close() {
+      closePromise ??= (async () => {
+        const serverClosed = closeServer(openedServer)
+        await workerRuntime?.stop()
+        await workspace.close()
+        await serverClosed
+      })()
+      await closePromise
+    },
+  }
+}
+
+async function closeServer(server: ReturnType<typeof serve>): Promise<void> {
+  if (!server.listening) return
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()))
+  })
+}
+
 function isEntrypoint(): boolean {
   const entry = process.argv[1]
   return entry !== undefined && import.meta.url === pathToFileURL(entry).href
@@ -36,13 +118,33 @@ function isEntrypoint(): boolean {
 
 if (isEntrypoint()) {
   loadRootEnv()
-  const config = loadConfig()
-  const app = createAppFromConfig(config)
-
-  serve({
-    fetch: app.fetch,
-    port: config.port,
+  void startEntrypoint().catch((error: unknown) => {
+    console.error(error)
+    process.exitCode = 1
   })
+}
 
+async function startEntrypoint(): Promise<void> {
+  const config = loadConfig()
+  const runtime = await startApiRuntime(config)
+  const shutdown = async () => {
+    await withDeadline(runtime.close(), config.worker?.shutdownMs ?? 30_000)
+  }
+  process.once('SIGTERM', () => void shutdown())
+  process.once('SIGINT', () => void shutdown())
   console.log(`databench api listening on :${config.port}`)
+}
+
+async function withDeadline(operation: Promise<void>, milliseconds: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('API shutdown deadline exceeded')), milliseconds)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }

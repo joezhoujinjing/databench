@@ -26,12 +26,135 @@ export const V2_LINEAGE_CURSOR_MAX_CHARS = 1_536
 const TRANSFORM_NAME = /^[a-z][a-z0-9._-]{0,127}$/
 const TRANSFORM_VERSION = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const RUN_ID = /^run_[0-9a-f]{64}$/
+const JOB_ID = /^job_[0-9a-f]{64}$/
 
 export const TransformNameV2Schema = z.string().regex(TRANSFORM_NAME)
 export const TransformVersionV2Schema = z.string().regex(TRANSFORM_VERSION)
 export const TransformInputRoleV2Schema = z.string().regex(TRANSFORM_NAME)
 export type TransformInputRoleV2 = z.infer<typeof TransformInputRoleV2Schema>
 export const RunIdV2Schema = z.string().regex(RUN_ID)
+export const TransformJobIdV2Schema = z.string().regex(JOB_ID)
+
+export const TransformJobStatusV2Schema = z.enum([
+  'queued',
+  'leased',
+  'running',
+  'finalizing',
+  'completed',
+  'failed',
+  'cancelled',
+])
+export type TransformJobStatusV2 = z.infer<typeof TransformJobStatusV2Schema>
+
+export const TransformJobProgressV2Schema = z
+  .strictObject({
+    phase: TransformNameV2Schema,
+    completed_units: z.number().int().safe().nonnegative(),
+    total_units: z.number().int().safe().nonnegative().nullable(),
+  })
+  .superRefine((progress, context) => {
+    if (progress.total_units !== null && progress.completed_units > progress.total_units) {
+      context.addIssue({
+        code: 'custom',
+        path: ['completed_units'],
+        message: 'completed_units must not exceed total_units',
+      })
+    }
+  })
+  .meta({ id: 'TransformJobProgressV2' })
+export type TransformJobProgressV2 = z.infer<typeof TransformJobProgressV2Schema>
+
+export const TransformJobErrorV2Schema = z
+  .strictObject({
+    code: TransformNameV2Schema,
+    message: z.string().min(1).max(2_048),
+    retryable: z.boolean(),
+  })
+  .meta({ id: 'TransformJobErrorV2' })
+export type TransformJobErrorV2 = z.infer<typeof TransformJobErrorV2Schema>
+
+export const CreateBasicCleanJobRequestV2Schema = z
+  .strictObject({ inputs: z.tuple([RefOrVersionV2Schema]) })
+  .meta({ id: 'CreateBasicCleanJobRequestV2' })
+export type CreateBasicCleanJobRequestV2 = z.infer<typeof CreateBasicCleanJobRequestV2Schema>
+
+export const TransformJobV2Schema = z
+  .strictObject({
+    id: TransformJobIdV2Schema,
+    cache_key: DigestHexSchema,
+    operation: z.strictObject({
+      name: TransformNameV2Schema,
+      version: TransformVersionV2Schema,
+    }),
+    input_dataset_versions: z.tuple([DigestHexSchema]),
+    status: TransformJobStatusV2Schema,
+    attempt: z.number().int().safe().nonnegative(),
+    progress: TransformJobProgressV2Schema.nullable(),
+    input_count: z.number().int().safe().nonnegative(),
+    output_count: z.number().int().safe().nonnegative().nullable(),
+    output_dataset_version: DigestHexSchema.nullable(),
+    cache_hit: z.boolean(),
+    error: TransformJobErrorV2Schema.nullable(),
+    created_at: Rfc3339UtcSchema,
+    started_at: Rfc3339UtcSchema.nullable(),
+    finished_at: Rfc3339UtcSchema.nullable(),
+  })
+  .superRefine((job, context) => {
+    if (job.id !== `job_${job.cache_key}`) {
+      context.addIssue({
+        code: 'custom',
+        path: ['id'],
+        message: 'job id must be derived from cache_key',
+      })
+    }
+    if (job.output_count !== null && job.output_count > job.input_count) {
+      context.addIssue({
+        code: 'custom',
+        path: ['output_count'],
+        message: 'output_count must not exceed input_count',
+      })
+    }
+    if ((job.status === 'completed') !== (job.output_dataset_version !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['output_dataset_version'],
+        message: 'only completed jobs identify an output dataset',
+      })
+    }
+    if ((job.status === 'failed') !== (job.error !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['error'],
+        message: 'only failed jobs expose an error',
+      })
+    }
+    if (job.cache_hit && job.status !== 'completed') {
+      context.addIssue({
+        code: 'custom',
+        path: ['cache_hit'],
+        message: 'only completed jobs can be cache hits',
+      })
+    }
+    const terminal =
+      job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled'
+    if (terminal !== (job.finished_at !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['finished_at'],
+        message: 'terminal jobs must have finished_at',
+      })
+    }
+  })
+  .meta({ id: 'TransformJobV2' })
+export type TransformJobV2 = z.infer<typeof TransformJobV2Schema>
+
+export const TransformJobPageV2Schema = z
+  .strictObject({
+    items: z.array(TransformJobV2Schema).max(100),
+    next_cursor: z.string().min(1).max(1_536).nullable(),
+  })
+  .meta({ id: 'TransformJobPageV2' })
+export type TransformJobPageV2 = z.infer<typeof TransformJobPageV2Schema>
 
 export const TransformDescriptorV2Schema = z
   .strictObject({

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { createPrismaClient } from '../client.js'
 import {
@@ -27,13 +27,22 @@ import type {
   CatalogRunRowV2,
   CatalogSnapshotInputV2,
   CatalogSnapshotRowV2,
+  CatalogTransformJobErrorV2,
+  CatalogTransformJobProgressV2,
+  CatalogTransformJobRowV2,
+  CatalogTransformJobStatusV2,
+  ClaimTransformJobV2,
   CompareAndSetRefV2,
+  CreateTransformJobV2,
   DeleteRefResultV2,
   DeleteRefV2,
+  FailTransformJobV2,
   RegisterLayoutV2,
   RegisterTransformResultV2,
   RestoreRefResultV2,
   RestoreRefV2,
+  TransformJobLeaseV2,
+  UpdateTransformJobProgressV2,
 } from './types.js'
 
 const EXACT_VERSION = /^[0-9a-f]{64}$/
@@ -41,6 +50,11 @@ const REGISTRATION_TRANSACTION_TIMEOUT_MS = 30_000
 const REGISTRATION_BATCH_SIZE = 1_000
 const MAX_CATALOG_PAGE_SIZE = 1_000
 const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
+const JOB_ID = /^job_[0-9a-f]{64}$/
+const SAFE_WORKER_NAME = /^[a-z][a-z0-9._-]{0,127}$/
+const SAFE_WORKER_VERSION = /^[a-z0-9][a-z0-9._-]{0,127}$/
+const MAX_JOB_JSON_BYTES = 16 * 1024
+const MAX_JOB_LEASE_MS = 24 * 60 * 60 * 1_000
 
 export interface V2CatalogOptions {
   readonly databaseUrl?: string
@@ -87,6 +101,42 @@ interface RecordParentSqlRow extends RecordRevisionSqlRow {
 interface LineageSnapshotSequenceSqlRow {
   readonly snapshot_sequence: bigint
 }
+
+interface TransformJobSqlRow {
+  readonly id: string
+  readonly cache_key: string
+  readonly op: string
+  readonly op_version: string
+  readonly params_json: Prisma.JsonValue
+  readonly input_version: string
+  readonly capability_name: string
+  readonly capability_version: string
+  readonly status: string
+  readonly attempt: number
+  readonly lease_owner: string | null
+  readonly lease_token: Uint8Array | null
+  readonly lease_expires_at: Date | null
+  readonly progress_json: Prisma.JsonValue | null
+  readonly input_key: string | null
+  readonly output_key: string | null
+  readonly input_count: bigint
+  readonly output_count: bigint | null
+  readonly output_version: string | null
+  readonly cache_hit: boolean
+  readonly error_json: Prisma.JsonValue | null
+  readonly created_at: Date
+  readonly started_at: Date | null
+  readonly finished_at: Date | null
+  readonly updated_at: Date
+}
+
+const TRANSFORM_JOB_COLUMNS = Prisma.sql`
+  "id", "cache_key", "op", "op_version", "params_json", "input_version",
+  "capability_name", "capability_version", "status", "attempt", "lease_owner",
+  "lease_token", "lease_expires_at", "progress_json", "input_key", "output_key",
+  "input_count", "output_count", "output_version", "cache_hit", "error_json",
+  "created_at", "started_at", "finished_at", "updated_at"
+`
 
 export class V2Catalog {
   readonly #client: PrismaClient
@@ -231,6 +281,340 @@ export class V2Catalog {
       include: { inputs: { orderBy: { position: 'asc' } } },
     })
     return row ? prismaRowToRun(row) : null
+  }
+
+  async createOrReadTransformJob(input: CreateTransformJobV2): Promise<CatalogTransformJobRowV2> {
+    validateCreateTransformJob(input)
+    return await this.#client.$transaction(
+      async (tx) => {
+        const run = await tx.v2Run.findUnique({
+          where: { cacheKey: input.cacheKey },
+          include: { inputs: { orderBy: { position: 'asc' } } },
+        })
+        if (
+          run &&
+          (run.id !== `run_${input.cacheKey}` ||
+            run.op !== input.op ||
+            run.opVersion !== input.opVersion ||
+            !sameJsonValue(run.params, input.params) ||
+            run.inputs.length !== 1 ||
+            run.inputs[0]?.position !== 0 ||
+            run.inputs[0]?.datasetVersion !== input.inputVersion)
+        ) {
+          throw new V2CatalogDeterminismConflictError(input.cacheKey)
+        }
+
+        await tx.v2TransformJob.createMany({
+          data: [
+            {
+              id: input.id,
+              cacheKey: input.cacheKey,
+              op: input.op,
+              opVersion: input.opVersion,
+              params: input.params as Prisma.InputJsonObject,
+              inputVersion: input.inputVersion,
+              capabilityName: input.capabilityName,
+              capabilityVersion: input.capabilityVersion,
+              status: run ? 'completed' : 'queued',
+              inputCount: input.inputCount,
+              outputVersion: run?.outputVersion ?? null,
+              cacheHit: run !== null,
+              finishedAt: run ? new Date() : null,
+            },
+          ],
+          skipDuplicates: true,
+        })
+
+        let row = await tx.v2TransformJob.findUnique({ where: { id: input.id } })
+        if (!row) {
+          throw new V2CatalogConsistencyError(
+            'Transform job insert completed without a readable row',
+          )
+        }
+        assertTransformJobIdentity(row, input)
+
+        if (row.status === 'completed') {
+          if (!run || row.outputVersion !== run.outputVersion) {
+            throw new V2CatalogConsistencyError(
+              'Completed transform job does not have its matching immutable run',
+            )
+          }
+        } else if (run && row.status === 'queued' && row.attempt === 0) {
+          await tx.$executeRaw`
+            UPDATE "transform_jobs_v2"
+            SET "status" = 'completed', "output_version" = ${run.outputVersion},
+                "cache_hit" = true, "finished_at" = clock_timestamp(),
+                "updated_at" = clock_timestamp()
+            WHERE "id" = ${input.id} AND "status" = 'queued' AND "attempt" = 0
+              AND "lease_token" IS NULL
+          `
+          const completed = await tx.v2TransformJob.findUnique({ where: { id: input.id } })
+          if (!completed) {
+            throw new V2CatalogConsistencyError('Transform job disappeared during cache-hit update')
+          }
+          row = completed
+        }
+        return prismaRowToTransformJob(row)
+      },
+      { timeout: REGISTRATION_TRANSACTION_TIMEOUT_MS },
+    )
+  }
+
+  async getTransformJob(id: string): Promise<CatalogTransformJobRowV2 | null> {
+    validateJobId(id)
+    const row = await this.#client.v2TransformJob.findUnique({ where: { id } })
+    return row ? prismaRowToTransformJob(row) : null
+  }
+
+  async claimNextTransformJob(
+    input: ClaimTransformJobV2,
+  ): Promise<CatalogTransformJobRowV2 | null> {
+    validateLeaseOwner(input.leaseOwner)
+    validateLeaseDuration(input.leaseDurationMs)
+    const leaseToken = randomBytes(32)
+    return await this.#client.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`
+          SELECT 1 AS "locked"
+          FROM pg_advisory_xact_lock(
+            hashtext('databench-worker-job-claim'),
+            hashtext(current_schema())
+          )
+        `
+        const fences = await tx.$queryRaw<Array<{ readonly active: boolean }>>`
+          SELECT EXISTS(
+            SELECT 1 FROM "transform_jobs_v2" WHERE "lease_token" IS NOT NULL
+          ) AS "active"
+        `
+        if (fences[0]?.active !== false) return null
+
+        const rows = await tx.$queryRaw<TransformJobSqlRow[]>(Prisma.sql`
+          WITH "candidate" AS (
+            SELECT "id" AS "candidate_id"
+            FROM "transform_jobs_v2"
+            WHERE "status" = 'queued'
+            ORDER BY "created_at" ASC, "id" COLLATE "C" ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+          )
+          UPDATE "transform_jobs_v2" AS "job"
+          SET
+            "status" = 'leased',
+            "attempt" = "job"."attempt" + 1,
+            "lease_owner" = ${input.leaseOwner},
+            "lease_token" = ${leaseToken},
+            "lease_expires_at" = clock_timestamp() +
+              (${input.leaseDurationMs} * INTERVAL '1 millisecond'),
+            "updated_at" = clock_timestamp()
+          FROM "candidate"
+          WHERE "job"."id" = "candidate"."candidate_id"
+          RETURNING ${TRANSFORM_JOB_COLUMNS}
+        `)
+        const row = rows[0]
+        if (rows.length > 1) {
+          throw new V2CatalogConsistencyError('Transform job claim returned more than one row')
+        }
+        return row ? sqlRowToTransformJob(row) : null
+      },
+      { timeout: REGISTRATION_TRANSACTION_TIMEOUT_MS },
+    )
+  }
+
+  async renewTransformJobLease(
+    input: TransformJobLeaseV2,
+    leaseDurationMs: number,
+  ): Promise<boolean> {
+    validateTransformJobLease(input)
+    validateLeaseDuration(leaseDurationMs)
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET
+        "lease_expires_at" = clock_timestamp() +
+          (${leaseDurationMs} * INTERVAL '1 millisecond'),
+        "updated_at" = clock_timestamp()
+      WHERE
+        "id" = ${input.id} AND
+        "attempt" = ${input.attempt} AND
+        "lease_token" = ${Buffer.from(input.leaseToken)} AND
+        "lease_expires_at" > clock_timestamp() AND
+        "status" IN ('leased', 'running', 'finalizing')
+      RETURNING "id"
+    `)
+    return rows.length === 1
+  }
+
+  async markTransformJobRunning(
+    input: TransformJobLeaseV2,
+  ): Promise<CatalogTransformJobRowV2 | null> {
+    return await this.#transitionTransformJob(
+      input,
+      ['leased'],
+      Prisma.sql`
+      "status" = 'running',
+      "started_at" = COALESCE("started_at", clock_timestamp())
+    `,
+    )
+  }
+
+  async updateTransformJobProgress(input: UpdateTransformJobProgressV2): Promise<boolean> {
+    validateTransformJobLease(input)
+    validateProgress(input.progress)
+    const value = JSON.stringify({
+      phase: input.progress.phase,
+      completed_units: input.progress.completedUnits.toString(),
+      total_units: input.progress.totalUnits?.toString() ?? null,
+    })
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET "progress_json" = ${value}::jsonb, "updated_at" = clock_timestamp()
+      WHERE
+        "id" = ${input.id} AND
+        "attempt" = ${input.attempt} AND
+        "lease_token" = ${Buffer.from(input.leaseToken)} AND
+        "lease_expires_at" > clock_timestamp() AND
+        "status" = 'running'
+      RETURNING "id"
+    `)
+    return rows.length === 1
+  }
+
+  async markTransformJobFinalizing(
+    input: TransformJobLeaseV2,
+  ): Promise<CatalogTransformJobRowV2 | null> {
+    return await this.#transitionTransformJob(
+      input,
+      ['running'],
+      Prisma.sql`
+      "status" = 'finalizing'
+    `,
+    )
+  }
+
+  async markTransformJobFailed(
+    input: FailTransformJobV2,
+  ): Promise<CatalogTransformJobRowV2 | null> {
+    validateError(input.error)
+    const errorJson = JSON.stringify(input.error)
+    return await this.#transitionTransformJob(
+      input,
+      ['leased', 'running', 'finalizing'],
+      Prisma.sql`
+        "status" = 'failed',
+        "error_json" = ${errorJson}::jsonb,
+        "finished_at" = clock_timestamp()
+      `,
+    )
+  }
+
+  async markTransformJobCancelled(
+    input: TransformJobLeaseV2,
+  ): Promise<CatalogTransformJobRowV2 | null> {
+    return await this.#transitionTransformJob(
+      input,
+      ['leased', 'running', 'finalizing'],
+      Prisma.sql`
+        "status" = 'cancelled',
+        "finished_at" = clock_timestamp()
+      `,
+    )
+  }
+
+  async requestTransformJobCancellation(id: string): Promise<CatalogTransformJobRowV2 | null> {
+    validateJobId(id)
+    const rows = await this.#client.$queryRaw<TransformJobSqlRow[]>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET "status" = 'cancelled', "finished_at" = clock_timestamp(),
+          "updated_at" = clock_timestamp()
+      WHERE "id" = ${id} AND "status" IN ('queued', 'leased', 'running', 'finalizing')
+      RETURNING ${TRANSFORM_JOB_COLUMNS}
+    `)
+    const updated = rows[0]
+    if (updated) return sqlRowToTransformJob(updated)
+    return await this.getTransformJob(id)
+  }
+
+  async clearTransformJobLeaseFence(input: TransformJobLeaseV2): Promise<boolean> {
+    validateTransformJobLease(input)
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET "lease_owner" = NULL, "lease_token" = NULL, "lease_expires_at" = NULL,
+          "updated_at" = clock_timestamp()
+      WHERE
+        "id" = ${input.id} AND
+        "attempt" = ${input.attempt} AND
+        "lease_token" = ${Buffer.from(input.leaseToken)} AND
+        "status" IN ('failed', 'cancelled')
+      RETURNING "id"
+    `)
+    return rows.length === 1
+  }
+
+  async failExpiredTransformJobLeases(): Promise<number> {
+    const errorJson = JSON.stringify({
+      code: 'lease_expired',
+      message: 'Worker job lease expired',
+      retryable: false,
+    })
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET "status" = 'failed', "error_json" = ${errorJson}::jsonb,
+          "finished_at" = clock_timestamp(), "updated_at" = clock_timestamp()
+      WHERE
+        "lease_token" IS NOT NULL AND
+        "lease_expires_at" <= clock_timestamp() AND
+        "status" IN ('leased', 'running', 'finalizing')
+      RETURNING "id"
+    `)
+    return rows.length
+  }
+
+  async findTransformJobCleanupFence(): Promise<CatalogTransformJobRowV2 | null> {
+    const rows = await this.#client.$queryRaw<TransformJobSqlRow[]>(Prisma.sql`
+      SELECT ${TRANSFORM_JOB_COLUMNS}
+      FROM "transform_jobs_v2"
+      WHERE "lease_token" IS NOT NULL AND "status" IN ('failed', 'cancelled')
+      ORDER BY "updated_at" ASC, "id" COLLATE "C" ASC
+      LIMIT 1
+    `)
+    return rows[0] ? sqlRowToTransformJob(rows[0]) : null
+  }
+
+  async retryTransformJob(id: string): Promise<CatalogTransformJobRowV2 | null> {
+    validateJobId(id)
+    const rows = await this.#client.$queryRaw<TransformJobSqlRow[]>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET
+        "status" = 'queued', "progress_json" = NULL, "error_json" = NULL,
+        "output_count" = NULL, "started_at" = NULL, "finished_at" = NULL,
+        "updated_at" = clock_timestamp()
+      WHERE
+        "id" = ${id} AND
+        "status" IN ('failed', 'cancelled') AND
+        "lease_token" IS NULL AND
+        "input_key" IS NULL AND "output_key" IS NULL
+      RETURNING ${TRANSFORM_JOB_COLUMNS}
+    `)
+    return rows[0] ? sqlRowToTransformJob(rows[0]) : null
+  }
+
+  async #transitionTransformJob(
+    input: TransformJobLeaseV2,
+    fromStatuses: readonly CatalogTransformJobStatusV2[],
+    assignments: Prisma.Sql,
+  ): Promise<CatalogTransformJobRowV2 | null> {
+    validateTransformJobLease(input)
+    const rows = await this.#client.$queryRaw<TransformJobSqlRow[]>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET ${assignments}, "updated_at" = clock_timestamp()
+      WHERE
+        "id" = ${input.id} AND
+        "attempt" = ${input.attempt} AND
+        "lease_token" = ${Buffer.from(input.leaseToken)} AND
+        "lease_expires_at" > clock_timestamp() AND
+        "status" IN (${Prisma.join(fromStatuses)})
+      RETURNING ${TRANSFORM_JOB_COLUMNS}
+    `)
+    return rows[0] ? sqlRowToTransformJob(rows[0]) : null
   }
 
   async lineageSnapshotSequence(): Promise<bigint> {
@@ -1019,6 +1403,298 @@ function prismaRowToRun(row: {
     inputVersions,
     outputVersion: row.outputVersion,
     createdAt: row.createdAt,
+  }
+}
+
+function prismaRowToTransformJob(row: {
+  id: string
+  cacheKey: string
+  op: string
+  opVersion: string
+  params: Prisma.JsonValue
+  inputVersion: string
+  capabilityName: string
+  capabilityVersion: string
+  status: string
+  attempt: number
+  leaseOwner: string | null
+  leaseToken: Uint8Array | null
+  leaseExpiresAt: Date | null
+  progress: Prisma.JsonValue | null
+  inputKey: string | null
+  outputKey: string | null
+  inputCount: bigint
+  outputCount: bigint | null
+  outputVersion: string | null
+  cacheHit: boolean
+  error: Prisma.JsonValue | null
+  createdAt: Date
+  startedAt: Date | null
+  finishedAt: Date | null
+  updatedAt: Date
+}): CatalogTransformJobRowV2 {
+  const status = parseTransformJobStatus(row.status)
+  assertStoredLeaseShape(row.leaseOwner, row.leaseToken, row.leaseExpiresAt)
+  if ((status === 'completed') !== (row.outputVersion !== null)) {
+    throw new V2CatalogConsistencyError('Stored transform job completion shape is invalid')
+  }
+  return {
+    id: row.id,
+    cacheKey: row.cacheKey,
+    op: row.op,
+    opVersion: row.opVersion,
+    params: parseStoredJsonObject(row.params, 'Transform job params'),
+    inputVersion: row.inputVersion,
+    capabilityName: row.capabilityName,
+    capabilityVersion: row.capabilityVersion,
+    status,
+    attempt: row.attempt,
+    leaseOwner: row.leaseOwner,
+    leaseToken: row.leaseToken === null ? null : new Uint8Array(row.leaseToken),
+    leaseExpiresAt: row.leaseExpiresAt,
+    progress: parseStoredTransformJobProgress(row.progress),
+    inputKey: row.inputKey,
+    outputKey: row.outputKey,
+    inputCount: row.inputCount,
+    outputCount: row.outputCount,
+    outputVersion: row.outputVersion,
+    cacheHit: row.cacheHit,
+    error: parseStoredTransformJobError(row.error),
+    createdAt: row.createdAt,
+    startedAt: row.startedAt,
+    finishedAt: row.finishedAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+function sqlRowToTransformJob(row: TransformJobSqlRow): CatalogTransformJobRowV2 {
+  return prismaRowToTransformJob({
+    id: row.id,
+    cacheKey: row.cache_key,
+    op: row.op,
+    opVersion: row.op_version,
+    params: row.params_json,
+    inputVersion: row.input_version,
+    capabilityName: row.capability_name,
+    capabilityVersion: row.capability_version,
+    status: row.status,
+    attempt: row.attempt,
+    leaseOwner: row.lease_owner,
+    leaseToken: row.lease_token,
+    leaseExpiresAt: row.lease_expires_at,
+    progress: row.progress_json,
+    inputKey: row.input_key,
+    outputKey: row.output_key,
+    inputCount: row.input_count,
+    outputCount: row.output_count,
+    outputVersion: row.output_version,
+    cacheHit: row.cache_hit,
+    error: row.error_json,
+    createdAt: row.created_at,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    updatedAt: row.updated_at,
+  })
+}
+
+function validateCreateTransformJob(input: CreateTransformJobV2): void {
+  validateJobId(input.id)
+  if (!EXACT_VERSION.test(input.cacheKey) || input.id !== `job_${input.cacheKey}`) {
+    throw new V2CatalogInputError('Transform job ID must equal job_ plus its cache key')
+  }
+  if (!EXACT_VERSION.test(input.inputVersion)) {
+    throw new V2CatalogInputError('Transform job input version must be 64 lowercase hex')
+  }
+  for (const [label, value] of [
+    ['operation', input.op],
+    ['capability', input.capabilityName],
+  ] as const) {
+    if (!SAFE_WORKER_NAME.test(value))
+      throw new V2CatalogInputError(`Transform job ${label} is invalid`)
+  }
+  for (const [label, value] of [
+    ['operation version', input.opVersion],
+    ['capability version', input.capabilityVersion],
+  ] as const) {
+    if (!SAFE_WORKER_VERSION.test(value)) {
+      throw new V2CatalogInputError(`Transform job ${label} is invalid`)
+    }
+  }
+  if (input.inputCount < 0n || input.inputCount > POSTGRES_BIGINT_MAX) {
+    throw new V2CatalogInputError('Transform job input count must fit a non-negative bigint')
+  }
+  validateBoundedJson(input.params, 'Transform job params')
+}
+
+function assertTransformJobIdentity(
+  row: {
+    id: string
+    cacheKey: string
+    op: string
+    opVersion: string
+    params: Prisma.JsonValue
+    inputVersion: string
+    capabilityName: string
+    capabilityVersion: string
+    inputCount: bigint
+  },
+  input: CreateTransformJobV2,
+): void {
+  if (
+    row.id !== input.id ||
+    row.cacheKey !== input.cacheKey ||
+    row.op !== input.op ||
+    row.opVersion !== input.opVersion ||
+    !sameJsonValue(row.params, input.params) ||
+    row.inputVersion !== input.inputVersion ||
+    row.capabilityName !== input.capabilityName ||
+    row.capabilityVersion !== input.capabilityVersion ||
+    row.inputCount !== input.inputCount
+  ) {
+    throw new V2CatalogDeterminismConflictError(input.cacheKey)
+  }
+}
+
+function validateJobId(id: string): void {
+  if (!JOB_ID.test(id)) {
+    throw new V2CatalogInputError('Transform job ID must be job_ plus 64 lowercase hex')
+  }
+}
+
+function validateLeaseOwner(value: string): void {
+  if (!SAFE_WORKER_NAME.test(value)) {
+    throw new V2CatalogInputError('Transform job lease owner is invalid')
+  }
+}
+
+function validateLeaseDuration(value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_JOB_LEASE_MS) {
+    throw new V2CatalogInputError('Transform job lease duration is outside the allowed range')
+  }
+}
+
+function validateTransformJobLease(input: TransformJobLeaseV2): void {
+  validateJobId(input.id)
+  if (!Number.isSafeInteger(input.attempt) || input.attempt < 1) {
+    throw new V2CatalogInputError('Transform job attempt must be a positive safe integer')
+  }
+  if (!(input.leaseToken instanceof Uint8Array) || input.leaseToken.byteLength !== 32) {
+    throw new V2CatalogInputError('Transform job lease token must contain exactly 32 bytes')
+  }
+}
+
+function validateProgress(progress: CatalogTransformJobProgressV2): void {
+  if (!SAFE_WORKER_NAME.test(progress.phase)) {
+    throw new V2CatalogInputError('Transform job progress phase is invalid')
+  }
+  if (
+    progress.completedUnits < 0n ||
+    progress.completedUnits > POSTGRES_BIGINT_MAX ||
+    (progress.totalUnits !== null &&
+      (progress.totalUnits < progress.completedUnits || progress.totalUnits > POSTGRES_BIGINT_MAX))
+  ) {
+    throw new V2CatalogInputError('Transform job progress units are invalid')
+  }
+}
+
+function validateError(error: CatalogTransformJobErrorV2): void {
+  if (
+    !SAFE_WORKER_NAME.test(error.code) ||
+    error.message.length < 1 ||
+    error.message.length > 2_048
+  ) {
+    throw new V2CatalogInputError('Transform job error is invalid')
+  }
+  validateBoundedJson(
+    { code: error.code, message: error.message, retryable: error.retryable },
+    'Transform job error',
+  )
+}
+
+function validateBoundedJson(value: CatalogJsonValueV2, label: string): void {
+  const encoded = JSON.stringify(value)
+  if (Buffer.byteLength(encoded, 'utf8') > MAX_JOB_JSON_BYTES) {
+    throw new V2CatalogInputError(`${label} exceeds ${MAX_JOB_JSON_BYTES} bytes`)
+  }
+}
+
+function parseTransformJobStatus(value: string): CatalogTransformJobStatusV2 {
+  if (
+    value === 'queued' ||
+    value === 'leased' ||
+    value === 'running' ||
+    value === 'finalizing' ||
+    value === 'completed' ||
+    value === 'failed' ||
+    value === 'cancelled'
+  ) {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored transform job status is invalid')
+}
+
+function parseStoredTransformJobProgress(
+  value: Prisma.JsonValue | null,
+): CatalogTransformJobProgressV2 | null {
+  if (value === null) return null
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new V2CatalogConsistencyError('Stored transform job progress is invalid')
+  }
+  const phase = value.phase
+  const completedUnits = parseStoredDecimal(value.completed_units)
+  const totalUnits = value.total_units === null ? null : parseStoredDecimal(value.total_units)
+  if (typeof phase !== 'string') {
+    throw new V2CatalogConsistencyError('Stored transform job progress phase is invalid')
+  }
+  const progress = { phase, completedUnits, totalUnits }
+  try {
+    validateProgress(progress)
+  } catch (error) {
+    throw new V2CatalogConsistencyError('Stored transform job progress is invalid', {
+      cause: error,
+    })
+  }
+  return progress
+}
+
+function parseStoredTransformJobError(
+  value: Prisma.JsonValue | null,
+): CatalogTransformJobErrorV2 | null {
+  if (value === null) return null
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new V2CatalogConsistencyError('Stored transform job error is invalid')
+  }
+  const { code, message, retryable } = value
+  if (typeof code !== 'string' || typeof message !== 'string' || typeof retryable !== 'boolean') {
+    throw new V2CatalogConsistencyError('Stored transform job error fields are invalid')
+  }
+  const error = { code, message, retryable }
+  try {
+    validateError(error)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored transform job error is invalid', { cause })
+  }
+  return error
+}
+
+function parseStoredDecimal(value: Prisma.JsonValue | undefined): bigint {
+  if (typeof value !== 'string' || !/^(?:0|[1-9][0-9]*)$/.test(value)) {
+    throw new V2CatalogConsistencyError('Stored transform job quantity is invalid')
+  }
+  return BigInt(value)
+}
+
+function assertStoredLeaseShape(
+  owner: string | null,
+  token: Uint8Array | null,
+  expiresAt: Date | null,
+): void {
+  const nullCount = [owner, token, expiresAt].filter((value) => value === null).length
+  if (nullCount !== 0 && nullCount !== 3) {
+    throw new V2CatalogConsistencyError('Stored transform job lease shape is invalid')
+  }
+  if (token !== null && token.byteLength !== 32) {
+    throw new V2CatalogConsistencyError('Stored transform job lease token size is invalid')
   }
 }
 

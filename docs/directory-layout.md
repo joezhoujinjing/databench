@@ -269,7 +269,9 @@ prisma/
    ├─ 0002_vocabularies/
    ├─ 0003_v2_catalog/
    ├─ 0004_v2_run_lineage_sequence/
-   └─ 0005_retire_v1_catalog/
+   ├─ 0005_retire_v1_catalog/
+   ├─ 0006_recoverable_ref_trash/
+   └─ 0007_transform_jobs_v2/
 ```
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
@@ -277,7 +279,7 @@ R4 maintenance tool和 forward migration必须保留，供尚未执行退役的�
 
 ## Worker 布局（ADR 0010）
 
-P1 foundation 已落地；标为“planned”的目录只在对应 P2-P6 实现后成为 runtime：
+P1 foundation 与 P2 job 控制面已落地；标为“planned”的目录只在对应 P3-P6 实现后成为 runtime：
 
 ```text
 proto/
@@ -297,7 +299,7 @@ workers/python/
 
 packages/ops/src/v2/batch/     planned：batch definition 与首个 Data-Juicer transform
 packages/store/src/v2/worker-staging*.ts  planned：受限 staging 数据面
-packages/workspace/src/internal/worker/  已实现 client/generated；dispatcher planned
+packages/workspace/src/internal/worker/  已实现 client/generated/dispatcher/runtime
 packages/workspace/src/v2/batch-transform.ts  planned
 apps/api/src/routes/v2/transform-jobs.ts       planned
 ```

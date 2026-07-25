@@ -74,6 +74,7 @@ beforeAll(() => {
 beforeEach(async () => {
   await prisma.v2RecordParentEdge.deleteMany()
   await prisma.v2RecordRevisionLocation.deleteMany()
+  await prisma.v2TransformJob.deleteMany()
   await prisma.v2RunInput.deleteMany()
   await prisma.v2Run.deleteMany()
   await prisma.v2Ref.deleteMany()
@@ -82,6 +83,20 @@ beforeEach(async () => {
   await prisma.v2DatasetSnapshot.deleteMany()
   await prisma.v2IdentityNamespace.deleteMany()
 })
+
+function transformJobInput(cacheKey: string, inputVersion = fixtureVersion('alpha')) {
+  return {
+    id: `job_${cacheKey}`,
+    cacheKey,
+    op: 'basic-clean',
+    opVersion: '1',
+    params: {},
+    inputVersion,
+    capabilityName: 'data_juicer.batch',
+    capabilityVersion: '1',
+    inputCount: 1n,
+  }
+}
 
 type FixtureRevision = CatalogV2Fixture['revisions'][string]
 
@@ -1242,5 +1257,148 @@ describe('V2Catalog', () => {
     await expect(
       prisma.v2IdentityNamespace.delete({ where: { id: namespaceId } }),
     ).rejects.toThrow()
+  })
+})
+
+describe('V2Catalog transform jobs', () => {
+  test('creates one deterministic job for concurrent requests with the same cache key', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const input = transformJobInput('6'.repeat(64))
+    const rows = await Promise.all(
+      Array.from({ length: 16 }, () => v2Catalog.createOrReadTransformJob(input)),
+    )
+
+    expect(new Set(rows.map(({ id }) => id))).toEqual(new Set([input.id]))
+    expect(rows.every(({ status }) => status === 'queued')).toBe(true)
+    expect(await prisma.v2TransformJob.count()).toBe(1)
+  })
+
+  test('claims one global slot and fences stale lease events with the database clock', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    await Promise.all([
+      v2Catalog.createOrReadTransformJob(transformJobInput('6'.repeat(64))),
+      v2Catalog.createOrReadTransformJob(transformJobInput('7'.repeat(64))),
+    ])
+
+    const claims = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        v2Catalog.claimNextTransformJob({ leaseOwner: 'dispatcher.test', leaseDurationMs: 30_000 }),
+      ),
+    )
+    const claimed = claims.filter((row) => row !== null)
+    expect(claimed).toHaveLength(1)
+    const lease = claimed[0]
+    if (!lease?.leaseToken) throw new Error('claim did not return a lease token')
+    expect(lease).toMatchObject({ status: 'leased', attempt: 1, leaseOwner: 'dispatcher.test' })
+
+    const current = { id: lease.id, attempt: lease.attempt, leaseToken: lease.leaseToken }
+    expect(await v2Catalog.markTransformJobRunning(current)).toMatchObject({ status: 'running' })
+    await expect(
+      v2Catalog.updateTransformJobProgress({
+        ...current,
+        progress: { phase: 'processing', completedUnits: 1n, totalUnits: 2n },
+      }),
+    ).resolves.toBe(true)
+    await expect(v2Catalog.renewTransformJobLease(current, 30_000)).resolves.toBe(true)
+
+    const stale = { ...current, leaseToken: new Uint8Array(32).fill(9) }
+    await expect(v2Catalog.renewTransformJobLease(stale, 30_000)).resolves.toBe(false)
+    await expect(v2Catalog.markTransformJobFinalizing(stale)).resolves.toBeNull()
+
+    await prisma.$executeRaw`
+      UPDATE "transform_jobs_v2"
+      SET "lease_expires_at" = clock_timestamp() - INTERVAL '1 millisecond'
+      WHERE "id" = ${current.id}
+    `
+    await expect(v2Catalog.renewTransformJobLease(current, 30_000)).resolves.toBe(false)
+    await expect(v2Catalog.failExpiredTransformJobLeases()).resolves.toBe(1)
+    await expect(v2Catalog.getTransformJob(current.id)).resolves.toMatchObject({
+      status: 'failed',
+      error: { code: 'lease_expired' },
+      leaseToken: current.leaseToken,
+    })
+    await expect(v2Catalog.markTransformJobRunning(current)).resolves.toBeNull()
+  })
+
+  test('keeps cancellation as a cleanup fence and retries only after the exact fence clears', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const queued = await v2Catalog.createOrReadTransformJob(transformJobInput('8'.repeat(64)))
+    const claimed = await v2Catalog.claimNextTransformJob({
+      leaseOwner: 'dispatcher.test',
+      leaseDurationMs: 30_000,
+    })
+    if (!claimed?.leaseToken) throw new Error('claim did not return a lease token')
+    const lease = { id: claimed.id, attempt: claimed.attempt, leaseToken: claimed.leaseToken }
+
+    await expect(v2Catalog.requestTransformJobCancellation(queued.id)).resolves.toMatchObject({
+      status: 'cancelled',
+      leaseToken: lease.leaseToken,
+    })
+    await expect(
+      v2Catalog.claimNextTransformJob({
+        leaseOwner: 'dispatcher.test',
+        leaseDurationMs: 30_000,
+      }),
+    ).resolves.toBeNull()
+    await expect(v2Catalog.retryTransformJob(queued.id)).resolves.toBeNull()
+    await expect(
+      v2Catalog.clearTransformJobLeaseFence({ ...lease, leaseToken: new Uint8Array(32).fill(4) }),
+    ).resolves.toBe(false)
+    await expect(v2Catalog.clearTransformJobLeaseFence(lease)).resolves.toBe(true)
+    await expect(v2Catalog.retryTransformJob(queued.id)).resolves.toMatchObject({
+      id: queued.id,
+      status: 'queued',
+      attempt: 1,
+      leaseToken: null,
+    })
+  })
+
+  test('materializes cache-hit jobs only from an existing matching immutable run', async () => {
+    const input = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
+    const output = registration('gamma', [withParents(fixtureRevision('output'))])
+    await v2Catalog.registerCommittedLayout(input)
+    const cacheKey = '9'.repeat(64)
+    await v2Catalog.registerTransformResult({
+      ...output,
+      run: {
+        id: `run_${cacheKey}`,
+        cacheKey,
+        op: 'basic-clean',
+        opVersion: '1',
+        params: {},
+        inputVersions: [input.snapshot.version],
+        outputVersion: output.snapshot.version,
+      },
+    })
+
+    await expect(
+      v2Catalog.createOrReadTransformJob(transformJobInput(cacheKey)),
+    ).resolves.toMatchObject({
+      id: `job_${cacheKey}`,
+      status: 'completed',
+      outputVersion: output.snapshot.version,
+      cacheHit: true,
+      attempt: 0,
+    })
+
+    const orphanCacheKey = 'a'.repeat(64)
+    await prisma.v2TransformJob.create({
+      data: {
+        ...transformJobInput(orphanCacheKey),
+        params: {},
+        status: 'completed',
+        outputVersion: input.snapshot.version,
+        finishedAt: new Date(),
+      },
+    })
+    await expect(
+      v2Catalog.createOrReadTransformJob(transformJobInput(orphanCacheKey)),
+    ).rejects.toBeInstanceOf(V2CatalogConsistencyError)
   })
 })

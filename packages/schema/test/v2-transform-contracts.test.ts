@@ -8,6 +8,7 @@ import {
   RunTransformRequestV2Schema,
   RunTransformResultV2Schema,
   TransformDescriptorV2Schema,
+  TransformJobV2Schema,
   V2_LINEAGE_DEFAULT_MAX_DEPTH,
   V2_LINEAGE_DEFAULT_MAX_NODES,
   V2_LINEAGE_MAX_NODES,
@@ -116,6 +117,51 @@ describe('V10 transform contracts', () => {
       code: 'determinism_conflict',
       detail: { cache_key: CACHE_KEY, attempted_dataset_committed: true },
     })
+  })
+})
+
+describe('P2 transform job contracts', () => {
+  const queued = {
+    id: `job_${CACHE_KEY}`,
+    cache_key: CACHE_KEY,
+    operation: { name: 'basic-clean', version: '1' },
+    input_dataset_versions: [INPUT],
+    status: 'queued',
+    attempt: 0,
+    progress: null,
+    input_count: 1,
+    output_count: null,
+    output_dataset_version: null,
+    cache_hit: false,
+    error: null,
+    created_at: '2026-07-25T12:00:00.000Z',
+    started_at: null,
+    finished_at: null,
+  }
+
+  test('binds the public job resource to its cache key and terminal state', () => {
+    expect(TransformJobV2Schema.parse(queued)).toEqual(queued)
+    expect(TransformJobV2Schema.safeParse({ ...queued, id: `job_${'d'.repeat(64)}` }).success).toBe(
+      false,
+    )
+    expect(TransformJobV2Schema.safeParse({ ...queued, cache_hit: true }).success).toBe(false)
+    expect(
+      TransformJobV2Schema.safeParse({
+        ...queued,
+        status: 'completed',
+        cache_hit: true,
+        output_count: 1,
+        output_dataset_version: OUTPUT,
+        finished_at: '2026-07-25T12:01:00.000Z',
+      }).success,
+    ).toBe(true)
+    expect(
+      TransformJobV2Schema.safeParse({
+        ...queued,
+        status: 'failed',
+        finished_at: '2026-07-25T12:01:00.000Z',
+      }).success,
+    ).toBe(false)
   })
 })
 

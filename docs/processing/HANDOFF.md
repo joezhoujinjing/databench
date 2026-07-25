@@ -1,8 +1,8 @@
 # Worker / Data-Juicer 接入交接
 
 - **交接日期：** 2026-07-25
-- **当前阶段：** P0-P1 已完成；Worker foundation 已落地但尚未接入产品 runtime
-- **下一步：** P2 — transform job Catalog 状态机与 fake Worker dispatcher
+- **当前阶段：** P0-P2 已完成；Worker 控制面已接入真实 API entrypoint
+- **下一步：** P3 — exact-key staging、投影与 retained result reader
 - **详细方案：** [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md)
 - **决策：**
   [ADR 0010](../decisions/0010-python-processing-service-grpc.md)
@@ -26,15 +26,21 @@ identities，并通过现有 v2 Store/Catalog 发布正式 Dataset、Run、cache
 | `proto/databench/worker/v1` | 已实现；Buf lint 与 TS/Python deterministic codegen |
 | `workers/python` | 已实现 foundation；health、registry、RunJob/CancelJob、test fixture |
 | Workspace Worker client | 已实现 internal transport-neutral contract + gRPC adapter |
-| `transform_jobs_v2` | 尚未创建 |
+| `transform_jobs_v2` | 已实现；真实 Postgres lease/CAS/cleanup fence |
+| Workspace dispatcher | 已实现；单槽 claim、capability gate、事件映射、异常 EOF、durable cancel |
+| API runtime owner | 已实现；Worker disabled 无副作用，enabled 显式 start/stop |
 | Worker staging Store | 尚未创建 |
 | Data-Juicer monorepo adapter | 尚未创建 |
 | batch transform REST/Web | 尚未创建 |
-| 下一切片 | P2 Job control plane |
+| 下一切片 | P3 temporary data plane |
 
 P1 Gate（2026-07-25）：Python 2/2 tests 与 source/wheel import smoke、TS↔Python 5/5
 integration tests、确定性 codegen、原生 ARM64 preflight 全部通过；全仓 lint 351 files、build
 13/13、typecheck 22/22、test 22/22、OpenAPI 11/11、v2 status 与 `git diff --check` 通过。
+
+P2 Gate（2026-07-25）：Prisma migration、真实 Postgres 27/27 Catalog tests、fake Worker
+dispatcher 4/4 tests、API lifecycle/DTO tests 通过；全仓 lint 355 files、build 13/13、typecheck
+22/22、test 22/22、OpenAPI 11/11、v2 status、peer 与 `git diff --check` 通过。
 
 桌面实验目录：
 
@@ -216,7 +222,7 @@ workers/python/src/databench/worker/v1/worker_pb2_grpc.py
 
 source tree 和 wheel 都必须 import 成功；generated 不手改。
 
-## 9. P1 文件范围
+## 9. 已落地文件范围（P1-P2）
 
 P1 只做 Worker foundation：
 
@@ -238,15 +244,20 @@ workers/python/
 packages/workspace/src/internal/worker/
 ├─ client.ts
 ├─ grpc-client.ts
+├─ dispatcher.ts
+├─ runtime.ts
+├─ workspace-access.ts
 └─ generated/
+
+prisma/migrations/0007_transform_jobs_v2/
+apps/api/src/config.ts
+apps/api/src/index.ts
 ```
 
 根 `package.json`、`pnpm-workspace.yaml`、`turbo.json`、CI 和 ignore 可为 codegen/gates 调整。
 
-P1 不能顺手做：
+P2 结束后仍未实现：
 
-- Prisma job migration；
-- Dispatcher；
 - Store staging；
 - Data-Juicer dependency；
 - canonical finalizer；
@@ -254,26 +265,26 @@ P1 不能顺手做：
 
 ## 10. P1 验收
 
-- [ ] Proto package/path 为 `databench.worker.v1` / `databench/worker/v1`；
-- [ ] WorkerService 有 capabilities/RunJob/CancelJob；
-- [ ] event oneof 有 accepted/started/progress/heartbeat/terminal；
-- [ ] terminal 后 `OK` EOF 规则写入注释和测试；
-- [ ] TS/Python deterministic codegen；
-- [ ] source-tree + wheel Python import smoke；
-- [ ] standard gRPC health service；
-- [ ] transport-neutral TS interface，generated 不出 Workspace；
-- [ ] test-only `fixture.copy@1` 正常/取消/异常 EOF；
-- [ ] native ARM64 uv/Python preflight；
-- [ ] `/usr/local` Rosetta 工具 fail closed；
-- [ ] 不新增 product job、Data-Juicer 或 staging 代码；
-- [ ] 当前全仓 gates 不回归。
+- [x] Proto package/path 为 `databench.worker.v1` / `databench/worker/v1`；
+- [x] WorkerService 有 capabilities/RunJob/CancelJob；
+- [x] event oneof 有 accepted/started/progress/heartbeat/terminal；
+- [x] terminal 后 `OK` EOF 规则写入注释和测试；
+- [x] TS/Python deterministic codegen；
+- [x] source-tree + wheel Python import smoke；
+- [x] standard gRPC health service；
+- [x] transport-neutral TS interface，generated 不出 Workspace；
+- [x] test-only `fixture.copy@1` 正常/取消/异常 EOF；
+- [x] native ARM64 uv/Python preflight；
+- [x] `/usr/local` Rosetta 工具 fail closed；
+- [x] P1 未新增 product job、Data-Juicer 或 staging 代码；
+- [x] 当前全仓 gates 不回归。
 
 ## 11. 后续切片
 
 | Step | 内容 | 完成标志 |
 |---|---|---|
-| P1 | Proto + Worker skeleton + client | fake capability 跨语言通过 |
-| P2 | transform job/Catalog/dispatcher lifecycle | fake client 下 durable state machine 通过 |
+| P1 ✅ | Proto + Worker skeleton + client | fake capability 跨语言通过 |
+| P2 ✅ | transform job/Catalog/dispatcher lifecycle | fake client 下 durable state machine 通过 |
 | P3 | staging signed URL | real MinIO round-trip 通过 |
 | P4 | Data-Juicer adapter | 100/10k/100k determinism/cancel 通过 |
 | P5 | canonical finalizer | output Dataset/Run/cache/lineage 通过 |
@@ -310,7 +321,7 @@ P1 不能顺手做：
 9. cancel 时先杀 Worker 再写 DB；正确做法是 durable cancel-first。
 10. 用 prefix delete 清理 job；正确做法是删除 job row 中记录的 exact keys。
 
-## 14. 开始 P1 前的确认
+## 14. Owner 已锁确认
 
 以下事项已由 owner 锁定，不再讨论：
 

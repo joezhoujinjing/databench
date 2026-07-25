@@ -1,6 +1,6 @@
 # Worker 与 Data-Juicer 接入技术方案
 
-- **状态：** Accepted design；P0-P1 已完成，下一步 P2 Job 控制面
+- **状态：** Accepted design；P0-P2 已完成，下一步 P3 临时数据面
 - **日期：** 2026-07-25
 - **决策：**
   [ADR 0010 — Long-running Python Worker over internal gRPC](../decisions/0010-python-processing-service-grpc.md)
@@ -106,16 +106,17 @@ interface V2BatchTransformDefinition<P extends object> {
 现有 Store 只拥有 canonical `objects/v2/` 的 prepare/commit/read/audit。需要增加严格受限的
 Worker staging 能力，但不能改变 canonical key 或 conditional commit 语义。
 
-### 3.4 当前 Catalog 没有 job
+### 3.4 P2 已增加 job 控制面
 
-现有 Prisma 只有 v2 snapshot/layout/run/input/revision/parent/ref/claim。需要增加一张
-`transform_jobs_v2` 控制面表。样本、Data-Juicer 输出和完整日志不能进 Postgres。
+Prisma 已增加 `transform_jobs_v2`，Catalog 已实现确定性创建、单槽 claim、DB clock lease、
+attempt/token CAS、durable cancel、cleanup fence 和显式 retry。样本、Data-Juicer 输出和完整日志
+仍不能进 Postgres；成功完成与 Run 的原子事务留在 P5。
 
-### 3.5 当前 API 没有后台 runtime owner
+### 3.5 P2 已增加 API runtime owner
 
-当前 v2 middleware 在第一次请求时惰性打开 Workspace；`apps/api/src/index.ts` 直接启动
-Hono，没有 dispatcher、signal shutdown 或显式 Workspace close。Worker 启用时必须改为
-entrypoint 显式组合；`createApp()` 和 OpenAPI 导出仍保持无副作用。
+真实 `apps/api/src/index.ts` 已按 Workspace → 可选 Worker runtime → Hono 顺序显式启动，并在
+shutdown 时停止 intake、dispatcher 和 Workspace。Worker 默认关闭且不创建 client/timer；
+`createApp()`、OpenAPI 导出和注入 Workspace 的测试仍保持无副作用。
 
 ## 4. 总体架构
 
@@ -149,8 +150,8 @@ flowchart LR
 
 ## 5. 权威目录
 
-P1 的 Proto、Worker package 和 Workspace internal client 已落地；其余目录仍按对应 Step 创建，
-不能把计划中的 P2-P6 文件误写成当前实现。
+P1 的 Proto/Worker/client 与 P2 的 DTO、job migration、dispatcher/runtime、API lifecycle 已落地；
+其余目录仍按对应 Step 创建，不能把计划中的 P3-P6 文件误写成当前实现。
 
 ```text
 proto/
@@ -1010,13 +1011,17 @@ Gate：链接、术语、v1/artifact-only 残留和 `git diff --check`。
 Gate：Buf lint 与确定性双语言 codegen、Python source/wheel import、标准 health、正常复制、
 matching token 取消、异常 EOF、原生 ARM64 Python/uv preflight，以及当前全仓 gate。
 
-### P2 — Job 控制面
+### P2 — Job 控制面（已完成）
 
 - Zod/OpenAPI transform-job DTO；
 - Prisma migration/Catalog lease/CAS；
 - fake Worker dispatcher；
 - API entrypoint 显式 start/stop；
 - 不做 staging 和 canonical finalization。
+
+Gate：真实 Postgres 覆盖并发创建、global slot、DB-clock expiry、stale token、cancel fence、retry
+和 cache hit；fake Worker 覆盖 progress、missing capability、abnormal EOF 和 shutdown cancel；API
+覆盖 disabled 无副作用、enabled start/stop 与私网配置。全仓 gate 通过。
 
 ### P3 — 临时数据面
 

@@ -138,6 +138,10 @@ import {
   v2ObjectStoreConfigFromEnv,
 } from '@databench/store'
 import {
+  registerWorkerCatalog,
+  unregisterWorkerCatalog,
+} from '../internal/worker/workspace-access.js'
+import {
   V2DatasetCache,
   type V2DatasetCacheKey,
   type V2DatasetLease,
@@ -370,10 +374,14 @@ export class V2Workspace {
       transformLimits: this.#transformLimits,
       converterRegistry: this.#converterRegistry,
     })
+    registerWorkerCatalog(this, options.catalog)
   }
 
   async close(): Promise<void> {
-    this.#closePromise ??= this.#closeOwnedResources?.() ?? Promise.resolve()
+    this.#closePromise ??= (async () => {
+      unregisterWorkerCatalog(this)
+      await (this.#closeOwnedResources?.() ?? Promise.resolve())
+    })()
     return await this.#closePromise
   }
 
