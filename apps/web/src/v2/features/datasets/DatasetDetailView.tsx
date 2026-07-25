@@ -58,7 +58,6 @@ export function V2DatasetDetailView({
             </Button>
           </>
         }
-        description={t('v2.detail.description')}
         title={requestedRef}
       />
 
@@ -90,7 +89,6 @@ export function V2DatasetDetailView({
         <SurfaceBody>
           <KeyValueGrid>
             <KeyValueRow label={t('v2.datasets.ref')} value={requestedRef} />
-            <KeyValueRow label={t('v2.detail.requested')} value={requestedRef} />
             <KeyValueRow label={t('v2.datasets.version')}>
               <span className="break-all font-mono text-xs">{pinnedVersion}</span>
               <CopyTextButton label={t('v2.record.copy')} text={pinnedVersion} />

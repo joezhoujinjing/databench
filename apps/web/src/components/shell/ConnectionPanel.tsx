@@ -77,16 +77,25 @@ export function ConnectionPanel() {
 
             <div className="rounded-[5px] border border-border bg-background p-3 text-muted-foreground">
               <div>
-                {t('connection.apiVersion')}: {capabilities?.api_version ?? 'unknown'}
+                {t('connection.apiVersion')}: {capabilities?.api_version ?? t('common.unknown')}
               </div>
               <div>
-                {t('connection.serviceVersion')}: {version?.service_version ?? 'unknown'}
+                {t('connection.serviceVersion')}: {version?.service_version ?? t('common.unknown')}
               </div>
               <div>
-                {t('connection.schemaVersion')}: {version?.schema_version ?? 'unknown'}
+                {t('connection.schemaVersion')}: {version?.schema_version ?? t('common.unknown')}
               </div>
-              <div>health {health?.status ?? 'unknown'}</div>
-              {isError ? <div className="mt-1 text-danger">{errorLabel(error)}</div> : null}
+              <div>
+                {t('connection.healthStatus')}:{' '}
+                {health?.status === 'ok'
+                  ? t('health.connected')
+                  : (health?.status ?? t('common.unknown'))}
+              </div>
+              {isError ? (
+                <div className="mt-1 text-danger">
+                  {errorLabel(error, t('connection.unreachable'))}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex justify-between gap-2">
@@ -124,7 +133,7 @@ export function ConnectionPanel() {
   )
 }
 
-function errorLabel(error: unknown): string {
+function errorLabel(error: unknown, fallback: string): string {
   if (isApiError(error)) {
     return `${error.code}: ${error.message}`
   }
@@ -133,5 +142,5 @@ function errorLabel(error: unknown): string {
     return error.message
   }
 
-  return 'unreachable'
+  return fallback
 }

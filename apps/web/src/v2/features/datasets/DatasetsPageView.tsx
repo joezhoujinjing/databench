@@ -43,7 +43,6 @@ export function V2DatasetsPageView({
             </Link>
           </Button>
         }
-        description={t('v2.datasets.description')}
         title={t('v2.datasets.title')}
       />
 

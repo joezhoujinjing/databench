@@ -164,7 +164,7 @@ export function V2ExportPageView({ exactVersion }: { exactVersion: string }) {
 
   return (
     <PageShell>
-      <PageHeader description={t('v2.export.description')} title={t('v2.export.title')} />
+      <PageHeader title={t('v2.export.title')} />
       <Surface>
         <SurfaceBody>
           {converters.isLoading ? <Spinner /> : null}

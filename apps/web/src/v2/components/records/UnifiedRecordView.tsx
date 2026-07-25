@@ -100,7 +100,7 @@ export function ToolsAndVerification({ record }: { record: PostTrainingRecordV2 
                           </span>
                         </div>
                         <Field
-                          label={t('v2.record.description')}
+                          label={t('v2.record.toolDescription')}
                           value={tool.description ?? t('v2.record.none')}
                         />
                         <div className="mt-3">

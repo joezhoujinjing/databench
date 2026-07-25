@@ -14,7 +14,7 @@ offline_production_release_authorized: true
 
 ## 当前检查点
 
-- **当前分支:** `feat/v2-product-cutover`
+- **当前分支:** `main`
 - **下一步:** 产品切换 R0-R5 已全部完成并过闸门；产品切换没有后续 Step。V16/V17
   仍按 owner 决策保持未开始，公共云 D3 仍待 owner 决策
 - **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
@@ -26,6 +26,8 @@ offline_production_release_authorized: true
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 - **产品切换:** ADR 0013、产品切换技术方案与第三版视觉稿已于 2026-07-24 接受；
   [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0-R5 已全部完成
+- **产品文案:** owner 于 2026-07-25 接受全站去技术化清单；本次只调整用户可见中英文文案与
+  必要展示结构，不改变 V16/V17 状态或任何 v2 协议、identity、layout、CAS 与功能行为
 
 ## Step 状态
 

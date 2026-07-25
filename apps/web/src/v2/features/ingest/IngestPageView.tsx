@@ -127,7 +127,7 @@ export function V2IngestPageView() {
 
   return (
     <PageShell>
-      <PageHeader description={t('v2.ingest.description')} title={t('v2.ingest.title')} />
+      <PageHeader title={t('v2.ingest.title')} />
       <Surface>
         <SurfaceHeader>
           <SurfaceTitle>{t('v2.ingest.upload')}</SurfaceTitle>
@@ -285,7 +285,7 @@ function JsonArrayCreatePanel() {
             <Field label={t('v2.ingest.recordsJson')}>
               <CodeEditor
                 aria-label={t('v2.ingest.recordsJson')}
-                language="JSON array"
+                language="JSON"
                 maxRows={16}
                 minRows={16}
                 onChange={(event) => setText(event.currentTarget.value)}

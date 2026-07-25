@@ -79,7 +79,7 @@ describe('Unified Record V2', () => {
 
   test('hides server eligibility and keeps superseded relations available behind history', () => {
     const html = renderToStaticMarkup(<UnifiedRecordView view={view} />)
-    expect(html).not.toContain('Server eligibility')
+    expect(html).not.toContain('Training eligibility')
     expect(html).not.toContain('selected_candidate_missing')
 
     const relationsHtml = renderToStaticMarkup(
@@ -106,7 +106,7 @@ describe('Unified Record V2', () => {
     expect(stringify.mock.calls.some(([value]) => value === largeText)).toBe(false)
     expect(html.length).toBeLessThan(20_000)
     expect(html).toContain('&lt;script&gt;unsafe&lt;/script&gt;')
-    expect(html).toContain('Large text preview')
+    expect(html).toContain('Only part of this value is shown')
     stringify.mockRestore()
   })
 })

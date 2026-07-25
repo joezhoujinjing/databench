@@ -65,3 +65,9 @@ R4 的标准操作入口与故障恢复见
 [V1-RETIREMENT-RUNBOOK.md](V1-RETIREMENT-RUNBOOK.md)。非空 v1 表的 forward migration
 没有 preflight approval 时必须 fail-closed；对象工具只接受 parser 验证的精确 key，不提供
 prefix delete。
+
+## 6. 切换后产品文案修订
+
+Owner 于 2026-07-25 接受全站产品文案去技术化清单。该维护工作不重新打开已完成的 R1-R5，
+不改变 V16/V17 状态，只调整中英文 locale、页面标题/说明和重复展示项；`/v2` API、Ref CAS、
+identity、layout、存储与所有功能 gate 保持不变。规范记录见 ADR 0013 与产品切换技术方案。
