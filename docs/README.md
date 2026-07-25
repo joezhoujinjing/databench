@@ -2,7 +2,7 @@
 
 ## 当前实现先读
 
-- [HANDOFF.md](HANDOFF.md) — 当前状态、红线与 R5 gate。
+- [HANDOFF.md](HANDOFF.md) — 当前状态、红线与已完成的 R5 gate。
 - [v2/STATUS.md](v2/STATUS.md) — v2 与产品切换的真实进度。
 - [architecture.md](architecture.md) — 当前 v2-only 系统形态。
 - [project-structure.md](project-structure.md) — 包边界与依赖 DAG。

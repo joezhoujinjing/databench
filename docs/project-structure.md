@@ -118,6 +118,6 @@ packages/<name>/
 
 ## 当前发布边界
 
-产品切换 R0-R4 已完成；R5 负责 v2-only 最终 gate、当前文档与离线包验证。
+产品切换 R0-R5 已完成；v2-only 最终 gate、当前文档与离线包验证均已通过。
 V16/V17 的 recovery/security/capacity 状态不因产品切换自动完成；公共云 API 托管平台
 仍受 D3 owner 决策门约束。

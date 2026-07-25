@@ -15,8 +15,8 @@ offline_production_release_authorized: true
 ## 当前检查点
 
 - **当前分支:** `feat/v2-product-cutover`
-- **下一步:** 产品切换 R4 已完成并过闸门；按 [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 进入 R5
-  v2-only最终gate、文档与离线包验证，V16/V17仍不开始
+- **下一步:** 产品切换 R0-R5 已全部完成并过闸门；产品切换没有后续 Step。V16/V17
+  仍按 owner 决策保持未开始，公共云 D3 仍待 owner 决策
 - **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
   不代表 V16、V17 或 GV-final 已完成
 - **离线发布:** owner于2026-07-24明确授权当前`main`直接生成production离线包；V16/V17
@@ -25,7 +25,7 @@ offline_production_release_authorized: true
   `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 - **产品切换:** ADR 0013、产品切换技术方案与第三版视觉稿已于 2026-07-24 接受；
-  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0、R1、R2、R3、R4 已完成，下一步为 R5
+  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0-R5 已全部完成
 
 ## Step 状态
 
@@ -457,3 +457,27 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   legacy对象，最终verify确认5张v1表与全部v1对象均不存在、v2 baseline前后一致；
 - R4 package 10/10 tests、全仓lint/build/typecheck/test、OpenAPI、status与peer gate通过；
   V16/V17状态不变，下一步进入R5。
+
+## 2026-07-25 产品切换 R5 Gate 记录
+
+- v2-only最终静态与契约检查通过：`pnpm lint`（347 files）、全仓build（13/13）、
+  typecheck（22/22）、test（22/22）、OpenAPI（11/11）、`pnpm offline:check`、
+  `pnpm v2:status:check`、`pnpm peers check`与`git diff --check`全部通过；OpenAPI共17条
+  paths且`/v1`为0，build后的CLI只含5组、13条v2-only命令；同时修复pre-commit在
+  纯Markdown暂存集上因Biome处理0个文件而误失败，仍不绕过任何受支持源码检查；
+- `RUN_MINIO_STORE_TESTS=true pnpm test`在真实Postgres 17与MinIO上通过；Store 81/81、
+  Workspace 98/98、API 59/59、CLI 13/13，覆盖conditional create、跨Workspace并发、
+  ingest/read/audit/transform/lineage/inspect/export与CLI/API/Workspace同fixture一致性；
+- 真实浏览器复核`/datasets`加载9个Refs，主导航仅“数据集 / 导入 / 转换”；`/ingest`、
+  `/transforms`、dataset detail、record、lineage与export均可直接刷新，`/recipe`返回产品404，
+  console无warning/error；390×844窄屏下`scrollWidth === clientWidth === 375`；
+- 从干净提交`2b166cf70bb8f799724d3013c71bb2346ec37e20`构建
+  `databench-offline-0.4.0-linux-amd64.tar.gz`。五张镜像均为`linux/amd64`并通过可执行性
+  smoke，包内外SHA-256校验通过；归档为396,409,699 bytes，SHA-256为
+  `024bc6c7591148ccf94c2b61f33bfdf2d946af79794069cbbd5c6d01ed3034b0`；
+- 使用包内镜像在隔离Docker网络与空白volumes启动Postgres、MinIO、API与Web，五个forward
+  migrations全部应用，并通过固定数据集ingest→show→records→audit→export、Caddy`/api`
+  JSON代理和SPA深链smoke；测试容器、网络与volumes随后精确清除。真实Ubuntu 22.04 amd64
+  现场安装验收仍按离线发布方案如实标记为待执行；
+- R0-R5至此全部完成。R5不启动或完成V16/V17，也不代表GV16/GV-final或完整production
+  readiness；公共云S22仍受D3 owner决策门约束。

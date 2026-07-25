@@ -7,7 +7,7 @@
 Databench 是 LLM post-training 数据基础设施。本仓库是全 TypeScript monorepo。
 
 - v2 V0-V15 已完成；V16/V17 仍未完成。
-- ADR 0013 产品切换 R0-R4 已完成，R5 正在做最终 gate、文档和离线包验证。
+- ADR 0013 产品切换 R0-R5 已完成并过最终 gate；V16/V17 状态不因此改变。
 - v2 是唯一产品面：Web/CLI 无版本入口，REST/DB/object/internal types 保留稳定 v2 命名。
 - v1 runtime、产品 surface、领域实现和本地持久化数据已经退役。
 - `tooling/v1-retirement`、forward migration 与 runbook 暂时保留，供尚未执行 R4 的安装环境

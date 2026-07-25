@@ -3,7 +3,7 @@
 ## 当前事实
 
 - 主产品已按 ADR 0013 切换为 v2-only。
-- 产品切换 R0-R4 已完成；R5 正在做最终全仓、真实依赖、浏览器与离线发布 gate。
+- 产品切换 R0-R5 已完成；最终全仓、真实依赖、浏览器与离线发布 gate 均已通过。
 - v2 V0-V15 已完成；V16 recovery/security 与 V17 capacity/release gate 未完成。
 - Web 与 CLI 不带版本；REST、Postgres、对象 key 与内部类型继续保留 v2 稳定命名。
 - v1 产品面、runtime、领域代码和已确认的本地持久化数据已删除。
@@ -94,7 +94,7 @@ R4 manifest 在本机 ignored maintenance 目录中。标准操作仍以
 - 浏览器 v2-only 全主流程、直接刷新、404、console、窄屏
 - 离线静态检查和实际 lifecycle smoke
 
-R5 完成后只更新产品切换状态，不改变 V16/V17。
+R5 已完成并只更新了产品切换状态，没有改变 V16/V17。
 
 ## 本地运行
 
