@@ -1,6 +1,10 @@
 // Re-exported so apps/api can build its v2 store config from the same source as
 // Workspace without importing @databench/store directly.
 export { v2ObjectStoreConfigFromEnv } from '@databench/store'
+export {
+  WorkerCanonicalJobFinalizerV1,
+  WorkerWorkspaceInputProjectorV1,
+} from './internal/worker/canonical-finalizer.js'
 export type {
   WorkerCallOptions,
   WorkerCancelJobRequest,

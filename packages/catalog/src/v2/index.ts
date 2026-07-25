@@ -9,6 +9,7 @@ export {
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
+  V2CatalogTransformJobLeaseError,
 } from './errors.js'
 export type {
   CatalogCreationProfileV2,
@@ -34,7 +35,9 @@ export type {
   CatalogTransformJobRowV2,
   CatalogTransformJobStatusV2,
   ClaimTransformJobV2,
+  ClearCompletedTransformJobStagingV2,
   CompareAndSetRefV2,
+  CompleteTransformJobV2,
   CreateTransformJobV2,
   DeleteRefResultV2,
   DeleteRefV2,

@@ -1,6 +1,6 @@
 # Worker 与 Data-Juicer 接入技术方案
 
-- **状态：** Accepted design；P0-P4 已完成，下一步 P5 canonical finalizer
+- **状态：** Accepted design；P0-P5 已完成，下一步 P6 Transform job 产品面
 - **日期：** 2026-07-25
 - **决策：**
   [ADR 0010 — Long-running Python Worker over internal gRPC](../decisions/0010-python-processing-service-grpc.md)
@@ -59,9 +59,9 @@ Worker 是通用的长期 Python 服务。Data-Juicer 是首个 capability，不
 - Ref CAS；
 - canonical inspect/export。
 
-Data-Juicer finalizer 不复制 identity、publish 或 lineage 算法。需要把当前
-`#publishTransform()`、run validation 和 cache-hit verification 中可共享的部分提取为
-Workspace 内部 helper，供同步 transform 和 batch finalizer 共同调用。
+Data-Juicer finalizer 不复制 identity、publish 或 lineage 算法。P5 已把同步 transform 的
+canonical prepare/commit/registration 提取为 Workspace 内部共享 helper；同步与 batch 路径继续
+共用 run validation、cache verification 和 determinism conflict 规则。
 
 ### 3.2 当前同步 transform 不能直接承载 Worker
 
@@ -109,8 +109,10 @@ Worker staging 能力，但不能改变 canonical key 或 conditional commit 语
 ### 3.4 P2 已增加 job 控制面
 
 Prisma 已增加 `transform_jobs_v2`，Catalog 已实现确定性创建、单槽 claim、DB clock lease、
-attempt/token CAS、durable cancel、cleanup fence 和显式 retry。样本、Data-Juicer 输出和完整日志
-仍不能进 Postgres；成功完成与 Run 的原子事务留在 P5。
+attempt/token CAS、durable cancel、cleanup fence 和显式 retry。P5 已增加
+`completeTransformJob()`：用 DB clock 验证当前 finalizing attempt/token，并在同一事务登记
+layout、确定性 Run、output count/version 和 completed job，再清除 lease。样本、Data-Juicer
+输出和完整日志仍不能进 Postgres。
 
 ### 3.5 P2 已增加 API runtime owner
 
@@ -128,6 +130,20 @@ dispatcher 只有在 Worker 确认 stopped/absent 且 exact staging 清理成功
 P3 不创建 Data-Juicer adapter，也不把临时输出发布成 Dataset。真实 ARM64 Python
 `fixture.copy@1` 已通过 MinIO signed URL 往返；错误 method、Content-Type 和过期 URL 均 fail
 closed。
+
+### 3.7 P4 已增加 Data-Juicer adapter
+
+Worker 已固定 `data_juicer.batch@1` / Data-Juicer 1.5.3、`np=1`、allowlist plan、受控子进程、
+deadline/cancel/network/runtime-install 边界。TS 的 `basic-clean@1` 仍无公共参数，不允许 YAML、
+任意 operator 或字段选择。
+
+### 3.8 P5 已增加 canonical finalizer
+
+Workspace 已实现 exact input projector 和 canonical finalizer：严格读取 retained output，映射回
+原始 `RecordRevisionV2`，构造新 `V2Dataset`，复用共享 Store publication，并通过 Catalog 原子
+完成登记 Run/cache/lineage/job。完成后读回 Run/manifest，再 best-effort 删除两个 exact staging
+objects 和 row keys；清理失败只记录 secondary error。Dispatcher renewer 能识别同 attempt 已
+completed 的预期 lease clear，不把读回阶段误判为 lease loss。
 
 ## 4. 总体架构
 
@@ -161,8 +177,8 @@ flowchart LR
 
 ## 5. 权威目录
 
-P1 的 Proto/Worker/client、P2 的 job 控制面、P3 的临时数据面和 P4 的 Data-Juicer adapter
-已落地；其余目录仍按对应 Step 创建，不能把计划中的 P5-P6 文件误写成当前实现。
+P1 的 Proto/Worker/client、P2 的 job 控制面、P3 的临时数据面、P4 的 Data-Juicer adapter 和
+P5 的 canonical finalizer 已落地；P6 产品面文件仍是 planned。
 
 ```text
 proto/
@@ -191,27 +207,25 @@ workers/python/
 │     └─ worker_pb2_grpc.py
 └─ tests/
 
-packages/ops/src/v2/batch/
-├─ contracts.ts
-├─ registry.ts
-└─ basic-clean.ts
-
 packages/workspace/src/
 ├─ internal/worker/
 │  ├─ client.ts
 │  ├─ data-juicer.ts
 │  ├─ grpc-client.ts
 │  ├─ dispatcher.ts
+│  ├─ canonical-finalizer.ts
+│  ├─ staging.ts
+│  ├─ workspace-access.ts
 │  └─ generated/
 └─ v2/
    ├─ batch-transform.ts
-   └─ transform-publication.ts
+   └─ workspace.ts
 
 packages/store/src/v2/
 ├─ worker-staging.ts
 └─ worker-staging-keys.ts
 
-apps/api/src/routes/v2/transform-jobs.ts
+apps/api/src/routes/v2/transform-jobs.ts  planned：P6
 ```
 
 Generated Python import 必须正常工作于 source tree 和 wheel：
@@ -1059,13 +1073,19 @@ GET/PUT、错误 method/Content-Type、过期 URL、gRPC copy、TS readback 与 
 - 100/10k/100k 与 determinism/cancel gate；
 - 此 Step 仍不得把 Worker 输出当 Dataset。
 
-### P5 — Canonical finalizer
+### P5 — Canonical finalizer（已完成）
 
 - retained subset validation；
 - `V2Dataset` output；
 - refactor shared transform publication；
 - layout+Run+job atomic Catalog completion；
 - cache/lineage/crash/determinism gates。
+
+Gate：真实 Postgres 覆盖 current/stale/expired/non-finalizing lease、count、same-output replay、
+cache convergence、different-output conflict 和整笔 rollback；真实 MinIO 覆盖 canonical
+read/audit/lineage 与 exact cleanup；原生 ARM64 Python Worker + Data-Juicer 真实输出直接进入
+finalizer，完整生成可读 Dataset、Run 和 lineage。全仓 lint/build/typecheck/test/OpenAPI/status/peer
+通过。
 
 ### P6 — 产品面
 

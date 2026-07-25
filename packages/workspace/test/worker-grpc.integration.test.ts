@@ -8,16 +8,26 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { CreateBucketCommand, DeleteBucketCommand, S3Client } from '@aws-sdk/client-s3'
-import type { CatalogTransformJobRowV2 } from '@databench/catalog'
-import { V2Dataset } from '@databench/engine'
+import {
+  CreateBucketCommand,
+  DeleteBucketCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+  S3Client,
+} from '@aws-sdk/client-s3'
+import { V2Catalog } from '@databench/catalog'
 import type { RecordRevisionV2 } from '@databench/schema'
 import {
+  FileBackedV2Store,
   S3ConditionalObjectStoreV2,
   WORKER_STAGING_JSONL_MEDIA_TYPE,
   WorkerStagingStoreV1,
 } from '@databench/store'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import {
+  WorkerCanonicalJobFinalizerV1,
+  WorkerWorkspaceInputProjectorV1,
+} from '../src/internal/worker/canonical-finalizer.js'
 import type { WorkerProtocolError, WorkerRunJobRequest } from '../src/internal/worker/client.js'
 import {
   compileBasicCleanWorkerParametersV1,
@@ -25,14 +35,9 @@ import {
   DATA_JUICER_BATCH_PARAMETER_SCHEMA_V1,
 } from '../src/internal/worker/data-juicer.js'
 import { GrpcWorkerClient } from '../src/internal/worker/grpc-client.js'
-import {
-  WorkerStagingJobCleanerV1,
-  WorkerStagingJobPreparerV1,
-} from '../src/internal/worker/staging.js'
-import {
-  readWorkerRetainedJsonlV1,
-  writeWorkerRecordTextJsonlV1,
-} from '../src/v2/batch-transform.js'
+import { WorkerStagingJobPreparerV1 } from '../src/internal/worker/staging.js'
+import { readWorkerRetainedJsonlV1 } from '../src/v2/batch-transform.js'
+import { V2Workspace } from '../src/v2/workspace.js'
 
 const RUN_INTEGRATION = process.env.RUN_WORKER_INTEGRATION_TESTS === '1'
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
@@ -215,9 +220,19 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
     })
     await admin.send(new CreateBucketCommand({ Bucket: bucket }))
     const objectStore = new S3ConditionalObjectStoreV2(config)
+    const catalog = new V2Catalog()
+    const workspace = new V2Workspace({
+      catalog,
+      store: new FileBackedV2Store({
+        objectStore,
+        tempRoot: join(root, 'canonical'),
+        safetyMarginBytes: 0,
+      }),
+      cursorSecret: 'worker-finalizer-integration-cursor-secret',
+    })
     const staging = new WorkerStagingStoreV1({
       objectStore,
-      tempRoot: root,
+      tempRoot: join(root, 'staging'),
       maxBytes: 1024 * 1024,
       signedUrlTtlMs: 60_000,
     })
@@ -225,7 +240,7 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
     const ref = { jobId, attempt: 1 }
 
     try {
-      const dataset = V2Dataset.fromRecords([
+      const records = [
         workerRecord(
           '1',
           '   Shared\ttext with enough deterministic characters for the fixed filter.   ',
@@ -236,23 +251,33 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
           '4',
           'A different record with enough deterministic characters for the fixed filter.',
         ),
-      ])
-      const job = workerJob(jobId, dataset.version, dataset.length, 'basic-clean')
-      let stagingKeys: { readonly inputKey: string; readonly outputKey: string } | null = null
+      ]
+      const published = await workspace.addRecords(records, {
+        ref: null,
+        expected_ref_version: null,
+        message: null,
+      })
+      const dataset = await workspace.get(published.dataset_version)
+      await catalog.createOrReadTransformJob({
+        id: jobId,
+        cacheKey: jobId.slice(4),
+        op: 'basic-clean',
+        opVersion: '1',
+        params: {},
+        inputVersion: dataset.version,
+        capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
+        capabilityVersion: '1',
+        inputCount: BigInt(dataset.length),
+      })
+      const job = await catalog.claimNextTransformJob({
+        leaseOwner: 'worker.integration',
+        leaseDurationMs: 30_000,
+      })
+      if (!job?.leaseToken) throw new Error('Worker finalizer job was not claimed')
       const preparer = new WorkerStagingJobPreparerV1({
-        catalog: {
-          async setTransformJobStagingKeys(input) {
-            expect(input).toMatchObject({ id: job.id, attempt: job.attempt })
-            stagingKeys = { inputKey: input.inputKey, outputKey: input.outputKey }
-            return true
-          },
-        },
+        catalog,
         staging,
-        projector: {
-          project(_job, signal) {
-            return writeWorkerRecordTextJsonlV1(dataset.records(), { signal })
-          },
-        },
+        projector: new WorkerWorkspaceInputProjectorV1(workspace),
         parameters: compileBasicCleanWorkerParametersV1,
         maxOutputBytes: 1024 * 1024,
       })
@@ -264,7 +289,7 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
       })
       const source = prepared.inputs[0]
       const target = prepared.outputs[0]
-      if (!source || !target || !stagingKeys) throw new Error('staging preparation is incomplete')
+      if (!source || !target) throw new Error('staging preparation is incomplete')
 
       const wrongMethod = await fetch(source.readUrl, { method: 'PUT', body: 'not-allowed' })
       expect(wrongMethod.ok).toBe(false)
@@ -279,8 +304,8 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
       for await (const event of client.runJob({
         executionId: 'execution-minio-roundtrip',
         jobId,
-        attempt: 1,
-        leaseToken: job.leaseToken ?? randomBytes(32),
+        attempt: job.attempt,
+        leaseToken: job.leaseToken,
         capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
         capabilityVersion: '1',
         ...prepared,
@@ -329,7 +354,7 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
         signedUrlTtlMs: 1,
       })
       const expiringSource = await expiring.signRead(ref, {
-        key: stagingKeys.inputKey,
+        key: `staging/worker/v1/${ref.jobId}/${ref.attempt}/input.jsonl`,
         mediaType: WORKER_STAGING_JSONL_MEDIA_TYPE,
         size: source.size,
         digest: source.digest,
@@ -337,23 +362,69 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
       await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 1_200))
       expect((await fetch(expiringSource.readUrl)).ok).toBe(false)
 
-      if (!job.leaseToken) throw new Error('fixture lease token is missing')
-      await new WorkerStagingJobCleanerV1(staging).cleanup({
-        job: { ...job, inputKey: stagingKeys.inputKey, outputKey: stagingKeys.outputKey },
-        lease: { id: job.id, attempt: job.attempt, leaseToken: job.leaseToken },
+      const lease = { id: job.id, attempt: job.attempt, leaseToken: job.leaseToken }
+      await expect(catalog.markTransformJobRunning(lease)).resolves.toMatchObject({
+        status: 'running',
+      })
+      await expect(catalog.markTransformJobFinalizing(lease)).resolves.toMatchObject({
+        status: 'finalizing',
+      })
+      await new WorkerCanonicalJobFinalizerV1(workspace, staging).finalize({
+        job,
+        lease,
+        outputs: completed.outputs,
+        signal: new AbortController().signal,
+      })
+
+      const canonicalJob = await catalog.getTransformJob(job.id)
+      expect(canonicalJob).toMatchObject({
+        status: 'completed',
+        outputCount: BigInt(retained.length),
+        inputKey: null,
+        outputKey: null,
+        leaseToken: null,
+      })
+      if (!canonicalJob?.outputVersion) throw new Error('canonical Worker output is missing')
+      const canonicalOutput = await workspace.get(canonicalJob.outputVersion)
+      expect([...canonicalOutput.records()].map((revision) => revision.record.id)).toEqual(
+        retained.map((revision) => revision.record.id),
+      )
+      for (const revision of retained) {
+        expect(canonicalOutput.get(revision.record.id)).toMatchObject({
+          record_digest: revision.record_digest,
+          record_json: revision.record_json,
+        })
+      }
+      await expect(catalog.findRun(job.cacheKey)).resolves.toMatchObject({
+        id: `run_${job.cacheKey}`,
+        inputVersions: [dataset.version],
+        outputVersion: canonicalJob.outputVersion,
+      })
+      const lineage = await workspace.lineage(canonicalJob.outputVersion, {
+        max_depth: 2,
+        max_nodes: 10,
+        cursor: null,
+      })
+      expect(lineage.edges).toContainEqual({
+        run_id: `run_${job.cacheKey}`,
+        input_dataset_versions: [dataset.version],
+        output_dataset_version: canonicalJob.outputVersion,
       })
       await expect(staging.statExact({ ...ref, logicalName: 'input' })).resolves.toBeNull()
       await expect(staging.statExact({ ...ref, logicalName: 'output' })).resolves.toBeNull()
     } finally {
+      await workspace.close()
+      await catalog.close()
       await Promise.allSettled([
         staging.deleteExact({ ...ref, logicalName: 'input' }),
         staging.deleteExact({ ...ref, logicalName: 'output' }),
       ])
+      await deleteAllObjects(admin, bucket)
       await admin.send(new DeleteBucketCommand({ Bucket: bucket }))
       admin.destroy()
       await rm(root, { recursive: true, force: true })
     }
-  }, 20_000)
+  }, 30_000)
 
   test('cancels a 10k Data-Juicer gRPC execution and does not upload output', async () => {
     dataJuicerInput = dataJuicerRows(10_000)
@@ -518,6 +589,26 @@ function minioConfig(bucket: string) {
   }
 }
 
+async function deleteAllObjects(admin: S3Client, bucket: string): Promise<void> {
+  let continuationToken: string | undefined
+  do {
+    const page = await admin.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        ...(continuationToken === undefined ? {} : { ContinuationToken: continuationToken }),
+      }),
+    )
+    const keys = (page.Contents ?? [])
+      .map((entry) => entry.Key)
+      .filter((key): key is string => key !== undefined)
+      .map((Key) => ({ Key }))
+    if (keys.length > 0) {
+      await admin.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys } }))
+    }
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined
+  } while (continuationToken !== undefined)
+}
+
 function workerRecord(suffix: string, text: string) {
   return {
     schema_version: '2.0.0' as const,
@@ -546,41 +637,6 @@ function workerRecord(suffix: string, text: string) {
     lineage: null,
     tags: [],
     extra: {},
-  }
-}
-
-function workerJob(
-  id: string,
-  inputVersion: string,
-  inputCount: number,
-  op: 'fixture-copy' | 'basic-clean' = 'fixture-copy',
-): CatalogTransformJobRowV2 {
-  return {
-    id,
-    cacheKey: id.slice(4),
-    op,
-    opVersion: '1',
-    params: {},
-    inputVersion,
-    capabilityName: op === 'basic-clean' ? DATA_JUICER_BATCH_CAPABILITY_V1 : 'fixture.copy',
-    capabilityVersion: '1',
-    inputCount: BigInt(inputCount),
-    status: 'leased',
-    attempt: 1,
-    leaseOwner: 'integration.test',
-    leaseToken: randomBytes(32),
-    leaseExpiresAt: new Date(Date.now() + 30_000),
-    progress: null,
-    inputKey: null,
-    outputKey: null,
-    outputCount: null,
-    outputVersion: null,
-    cacheHit: false,
-    error: null,
-    createdAt: new Date(),
-    startedAt: null,
-    finishedAt: null,
-    updatedAt: new Date(),
   }
 }
 

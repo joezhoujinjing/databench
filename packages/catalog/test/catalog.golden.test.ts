@@ -11,6 +11,7 @@ import {
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
+  V2CatalogTransformJobLeaseError,
 } from '../src/index.js'
 
 interface CatalogV2Fixture {
@@ -96,6 +97,31 @@ function transformJobInput(cacheKey: string, inputVersion = fixtureVersion('alph
     capabilityVersion: '1',
     inputCount: 1n,
   }
+}
+
+async function claimFinalizingJob(cacheKey: string) {
+  await v2Catalog.createOrReadTransformJob(transformJobInput(cacheKey))
+  const claimed = await v2Catalog.claimNextTransformJob({
+    leaseOwner: 'dispatcher.test',
+    leaseDurationMs: 30_000,
+  })
+  if (!claimed?.leaseToken) throw new Error('claim did not return a lease token')
+  const lease = { id: claimed.id, attempt: claimed.attempt, leaseToken: claimed.leaseToken }
+  const prefix = `staging/worker/v1/${lease.id}/${lease.attempt}`
+  await expect(
+    v2Catalog.setTransformJobStagingKeys({
+      ...lease,
+      inputKey: `${prefix}/input.jsonl`,
+      outputKey: `${prefix}/output.jsonl`,
+    }),
+  ).resolves.toBe(true)
+  await expect(v2Catalog.markTransformJobRunning(lease)).resolves.toMatchObject({
+    status: 'running',
+  })
+  await expect(v2Catalog.markTransformJobFinalizing(lease)).resolves.toMatchObject({
+    status: 'finalizing',
+  })
+  return lease
 }
 
 type FixtureRevision = CatalogV2Fixture['revisions'][string]
@@ -1410,6 +1436,170 @@ describe('V2Catalog transform jobs', () => {
     }
   })
 
+  test('atomically completes a finalizing job and keeps completion and staging cleanup idempotent', async () => {
+    const input = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
+    const output = registration('gamma', [withParents(fixtureRevision('output'))])
+    await v2Catalog.registerCommittedLayout(input)
+    const cacheKey = 'c'.repeat(64)
+    const lease = await claimFinalizingJob(cacheKey)
+    const run = {
+      id: `run_${cacheKey}`,
+      cacheKey,
+      op: 'basic-clean',
+      opVersion: '1',
+      params: {},
+      inputVersions: [input.snapshot.version],
+      outputVersion: output.snapshot.version,
+    }
+    const completion = { ...output, run, job: lease, outputCount: 1n }
+
+    const completed = await v2Catalog.completeTransformJob(completion)
+    expect(completed).toMatchObject({
+      status: 'completed',
+      outputCount: 1n,
+      outputVersion: output.snapshot.version,
+      cacheHit: false,
+      leaseToken: null,
+    })
+    expect(completed.inputKey).not.toBeNull()
+    expect(completed.outputKey).not.toBeNull()
+    await expect(v2Catalog.completeTransformJob(completion)).resolves.toMatchObject({
+      status: 'completed',
+      outputVersion: output.snapshot.version,
+    })
+    await expect(v2Catalog.findRun(cacheKey)).resolves.toMatchObject(run)
+
+    if (!completed.inputKey || !completed.outputKey) {
+      throw new Error('completed job did not retain exact staging keys')
+    }
+    const cleanup = {
+      id: completed.id,
+      attempt: completed.attempt,
+      outputVersion: output.snapshot.version,
+      inputKey: completed.inputKey,
+      outputKey: completed.outputKey,
+    }
+    await expect(v2Catalog.clearCompletedTransformJobStagingKeys(cleanup)).resolves.toBe(true)
+    await expect(v2Catalog.clearCompletedTransformJobStagingKeys(cleanup)).resolves.toBe(true)
+    await expect(v2Catalog.getTransformJob(completed.id)).resolves.toMatchObject({
+      inputKey: null,
+      outputKey: null,
+    })
+  })
+
+  test('rolls back canonical metadata for stale, expired, and non-finalizing completions', async () => {
+    const input = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
+    const output = registration('gamma', [withParents(fixtureRevision('output'))])
+    await v2Catalog.registerCommittedLayout(input)
+    const cacheKey = 'd'.repeat(64)
+    await v2Catalog.createOrReadTransformJob(transformJobInput(cacheKey))
+    const claimed = await v2Catalog.claimNextTransformJob({
+      leaseOwner: 'dispatcher.test',
+      leaseDurationMs: 30_000,
+    })
+    if (!claimed?.leaseToken) throw new Error('claim did not return a lease token')
+    const lease = { id: claimed.id, attempt: claimed.attempt, leaseToken: claimed.leaseToken }
+    const prefix = `staging/worker/v1/${lease.id}/${lease.attempt}`
+    await v2Catalog.setTransformJobStagingKeys({
+      ...lease,
+      inputKey: `${prefix}/input.jsonl`,
+      outputKey: `${prefix}/output.jsonl`,
+    })
+    const completion = {
+      ...output,
+      run: {
+        id: `run_${cacheKey}`,
+        cacheKey,
+        op: 'basic-clean',
+        opVersion: '1',
+        params: {},
+        inputVersions: [input.snapshot.version],
+        outputVersion: output.snapshot.version,
+      },
+      job: lease,
+      outputCount: 1n,
+    }
+
+    await expect(
+      v2Catalog.completeTransformJob({ ...completion, outputCount: 0n }),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    await expect(v2Catalog.completeTransformJob(completion)).rejects.toBeInstanceOf(
+      V2CatalogTransformJobLeaseError,
+    )
+    await v2Catalog.markTransformJobRunning(lease)
+    await v2Catalog.markTransformJobFinalizing(lease)
+    await expect(
+      v2Catalog.completeTransformJob({
+        ...completion,
+        job: { ...lease, leaseToken: new Uint8Array(32).fill(4) },
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogTransformJobLeaseError)
+    expect(await v2Catalog.getSnapshot(output.snapshot.version)).toBeNull()
+    expect(await v2Catalog.findRun(cacheKey)).toBeNull()
+
+    await prisma.$executeRaw`
+      UPDATE "transform_jobs_v2"
+      SET "lease_expires_at" = clock_timestamp() - INTERVAL '1 millisecond'
+      WHERE "id" = ${lease.id}
+    `
+    await expect(v2Catalog.completeTransformJob(completion)).rejects.toBeInstanceOf(
+      V2CatalogTransformJobLeaseError,
+    )
+    expect(await v2Catalog.getSnapshot(output.snapshot.version)).toBeNull()
+    expect(await v2Catalog.findRun(cacheKey)).toBeNull()
+  })
+
+  test('converges on an identical winning run and rejects a different deterministic output', async () => {
+    const input = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
+    const firstOutput = registration('gamma', [withParents(fixtureRevision('output'))])
+    const differentOutput = registration('delta', [withParents(fixtureRevision('outputDelta'))])
+    await v2Catalog.registerCommittedLayout(input)
+
+    const identicalCacheKey = 'e'.repeat(64)
+    const identicalLease = await claimFinalizingJob(identicalCacheKey)
+    const identicalRun = {
+      id: `run_${identicalCacheKey}`,
+      cacheKey: identicalCacheKey,
+      op: 'basic-clean',
+      opVersion: '1',
+      params: {},
+      inputVersions: [input.snapshot.version],
+      outputVersion: firstOutput.snapshot.version,
+    }
+    await v2Catalog.registerTransformResult({ ...firstOutput, run: identicalRun })
+    await expect(
+      v2Catalog.completeTransformJob({
+        ...firstOutput,
+        run: identicalRun,
+        job: identicalLease,
+        outputCount: 1n,
+      }),
+    ).resolves.toMatchObject({ status: 'completed', cacheHit: true })
+
+    await prisma.v2TransformJob.deleteMany()
+    const conflictingCacheKey = 'f'.repeat(64)
+    const conflictingLease = await claimFinalizingJob(conflictingCacheKey)
+    const winningRun = {
+      ...identicalRun,
+      id: `run_${conflictingCacheKey}`,
+      cacheKey: conflictingCacheKey,
+    }
+    await v2Catalog.registerTransformResult({ ...firstOutput, run: winningRun })
+    await expect(
+      v2Catalog.completeTransformJob({
+        ...differentOutput,
+        run: { ...winningRun, outputVersion: differentOutput.snapshot.version },
+        job: conflictingLease,
+        outputCount: 1n,
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogDeterminismConflictError)
+    expect(await v2Catalog.getSnapshot(differentOutput.snapshot.version)).toBeNull()
+    await expect(v2Catalog.getTransformJob(conflictingLease.id)).resolves.toMatchObject({
+      status: 'finalizing',
+      outputVersion: null,
+    })
+  })
+
   test('materializes cache-hit jobs only from an existing matching immutable run', async () => {
     const input = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
     const output = registration('gamma', [withParents(fixtureRevision('output'))])
@@ -1434,6 +1624,7 @@ describe('V2Catalog transform jobs', () => {
       id: `job_${cacheKey}`,
       status: 'completed',
       outputVersion: output.snapshot.version,
+      outputCount: 1n,
       cacheHit: true,
       attempt: 0,
     })

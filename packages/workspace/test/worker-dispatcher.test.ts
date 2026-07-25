@@ -21,6 +21,7 @@ import {
   WorkerDispatcher,
   type WorkerDispatcherCatalog,
   type WorkerJobCleaner,
+  type WorkerJobFinalizer,
   type WorkerJobPreparer,
 } from '../src/internal/worker/dispatcher.js'
 
@@ -187,12 +188,41 @@ describe('WorkerDispatcher', () => {
     expect(catalog.transitions).not.toContain('staging-cleared')
     expect(catalog.transitions).not.toContain('fence-cleared')
   })
+
+  test('does not treat the expected completed lease clear as heartbeat lease loss', async () => {
+    const catalog = new FakeCatalog()
+    const client = new FakeClient(async function* () {
+      yield event('accepted')
+      yield event('started')
+      yield {
+        type: 'completed',
+        timestampUnixMs: Date.now(),
+        outputs: [{ name: 'output', size: 0, digest: 'a'.repeat(64), recordCount: 0 }],
+      }
+    })
+    const finalizer: WorkerJobFinalizer = {
+      async finalize() {
+        catalog.completeForFinalizer()
+        await new Promise<void>((resolve) => setTimeout(resolve, 60))
+      },
+    }
+    const dispatcher = createDispatcher(catalog, client, undefined, finalizer)
+
+    await dispatcher.start()
+    await waitUntil(() => catalog.row.status === 'completed')
+    await new Promise<void>((resolve) => setTimeout(resolve, 80))
+    await dispatcher.stop()
+
+    expect(catalog.transitions).toContain('completed')
+    expect(catalog.transitions.some((transition) => transition.startsWith('failed:'))).toBe(false)
+  })
 })
 
 function createDispatcher(
   catalog: FakeCatalog,
   client: FakeClient,
   cleaner: WorkerJobCleaner = { async cleanup() {} },
+  finalizer: WorkerJobFinalizer = new IncompleteWorkerJobFinalizer(),
 ): WorkerDispatcher {
   const preparer: WorkerJobPreparer = {
     async prepare() {
@@ -211,7 +241,7 @@ function createDispatcher(
     catalog,
     client,
     preparer,
-    finalizer: new IncompleteWorkerJobFinalizer(),
+    finalizer,
     cleaner,
     leaseOwner: 'dispatcher.test',
     leaseMs: 100,
@@ -351,6 +381,20 @@ class FakeCatalog implements WorkerDispatcherCatalog {
 
   async getTransformJob(id: string) {
     return id === this.row.id ? this.row : null
+  }
+
+  completeForFinalizer(): void {
+    this.row = {
+      ...this.row,
+      status: 'completed',
+      outputCount: 0n,
+      outputVersion: '3'.repeat(64),
+      leaseOwner: null,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      finishedAt: new Date(),
+    }
+    this.transitions.push('completed')
   }
 
   private active(input: TransformJobLeaseV2): boolean {

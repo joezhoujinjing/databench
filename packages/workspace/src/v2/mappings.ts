@@ -10,6 +10,7 @@ import {
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
+  V2CatalogTransformJobLeaseError,
 } from '@databench/catalog'
 import type { V2Dataset } from '@databench/engine'
 import {
@@ -177,7 +178,8 @@ export function mapV2CatalogError(
   if (
     error instanceof V2CatalogConsistencyError ||
     error instanceof V2CatalogImmutableConflictError ||
-    error instanceof V2CatalogInputError
+    error instanceof V2CatalogInputError ||
+    error instanceof V2CatalogTransformJobLeaseError
   ) {
     throw new IntegrityError('V2 catalog rejected canonical workspace metadata', {
       reason: error.name,

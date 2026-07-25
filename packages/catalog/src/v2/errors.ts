@@ -34,6 +34,14 @@ export class V2CatalogDeterminismConflictError extends Error {
   }
 }
 
+export class V2CatalogTransformJobLeaseError extends Error {
+  override readonly name = 'V2CatalogTransformJobLeaseError'
+
+  constructor(readonly jobId: string) {
+    super(`Transform job is not owned by the current finalizing lease: ${jobId}`)
+  }
+}
+
 export class V2CatalogLineageCycleError extends Error {
   override readonly name = 'V2CatalogLineageCycleError'
   readonly recordId: string

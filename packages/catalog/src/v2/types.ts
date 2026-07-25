@@ -108,6 +108,19 @@ export interface RegisterTransformResultV2 extends RegisterLayoutV2 {
   readonly run: CatalogRunInputV2
 }
 
+export interface CompleteTransformJobV2 extends RegisterTransformResultV2 {
+  readonly job: TransformJobLeaseV2
+  readonly outputCount: bigint
+}
+
+export interface ClearCompletedTransformJobStagingV2 {
+  readonly id: string
+  readonly attempt: number
+  readonly outputVersion: string
+  readonly inputKey: string
+  readonly outputKey: string
+}
+
 export interface CompareAndSetRefV2 {
   readonly namespaceId: string
   readonly name: string

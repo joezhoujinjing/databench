@@ -1,4 +1,9 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { Writable } from 'node:stream'
 import {
   type DeleteRefResultV2 as CatalogDeleteRefResultV2,
   type CatalogIdentityClaimInputV2,
@@ -11,7 +16,10 @@ import {
   type CatalogRunPageV2,
   type CatalogRunRowV2,
   type CatalogSnapshotRowV2,
+  type CatalogTransformJobRowV2,
+  type ClearCompletedTransformJobStagingV2,
   type CompareAndSetRefV2,
+  type CompleteTransformJobV2,
   type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
@@ -41,12 +49,24 @@ import {
   V2_LINEAGE_CURSOR_MAX_CHARS,
 } from '@databench/schema'
 import type {
+  ConditionalCreateInput,
+  ConditionalCreateResult,
+  ObjectDownloadInputV2,
+  ObjectHeadV2,
   PreparedArtifactV2,
   AuditResultV2 as StoreAuditResultV2,
   V2OperationContext,
   V2Store,
+  WorkerStagingHeadV1,
+  WorkerStagingObjectStoreV1,
+  WorkerStagingPresignInputV1,
 } from '@databench/store'
+import { WorkerStagingStoreV1 } from '@databench/store'
 import { describe, expect, test, vi } from 'vitest'
+import {
+  WorkerCanonicalJobFinalizerV1,
+  WorkerWorkspaceInputProjectorV1,
+} from '../src/internal/worker/canonical-finalizer.js'
 import {
   DEFAULT_V2_CACHE_MAX_PENDING_LOADS,
   DEFAULT_V2_CURSOR_TTL_MS,
@@ -1611,6 +1631,111 @@ describe('V2Workspace converter and fidelity orchestration', () => {
   })
 })
 
+describe('V2Workspace Worker canonical finalizer', () => {
+  test('projects the exact input and publishes a retained subset without changing revisions', async () => {
+    const rig = createRig()
+    const input = V2Dataset.fromRecords([
+      makeRecord('1', 'First exact Worker input record with stable canonical content.'),
+      makeRecord('2', 'Second exact Worker input record with stable canonical content.'),
+    ])
+    rig.seed(input)
+    const job = workerFinalizingJob('a'.repeat(64), input)
+    const projected = await collectWorkerBytes(
+      new WorkerWorkspaceInputProjectorV1(rig.workspace).project(job, new AbortController().signal),
+    )
+    expect(new TextDecoder().decode(projected).trim().split('\n')).toHaveLength(2)
+
+    const retained = [...input.records()][1]
+    if (!retained || !job.leaseToken) throw new Error('Worker finalizer fixture is incomplete')
+    const outputBytes = new TextEncoder().encode(
+      `${JSON.stringify({
+        record_id: retained.record.id,
+        record_digest: retained.record_digest,
+      })}\n`,
+    )
+    const objects = new MemoryWorkerStagingObjectStore()
+    objects.seed(job.inputKey as string, projected)
+    objects.seed(job.outputKey as string, outputBytes)
+    const root = await mkdtemp(join(tmpdir(), 'databench-worker-finalizer-'))
+    const staging = new WorkerStagingStoreV1({
+      objectStore: objects,
+      tempRoot: root,
+      maxBytes: 1024 * 1024,
+      signedUrlTtlMs: 60_000,
+    })
+    try {
+      await new WorkerCanonicalJobFinalizerV1(rig.workspace, staging).finalize({
+        job,
+        lease: { id: job.id, attempt: job.attempt, leaseToken: job.leaseToken },
+        outputs: [workerTerminal(outputBytes, 1)],
+        signal: new AbortController().signal,
+      })
+
+      const completion = rig.catalog.completeTransformJob.mock.calls[0]?.[0]
+      expect(completion).toMatchObject({
+        outputCount: 1n,
+        run: {
+          cacheKey: job.cacheKey,
+          inputVersions: [input.version],
+        },
+      })
+      const output = await rig.workspace.get(completion?.snapshot.version as string)
+      expect(output.length).toBe(1)
+      expect(output.get(retained.record.id)).toMatchObject({
+        record_digest: retained.record_digest,
+        record_json: retained.record_json,
+      })
+      expect(objects.has(job.inputKey as string)).toBe(false)
+      expect(objects.has(job.outputKey as string)).toBe(false)
+      expect(rig.catalog.clearCompletedTransformJobStagingKeys).toHaveBeenCalledOnce()
+      expect(rig.cleanupErrors).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('publishes an empty output and keeps post-completion cleanup failure secondary', async () => {
+    const rig = createRig()
+    const input = V2Dataset.fromRecords([
+      makeRecord('3', 'Worker cleanup failure must not undo canonical completion.'),
+    ])
+    rig.seed(input)
+    const job = workerFinalizingJob('b'.repeat(64), input)
+    if (!job.leaseToken) throw new Error('Worker finalizer fixture is missing its lease')
+    const outputBytes = new Uint8Array()
+    const objects = new MemoryWorkerStagingObjectStore()
+    objects.seed(job.inputKey as string, new Uint8Array([1]))
+    objects.seed(job.outputKey as string, outputBytes)
+    objects.failDelete = true
+    const root = await mkdtemp(join(tmpdir(), 'databench-worker-finalizer-cleanup-'))
+    const staging = new WorkerStagingStoreV1({
+      objectStore: objects,
+      tempRoot: root,
+      maxBytes: 1024 * 1024,
+      signedUrlTtlMs: 60_000,
+    })
+    try {
+      await expect(
+        new WorkerCanonicalJobFinalizerV1(rig.workspace, staging).finalize({
+          job,
+          lease: { id: job.id, attempt: job.attempt, leaseToken: job.leaseToken },
+          outputs: [workerTerminal(outputBytes, 0)],
+          signal: new AbortController().signal,
+        }),
+      ).resolves.toBeUndefined()
+
+      const completion = rig.catalog.completeTransformJob.mock.calls[0]?.[0]
+      const output = await rig.workspace.get(completion?.snapshot.version as string)
+      expect(output.length).toBe(0)
+      expect(rig.cleanupErrors).toHaveLength(1)
+      expect(rig.cleanupErrors[0]?.primaryError).toBeNull()
+      expect(rig.catalog.clearCompletedTransformJobStagingKeys).not.toHaveBeenCalled()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 test('rejects undersized or cross-Workspace cache injection', () => {
   const events: string[] = []
   const catalog = new FakeCatalog(events)
@@ -1977,6 +2102,54 @@ class FakeCatalog implements V2WorkspaceCatalog {
     },
   )
 
+  readonly completeTransformJob = vi.fn(
+    async (input: CompleteTransformJobV2): Promise<CatalogTransformJobRowV2> => {
+      this.events.push('completeTransformJob')
+      await this.registerCommittedLayout(input)
+      const existing = this.runs.get(input.run.cacheKey)
+      if (existing && existing.outputVersion !== input.run.outputVersion) {
+        throw new V2CatalogDeterminismConflictError(input.run.cacheKey)
+      }
+      this.runs.set(input.run.cacheKey, {
+        ...input.run,
+        lineageSequence: existing?.lineageSequence ?? this.#allocateRunSequence(),
+        createdAt: existing?.createdAt ?? NOW,
+      })
+      const prefix = `staging/worker/v1/${input.job.id}/${input.job.attempt}`
+      return {
+        id: input.job.id,
+        cacheKey: input.run.cacheKey,
+        op: input.run.op,
+        opVersion: input.run.opVersion,
+        params: input.run.params,
+        inputVersion: input.run.inputVersions[0] as string,
+        capabilityName: 'data_juicer.batch',
+        capabilityVersion: '1',
+        inputCount: this.snapshots.get(input.run.inputVersions[0] as string)?.numRecords ?? 0n,
+        status: 'completed',
+        attempt: input.job.attempt,
+        leaseOwner: null,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        progress: null,
+        inputKey: `${prefix}/input.jsonl`,
+        outputKey: `${prefix}/output.jsonl`,
+        outputCount: input.outputCount,
+        outputVersion: input.run.outputVersion,
+        cacheHit: existing !== undefined,
+        error: null,
+        createdAt: NOW,
+        startedAt: NOW,
+        finishedAt: NOW,
+        updatedAt: NOW,
+      }
+    },
+  )
+
+  readonly clearCompletedTransformJobStagingKeys = vi.fn(
+    async (_input: ClearCompletedTransformJobStagingV2): Promise<boolean> => true,
+  )
+
   readonly findRun = vi.fn(async (cacheKey: string): Promise<CatalogRunRowV2 | null> => {
     this.events.push('findRun')
     return this.runs.get(cacheKey) ?? null
@@ -2296,6 +2469,133 @@ function makeSelectedSftRecord(idDigit: string): PostTrainingRecordV2 {
       },
     ],
   }
+}
+
+function workerFinalizingJob(cacheKey: string, input: V2Dataset): CatalogTransformJobRowV2 {
+  const id = `job_${cacheKey}`
+  const attempt = 1
+  const prefix = `staging/worker/v1/${id}/${attempt}`
+  return {
+    id,
+    cacheKey,
+    op: 'basic-clean',
+    opVersion: '1',
+    params: {},
+    inputVersion: input.version,
+    capabilityName: 'data_juicer.batch',
+    capabilityVersion: '1',
+    inputCount: BigInt(input.length),
+    status: 'finalizing',
+    attempt,
+    leaseOwner: 'workspace.test',
+    leaseToken: new Uint8Array(32).fill(7),
+    leaseExpiresAt: new Date(Date.now() + 30_000),
+    progress: null,
+    inputKey: `${prefix}/input.jsonl`,
+    outputKey: `${prefix}/output.jsonl`,
+    outputCount: null,
+    outputVersion: null,
+    cacheHit: false,
+    error: null,
+    createdAt: NOW,
+    startedAt: NOW,
+    finishedAt: null,
+    updatedAt: NOW,
+  }
+}
+
+function workerTerminal(bytes: Uint8Array, recordCount: number) {
+  return {
+    name: 'output',
+    size: bytes.byteLength,
+    digest: createHash('sha256').update(bytes).digest('hex'),
+    recordCount,
+  }
+}
+
+async function collectWorkerBytes(source: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for await (const chunk of source) {
+    chunks.push(chunk)
+    size += chunk.byteLength
+  }
+  const result = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result
+}
+
+class MemoryWorkerStagingObjectStore implements WorkerStagingObjectStoreV1 {
+  readonly #objects = new Map<
+    string,
+    { readonly bytes: Uint8Array; readonly contentType: string }
+  >()
+  failDelete = false
+
+  seed(key: string, bytes: Uint8Array): void {
+    this.#objects.set(key, {
+      bytes: bytes.slice(),
+      contentType: 'application/x-ndjson',
+    })
+  }
+
+  has(key: string): boolean {
+    return this.#objects.has(key)
+  }
+
+  async conditionalCreate(input: ConditionalCreateInput): Promise<ConditionalCreateResult> {
+    if (this.#objects.has(input.key)) return { status: 'already_exists' }
+    const chunks: Uint8Array[] = []
+    for await (const chunk of input.body()) chunks.push(Buffer.from(chunk))
+    const bytes = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))
+    if (bytes.byteLength !== input.contentLength) {
+      return { status: 'failure', error: new Error('content length mismatch') }
+    }
+    this.#objects.set(input.key, { bytes, contentType: input.contentType })
+    return { status: 'created' }
+  }
+
+  async head(key: string, _context: V2OperationContext = {}): Promise<ObjectHeadV2 | null> {
+    const value = this.#objects.get(key)
+    return value ? { size: value.bytes.byteLength } : null
+  }
+
+  async headStaging(
+    key: string,
+    _context: V2OperationContext = {},
+  ): Promise<WorkerStagingHeadV1 | null> {
+    const value = this.#objects.get(key)
+    return value ? { size: value.bytes.byteLength, contentType: value.contentType } : null
+  }
+
+  async download(input: ObjectDownloadInputV2): Promise<'downloaded' | 'not_found'> {
+    const value = this.#objects.get(input.key)
+    if (!value) return 'not_found'
+    await writeTo(input.destination, value.bytes)
+    return 'downloaded'
+  }
+
+  async presignStaging(input: WorkerStagingPresignInputV1): Promise<string> {
+    return `memory://${input.method}/${input.key}`
+  }
+
+  async deleteStaging(key: string, _context: V2OperationContext = {}): Promise<void> {
+    if (this.failDelete) throw new Error('staging delete failed')
+    this.#objects.delete(key)
+  }
+
+  async ping(_context: V2OperationContext = {}): Promise<void> {}
+}
+
+async function writeTo(destination: Writable, bytes: Uint8Array): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    destination.once('error', reject)
+    destination.end(Buffer.from(bytes), () => resolve())
+  })
 }
 
 function refRow(

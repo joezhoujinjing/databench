@@ -286,8 +286,8 @@ R4 maintenance tool和 forward migration必须保留，供尚未执行退役的�
 
 ## Worker 布局（ADR 0010）
 
-P1 foundation、P2 job 控制面、P3 临时数据面与 P4 Data-Juicer adapter 已落地；标为
-“planned”的目录只在对应 P5-P6 实现后成为 runtime：
+P1 foundation、P2 job 控制面、P3 临时数据面、P4 Data-Juicer adapter 与 P5 canonical
+finalizer 已落地；标为 “planned”的产品面只在 P6 实现后成为 runtime：
 
 ```text
 proto/
@@ -309,10 +309,11 @@ workers/python/
 │  └─ databench/worker/v1/     generated Python bindings
 └─ tests/
 
-packages/ops/src/v2/batch/     planned：batch definition 与首个 Data-Juicer transform
 packages/store/src/v2/worker-staging*.ts  已实现 exact-key staging 数据面
-packages/workspace/src/internal/worker/  已实现 client/generated/dispatcher/runtime/staging/data-juicer
+packages/workspace/src/internal/worker/  已实现 client、generated、dispatcher、runtime、staging、
+                                         data-juicer、canonical-finalizer、workspace-access
 packages/workspace/src/v2/batch-transform.ts  已实现 projection 与 strict retained reader
+packages/workspace/src/v2/workspace.ts        已实现共享 publication 与 canonical finalization
 apps/api/src/routes/v2/transform-jobs.ts       planned
 ```
 

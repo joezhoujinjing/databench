@@ -333,7 +333,11 @@ export class WorkerDispatcher {
     if (active.renewing || active.controller.signal.aborted) return
     active.renewing = true
     try {
-      if (!(await this.#renewNow(active))) throw new LeaseLostError()
+      if (!(await this.#renewNow(active))) {
+        const current = await this.#catalog.getTransformJob(active.job.id)
+        if (current?.status === 'completed' && current.attempt === active.lease.attempt) return
+        throw new LeaseLostError()
+      }
     } catch (error) {
       active.leaseFailure = error
       active.controller.abort(error)

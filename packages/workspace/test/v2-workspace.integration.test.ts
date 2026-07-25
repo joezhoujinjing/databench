@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,8 +26,16 @@ import {
   type AuditResultV2 as StoreAuditResultV2,
   type V2OperationContext,
   type V2Store,
+  WORKER_STAGING_JSONL_MEDIA_TYPE,
+  WorkerStagingStoreV1,
 } from '@databench/store'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import {
+  WorkerCanonicalJobFinalizerV1,
+  WorkerWorkspaceInputProjectorV1,
+} from '../src/internal/worker/canonical-finalizer.js'
+import { compileBasicCleanWorkerParametersV1 } from '../src/internal/worker/data-juicer.js'
+import { WorkerStagingJobPreparerV1 } from '../src/internal/worker/staging.js'
 import { V2Workspace } from '../src/v2/workspace.js'
 
 const runIntegration = process.env.RUN_MINIO_STORE_TESTS === 'true'
@@ -406,6 +414,140 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     expectUniqueCleanup(observed.store)
   })
 
+  test('finalizes exact Worker staging into a readable canonical Dataset, Run, and lineage', async () => {
+    const first = canonicalRecord(
+      `rec_${'a'.repeat(64)}`,
+      'First retained Worker integration record with enough stable text.',
+    )
+    const second = canonicalRecord(
+      `rec_${'b'.repeat(64)}`,
+      'Second discarded Worker integration record with enough stable text.',
+    )
+    const inputResult = await workspace.addRecords([first, second], noRefOptions())
+    const input = await workspace.get(inputResult.dataset_version)
+    const cacheKey = 'c'.repeat(64)
+    await catalog.createOrReadTransformJob({
+      id: `job_${cacheKey}`,
+      cacheKey,
+      op: 'basic-clean',
+      opVersion: '1',
+      params: {},
+      inputVersion: input.version,
+      capabilityName: 'data_juicer.batch',
+      capabilityVersion: '1',
+      inputCount: BigInt(input.length),
+    })
+    const claimed = await catalog.claimNextTransformJob({
+      leaseOwner: 'workspace.integration',
+      leaseDurationMs: 30_000,
+    })
+    if (!claimed?.leaseToken) throw new Error('Worker integration job was not claimed')
+
+    const staging = new WorkerStagingStoreV1({
+      objectStore: new S3ConditionalObjectStoreV2({ ...s3Config(), client }),
+      tempRoot: join(temporaryRoot, 'worker-finalizer-staging'),
+      maxBytes: 1024 * 1024,
+      signedUrlTtlMs: 60_000,
+    })
+    const preparer = new WorkerStagingJobPreparerV1({
+      catalog,
+      staging,
+      projector: new WorkerWorkspaceInputProjectorV1(workspace),
+      parameters: compileBasicCleanWorkerParametersV1,
+      maxOutputBytes: 1024 * 1024,
+    })
+    const prepared = await preparer.prepare({
+      job: claimed,
+      executionId: `${claimed.id}.${claimed.attempt}`,
+      signal: new AbortController().signal,
+      deadlineUnixMs: Date.now() + 30_000,
+    })
+    const target = prepared.outputs[0]
+    const retained = [...input.records()][0]
+    if (!target || !retained) throw new Error('Worker integration staging was not prepared')
+    const outputBytes = new TextEncoder().encode(
+      `${JSON.stringify({
+        record_id: retained.record.id,
+        record_digest: retained.record_digest,
+      })}\n`,
+    )
+    const uploaded = await fetch(target.writeUrl, {
+      method: 'PUT',
+      headers: { 'content-type': WORKER_STAGING_JSONL_MEDIA_TYPE },
+      body: outputBytes,
+    })
+    expect(uploaded.ok).toBe(true)
+    const lease = { id: claimed.id, attempt: claimed.attempt, leaseToken: claimed.leaseToken }
+    await expect(catalog.markTransformJobRunning(lease)).resolves.toMatchObject({
+      status: 'running',
+    })
+    await expect(catalog.markTransformJobFinalizing(lease)).resolves.toMatchObject({
+      status: 'finalizing',
+    })
+
+    await new WorkerCanonicalJobFinalizerV1(workspace, staging).finalize({
+      job: claimed,
+      lease,
+      outputs: [
+        {
+          name: 'output',
+          size: outputBytes.byteLength,
+          digest: createHash('sha256').update(outputBytes).digest('hex'),
+          recordCount: 1,
+        },
+      ],
+      signal: new AbortController().signal,
+    })
+
+    const completed = await catalog.getTransformJob(claimed.id)
+    expect(completed).toMatchObject({
+      status: 'completed',
+      outputCount: 1n,
+      cacheHit: false,
+      inputKey: null,
+      outputKey: null,
+      leaseToken: null,
+    })
+    if (!completed?.outputVersion) throw new Error('Worker finalizer did not publish an output')
+    const output = await workspace.get(completed.outputVersion)
+    expect(output.length).toBe(1)
+    expect(output.get(retained.record.id)).toMatchObject({
+      record_digest: retained.record_digest,
+      record_json: retained.record_json,
+    })
+    await expect(workspace.audit(completed.outputVersion)).resolves.toMatchObject({
+      checks: {
+        manifest: 'ok',
+        artifact_digest: 'ok',
+        parquet_schema: 'ok',
+        record_digests: 'ok',
+        dataset_version: 'ok',
+      },
+    })
+    const run = await catalog.findRun(cacheKey)
+    expect(run).toMatchObject({
+      id: `run_${cacheKey}`,
+      inputVersions: [input.version],
+      outputVersion: completed.outputVersion,
+    })
+    const lineage = await workspace.lineage(completed.outputVersion, {
+      max_depth: 2,
+      max_nodes: 10,
+      cursor: null,
+    })
+    expect(lineage.edges).toContainEqual({
+      run_id: `run_${cacheKey}`,
+      input_dataset_versions: [input.version],
+      output_dataset_version: completed.outputVersion,
+    })
+    await expect(
+      staging.statExact({ jobId: claimed.id, attempt: claimed.attempt, logicalName: 'input' }),
+    ).resolves.toBeNull()
+    await expect(
+      staging.statExact({ jobId: claimed.id, attempt: claimed.attempt, logicalName: 'output' }),
+    ).resolves.toBeNull()
+  })
+
   test('inspects and streams an exact persisted version through a fresh Workspace', async () => {
     const source = trainerRecord(
       `rec_${'3'.repeat(64)}`,
@@ -506,6 +648,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
   async function clearV2Catalog(): Promise<void> {
     await prisma.v2RecordParentEdge.deleteMany()
     await prisma.v2RecordRevisionLocation.deleteMany()
+    await prisma.v2TransformJob.deleteMany()
     await prisma.v2RunInput.deleteMany()
     await prisma.v2Run.deleteMany()
     await prisma.v2Ref.deleteMany()

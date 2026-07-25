@@ -10,6 +10,7 @@ import {
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
+  V2CatalogTransformJobLeaseError,
 } from './errors.js'
 import type {
   CatalogIdentityClaimInputV2,
@@ -32,7 +33,9 @@ import type {
   CatalogTransformJobRowV2,
   CatalogTransformJobStatusV2,
   ClaimTransformJobV2,
+  ClearCompletedTransformJobStagingV2,
   CompareAndSetRefV2,
+  CompleteTransformJobV2,
   CreateTransformJobV2,
   DeleteRefResultV2,
   DeleteRefV2,
@@ -129,6 +132,10 @@ interface TransformJobSqlRow {
   readonly started_at: Date | null
   readonly finished_at: Date | null
   readonly updated_at: Date
+}
+
+interface LockedTransformJobSqlRow extends TransformJobSqlRow {
+  readonly lease_valid: boolean
 }
 
 const TRANSFORM_JOB_COLUMNS = Prisma.sql`
@@ -264,6 +271,93 @@ export class V2Catalog {
     )
   }
 
+  async completeTransformJob(input: CompleteTransformJobV2): Promise<CatalogTransformJobRowV2> {
+    validateRegistrationInput(input)
+    validateRunInput(input)
+    validateCompleteTransformJob(input)
+    return await this.#client.$transaction(
+      async (tx) => {
+        await acquireLineageRegistrationLock(tx)
+        const locked = await tx.$queryRaw<LockedTransformJobSqlRow[]>(Prisma.sql`
+          SELECT ${TRANSFORM_JOB_COLUMNS},
+            COALESCE("lease_expires_at" > clock_timestamp(), false) AS "lease_valid"
+          FROM "transform_jobs_v2"
+          WHERE "id" = ${input.job.id}
+          FOR UPDATE
+        `)
+        const row = locked[0]
+        if (!row || locked.length !== 1) {
+          throw new V2CatalogTransformJobLeaseError(input.job.id)
+        }
+        assertTransformJobCompletionIdentity(row, input)
+
+        if (row.status === 'completed') {
+          if (
+            row.attempt !== input.job.attempt ||
+            row.output_version !== input.run.outputVersion ||
+            row.output_count !== input.outputCount
+          ) {
+            throw new V2CatalogTransformJobLeaseError(input.job.id)
+          }
+          await assertRunInTransaction(tx, input.run)
+          return sqlRowToTransformJob(row)
+        }
+
+        if (
+          row.status !== 'finalizing' ||
+          row.attempt !== input.job.attempt ||
+          !sameBytes(row.lease_token, input.job.leaseToken) ||
+          !row.lease_valid
+        ) {
+          throw new V2CatalogTransformJobLeaseError(input.job.id)
+        }
+        validateStagingKeys({
+          ...input.job,
+          inputKey: row.input_key ?? '',
+          outputKey: row.output_key ?? '',
+        })
+        const inputSnapshot = await tx.v2DatasetSnapshot.findUnique({
+          where: { version: row.input_version },
+        })
+        if (!inputSnapshot || inputSnapshot.numRecords !== row.input_count) {
+          throw new V2CatalogConsistencyError(
+            'Transform job input count does not match its immutable snapshot',
+          )
+        }
+
+        await registerLayoutInTransaction(tx, input)
+        const runRegistration = await registerRunInTransaction(tx, input.run)
+        const completed = await tx.$queryRaw<TransformJobSqlRow[]>(Prisma.sql`
+          UPDATE "transform_jobs_v2"
+          SET
+            "status" = 'completed',
+            "output_count" = ${input.outputCount},
+            "output_version" = ${input.run.outputVersion},
+            "cache_hit" = ${runRegistration === 'existing'},
+            "error_json" = NULL,
+            "finished_at" = clock_timestamp(),
+            "lease_owner" = NULL,
+            "lease_token" = NULL,
+            "lease_expires_at" = NULL,
+            "updated_at" = clock_timestamp()
+          WHERE
+            "id" = ${input.job.id} AND
+            "attempt" = ${input.job.attempt} AND
+            "lease_token" = ${Buffer.from(input.job.leaseToken)} AND
+            "lease_expires_at" > clock_timestamp() AND
+            "status" = 'finalizing'
+          RETURNING ${TRANSFORM_JOB_COLUMNS}
+        `)
+        const completedRow = completed[0]
+        if (!completedRow || completed.length !== 1) {
+          throw new V2CatalogTransformJobLeaseError(input.job.id)
+        }
+        return sqlRowToTransformJob(completedRow)
+      },
+      { timeout: REGISTRATION_TRANSACTION_TIMEOUT_MS },
+    )
+  }
+
   async getSnapshot(version: string): Promise<CatalogSnapshotRowV2 | null> {
     const row = await this.#client.v2DatasetSnapshot.findUnique({ where: { version } })
     return row ? prismaRowToSnapshot(row) : null
@@ -288,6 +382,17 @@ export class V2Catalog {
     validateCreateTransformJob(input)
     return await this.#client.$transaction(
       async (tx) => {
+        const inputSnapshot = await tx.v2DatasetSnapshot.findUnique({
+          where: { version: input.inputVersion },
+        })
+        if (!inputSnapshot) {
+          throw new V2CatalogInputError('Transform job input snapshot is not registered')
+        }
+        if (inputSnapshot.numRecords !== input.inputCount) {
+          throw new V2CatalogInputError(
+            'Transform job input count must equal its immutable snapshot count',
+          )
+        }
         const run = await tx.v2Run.findUnique({
           where: { cacheKey: input.cacheKey },
           include: { inputs: { orderBy: { position: 'asc' } } },
@@ -304,6 +409,14 @@ export class V2Catalog {
         ) {
           throw new V2CatalogDeterminismConflictError(input.cacheKey)
         }
+        const outputSnapshot = run
+          ? await tx.v2DatasetSnapshot.findUnique({ where: { version: run.outputVersion } })
+          : null
+        if (run && !outputSnapshot) {
+          throw new V2CatalogConsistencyError(
+            'Transform cache run output snapshot is not registered',
+          )
+        }
 
         await tx.v2TransformJob.createMany({
           data: [
@@ -318,6 +431,7 @@ export class V2Catalog {
               capabilityVersion: input.capabilityVersion,
               status: run ? 'completed' : 'queued',
               inputCount: input.inputCount,
+              outputCount: outputSnapshot?.numRecords ?? null,
               outputVersion: run?.outputVersion ?? null,
               cacheHit: run !== null,
               finishedAt: run ? new Date() : null,
@@ -335,7 +449,12 @@ export class V2Catalog {
         assertTransformJobIdentity(row, input)
 
         if (row.status === 'completed') {
-          if (!run || row.outputVersion !== run.outputVersion) {
+          if (
+            !run ||
+            !outputSnapshot ||
+            row.outputVersion !== run.outputVersion ||
+            row.outputCount !== outputSnapshot.numRecords
+          ) {
             throw new V2CatalogConsistencyError(
               'Completed transform job does not have its matching immutable run',
             )
@@ -344,6 +463,7 @@ export class V2Catalog {
           await tx.$executeRaw`
             UPDATE "transform_jobs_v2"
             SET "status" = 'completed', "output_version" = ${run.outputVersion},
+                "output_count" = ${outputSnapshot?.numRecords ?? null},
                 "cache_hit" = true, "finished_at" = clock_timestamp(),
                 "updated_at" = clock_timestamp()
             WHERE "id" = ${input.id} AND "status" = 'queued' AND "attempt" = 0
@@ -581,6 +701,25 @@ export class V2Catalog {
         "attempt" = ${input.attempt} AND
         "lease_token" = ${Buffer.from(input.leaseToken)} AND
         "status" IN ('failed', 'cancelled')
+      RETURNING "id"
+    `)
+    return rows.length === 1
+  }
+
+  async clearCompletedTransformJobStagingKeys(
+    input: ClearCompletedTransformJobStagingV2,
+  ): Promise<boolean> {
+    validateCompletedStagingCleanup(input)
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "transform_jobs_v2"
+      SET "input_key" = NULL, "output_key" = NULL, "updated_at" = clock_timestamp()
+      WHERE
+        "id" = ${input.id} AND
+        "attempt" = ${input.attempt} AND
+        "status" = 'completed' AND
+        "output_version" = ${input.outputVersion} AND
+        (("input_key" = ${input.inputKey} AND "output_key" = ${input.outputKey}) OR
+          ("input_key" IS NULL AND "output_key" IS NULL))
       RETURNING "id"
     `)
     return rows.length === 1
@@ -1254,7 +1393,7 @@ function* batchesOf<T>(values: readonly T[], size: number): Generator<readonly T
 async function registerRunInTransaction(
   tx: Prisma.TransactionClient,
   input: CatalogRunInputV2,
-): Promise<void> {
+): Promise<'created' | 'existing'> {
   const runInsert = await tx.v2Run.createMany({
     data: [
       {
@@ -1279,6 +1418,14 @@ async function registerRunInTransaction(
       })),
     })
   }
+  await assertRunInTransaction(tx, input)
+  return runInsert.count === 1 ? 'created' : 'existing'
+}
+
+async function assertRunInTransaction(
+  tx: Prisma.TransactionClient,
+  input: CatalogRunInputV2,
+): Promise<void> {
   const row = await tx.v2Run.findUnique({
     where: { cacheKey: input.cacheKey },
     include: { inputs: { orderBy: { position: 'asc' } } },
@@ -1333,6 +1480,62 @@ function validateRunInput(input: RegisterTransformResultV2): void {
   if (input.run.id !== `run_${input.run.cacheKey}`) {
     throw new V2CatalogInputError('V2 run id must equal run_ plus its cache key')
   }
+}
+
+function validateCompleteTransformJob(input: CompleteTransformJobV2): void {
+  validateTransformJobLease(input.job)
+  if (
+    input.outputCount < 0n ||
+    input.outputCount > POSTGRES_BIGINT_MAX ||
+    input.outputCount !== input.snapshot.numRecords
+  ) {
+    throw new V2CatalogInputError(
+      'Transform job output count must equal the registered snapshot count',
+    )
+  }
+  if (input.job.id !== `job_${input.run.cacheKey}` || input.run.inputVersions.length !== 1) {
+    throw new V2CatalogInputError(
+      'Transform job completion must contain its deterministic single-input run',
+    )
+  }
+}
+
+function assertTransformJobCompletionIdentity(
+  row: TransformJobSqlRow,
+  input: CompleteTransformJobV2,
+): void {
+  if (
+    row.id !== input.job.id ||
+    row.cache_key !== input.run.cacheKey ||
+    row.op !== input.run.op ||
+    row.op_version !== input.run.opVersion ||
+    !sameJsonValue(row.params_json, input.run.params) ||
+    row.input_version !== input.run.inputVersions[0] ||
+    input.outputCount > row.input_count
+  ) {
+    throw new V2CatalogDeterminismConflictError(input.run.cacheKey)
+  }
+}
+
+function validateCompletedStagingCleanup(input: ClearCompletedTransformJobStagingV2): void {
+  validateJobId(input.id)
+  if (!Number.isSafeInteger(input.attempt) || input.attempt < 1) {
+    throw new V2CatalogInputError('Transform job cleanup attempt must be a positive safe integer')
+  }
+  if (!EXACT_VERSION.test(input.outputVersion)) {
+    throw new V2CatalogInputError('Transform job cleanup output version is invalid')
+  }
+  validateStagingKeys({
+    id: input.id,
+    attempt: input.attempt,
+    leaseToken: new Uint8Array(32),
+    inputKey: input.inputKey,
+    outputKey: input.outputKey,
+  })
+}
+
+function sameBytes(left: Uint8Array | null, right: Uint8Array): boolean {
+  return left !== null && Buffer.from(left).equals(Buffer.from(right))
 }
 
 function sqlRowToClaim(row: IdentityClaimSqlRow): CatalogIdentityClaimRowV2 {

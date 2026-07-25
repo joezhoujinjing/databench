@@ -10,7 +10,10 @@ import {
   type CatalogRunPageV2,
   type CatalogRunRowV2,
   type CatalogSnapshotRowV2,
+  type CatalogTransformJobRowV2,
+  type ClearCompletedTransformJobStagingV2,
   type CompareAndSetRefV2,
+  type CompleteTransformJobV2,
   type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
@@ -62,6 +65,7 @@ import {
   type DatasetLayoutIdentityV2,
   type DatasetLineageV2,
   DatasetLineageV2Schema,
+  type DatasetManifestV2,
   type DatasetViewV2,
   DatasetViewV2Schema,
   DEFAULT_RAW_JSON_LIMITS_V2,
@@ -136,11 +140,22 @@ import {
   type V2OperationContext,
   type V2Store,
   v2ObjectStoreConfigFromEnv,
+  type WorkerStagingStoreV1,
+  workerStagingKeyV1,
 } from '@databench/store'
+import { compileBasicCleanWorkerParametersV1 } from '../internal/worker/data-juicer.js'
+import type { WorkerFinalizationContext } from '../internal/worker/dispatcher.js'
 import {
   registerWorkerCatalog,
+  registerWorkerWorkspaceOperations,
   unregisterWorkerCatalog,
+  unregisterWorkerWorkspaceOperations,
 } from '../internal/worker/workspace-access.js'
+import {
+  readWorkerRetainedJsonlV1,
+  type WorkerRetainedTerminalV1,
+  writeWorkerRecordTextJsonlV1,
+} from './batch-transform.js'
 import {
   V2DatasetCache,
   type V2DatasetCacheKey,
@@ -178,6 +193,10 @@ export interface V2WorkspaceCatalog {
   ): Promise<CatalogIdentityClaimResultV2>
   registerCommittedLayout(input: RegisterLayoutV2): Promise<void>
   registerTransformResult(input: RegisterTransformResultV2): Promise<void>
+  completeTransformJob(input: CompleteTransformJobV2): Promise<CatalogTransformJobRowV2>
+  clearCompletedTransformJobStagingKeys(
+    input: ClearCompletedTransformJobStagingV2,
+  ): Promise<boolean>
   findRun(cacheKey: string): Promise<CatalogRunRowV2 | null>
   lineageSnapshotSequence(): Promise<bigint>
   listRunsProducing(
@@ -375,10 +394,17 @@ export class V2Workspace {
       converterRegistry: this.#converterRegistry,
     })
     registerWorkerCatalog(this, options.catalog)
+    registerWorkerWorkspaceOperations(this, {
+      projectInput: (job, signal) => this.#projectWorkerInput(job, signal),
+      finalize: async (context, staging) => {
+        await this.#finalizeWorkerJob(context, staging)
+      },
+    })
   }
 
   async close(): Promise<void> {
     this.#closePromise ??= (async () => {
+      unregisterWorkerWorkspaceOperations(this)
       unregisterWorkerCatalog(this)
       await (this.#closeOwnedResources?.() ?? Promise.resolve())
     })()
@@ -1142,6 +1168,222 @@ export class V2Workspace {
     return Object.freeze({ plan, analysis })
   }
 
+  async *#projectWorkerInput(
+    job: CatalogTransformJobRowV2,
+    signal: AbortSignal,
+  ): AsyncIterableIterator<Uint8Array> {
+    compileBasicCleanWorkerParametersV1(job)
+    const expectedCount = workerCountToSafeNumber(job.inputCount, 'input_count')
+    const resolved = await this.#resolveLayout(job.inputVersion, signal, true)
+    const lease = await this.#acquire(resolved.identity, signal, true)
+    try {
+      signal.throwIfAborted()
+      if (lease.dataset.version !== job.inputVersion || lease.dataset.length !== expectedCount) {
+        throw new IntegrityError('Worker job input does not match its exact Dataset snapshot', {
+          reason: 'worker_input_snapshot_mismatch',
+          expected_dataset_version: job.inputVersion,
+          actual_dataset_version: lease.dataset.version,
+          expected_count: expectedCount,
+          actual_count: lease.dataset.length,
+        })
+      }
+      yield* writeWorkerRecordTextJsonlV1(lease.dataset.records(), { signal })
+    } finally {
+      lease.release()
+    }
+  }
+
+  async #finalizeWorkerJob(
+    context: WorkerFinalizationContext,
+    staging: WorkerStagingStoreV1,
+  ): Promise<void> {
+    assertWorkerFinalizationContext(context)
+    compileBasicCleanWorkerParametersV1(context.job)
+    const terminal = requireWorkerOutput(context)
+    const inputCount = workerCountToSafeNumber(context.job.inputCount, 'input_count')
+    if (terminal.recordCount > inputCount) {
+      throw new IntegrityError('Worker output count exceeds its exact input Dataset', {
+        reason: 'worker_output_count_exceeds_input',
+        input_count: inputCount,
+        output_count: terminal.recordCount,
+      })
+    }
+
+    let completed: CatalogTransformJobRowV2 | undefined
+    let primaryError: unknown | null = null
+    try {
+      await this.#transformSemaphore.run(async (runSignal) => {
+        const resolved = await this.#resolveLayout(context.job.inputVersion, runSignal, true)
+        const inputLease = await this.#acquire(resolved.identity, runSignal, true)
+        let output: V2Dataset
+        try {
+          runSignal.throwIfAborted()
+          if (
+            inputLease.dataset.version !== context.job.inputVersion ||
+            inputLease.dataset.length !== inputCount
+          ) {
+            throw new IntegrityError('Worker finalizer loaded a different input Dataset', {
+              reason: 'worker_finalizer_input_mismatch',
+              expected_dataset_version: context.job.inputVersion,
+              actual_dataset_version: inputLease.dataset.version,
+              expected_count: inputCount,
+              actual_count: inputLease.dataset.length,
+            })
+          }
+          admitV2TransformWorkingSet(
+            {
+              inputDatasets: [inputLease.dataset],
+              outputUpperBoundBytes: inputLease.dataset.canonicalBytes,
+              frameEstimateBytes: 0,
+            },
+            this.#transformLimits.max_working_set_bytes,
+          )
+          const retained = await readWorkerRetainedJsonlV1(
+            staging.readExact(
+              {
+                jobId: context.job.id,
+                attempt: context.job.attempt,
+                logicalName: 'output',
+              },
+              {
+                expectedSize: terminal.size,
+                expectedDigest: terminal.digest,
+                signal: runSignal,
+              },
+            ),
+            inputLease.dataset.records(),
+            { terminal, signal: runSignal },
+          )
+          output = V2Dataset.fromRecords(
+            retained.map((revision) => revision.record),
+            this.#datasetLimits,
+          )
+          assertWorkerOutputPreservesRevisions(output, retained)
+          admitV2TransformWorkingSet(
+            {
+              inputDatasets: [inputLease.dataset],
+              outputUpperBoundBytes: output.canonicalBytes,
+              frameEstimateBytes: 0,
+            },
+            this.#transformLimits.max_working_set_bytes,
+          )
+        } finally {
+          inputLease.release()
+        }
+
+        const run: RegisterTransformResultV2['run'] = {
+          id: `run_${context.job.cacheKey}`,
+          cacheKey: context.job.cacheKey,
+          op: context.job.op,
+          opVersion: context.job.opVersion,
+          params: context.job.params,
+          inputVersions: [context.job.inputVersion],
+          outputVersion: output.version,
+        }
+        const committed = await this.#commitCanonicalTransform(
+          output,
+          run,
+          runSignal,
+          async (registration) => {
+            try {
+              return await this.#catalog.completeTransformJob({
+                ...registration,
+                job: context.lease,
+                outputCount: BigInt(output.length),
+              })
+            } catch (error) {
+              if (error instanceof V2CatalogDeterminismConflictError) {
+                await this.#throwTransformDeterminismConflict(run, runSignal)
+              }
+              mapV2CatalogError(error, true)
+            }
+          },
+        )
+        completed = committed.catalogResult
+
+        const winning = await this.#findRun(context.job.cacheKey, runSignal, true)
+        if (winning === null) {
+          throw new IntegrityError('Completed Worker transform run cannot be read back', {
+            reason: 'worker_transform_run_missing_after_complete',
+            cache_key: context.job.cacheKey,
+          })
+        }
+        validateRunRow(winning, {
+          cacheKey: run.cacheKey,
+          runId: run.id,
+          op: run.op,
+          opVersion: run.opVersion,
+          inputVersions: run.inputVersions,
+          params: run.params,
+          outputVersion: output.version,
+        })
+        const verifiedManifest = await this.#verifyTransformOutput(output.version, runSignal)
+        if (canonicalJsonV2(verifiedManifest) !== canonicalJsonV2(committed.manifest)) {
+          throw new IntegrityError(
+            'Completed Worker transform manifest changed after registration',
+            {
+              reason: 'worker_transform_manifest_readback_mismatch',
+              dataset_version: output.version,
+            },
+          )
+        }
+      }, context.signal)
+    } catch (error) {
+      primaryError = error
+      throw error
+    } finally {
+      if (completed !== undefined) {
+        await this.#cleanupCompletedWorkerStaging(completed, staging, primaryError)
+      }
+    }
+  }
+
+  async #cleanupCompletedWorkerStaging(
+    job: CatalogTransformJobRowV2,
+    staging: WorkerStagingStoreV1,
+    primaryError: unknown | null,
+  ): Promise<void> {
+    const prefix = { jobId: job.id, attempt: job.attempt }
+    const expectedInputKey = workerStagingKeyV1({ ...prefix, logicalName: 'input' })
+    const expectedOutputKey = workerStagingKeyV1({ ...prefix, logicalName: 'output' })
+    if (job.inputKey !== expectedInputKey || job.outputKey !== expectedOutputKey) {
+      this.#reportCleanupError(
+        new IntegrityError('Completed Worker job has invalid exact staging keys', {
+          reason: 'worker_completed_staging_keys_invalid',
+          job_id: job.id,
+        }),
+        primaryError,
+      )
+      return
+    }
+    const deleted = await Promise.allSettled([
+      staging.deleteExact({ ...prefix, logicalName: 'input' }),
+      staging.deleteExact({ ...prefix, logicalName: 'output' }),
+    ])
+    const failures = deleted.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    )
+    if (failures.length > 0) {
+      this.#reportCleanupError(
+        new AggregateError(failures, 'Completed Worker exact staging cleanup failed'),
+        primaryError,
+      )
+      return
+    }
+    try {
+      const cleared = await this.#catalog.clearCompletedTransformJobStagingKeys({
+        id: job.id,
+        attempt: job.attempt,
+        outputVersion: requireCompletedWorkerOutputVersion(job),
+        inputKey: expectedInputKey,
+        outputKey: expectedOutputKey,
+      })
+      if (!cleared) throw new Error('Completed Worker staging keys were not cleared')
+    } catch (error) {
+      this.#reportCleanupError(error, primaryError)
+    }
+  }
+
   async #executeTransform(
     definition: V2TransformDefinition,
     params: JsonObjectV2,
@@ -1372,12 +1614,34 @@ export class V2Workspace {
     request: RunTransformRequestV2,
     signal: AbortSignal,
   ) {
+    const committed = await this.#commitCanonicalTransform(
+      dataset,
+      run,
+      signal,
+      async (registration) => {
+        try {
+          await this.#catalog.registerTransformResult(registration)
+        } catch (error) {
+          if (error instanceof V2CatalogDeterminismConflictError) {
+            await this.#throwTransformDeterminismConflict(run, signal)
+          }
+          mapV2CatalogError(error, true)
+        }
+      },
+    )
+    const refUpdate = await this.#updateRefForCommittedDataset(dataset.version, request, signal)
+    return { manifest: committed.manifest, refUpdate }
+  }
+
+  async #commitCanonicalTransform<T>(
+    dataset: V2Dataset,
+    run: RegisterTransformResultV2['run'],
+    signal: AbortSignal,
+    register: (input: RegisterTransformResultV2) => Promise<T>,
+  ): Promise<{ readonly manifest: Readonly<DatasetManifestV2>; readonly catalogResult: T }> {
     let prepared: PreparedArtifactV2 | undefined
     let result:
-      | {
-          readonly manifest: ReturnType<typeof manifestFromCatalogIdentity>
-          readonly refUpdate: RunTransformResultV2['ref_update']
-        }
+      | { readonly manifest: Readonly<DatasetManifestV2>; readonly catalogResult: T }
       | undefined
     let failed = false
     let failure: unknown
@@ -1385,49 +1649,9 @@ export class V2Workspace {
       signal.throwIfAborted()
       prepared = await this.#store.prepare(dataset, { signal })
       const manifest = await this.#store.commit(prepared, { signal })
-      const registration = registrationFromCommittedDataset(dataset, manifest)
-      try {
-        await this.#catalog.registerTransformResult({ ...registration, run })
-      } catch (error) {
-        if (error instanceof V2CatalogDeterminismConflictError) {
-          // The read-after-conflict is still a Catalog dependency call. Route
-          // it through the same abort and typed error mapping boundary as an
-          // ordinary cache lookup instead of leaking a raw driver error.
-          const existing = await this.#findRun(run.cacheKey, signal, true)
-          if (existing === null) {
-            throw new IntegrityError('V2 transform conflict has no winning run', {
-              reason: 'transform_conflict_without_winner',
-              cache_key: run.cacheKey,
-            })
-          }
-          const existingRun = validateRunRow(existing, {
-            cacheKey: run.cacheKey,
-            runId: run.id,
-            op: run.op,
-            opVersion: run.opVersion,
-            inputVersions: run.inputVersions,
-            params: run.params,
-          })
-          if (existingRun.output_dataset_version === run.outputVersion) {
-            throw new IntegrityError(
-              'V2 Catalog reported a conflict for an identical transform run',
-              {
-                reason: 'transform_conflict_for_identical_run',
-                cache_key: run.cacheKey,
-              },
-            )
-          }
-          throw new DeterminismConflictErrorV2({
-            cache_key: run.cacheKey,
-            existing_output_version: existingRun.output_dataset_version,
-            attempted_output_version: run.outputVersion,
-            attempted_dataset_committed: true,
-          })
-        }
-        mapV2CatalogError(error, true)
-      }
-      const refUpdate = await this.#updateRefForCommittedDataset(dataset.version, request, signal)
-      result = { manifest, refUpdate }
+      const registration = { ...registrationFromCommittedDataset(dataset, manifest), run }
+      const catalogResult = await register(registration)
+      result = { manifest, catalogResult }
     } catch (error) {
       failed = true
       failure = error
@@ -1442,11 +1666,47 @@ export class V2Workspace {
     }
     if (failed) throw failure
     if (result === undefined) {
-      throw new IntegrityError('V2 transform publish completed without a result', {
-        reason: 'transform_publish_result_missing',
+      throw new IntegrityError('V2 transform commit completed without a result', {
+        reason: 'transform_commit_result_missing',
       })
     }
     return result
+  }
+
+  async #throwTransformDeterminismConflict(
+    run: RegisterTransformResultV2['run'],
+    signal: AbortSignal,
+  ): Promise<never> {
+    // The read-after-conflict is still a Catalog dependency call. Route it
+    // through the ordinary cache lookup boundary instead of trusting the
+    // losing registration attempt or leaking a raw driver error.
+    const existing = await this.#findRun(run.cacheKey, signal, true)
+    if (existing === null) {
+      throw new IntegrityError('V2 transform conflict has no winning run', {
+        reason: 'transform_conflict_without_winner',
+        cache_key: run.cacheKey,
+      })
+    }
+    const existingRun = validateRunRow(existing, {
+      cacheKey: run.cacheKey,
+      runId: run.id,
+      op: run.op,
+      opVersion: run.opVersion,
+      inputVersions: run.inputVersions,
+      params: run.params,
+    })
+    if (existingRun.output_dataset_version === run.outputVersion) {
+      throw new IntegrityError('V2 Catalog reported a conflict for an identical transform run', {
+        reason: 'transform_conflict_for_identical_run',
+        cache_key: run.cacheKey,
+      })
+    }
+    throw new DeterminismConflictErrorV2({
+      cache_key: run.cacheKey,
+      existing_output_version: existingRun.output_dataset_version,
+      attempted_output_version: run.outputVersion,
+      attempted_dataset_committed: true,
+    })
   }
 
   async #updateRefForCommittedDataset(
@@ -2336,6 +2596,81 @@ interface ExpectedRunV2 {
   readonly inputVersions: readonly string[]
   readonly params: JsonObjectV2
   readonly outputVersion?: string
+}
+
+function assertWorkerFinalizationContext(context: WorkerFinalizationContext): void {
+  if (
+    context.job.id !== context.lease.id ||
+    context.job.attempt !== context.lease.attempt ||
+    !sameByteSequence(context.job.leaseToken, context.lease.leaseToken)
+  ) {
+    throw new IntegrityError('Worker finalizer context does not match its exact job lease', {
+      reason: 'worker_finalizer_lease_mismatch',
+    })
+  }
+}
+
+function requireWorkerOutput(context: WorkerFinalizationContext): WorkerRetainedTerminalV1 {
+  const output = context.outputs[0]
+  if (context.outputs.length !== 1 || output?.name !== 'output') {
+    throw new IntegrityError('Worker completion must contain exactly one named output', {
+      reason: 'worker_terminal_output_shape',
+    })
+  }
+  return {
+    size: output.size,
+    digest: output.digest,
+    recordCount: output.recordCount,
+  }
+}
+
+function assertWorkerOutputPreservesRevisions(
+  output: V2Dataset,
+  retained: readonly RecordRevisionV2[],
+): void {
+  if (output.length !== retained.length) {
+    throw new IntegrityError('Worker output Dataset count changed during canonical construction', {
+      reason: 'worker_output_dataset_count_mismatch',
+    })
+  }
+  for (const expected of retained) {
+    const actual = output.get(expected.record.id)
+    if (
+      actual?.record_digest !== expected.record_digest ||
+      actual.record_json !== expected.record_json
+    ) {
+      throw new IntegrityError('Worker output changed an original canonical record revision', {
+        reason: 'worker_output_revision_changed',
+        record_id: expected.record.id,
+      })
+    }
+  }
+}
+
+function workerCountToSafeNumber(value: bigint, field: string): number {
+  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new IntegrityError(`Worker job ${field} is outside the safe integer range`, {
+      reason: 'worker_job_count_out_of_range',
+      field,
+      actual: value.toString(),
+    })
+  }
+  return Number(value)
+}
+
+function requireCompletedWorkerOutputVersion(job: CatalogTransformJobRowV2): string {
+  if (job.status !== 'completed' || job.outputVersion === null) {
+    throw new IntegrityError('Worker staging cleanup requires a completed canonical job', {
+      reason: 'worker_cleanup_job_not_completed',
+      job_id: job.id,
+    })
+  }
+  return job.outputVersion
+}
+
+function sameByteSequence(left: Uint8Array | null, right: Uint8Array): boolean {
+  if (left === null || left.byteLength !== right.byteLength) return false
+  return left.every((value, index) => value === right[index])
 }
 
 function validateRunRow(row: CatalogRunRowV2, expected: ExpectedRunV2): RunMetadataV2 {
