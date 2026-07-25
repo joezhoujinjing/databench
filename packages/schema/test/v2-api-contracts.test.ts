@@ -98,7 +98,9 @@ const transformDescriptor = {
   name: 'subset',
   version: '1.0.0',
   identity_mode: 'preserve',
+  input_roles: ['base'],
   params_schema: { type: 'object', additionalProperties: false },
+  params_example: { record_ids: [`rec_${'1'.repeat(64)}`] },
 } as const
 
 describe('V12 capability and registry wire contracts', () => {

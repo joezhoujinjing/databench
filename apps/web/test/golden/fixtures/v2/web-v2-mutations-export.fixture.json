@@ -41,12 +41,14 @@
     "name": "append-evidence",
     "version": "1",
     "identity_mode": "preserve",
+    "input_roles": ["base", "patch"],
     "params_schema": {
       "type": "object",
       "properties": {},
       "required": [],
       "additionalProperties": false
-    }
+    },
+    "params_example": {}
   },
   "ref_conflict": {
     "error": {

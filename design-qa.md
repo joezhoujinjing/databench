@@ -94,4 +94,104 @@ step and is intentionally outside visual QA.
 - P3: split the large production JS bundle in a later performance step; the current Vite build only emits the
   existing chunk-size warning and functionality is unaffected.
 
+archived result: passed
+
+---
+
+# Design QA — transform guidance
+
+## Comparison target
+
+- Source visual truth:
+  `/Users/hanlu/.codex/generated_images/019f977d-b350-7643-94b0-a3a17e472914/exec-21253caf-64a6-42e8-91b7-cca5eb514613.png`
+- Source pixels: `1874 × 839`
+- Browser-rendered implementation:
+  `/Users/hanlu/.codex/visualizations/2026/07/25/019f977d-b350-7643-94b0-a3a17e472914/transform-subset-final-1450x650.png`
+- Implementation pixels: `1435 × 643`
+- CSS viewport: `1450 × 650`; document client size `1435 × 650`; `devicePixelRatio: 1`
+- Density normalization: the source was resized to `1435 × 643` for the full-view comparison.
+- Combined full-view evidence:
+  `/Users/hanlu/.codex/visualizations/2026/07/25/019f977d-b350-7643-94b0-a3a17e472914/transform-guidance-full-comparison.png`
+  (`2870 × 643`, source on the left and implementation on the right)
+- Focused comparison evidence:
+  `/Users/hanlu/.codex/visualizations/2026/07/25/019f977d-b350-7643-94b0-a3a17e472914/transform-guidance-focused-comparison.png`
+  (`2005 × 458`, the selected transform header, guidance column, input, and parameter editor)
+- State: Chinese, dark theme, connected local API, `subset` selected, page at scroll position `0`
+
+The selected visual is a product-direction mock for the transform work area rather than a replacement for the
+existing application shell. The implementation therefore retains Databench navigation, the page heading, the
+existing input semantics, and result-save options while matching the selected list + guidance + form composition.
+
+## Comparison history
+
+### Pass 1 — passed
+
+The implementation matches the source's three-region hierarchy:
+
+1. fixed transform registry on the left;
+2. purpose, input requirements, output behavior, and parameter example in the middle;
+3. fixed-role execution form on the right.
+
+No actionable P0, P1, or P2 difference was found, so no visual fix iteration was required.
+
+Expected product constraints account for the visible differences:
+
+- the live page includes the established app shell and result-save controls;
+- the input remains a dataset name/version text field rather than the mock's select-like control;
+- the subset example uses a complete schema-valid record ID instead of the mock's shortened display-only ID;
+- colors, font stack, controls, borders, and the run action continue to use the existing Databench design tokens.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing Databench sans and monospace stacks are preserved. Transform name, badges,
+  section titles, body copy, JSON keys, line numbers, hints, wrapping, and hierarchy remain readable at the
+  target desktop width and the narrow breakpoint.
+- Spacing and layout rhythm: the registry and selected transform align on one desktop grid. The transform panel
+  uses the selected guidance/form split, consistent section dividers, existing 4–6px radii, and the product's
+  compact form rhythm. At narrow width the registry, guidance, and form stack in document order without overlap.
+- Colors and visual tokens: the near-black background, muted borders, restrained surfaces, primary selected
+  state, badges, focus treatment, and semantic connection indicator use existing product tokens with readable
+  contrast.
+- Image and asset fidelity: the target contains no photography, raster illustration, logo art, or decorative
+  imagery that needs recreation. The only new icon is the existing Lucide reset icon; no handcrafted SVG, CSS
+  drawing, emoji, or placeholder asset was introduced.
+- Copy and content: every built-in transform now has a concise purpose, fixed input requirement, output result,
+  role-specific labels/hints, and either a valid parameter example or an explicit no-parameter state in Chinese
+  and English.
+- Icons and controls: the reset icon aligns with the action label, the selected transform remains visibly
+  pressed, inputs keep labels and focus affordances, optional result fields preserve their disabled behavior,
+  and the schema disclosure stays reachable.
+
+## Responsive and interaction evidence
+
+- Narrow-screen evidence:
+  `/Users/hanlu/.codex/visualizations/2026/07/25/019f977d-b350-7643-94b0-a3a17e472914/transform-prompt-rewrite-mobile-390x844.png`
+  (`375 × 812` browser capture from a `390 × 844` viewport).
+- At the narrow breakpoint, document `scrollWidth` is `375px` for a `390px` inner viewport, so the page has no
+  horizontal overflow. The transform registry appears before the selected panel, and the guidance/form columns
+  stack cleanly.
+- `sample`: edited parameter JSON and used `恢复示例`; the editor returned to
+  `{ "count": 2, "seed": 7 }`.
+- `append-evidence`: rendered exactly two immutable input roles, `基础数据集` and `证据补丁数据集`, with no
+  parameter editor or reset action.
+- `prompt-rewrite`: rendered exactly two immutable input roles, `基础数据集` and `改写数据集`, and the explicit
+  no-parameter state.
+- Switching from a filled `sample` form to `append-evidence` recreated the form with two empty fixed-role inputs,
+  confirming that transform-specific state does not leak across selections.
+- Browser console warning/error log was empty.
+
+## Findings
+
+No actionable P0, P1, or P2 findings remain.
+
+## Open questions
+
+None for this selected transform-guidance direction.
+
+## Follow-up polish
+
+- P3: a later product pass could add dataset-name autocomplete without changing the fixed `input_roles` contract.
+- P3: the full valid subset record ID intentionally scrolls horizontally in the code editor; a separate
+  display-only abbreviation could improve scanning, but must never replace the executable example.
+
 final result: passed

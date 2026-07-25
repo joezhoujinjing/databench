@@ -910,7 +910,9 @@ describe('V2Workspace transform and dataset lineage', () => {
     const definition = defineV2Transform({
       name: 'underestimated-output',
       version: '1',
+      inputRoles: ['base'],
       paramsSchema: AppendEvidenceV2ParamsSchema,
+      paramsExample: {},
       identityMode: 'preserve',
       rngSeed: () => null,
       estimateWorkingSet: () => ({ outputUpperBoundBytes: 0, frameEstimateBytes: 0 }),

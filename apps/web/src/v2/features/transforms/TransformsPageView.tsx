@@ -1,14 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
-import {
-  type FormEvent,
-  type ReactNode,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { RotateCcw } from 'lucide-react'
+import { type FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isApiError } from '@/api/errors.js'
 import { JsonBlock } from '@/components/common/JsonBlock.js'
@@ -100,9 +92,11 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
   const { t } = useTranslation()
   const navigate = useNavigate()
   const run = useV2RunTransform()
-  const inputSequence = useRef(1)
-  const [inputs, setInputs] = useState<OrderedInput[]>([{ id: 'input-1', value: '' }])
-  const [paramsText, setParamsText] = useState('{}')
+  const [inputs, setInputs] = useState<OrderedInput[]>(() =>
+    createOrderedInputs(transform.input_roles),
+  )
+  const paramsExample = formatParamsExample(transform.params_example)
+  const [paramsText, setParamsText] = useState(paramsExample)
   const [ref, setRef] = useState('')
   const [expectedVersion, setExpectedVersion] = useState('')
   const [message, setMessage] = useState('')
@@ -111,12 +105,13 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
   const deferredOutputRef = useDeferredValue(ref.trim())
   const outputResolution = useV2DatasetResolution(deferredOutputRef)
   const controllerRef = useRef<AbortController | null>(null)
+  const hasParams = hasTransformParams(transform.params_schema)
   useEffect(() => () => controllerRef.current?.abort(), [])
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    const normalizedInputs = inputs.map((input) => input.value.trim()).filter(Boolean)
-    if (normalizedInputs.length === 0) {
+    const normalizedInputs = inputs.map((input) => input.value.trim())
+    if (normalizedInputs.some((input) => input === '')) {
       setFormError(t('v2.transforms.inputRequired'))
       return
     }
@@ -181,22 +176,84 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
               : t('v2.transforms.derive')}
           </Badge>
         </div>
-        <p className="mt-3 text-muted-foreground text-sm">
-          {transform.identity_mode === 'preserve'
-            ? t('v2.transforms.identityPreserve')
-            : t('v2.transforms.identityDerive')}
-        </p>
       </SurfaceHeader>
-      <SurfaceBody>
-        <form className="space-y-5" onSubmit={submit}>
-          <Field hint={t('v2.transforms.inputsHint')} label={t('v2.transforms.inputs')}>
-            <div className="space-y-2">
-              {inputs.map((input, index) => (
-                <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-2" key={input.id}>
-                  <span className="flex items-center justify-center text-dim-foreground text-sm">
+      <div className="grid lg:grid-cols-[minmax(16rem,0.78fr)_minmax(0,1.65fr)]">
+        <aside className="space-y-6 border-border border-b px-5 py-5 lg:border-r lg:border-b-0">
+          <div>
+            <h3 className="font-semibold text-base">
+              {t(`v2.transforms.guidance.${transform.name}.title`, {
+                defaultValue: transform.name,
+              })}
+            </h3>
+            <p className="mt-2 text-muted-foreground text-sm leading-6">
+              {t(`v2.transforms.guidance.${transform.name}.description`, {
+                defaultValue:
+                  transform.identity_mode === 'preserve'
+                    ? t('v2.transforms.identityPreserve')
+                    : t('v2.transforms.identityDerive'),
+              })}
+            </p>
+          </div>
+          <TransformFact
+            label={t('v2.transforms.inputRequirement')}
+            value={t(`v2.transforms.guidance.${transform.name}.inputRequirement`, {
+              count: transform.input_roles.length,
+              defaultValue: t('v2.transforms.inputRequirementFallback', {
+                count: transform.input_roles.length,
+              }),
+            })}
+          />
+          <TransformFact
+            label={t('v2.transforms.outputResult')}
+            value={t(`v2.transforms.guidance.${transform.name}.outputResult`, {
+              defaultValue:
+                transform.identity_mode === 'preserve'
+                  ? t('v2.transforms.identityPreserve')
+                  : t('v2.transforms.identityDerive'),
+            })}
+          />
+          {hasParams ? (
+            <div>
+              <h3 className="font-medium text-muted-foreground text-sm">
+                {t('v2.transforms.parameterExample')}
+              </h3>
+              <div className="mt-3">
+                <JsonBlock value={transform.params_example} />
+              </div>
+              <p className="mt-2 text-dim-foreground text-xs leading-5">
+                {t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
+                  defaultValue: t('v2.transforms.paramsHint'),
+                })}
+              </p>
+            </div>
+          ) : (
+            <TransformFact
+              label={t('v2.transforms.parameters')}
+              value={t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
+                defaultValue: t('v2.transforms.noParamsBody'),
+              })}
+            />
+          )}
+        </aside>
+
+        <form className="space-y-5 px-5 py-5" onSubmit={submit}>
+          <div className="space-y-4">
+            {inputs.map((input, index) => (
+              <Field
+                hint={t(`v2.transforms.guidance.${transform.name}.roles.${input.role}.hint`, {
+                  defaultValue: t('v2.transforms.inputRoleHint'),
+                })}
+                key={input.id}
+                label={t(`v2.transforms.guidance.${transform.name}.roles.${input.role}.label`, {
+                  defaultValue: input.role,
+                })}
+              >
+                <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] overflow-hidden rounded-[4px] border border-border bg-background/70 focus-within:border-primary focus-within:shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_72%,transparent)]">
+                  <span className="flex items-center justify-center border-border border-r text-dim-foreground text-sm">
                     {index + 1}
                   </span>
                   <TextInput
+                    className="rounded-none border-0 bg-transparent focus:shadow-none"
                     aria-label={t('v2.transforms.inputNumber', { number: index + 1 })}
                     onChange={(event) => {
                       const nextValue = event.currentTarget.value
@@ -206,107 +263,100 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
                         ),
                       )
                     }}
+                    placeholder={t('v2.transforms.inputPlaceholder')}
                     value={input.value}
                   />
-                  <div className="flex gap-1">
-                    <IconButton
-                      disabled={index === 0}
-                      label={t('v2.transforms.moveUp')}
-                      onClick={() => setInputs((current) => moveItem(current, index, index - 1))}
-                    >
-                      <ArrowUp aria-hidden="true" size={15} />
-                    </IconButton>
-                    <IconButton
-                      disabled={index === inputs.length - 1}
-                      label={t('v2.transforms.moveDown')}
-                      onClick={() => setInputs((current) => moveItem(current, index, index + 1))}
-                    >
-                      <ArrowDown aria-hidden="true" size={15} />
-                    </IconButton>
-                    <IconButton
-                      disabled={inputs.length === 1}
-                      label={t('v2.transforms.removeInput')}
-                      onClick={() =>
-                        setInputs((current) =>
-                          current.filter((_, itemIndex) => itemIndex !== index),
-                        )
-                      }
-                    >
-                      <Trash2 aria-hidden="true" size={15} />
-                    </IconButton>
-                  </div>
                 </div>
-              ))}
-              <Button
-                onClick={() => {
-                  inputSequence.current += 1
-                  setInputs((current) => [
-                    ...current,
-                    { id: `input-${inputSequence.current}`, value: '' },
-                  ])
-                }}
-                size="sm"
-                type="button"
-                variant="outline"
+              </Field>
+            ))}
+          </div>
+          {hasParams ? (
+            <>
+              <Field
+                hint={t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
+                  defaultValue: t('v2.transforms.paramsHint'),
+                })}
+                label={t('v2.transforms.params')}
               >
-                <Plus aria-hidden="true" size={15} />
-                {t('v2.transforms.addInput')}
-              </Button>
+                <CodeEditor
+                  aria-label={t('v2.transforms.params')}
+                  header={
+                    <Button
+                      onClick={() => setParamsText(paramsExample)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <RotateCcw aria-hidden="true" size={14} />
+                      {t('v2.transforms.resetExample')}
+                    </Button>
+                  }
+                  language="JSON"
+                  minRows={7}
+                  onChange={(event) => setParamsText(event.currentTarget.value)}
+                  value={paramsText}
+                />
+              </Field>
+              <details>
+                <summary className="cursor-pointer text-muted-foreground text-sm">
+                  {t('v2.transforms.schema')}
+                </summary>
+                <div className="mt-3">
+                  <JsonBlock value={transform.params_schema} />
+                </div>
+              </details>
+            </>
+          ) : (
+            <div className="rounded-[5px] border border-border bg-surface-soft px-4 py-5">
+              <div className="font-medium text-sm">{t('v2.transforms.noParams')}</div>
+              <p className="mt-2 text-dim-foreground text-xs leading-5">
+                {t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
+                  defaultValue: t('v2.transforms.noParamsBody'),
+                })}
+              </p>
             </div>
-          </Field>
-          <Field hint={t('v2.transforms.paramsHint')} label={t('v2.transforms.params')}>
-            <CodeEditor
-              aria-label={t('v2.transforms.params')}
-              language="JSON"
-              minRows={7}
-              onChange={(event) => setParamsText(event.currentTarget.value)}
-              value={paramsText}
-            />
-          </Field>
-          <details>
-            <summary className="cursor-pointer text-muted-foreground text-sm">
-              {t('v2.transforms.schema')}
-            </summary>
-            <div className="mt-3">
-              <JsonBlock value={transform.params_schema} />
+          )}
+          <div className="space-y-4 border-border border-t pt-5">
+            <h3 className="font-medium text-muted-foreground text-sm">
+              {t('v2.transforms.resultOptions')}
+            </h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label={t('v2.transforms.outputRef')}>
+                <TextInput
+                  aria-label={t('v2.transforms.outputRef')}
+                  onChange={(event) => setRef(event.currentTarget.value)}
+                  value={ref}
+                />
+              </Field>
+              <Field hint={t('v2.transforms.expectedHint')} label={t('v2.transforms.expected')}>
+                <TextInput
+                  aria-label={t('v2.transforms.expected')}
+                  disabled={ref.trim() === ''}
+                  onChange={(event) => setExpectedVersion(event.currentTarget.value)}
+                  value={expectedVersion}
+                />
+              </Field>
             </div>
-          </details>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label={t('v2.transforms.outputRef')}>
-              <TextInput
-                aria-label={t('v2.transforms.outputRef')}
-                onChange={(event) => setRef(event.currentTarget.value)}
-                value={ref}
+            {deferredOutputRef === '' ? null : (
+              <CurrentOutputRef
+                error={outputResolution.error}
+                isError={outputResolution.isError}
+                isFetching={outputResolution.isFetching}
+                onUse={(version) => setExpectedVersion(version)}
+                version={outputResolution.data?.dataset_version ?? null}
               />
-            </Field>
-            <Field hint={t('v2.transforms.expectedHint')} label={t('v2.transforms.expected')}>
+            )}
+            <Field label={t('v2.transforms.message')}>
               <TextInput
-                aria-label={t('v2.transforms.expected')}
+                aria-label={t('v2.transforms.message')}
                 disabled={ref.trim() === ''}
-                onChange={(event) => setExpectedVersion(event.currentTarget.value)}
-                value={expectedVersion}
+                onChange={(event) => setMessage(event.currentTarget.value)}
+                value={message}
               />
             </Field>
           </div>
-          {deferredOutputRef === '' ? null : (
-            <CurrentOutputRef
-              error={outputResolution.error}
-              isError={outputResolution.isError}
-              isFetching={outputResolution.isFetching}
-              onUse={(version) => setExpectedVersion(version)}
-              version={outputResolution.data?.dataset_version ?? null}
-            />
-          )}
-          <Field label={t('v2.transforms.message')}>
-            <TextInput
-              aria-label={t('v2.transforms.message')}
-              disabled={ref.trim() === ''}
-              onChange={(event) => setMessage(event.currentTarget.value)}
-              value={message}
-            />
-          </Field>
           {formError ? <FormError>{formError}</FormError> : null}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button disabled={run.isPending} type="submit">
               {run.isPending ? t('v2.transforms.running') : t('v2.transforms.run')}
             </Button>
@@ -321,7 +371,7 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
             ) : null}
           </div>
         </form>
-      </SurfaceBody>
+      </div>
       {run.isError ? (
         <SurfaceBody className="border-border border-t">
           {conflict ? (
@@ -342,7 +392,17 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
 
 interface OrderedInput {
   id: string
+  role: string
   value: string
+}
+
+function TransformFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border-border border-t pt-5">
+      <h3 className="font-medium text-muted-foreground text-sm">{label}</h3>
+      <p className="mt-2 text-sm leading-6">{value}</p>
+    </div>
+  )
 }
 
 function CurrentOutputRef({
@@ -381,32 +441,6 @@ function CurrentOutputRef({
   )
 }
 
-function IconButton({
-  children,
-  disabled,
-  label,
-  onClick,
-}: {
-  children: ReactNode
-  disabled: boolean
-  label: string
-  onClick(): void
-}) {
-  return (
-    <Button
-      aria-label={label}
-      className="w-9 px-0"
-      disabled={disabled}
-      onClick={onClick}
-      size="sm"
-      type="button"
-      variant="outline"
-    >
-      {children}
-    </Button>
-  )
-}
-
 export type JsonObjectParseResult =
   | { ok: true; value: Record<string, unknown> }
   | { message: string; ok: false; reason: 'invalid_json' }
@@ -428,14 +462,26 @@ export function parseJsonObject(text: string): JsonObjectParseResult {
   }
 }
 
-export function moveItem<T>(items: readonly T[], from: number, to: number): T[] {
-  if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) {
-    return [...items]
-  }
-  const next = [...items]
-  const [item] = next.splice(from, 1)
-  if (item !== undefined) next.splice(to, 0, item)
-  return next
+export function createOrderedInputs(inputRoles: readonly string[]): OrderedInput[] {
+  return inputRoles.map((role, index) => ({
+    id: `${role}-${index + 1}`,
+    role,
+    value: '',
+  }))
+}
+
+export function formatParamsExample(paramsExample: Record<string, unknown>): string {
+  return JSON.stringify(paramsExample, null, 2)
+}
+
+export function hasTransformParams(paramsSchema: Record<string, unknown>): boolean {
+  const properties = paramsSchema.properties
+  return (
+    properties !== null &&
+    typeof properties === 'object' &&
+    !Array.isArray(properties) &&
+    Object.keys(properties).length > 0
+  )
 }
 
 function blankToNull(value: string): string | null {

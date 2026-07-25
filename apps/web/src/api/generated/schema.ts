@@ -1153,7 +1153,11 @@ export interface components {
     TransformDescriptorV2: {
       /** @enum {string} */
       identity_mode: 'preserve' | 'derive'
+      input_roles: string[]
       name: string
+      params_example: {
+        [key: string]: unknown
+      }
       params_schema: {
         [key: string]: unknown
       }

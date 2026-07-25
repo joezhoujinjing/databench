@@ -647,7 +647,9 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
     name: 'filter',
     version: '1',
     identity_mode: 'preserve' as const,
+    input_roles: ['base'],
     params_schema: { type: 'object', additionalProperties: false },
+    params_example: {},
   }
   const ref = {
     name: 'main',

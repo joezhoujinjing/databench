@@ -57,7 +57,9 @@ export interface V2TransformResourceEstimate {
 export interface V2TransformDefinition<P extends object = JsonObjectV2> {
   readonly name: string
   readonly version: string
+  readonly inputRoles: readonly string[]
   readonly paramsSchema: z.ZodType<P>
+  readonly paramsExample: P
   readonly identityMode: V2TransformIdentityMode
   /** Extracts the only allowed RNG seed; Workspace must not guess param names. */
   rngSeed(params: P): number | null
@@ -74,5 +76,7 @@ export interface V2TransformRegistryDescriptor {
   readonly name: string
   readonly version: string
   readonly identity_mode: V2TransformIdentityMode
+  readonly input_roles: readonly string[]
   readonly params_schema: JsonObjectV2
+  readonly params_example: JsonObjectV2
 }

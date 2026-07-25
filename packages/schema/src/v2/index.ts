@@ -349,6 +349,8 @@ export {
   RunTransformResultV2Schema,
   type TransformDescriptorV2,
   TransformDescriptorV2Schema,
+  type TransformInputRoleV2,
+  TransformInputRoleV2Schema,
   TransformNameV2Schema,
   type TransformParamsV2,
   TransformParamsV2Schema,

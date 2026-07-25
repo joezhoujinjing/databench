@@ -154,16 +154,23 @@
       "inputs": "输入数据集",
       "inputsHint": "输入顺序会影响转换结果。",
       "inputNumber": "输入 {{number}}",
-      "inputRequired": "请至少添加一个输入数据集。",
-      "moveUp": "上移输入",
-      "moveDown": "下移输入",
-      "removeInput": "删除输入",
-      "addInput": "添加输入",
+      "inputRequired": "请填写全部必需的输入数据集。",
+      "inputRequirement": "输入要求",
+      "inputRequirementFallback": "{{count}} 个有序输入数据集",
+      "inputRoleHint": "填写数据集名称或版本 ID。",
+      "inputPlaceholder": "输入数据集名称或版本 ID",
+      "outputResult": "输出结果",
+      "parameterExample": "参数示例",
+      "parameters": "运行参数",
       "params": "转换参数",
       "paramsHint": "填写 JSON 对象；具体字段由所选转换决定。",
       "paramsObject": "参数必须是一个 JSON 对象。",
       "paramsInvalid": "参数不是有效 JSON：{{message}}",
-      "schema": "查看参数格式",
+      "schema": "查看完整参数格式",
+      "resetExample": "恢复示例",
+      "noParams": "无需填写参数",
+      "noParamsBody": "此转换的运行参数固定为 {}。",
+      "resultOptions": "结果保存（可选）",
       "outputRef": "结果名称（可选）",
       "expected": "当前版本 ID",
       "expectedHint": "更新已有名称时填写，可防止覆盖其他更新。",
@@ -177,7 +184,86 @@
       "useCurrent": "使用此版本",
       "run": "运行转换",
       "running": "正在运行…",
-      "cancel": "取消转换"
+      "cancel": "取消转换",
+      "guidance": {
+        "append-evidence": {
+          "title": "追加评估证据",
+          "description": "将新的评分、奖励、判定或偏好关系追加到已有记录。",
+          "inputRequirement": "2 个数据集：基础数据集 + 证据补丁数据集",
+          "outputResult": "保留记录 ID，只追加新证据；其他记录保持不变。",
+          "paramsNote": "无需参数；新增证据来自第二个输入数据集。",
+          "roles": {
+            "base": {
+              "label": "基础数据集",
+              "hint": "包含原始记录的完整数据集。"
+            },
+            "patch": {
+              "label": "证据补丁数据集",
+              "hint": "记录 ID 必须与基础数据集对应，并且只追加候选信号或偏好关系。"
+            }
+          }
+        },
+        "prompt-rewrite": {
+          "title": "改写提示内容",
+          "description": "为仅含提示的记录替换共享内容、工具或验证配置。",
+          "inputRequirement": "2 个数据集：基础数据集 + 改写数据集",
+          "outputResult": "为改写后的记录生成新 ID，并记录精确父级血缘。",
+          "paramsNote": "无需参数；改写内容来自第二个输入数据集。",
+          "roles": {
+            "base": {
+              "label": "基础数据集",
+              "hint": "包含待改写的 prompt-only 记录。"
+            },
+            "rewrite": {
+              "label": "改写数据集",
+              "hint": "使用相同记录 ID，只修改内容、工具或验证配置。"
+            }
+          }
+        },
+        "sample": {
+          "title": "确定性随机抽样",
+          "description": "从一个数据集中按固定随机种子抽取指定数量的记录。",
+          "inputRequirement": "1 个基础数据集",
+          "outputResult": "生成抽样后的新数据集，记录内容和记录 ID 不变。",
+          "paramsNote": "count 为抽取数量；seed 用于保证抽样结果可复现。",
+          "roles": {
+            "base": {
+              "label": "基础数据集",
+              "hint": "选择要抽样的数据集名称或版本 ID。"
+            }
+          }
+        },
+        "selection-update": {
+          "title": "更新候选选择",
+          "description": "根据补丁更新候选的选中状态和排名。",
+          "inputRequirement": "2 个数据集：基础数据集 + 选择补丁数据集",
+          "outputResult": "保留记录和候选 ID，只更新 selected 与 rank。",
+          "paramsNote": "无需参数；选择结果来自第二个输入数据集。",
+          "roles": {
+            "base": {
+              "label": "基础数据集",
+              "hint": "包含待更新候选的完整数据集。"
+            },
+            "patch": {
+              "label": "选择补丁数据集",
+              "hint": "记录和候选必须与基础数据集对应，只修改 selected 或 rank。"
+            }
+          }
+        },
+        "subset": {
+          "title": "按记录 ID 创建子集",
+          "description": "只保留指定记录，记录内容和记录 ID 不发生变化。",
+          "inputRequirement": "1 个基础数据集",
+          "outputResult": "生成仅包含指定记录的新数据集。",
+          "paramsNote": "记录 ID 必须唯一，并按 ASCII 顺序排列。",
+          "roles": {
+            "base": {
+              "label": "基础数据集",
+              "hint": "包含要筛选记录的完整数据集。"
+            }
+          }
+        }
+      }
     },
     "lineage": {
       "title": "数据血缘",

@@ -1,4 +1,9 @@
-import { type JsonObjectV2, JsonObjectV2Schema, NotFoundError } from '@databench/schema'
+import {
+  type JsonObjectV2,
+  JsonObjectV2Schema,
+  NotFoundError,
+  V2_TRANSFORM_MAX_INPUTS,
+} from '@databench/schema'
 import { z } from 'zod'
 import type { V2TransformDefinition, V2TransformRegistryDescriptor } from './contracts.js'
 
@@ -9,7 +14,9 @@ const MAX_IDENTITY_STRING_BYTES = 1024
 export interface DefineV2TransformOptions<P extends object> {
   readonly name: string
   readonly version: string
+  readonly inputRoles: readonly string[]
   readonly paramsSchema: z.ZodType<P>
+  readonly paramsExample: P
   readonly identityMode: 'preserve' | 'derive'
   readonly rngSeed: V2TransformDefinition<P>['rngSeed']
   readonly estimateWorkingSet: V2TransformDefinition<P>['estimateWorkingSet']
@@ -21,6 +28,7 @@ export function defineV2Transform<P extends object>(
 ): V2TransformDefinition<P> {
   validateName(options.name)
   validateVersion(options.version)
+  validateInputRoles(options.inputRoles)
   if (options.identityMode !== 'preserve' && options.identityMode !== 'derive') {
     throw new TypeError('V2 transform identityMode must be preserve or derive')
   }
@@ -41,11 +49,14 @@ export function defineV2Transform<P extends object>(
   if (typeof options.rngSeed !== 'function') {
     throw new TypeError('V2 transform rngSeed must be a function')
   }
+  const paramsExample = parseParamsExample(options.paramsSchema, options.paramsExample)
 
   return Object.freeze({
     name: options.name,
     version: options.version,
+    inputRoles: Object.freeze([...options.inputRoles]),
     paramsSchema: options.paramsSchema,
+    paramsExample,
     identityMode: options.identityMode,
     rngSeed: options.rngSeed,
     estimateWorkingSet: options.estimateWorkingSet,
@@ -95,7 +106,9 @@ export class V2TransformRegistry {
           name: definition.name,
           version: definition.version,
           identity_mode: definition.identityMode,
+          input_roles: [...definition.inputRoles],
           params_schema: schemaJson(definition.paramsSchema),
+          params_example: structuredClone(definition.paramsExample),
         }),
       ),
     )
@@ -110,6 +123,7 @@ export class V2TransformRegistry {
 function validateDefinition(definition: V2TransformDefinition): void {
   validateName(definition.name)
   validateVersion(definition.version)
+  validateInputRoles(definition.inputRoles)
   if (definition.identityMode !== 'preserve' && definition.identityMode !== 'derive') {
     throw new TypeError('V2 transform identityMode must be preserve or derive')
   }
@@ -130,6 +144,21 @@ function validateDefinition(definition: V2TransformDefinition): void {
   ) {
     throw new TypeError('V2 transform params schema must be a strict object schema')
   }
+  parseParamsExample(definition.paramsSchema, definition.paramsExample)
+}
+
+function parseParamsExample<P extends object>(schema: z.ZodType<P>, input: unknown): P {
+  const parsed = schema.parse(input)
+  return deepFreeze(JsonObjectV2Schema.parse(structuredClone(parsed))) as P
+}
+
+function validateInputRoles(inputRoles: readonly string[]): void {
+  if (inputRoles.length < 1 || inputRoles.length > V2_TRANSFORM_MAX_INPUTS) {
+    throw new TypeError(
+      `V2 transform inputRoles must contain between 1 and ${V2_TRANSFORM_MAX_INPUTS} roles`,
+    )
+  }
+  for (const role of inputRoles) validateName(role)
 }
 
 function schemaJson(schema: z.ZodType): JsonObjectV2 {

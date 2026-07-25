@@ -154,16 +154,23 @@
       "inputs": "Input datasets",
       "inputsHint": "Input order affects the transform result.",
       "inputNumber": "Input {{number}}",
-      "inputRequired": "Add at least one input dataset.",
-      "moveUp": "Move input up",
-      "moveDown": "Move input down",
-      "removeInput": "Remove input",
-      "addInput": "Add input",
+      "inputRequired": "Complete every required input dataset.",
+      "inputRequirement": "Input requirement",
+      "inputRequirementFallback": "{{count}} ordered input datasets",
+      "inputRoleHint": "Enter a dataset name or version ID.",
+      "inputPlaceholder": "Enter a dataset name or version ID",
+      "outputResult": "Output result",
+      "parameterExample": "Parameter example",
+      "parameters": "Run parameters",
       "params": "Transform parameters",
       "paramsHint": "Enter a JSON object. Available fields depend on the selected transform.",
       "paramsObject": "Parameters must be a JSON object.",
       "paramsInvalid": "Parameters are not valid JSON: {{message}}",
-      "schema": "View parameter format",
+      "schema": "View full parameter format",
+      "resetExample": "Reset example",
+      "noParams": "No parameters required",
+      "noParamsBody": "This transform always uses an empty {} parameter object.",
+      "resultOptions": "Save result (optional)",
       "outputRef": "Result name (optional)",
       "expected": "Current version ID",
       "expectedHint": "When updating an existing name, enter its current version to prevent overwriting another update.",
@@ -177,7 +184,86 @@
       "useCurrent": "Use this version",
       "run": "Run transform",
       "running": "Running…",
-      "cancel": "Cancel transform"
+      "cancel": "Cancel transform",
+      "guidance": {
+        "append-evidence": {
+          "title": "Append evaluation evidence",
+          "description": "Append new ratings, rewards, verdicts, or preference relations to existing records.",
+          "inputRequirement": "2 datasets: base dataset + evidence patch dataset",
+          "outputResult": "Keeps record IDs and only appends new evidence; other records remain unchanged.",
+          "paramsNote": "No parameters; new evidence comes from the second input dataset.",
+          "roles": {
+            "base": {
+              "label": "Base dataset",
+              "hint": "The complete dataset containing the original records."
+            },
+            "patch": {
+              "label": "Evidence patch dataset",
+              "hint": "Record IDs must match the base dataset and may only append candidate signals or preference relations."
+            }
+          }
+        },
+        "prompt-rewrite": {
+          "title": "Rewrite prompt content",
+          "description": "Replace shared content, tools, or verification config for prompt-only records.",
+          "inputRequirement": "2 datasets: base dataset + rewrite dataset",
+          "outputResult": "Creates new IDs for rewritten records and records their exact parent lineage.",
+          "paramsNote": "No parameters; rewritten content comes from the second input dataset.",
+          "roles": {
+            "base": {
+              "label": "Base dataset",
+              "hint": "Contains the prompt-only records to rewrite."
+            },
+            "rewrite": {
+              "label": "Rewrite dataset",
+              "hint": "Uses matching record IDs and only changes content, tools, or verification config."
+            }
+          }
+        },
+        "sample": {
+          "title": "Deterministic random sample",
+          "description": "Select a fixed number of records from one dataset using a reproducible random seed.",
+          "inputRequirement": "1 base dataset",
+          "outputResult": "Creates a sampled dataset without changing record content or record IDs.",
+          "paramsNote": "count is the number of records; seed makes the sample reproducible.",
+          "roles": {
+            "base": {
+              "label": "Base dataset",
+              "hint": "Choose the dataset name or version ID to sample."
+            }
+          }
+        },
+        "selection-update": {
+          "title": "Update candidate selection",
+          "description": "Apply selected-state and rank updates to existing candidates from a patch.",
+          "inputRequirement": "2 datasets: base dataset + selection patch dataset",
+          "outputResult": "Keeps record and candidate IDs and only updates selected and rank.",
+          "paramsNote": "No parameters; selection updates come from the second input dataset.",
+          "roles": {
+            "base": {
+              "label": "Base dataset",
+              "hint": "The complete dataset containing the candidates to update."
+            },
+            "patch": {
+              "label": "Selection patch dataset",
+              "hint": "Records and candidates must match the base dataset and may only change selected or rank."
+            }
+          }
+        },
+        "subset": {
+          "title": "Create a subset by record ID",
+          "description": "Keep only specified records without changing their content or record IDs.",
+          "inputRequirement": "1 base dataset",
+          "outputResult": "Creates a new dataset containing only the specified records.",
+          "paramsNote": "Record IDs must be unique and sorted in ASCII order.",
+          "roles": {
+            "base": {
+              "label": "Base dataset",
+              "hint": "The complete dataset containing the records to filter."
+            }
+          }
+        }
+      }
     },
     "lineage": {
       "title": "Dataset lineage",

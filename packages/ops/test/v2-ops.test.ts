@@ -87,14 +87,6 @@ const transformFixture = JSON.parse(
   ),
 ) as TransformGoldenFixture
 
-const INPUT_ROLES_BY_OPERATION: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  'append-evidence': Object.freeze(['base', 'patch']),
-  'prompt-rewrite': Object.freeze(['base', 'rewrite']),
-  sample: Object.freeze(['base']),
-  'selection-update': Object.freeze(['base', 'patch']),
-  subset: Object.freeze(['base']),
-})
-
 type CanonicalRecordViewV2 = RecordRevisionV2['record']
 
 function textContent(role: 'system' | 'user' | 'ai', text: string) {
@@ -250,16 +242,23 @@ describe('V2 transform registry and deterministic context', () => {
   test('publishes stable descriptors, strict params, identity mode, estimators, and RNG extractors', () => {
     const descriptors = BUILTIN_V2_TRANSFORM_REGISTRY.descriptors()
     expect(
-      descriptors.map(({ name, version, identity_mode }) => ({ name, version, identity_mode })),
-    ).toEqual(
-      transformFixture.operations.map(({ name, version, identity_mode }) => ({
+      descriptors.map(({ name, version, identity_mode, input_roles, params_example }) => ({
         name,
         version,
         identity_mode,
+        input_roles,
+        params: params_example,
+      })),
+    ).toEqual(
+      transformFixture.operations.map(({ name, version, identity_mode, input_roles, params }) => ({
+        name,
+        version,
+        identity_mode,
+        input_roles,
+        params,
       })),
     )
     for (const operation of transformFixture.operations) {
-      expect(operation.input_roles).toEqual(INPUT_ROLES_BY_OPERATION[operation.name])
       expect(BUILTIN_V2_TRANSFORM_REGISTRY.parseParams(operation.name, operation.params)).toEqual(
         operation.params,
       )
@@ -268,6 +267,8 @@ describe('V2 transform registry and deterministic context', () => {
       descriptors.every((descriptor) => descriptor.params_schema.additionalProperties === false),
     ).toBe(true)
     expect(Object.isFrozen(descriptors[0]?.params_schema)).toBe(true)
+    expect(Object.isFrozen(descriptors[0]?.input_roles)).toBe(true)
+    expect(Object.isFrozen(descriptors[0]?.params_example)).toBe(true)
 
     expect(() => BUILTIN_V2_TRANSFORM_REGISTRY.parseParams('sample', { count: 1 })).toThrow()
     expect(() => BUILTIN_V2_TRANSFORM_REGISTRY.require('missing')).toThrow(/not found/)
@@ -301,7 +302,9 @@ describe('V2 transform registry and deterministic context', () => {
       defineV2Transform({
         name: 'not-strict',
         version: '1',
+        inputRoles: ['base'],
         paramsSchema: z.object({ value: z.string() }),
+        paramsExample: { value: 'example' },
         identityMode: 'preserve',
         rngSeed: () => null,
         estimateWorkingSet: () => ({ outputUpperBoundBytes: 0, frameEstimateBytes: 0 }),
@@ -314,7 +317,9 @@ describe('V2 transform registry and deterministic context', () => {
       defineV2Transform({
         name: 'invalid-identity-mode',
         version: '1',
+        inputRoles: ['base'],
         paramsSchema: z.strictObject({}),
+        paramsExample: {},
         identityMode: 'invalid' as unknown as 'preserve',
         rngSeed: () => null,
         estimateWorkingSet: () => ({ outputUpperBoundBytes: 0, frameEstimateBytes: 0 }),

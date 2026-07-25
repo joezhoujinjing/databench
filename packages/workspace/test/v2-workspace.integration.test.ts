@@ -643,7 +643,9 @@ function integrationRaceRegistry(
     defineV2Transform({
       name,
       version: '1',
+      inputRoles: ['base'],
       paramsSchema: SubsetV2ParamsSchema,
+      paramsExample: { record_ids: [] },
       identityMode: 'preserve',
       rngSeed: () => null,
       estimateWorkingSet(inputs) {

@@ -29,6 +29,8 @@ const RUN_ID = /^run_[0-9a-f]{64}$/
 
 export const TransformNameV2Schema = z.string().regex(TRANSFORM_NAME)
 export const TransformVersionV2Schema = z.string().regex(TRANSFORM_VERSION)
+export const TransformInputRoleV2Schema = z.string().regex(TRANSFORM_NAME)
+export type TransformInputRoleV2 = z.infer<typeof TransformInputRoleV2Schema>
 export const RunIdV2Schema = z.string().regex(RUN_ID)
 
 export const TransformDescriptorV2Schema = z
@@ -36,7 +38,9 @@ export const TransformDescriptorV2Schema = z
     name: TransformNameV2Schema,
     version: TransformVersionV2Schema,
     identity_mode: z.enum(['preserve', 'derive']),
+    input_roles: z.array(TransformInputRoleV2Schema).min(1).max(V2_TRANSFORM_MAX_INPUTS),
     params_schema: JsonObjectSchema,
+    params_example: JsonObjectSchema,
   })
   .meta({ id: 'TransformDescriptorV2' })
 export type TransformDescriptorV2 = z.infer<typeof TransformDescriptorV2Schema>

@@ -3359,9 +3359,22 @@
             ],
             "type": "string"
           },
+          "input_roles": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "type": "array"
+          },
           "name": {
             "pattern": "^[a-z][a-z0-9._-]{0,127}$",
             "type": "string"
+          },
+          "params_example": {
+            "additionalProperties": true,
+            "type": "object"
           },
           "params_schema": {
             "additionalProperties": true,
@@ -3376,7 +3389,9 @@
           "name",
           "version",
           "identity_mode",
-          "params_schema"
+          "input_roles",
+          "params_schema",
+          "params_example"
         ],
         "type": "object"
       },

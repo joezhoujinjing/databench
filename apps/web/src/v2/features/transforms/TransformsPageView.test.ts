@@ -1,10 +1,25 @@
 import { describe, expect, test } from 'vitest'
-import { moveItem, parseJsonObject } from './TransformsPageView.js'
+import {
+  createOrderedInputs,
+  formatParamsExample,
+  hasTransformParams,
+  parseJsonObject,
+} from './TransformsPageView.js'
 
 describe('V2 transform form helpers', () => {
-  test('preserves and explicitly changes ordered inputs', () => {
-    expect(moveItem(['a', 'b', 'c'], 2, 0)).toEqual(['c', 'a', 'b'])
-    expect(moveItem(['a', 'b'], 0, 9)).toEqual(['a', 'b'])
+  test('creates fixed ordered inputs from registry roles', () => {
+    expect(createOrderedInputs(['base', 'patch'])).toEqual([
+      { id: 'base-1', role: 'base', value: '' },
+      { id: 'patch-2', role: 'patch', value: '' },
+    ])
+  })
+
+  test('formats registry examples and distinguishes empty parameter schemas', () => {
+    expect(formatParamsExample({ count: 100, seed: 42 })).toBe(
+      '{\n  "count": 100,\n  "seed": 42\n}',
+    )
+    expect(hasTransformParams({ properties: {} })).toBe(false)
+    expect(hasTransformParams({ properties: { count: { type: 'integer' } } })).toBe(true)
   })
 
   test('accepts only JSON objects and leaves schema validation to the server', () => {

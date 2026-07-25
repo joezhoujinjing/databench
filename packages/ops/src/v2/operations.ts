@@ -12,6 +12,7 @@ import { defineV2Transform } from './registry.js'
 
 const UINT32_MAX = 0xffff_ffff
 const TRANSFORM_VERSION = '1'
+const EXAMPLE_RECORD_ID = `rec_${'1'.repeat(64)}`
 type CanonicalRecordViewV2 = RecordRevisionV2['record']
 
 export const SubsetV2ParamsSchema = z
@@ -42,7 +43,9 @@ export type PromptRewriteV2Params = z.infer<typeof PromptRewriteV2ParamsSchema>
 export const subsetV2 = defineV2Transform<SubsetV2Params>({
   name: 'subset',
   version: TRANSFORM_VERSION,
+  inputRoles: ['base'],
   paramsSchema: SubsetV2ParamsSchema,
+  paramsExample: { record_ids: [EXAMPLE_RECORD_ID] },
   identityMode: 'preserve',
   rngSeed: () => null,
   estimateWorkingSet: estimateSingleInputSubsetWorkingSet,
@@ -62,7 +65,9 @@ export const subsetV2 = defineV2Transform<SubsetV2Params>({
 export const sampleV2 = defineV2Transform<SampleV2Params>({
   name: 'sample',
   version: TRANSFORM_VERSION,
+  inputRoles: ['base'],
   paramsSchema: SampleV2ParamsSchema,
+  paramsExample: { count: 2, seed: 7 },
   identityMode: 'preserve',
   rngSeed: (params) => params.seed,
   estimateWorkingSet: estimateSingleInputSubsetWorkingSet,
@@ -98,7 +103,9 @@ export const sampleV2 = defineV2Transform<SampleV2Params>({
 export const appendEvidenceV2 = defineV2Transform<AppendEvidenceV2Params>({
   name: 'append-evidence',
   version: TRANSFORM_VERSION,
+  inputRoles: ['base', 'patch'],
   paramsSchema: AppendEvidenceV2ParamsSchema,
+  paramsExample: {},
   identityMode: 'preserve',
   rngSeed: () => null,
   estimateWorkingSet: estimateTwoInputMutationWorkingSet,
@@ -128,7 +135,9 @@ export const appendEvidenceV2 = defineV2Transform<AppendEvidenceV2Params>({
 export const selectionUpdateV2 = defineV2Transform<SelectionUpdateV2Params>({
   name: 'selection-update',
   version: TRANSFORM_VERSION,
+  inputRoles: ['base', 'patch'],
   paramsSchema: SelectionUpdateV2ParamsSchema,
+  paramsExample: {},
   identityMode: 'preserve',
   rngSeed: () => null,
   estimateWorkingSet: estimateTwoInputMutationWorkingSet,
@@ -158,7 +167,9 @@ export const selectionUpdateV2 = defineV2Transform<SelectionUpdateV2Params>({
 export const promptRewriteV2 = defineV2Transform<PromptRewriteV2Params>({
   name: 'prompt-rewrite',
   version: TRANSFORM_VERSION,
+  inputRoles: ['base', 'rewrite'],
   paramsSchema: PromptRewriteV2ParamsSchema,
+  paramsExample: {},
   identityMode: 'derive',
   rngSeed: () => null,
   estimateWorkingSet: estimateTwoInputMutationWorkingSet,

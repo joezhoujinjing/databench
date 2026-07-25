@@ -1531,6 +1531,10 @@ Derived claim复用 logical ID不替代上述 determinism gate：新的 exact in
 | `selection-update` | `1` | `[base, patch]` | `{}` | preserve |
 | `prompt-rewrite` | `1` | `[base, rewrite]` | `{}` | derive |
 
+Transform registry descriptor 同时公开固定的 `input_roles` 与通过当前 strict params schema
+校验的 `params_example`，供 Web/CLI 在执行前解释输入角色并提供可用参数示例；它们不进入
+canonical record，也不参与 transform cache identity。
+
 后三个 operation 的 mutation payload 固定来自第二个 immutable dataset input，不能放入 params、
 run row或 lineage step；它们的 lineage step params固定为小型 `{}`。`append-evidence` 的 patch
 只能 append 已分配 canonical ID 的 signal/preference，`selection-update` 只能改变既有 candidate

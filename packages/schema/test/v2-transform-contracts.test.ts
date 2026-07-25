@@ -44,7 +44,9 @@ describe('V10 transform contracts', () => {
         name: 'prompt-rewrite',
         version: '1',
         identity_mode: 'derive',
+        input_roles: ['base', 'rewrite'],
         params_schema: { type: 'object', additionalProperties: false },
+        params_example: {},
       }),
     ).toBeDefined()
     expect(
@@ -52,7 +54,9 @@ describe('V10 transform contracts', () => {
         name: 'Prompt Rewrite',
         version: '1',
         identity_mode: 'dynamic',
+        input_roles: [],
         params_schema: {},
+        params_example: {},
       }).success,
     ).toBe(false)
   })
