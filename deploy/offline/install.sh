@@ -33,6 +33,7 @@ RELEASE_DIR="${DATABENCH_RELEASES_DIR}/${TARGET_VERSION}"
 copy_release_assets "$SCRIPT_DIR" "$RELEASE_DIR"
 record_bundle_identity "$SCRIPT_DIR" "$RELEASE_DIR"
 ensure_secret_config
+ensure_mcp_config
 
 log "loading offline images"
 docker load --input "${SCRIPT_DIR}/images.tar" >/dev/null
@@ -66,11 +67,11 @@ activate_release "$RELEASE_DIR" "$TARGET_VERSION"
 write_state_value last-success-version "$TARGET_VERSION"
 ln -sfn "${DATABENCH_CURRENT_LINK}/databenchctl" /usr/local/bin/databenchctl
 
-SERVER_ADDRESS="$(hostname -I 2>/dev/null | awk '{print $1}')"
-[ -n "$SERVER_ADDRESS" ] || SERVER_ADDRESS='<server-ip-or-hostname>'
+MCP_PUBLIC_BASE_URL="$(grep -E '^DATABENCH_MCP_PUBLIC_BASE_URL=' "$DATABENCH_MCP_CONFIG_FILE" | cut -d= -f2-)"
 printf '\nDatabench installation succeeded\n\n'
-printf 'URL: http://%s\n' "$SERVER_ADDRESS"
+printf 'URL: %s\n' "${MCP_PUBLIC_BASE_URL%/api}"
 printf 'Configuration: %s\n' "$DATABENCH_CONFIG_FILE"
+printf 'MCP endpoint: %s/mcp\n' "$MCP_PUBLIC_BASE_URL"
 printf 'Data: %s\n' "$DATABENCH_DATA_ROOT"
 printf 'Version: %s\n\n' "$TARGET_VERSION"
 printf 'Management: databenchctl status | logs | doctor | backup | restart\n'

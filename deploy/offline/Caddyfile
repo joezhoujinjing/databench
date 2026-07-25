@@ -1,6 +1,14 @@
 {
 	auto_https off
 	admin off
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+			}
+		}
+	}
 }
 
 :80 {

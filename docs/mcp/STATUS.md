@@ -3,22 +3,23 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- mcp-status
-current_step: M2
-last_completed_step: M1b3
-mcp_runtime_enabled: false
-auth_mode: none-implemented-disabled
-offline_release_authorized: scoped-after-GM2
+current_step: complete
+last_completed_step: M2
+mcp_runtime_enabled: offline-explicit
+auth_mode: none
+offline_release_authorized: adr0012-scoped
 -->
 
 ## 当前检查点
 
 - **开发分支:** `feat/mcp-excel-import`
 - **代码基线:** `main@258bacaf673a0395c8fb3d769bd4bf6f78dcde56`
-- **当前 Step:** M2——M1b3 已过 GM1b3，下一步为匿名内网离线启用与 scoped release gate
-- **MCP runtime:** M1b3 staged canonical + canonical-draft preview/materialize/import full surface 与
-  `auth_mode=none` 已实现；部署中保持关闭
+- **当前 Step:** M0-M2 与 GM0-GM2 全部完成
+- **MCP runtime:** 通用配置保持 disabled-by-default；ADR 0012 离线包只在 operator 显式提供
+  agent 可达的稳定 `/api` public base 后，以 `auth_mode=none` 启用完整 canonical +
+  canonical-draft preview/materialize/import surface
 - **V16/V17:** 状态不变，仍未完成
-- **发布边界:** owner 只授权 GM2 后进入 ADR 0012 的匿名可信内网离线通道；未授权公网部署
+- **发布边界:** 已按 owner 范围化授权进入 ADR 0012 匿名可信内网离线通道；未授权公网部署
 
 ## Step 状态
 
@@ -28,8 +29,8 @@ offline_release_authorized: scoped-after-GM2
 | M1a | Canonical MCP/companion 纵切 | ✅ | `2f562e7` | GM1a | staged runtime 完成，MCP 配置保持 disabled |
 | M1b1 | Canonical draft contract 与 no-write preview | ✅ | `a57217c` | GM1b1 | draft import/materialize 仍不可用 |
 | M1b2 | Deterministic identity 与 materialize | ✅ | `8cf9aeb` | GM1b2 | draft import 仍不可用 |
-| M1b3 | Draft import 与真实 Excel 闭环 | ✅ | 本次提交 | GM1b3 | staged full surface，部署仍 disabled |
-| M2 | 内网离线启用与 scoped release gate | ⬜ | | GM2 | 不完成 V16/V17 |
+| M1b3 | Draft import 与真实 Excel 闭环 | ✅ | `e82c398` | GM1b3 | staged full surface，部署仍 disabled |
+| M2 | 内网离线启用与 scoped release gate | ✅ | 本次提交 | GM2 | 只授权 ADR 0012，不完成 V16/V17 |
 
 ## M0 Gate 记录
 
@@ -165,9 +166,38 @@ offline_release_authorized: scoped-after-GM2
   digest guard 与 import/materialize response-loss replay 文案后，无剩余 P0/P1/P2/P3。未引入认证、
   权限、独立 MCP 服务、服务端 Excel parser 或审批状态机；M2 前部署仍保持 disabled。
 
+## M2 Gate 记录
+
+- 离线包新增独立 `/etc/databench/mcp.env`，只接受显式 `enabled=true`、`auth_mode=none`、稳定且
+  agent 可达的 `http(s)://DNS-or-IPv4[:port]/api`；配置原子创建为 `root:root 0600`。Origin allowlist
+  逐项执行与 API 一致的 trim/空项忽略及 exact lowercase HTTP(S) origin 校验；install/首次 upgrade
+  不猜 Host、网卡或容器名，rollback 在停止服务前按 current/target Compose fail-fast 校验配置。
+- Caddy 保持单端口 `/api/*` proxy，access log 未启用；runtime filter 删除 `request.uri`。离线 smoke
+  在正常 companion 错误、完整 MCP lifecycle 与 API upstream 不可达的 502 后捕获 Web/API 全量日志，
+  `proc_*` 和 `exp_*` 双 sentinel 均未出现；失败 trap 会恢复 API，恢复后的 health 与后续请求通过。
+- 官方 MCP SDK 离线 smoke 覆盖 direct import、preview/修改后 import、JSONL-only、canonical
+  export/reimport、一次性 URL、429 + `Retry-After` 后复用同一 URL、stalled upload abort cleanup 与
+  temp spool 回收；部署预检同时检查根盘与 Databench 数据盘至少 4 GiB 可用空间。
+- 目标开发 agent 从原始电缆 Excel 只读生成 499 条 draft，经真实 LAN public base
+  `http://192.168.10.171:18081/api` 和 Caddy 完成三种意图：direct
+  `94f0dd5cbff04bfef6a64107d3e702b578d7786d8e2bb1907085f00cbabf7bc3`、修改后
+  `f774bed7eee170795ff58e68cea1b304c6e740de6253d435f964c6af0215b138`、JSONL-only prospective
+  `b8236876fa42d8e3a7d2ecd7a19114a90a7e969dcadcb55cb72aa6aba31d8a69`；后者确认未发布。
+- API restart 后旧 process URL 返回 400，重新 prepare 后恢复 499 条 preview。真实离线管理
+  harness 完成 pre-MCP 0.5.0 → M2 0.6.0 首次升级与回滚：升级创建配置、备份、load、migration、
+  MCP smoke 均通过；回滚后配置保留但旧 Compose 不读取，MCP 405 → 404，已导入 499 条数据仍可读。
+- no-egress 验收使用 Docker `Internal=true` 网络；API 对 `example.com` 与 npm registry 均不可达，
+  同网 agent 经 Caddy 的完整 MCP/companion lifecycle 仍通过。安装/首次 upgrade 前置防火墙
+  allowlist、匿名全权限警告、三种 agent 意图与 token/digest/replay 恢复规则已写入离线 runbook。
+- `RUN_MINIO_STORE_TESTS=true pnpm test` 22/22 tasks 通过：Store 82、Workspace 116、API 86 tests
+  全绿；全仓 lint/build/typecheck/test、OpenAPI、v2 status、offline、peer 与 diff gates 通过。两路
+  独立 follow-up review 按 agent UX/MVP 与架构/安全复核后无剩余 P0/P1/P2/P3。
+- 未引入认证、RBAC、skill、审批状态机、服务端 Excel parser、独立 MCP 服务或额外端口；公网仍
+  禁止，V16/V17 与公共云 D3 状态不变。
+
 ## 状态更新规则
 
 1. 只在当前 Step 的实现、测试、独立 review 与 repo gates 全部通过后标记 ✅；
 2. 每次更新记录 commit/PR、测试命令、真实依赖结果和剩余风险；
-3. M1b3 前不得宣称“Excel 直接导入可用”，M2 前不得在部署中默认或显式启用 MCP；
+3. 通用 MCP runtime 保持 disabled-by-default；只允许 ADR 0012 离线包按本记录显式启用；
 4. MCP 局部 gate 不得写成 GV16、GV-final，也不得修改 `docs/v2/STATUS.md` 的 V16/V17 状态。

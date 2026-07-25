@@ -7,7 +7,9 @@ import {
   DEFAULT_MCP_MAX_PREVIEW_RESPONSE_BYTES,
   DEFAULT_MCP_MAX_TOKENS,
   DEFAULT_MCP_TOKEN_TTL_MS,
+  MCP_HTTP_REQUEST_TIMEOUT_HEADROOM_MS,
   mcpConfigFromEnv,
+  mcpHttpRequestTimeoutMs,
 } from '../src/mcp/config.js'
 
 describe('MCP runtime config', () => {
@@ -84,5 +86,21 @@ describe('MCP runtime config', () => {
         DATABENCH_MCP_FILE_TOTAL_TIMEOUT_MS: '1000',
       }),
     ).toThrowError('total file timeout must be greater than or equal to the idle timeout')
+  })
+
+  test('keeps the Node HTTP request timeout above the MCP file deadline', () => {
+    expect(mcpHttpRequestTimeoutMs({ enabled: false })).toBeUndefined()
+    const config = mcpConfigFromEnv({
+      DATABENCH_MCP_ENABLED: 'true',
+      DATABENCH_MCP_AUTH_MODE: 'none',
+      DATABENCH_MCP_PUBLIC_BASE_URL: 'http://databench.internal/api',
+      DATABENCH_MCP_FILE_IDLE_TIMEOUT_MS: '1000',
+      DATABENCH_MCP_FILE_TOTAL_TIMEOUT_MS: '2000',
+    })
+    if (!config.enabled) throw new Error('expected enabled MCP config')
+    expect(mcpHttpRequestTimeoutMs(config)).toBe(
+      config.fileTotalTimeoutMs + MCP_HTTP_REQUEST_TIMEOUT_HEADROOM_MS,
+    )
+    expect(mcpHttpRequestTimeoutMs(config)).toBeGreaterThan(config.fileTotalTimeoutMs)
   })
 })

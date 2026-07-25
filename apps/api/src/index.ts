@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs'
+import { Server as HttpServer } from 'node:http'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { serve } from '@hono/node-server'
 import { createApp, createOpenApiDocument } from './app.js'
 import { type ApiConfig, loadConfig } from './config.js'
+import { mcpHttpRequestTimeoutMs } from './mcp/config.js'
 
 export { createApp, createOpenApiDocument, loadConfig }
 
@@ -40,10 +42,17 @@ if (isEntrypoint()) {
   const config = loadConfig()
   const app = createAppFromConfig(config)
 
-  serve({
+  const server = serve({
     fetch: app.fetch,
     port: config.port,
   })
+  const requestTimeoutMs = mcpHttpRequestTimeoutMs(config.mcp)
+  if (requestTimeoutMs !== undefined) {
+    if (!(server instanceof HttpServer)) {
+      throw new TypeError('MCP requires the Node HTTP/1 server request timeout boundary')
+    }
+    server.requestTimeout = requestTimeoutMs
+  }
 
   console.log(`databench api listening on :${config.port}`)
   if (config.mcp.enabled) {

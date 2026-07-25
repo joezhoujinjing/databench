@@ -7,6 +7,7 @@ export const DEFAULT_MCP_MAX_ACTIVE_FILE_OPERATIONS = 2
 export const DEFAULT_MCP_TOKEN_TTL_MS = 15 * 60 * 1000
 export const DEFAULT_MCP_FILE_IDLE_TIMEOUT_MS = 60 * 1000
 export const DEFAULT_MCP_FILE_TOTAL_TIMEOUT_MS = 30 * 60 * 1000
+export const MCP_HTTP_REQUEST_TIMEOUT_HEADROOM_MS = 30 * 1000
 
 export interface McpDisabledConfig {
   readonly enabled: false
@@ -27,6 +28,12 @@ export interface McpEnabledConfig {
 }
 
 export type McpRuntimeConfig = McpDisabledConfig | McpEnabledConfig
+
+export function mcpHttpRequestTimeoutMs(config: McpRuntimeConfig): number | undefined {
+  return config.enabled
+    ? config.fileTotalTimeoutMs + MCP_HTTP_REQUEST_TIMEOUT_HEADROOM_MS
+    : undefined
+}
 
 const McpEnvSchema = z.strictObject({
   DATABENCH_MCP_ENABLED: z.enum(['true', 'false']).default('false'),

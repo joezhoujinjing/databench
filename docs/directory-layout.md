@@ -1,8 +1,8 @@
 # 具体目录布局（文件级，权威）
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
-> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M1b3 的 staged
-> runtime 已实现但保持 disabled；M2 部署目标布局仍以 `docs/mcp/TECHNICAL-DESIGN.md` 为准。
+> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M2 已完成；
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。
 
 ## `apps/api`
 
@@ -291,7 +291,7 @@ prisma/
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。
 
-## MCP 文档（实施中）
+## MCP 与离线交付
 
 ```text
 docs/mcp/
@@ -301,5 +301,24 @@ docs/mcp/
 └─ AGENT-PREFLIGHT.md    目标 agent/真实 Excel 能力证据
 ```
 
-M1b3 runtime 与真实 Excel fixture 已按上文实际落点登记；部署配置仍保持 disabled，M2 才处理匿名
-内网启用、Caddy 与离线发布 gate。
+```text
+deploy/offline/
+├─ compose.yml                    API 加载独立 /etc/databench/mcp.env
+├─ mcp.env.example                匿名可信内网 MCP 配置示例
+├─ MCP-AGENT-GUIDE.zh-CN.md       agent endpoint、三种意图与恢复规则
+├─ README.zh-CN.md
+├─ DEPLOYMENT-GUIDE.zh-CN.md
+├─ TROUBLESHOOTING.zh-CN.md
+├─ install.sh · upgrade.sh        显式创建或复用 MCP 配置
+├─ rollback.sh                    停服务前校验 current/target 所需 MCP 配置
+├─ lib/config.sh                  public base 校验与原子配置
+├─ lib/preflight.sh               根盘与 Databench 数据盘容量检查
+└─ smoke/
+   ├─ mcp.mjs                     官方 SDK + companion lifecycle smoke
+   ├─ upstream-failure.mjs        Caddy 502 runtime-log 脱敏 probe
+   └─ mcp-draft.jsonl             最小 canonical draft fixture
+```
+
+MCP runtime 与真实 Excel fixture 已按上文实际落点登记。离线配置只在 operator 显式提供稳定、agent
+可达的 `http(s)://host[:port]/api` 后启用；不从 Host、网卡或容器名推断，也不引入独立服务、认证
+平台或审批状态机。

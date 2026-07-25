@@ -5,6 +5,7 @@ set -Eeuo pipefail
 DATABENCH_INSTALL_ROOT="${DATABENCH_INSTALL_ROOT:-/opt/databench-offline}"
 DATABENCH_CONFIG_DIR="${DATABENCH_CONFIG_DIR:-/etc/databench}"
 DATABENCH_CONFIG_FILE="${DATABENCH_CONFIG_FILE:-${DATABENCH_CONFIG_DIR}/databench.env}"
+DATABENCH_MCP_CONFIG_FILE="${DATABENCH_MCP_CONFIG_FILE:-${DATABENCH_CONFIG_DIR}/mcp.env}"
 DATABENCH_BACKUP_KEY_FILE="${DATABENCH_BACKUP_KEY_FILE:-${DATABENCH_CONFIG_DIR}/backup.key}"
 DATABENCH_DATA_ROOT="${DATABENCH_DATA_ROOT:-/srv/databench}"
 DATABENCH_STATE_DIR="${DATABENCH_STATE_DIR:-${DATABENCH_INSTALL_ROOT}/state}"
@@ -227,8 +228,9 @@ copy_release_assets() {
   local item
   install -d -m 0755 "$release_dir"
   for item in compose.yml release.env release-manifest.json images.lock SHA256SUMS RELEASE.txt \
-    env.example install.sh upgrade.sh rollback.sh backup.sh restore.sh smoke.sh databenchctl \
-    Caddyfile README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
+    env.example mcp.env.example install.sh upgrade.sh rollback.sh backup.sh restore.sh smoke.sh \
+    databenchctl Caddyfile README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md \
+    TROUBLESHOOTING.zh-CN.md MCP-AGENT-GUIDE.zh-CN.md \
     docs lib minio smoke; do
     [ -e "${source_dir}/${item}" ] || die "bundle asset is missing: $item"
     rm -rf "${release_dir:?}/${item}"

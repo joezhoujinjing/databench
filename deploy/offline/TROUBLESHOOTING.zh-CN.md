@@ -25,6 +25,7 @@ docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
 不要在工单或聊天中粘贴以下内容：
 
 - `/etc/databench/databench.env`；
+- `/etc/databench/mcp.env` 的完整内容（public base 可单独报告，但不要粘贴整份容器 Env）；
 - `/etc/databench/backup.key`；
 - `docker inspect` 的完整 Env；
 - 完整 `DATABASE_URL`；
@@ -301,9 +302,74 @@ docker inspect --format '{{json .Mounts}}' databench-offline-api
 如果 workspace 挂载缺失，不要把整个容器改成可写；恢复当前版本的原始 Compose/release 资产后
 重建 API。
 
-## 8. 备份问题
+## 8. MCP 与 Agent 问题
 
-### 8.1 备份失败后服务状态
+### 8.1 安装/升级要求 `DATABENCH_MCP_PUBLIC_BASE_URL`
+
+安装器不能安全猜出 agent 使用哪张网卡、IP 或内部 DNS。先由现场网络管理员确认稳定地址，再
+执行：
+
+```bash
+sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./install.sh
+```
+
+升级命令同理。URL path 必须精确为 `/api`，不能带 credential、query、fragment 或尾随 `/`；
+DNS 使用小写，默认 HTTP(S) 端口必须省略，非默认端口不能有前导零。已有
+`/etc/databench/mcp.env` 时脚本会复用；传入另一个值会 fail closed，不会静默改地址。
+
+### 8.2 Agent 连接失败或看不到 tools
+
+先在服务器本机检查 Caddy 是否到达 MCP handler：
+
+```bash
+curl -i http://127.0.0.1/api/mcp
+sudo stat -c '%U:%G %a %n' /etc/databench/mcp.env
+sudo databenchctl logs api
+```
+
+第一条应返回 `405` 且 `Allow: POST`。Agent endpoint 必须是
+`http://<稳定内网地址>/api/mcp`，transport 为 Streamable HTTP，不配置认证。
+
+- `404`：当前 release 未启用 MCP，或 URL 缺少 `/api`；
+- `502`：API 未 healthy；
+- `403`：agent 发送了不在 public-base origin/allowlist 中的非空 `Origin`；普通非浏览器 agent
+  不需要设置 Origin；
+- initialize 成功但文件传输失败：确认 agent 也能访问 prepare 返回的绝对
+  `/api/mcp-files/*` URL，不能只允许 `/api/mcp`。
+
+### 8.3 一次性 URL、digest 和传输错误
+
+| 现象 | 正确恢复动作 |
+|---|---|
+| `429 too_many_requests` + `Retry-After` | 等待后复用同一个 URL；不要重新 prepare 制造更多 token |
+| `token_invalid_or_used` | token 已用、过期、active、超时或 API 已重启；重新 prepare |
+| `input_digest_mismatch` | 上传 preview 对应的 exact bytes，或重新 preview 当前文件 |
+| validation error | 按 line/path 修复临时 draft，再重新 prepare/upload |
+| idle/total timeout 或 client abort | 重新 prepare；不要尝试续传旧 URL |
+| import 响应丢失 | 用相同 exact bytes 重新 prepare/import，应返回同一 dataset version |
+| materialize 响应丢失 | 用相同 exact bytes 重新 prepare/materialize，应返回相同 canonical JSONL |
+
+不要保存、共享或猜测 `proc_*` / `exp_*` token。进程重启使未使用 token 失效，但不影响已提交
+dataset。
+
+### 8.4 临时文件或日志检查
+
+正常完成、失败、timeout 和 abort 后，draft spool 都应清理：
+
+```bash
+sudo find /srv/databench/workspace/.databench-v2-temp -maxdepth 1 \
+  -type f -name 'databench-v2-draft-*.jsonl' -print
+```
+
+没有正在运行的导入时不应有输出。不要手工删除 active 文件；先停止新请求并确认 API 状态。
+
+Caddy access log在离线配置中默认关闭，runtime error log 会删除 request URI。若现场前置 LB/
+代理开启 access log，必须跳过或脱敏 `/api/mcp-files/process/*`、`/api/mcp-files/export/*`，
+再搜索日志确认没有完整 token。不要为了排障把完整一次性 URL 粘贴到工单。
+
+## 9. 备份问题
+
+### 9.1 备份失败后服务状态
 
 备份脚本在普通调用失败时会尝试重新启动 Web/API。立即检查：
 
@@ -314,7 +380,7 @@ sudo databenchctl doctor
 
 失败的临时 generation 会被清理，已完成 generation 不会被覆盖。
 
-### 8.2 `backup escrow key is missing/empty`
+### 9.2 `backup escrow key is missing/empty`
 
 不要随意生成新 key 取代丢失的 key；新 key 无法解密历史 `databench.env.enc`。从安全异机副本
 恢复 `/etc/databench/backup.key`，并设置：
@@ -324,7 +390,7 @@ sudo chown root:root /etc/databench/backup.key
 sudo chmod 0600 /etc/databench/backup.key
 ```
 
-### 8.3 PostgreSQL dump 或 MinIO mirror 失败
+### 9.3 PostgreSQL dump 或 MinIO mirror 失败
 
 ```bash
 sudo databenchctl logs postgres
@@ -335,9 +401,9 @@ df -h /srv/databench
 不要把失败 generation 当成可恢复备份。修复后重新运行 `sudo databenchctl backup`，并在复制
 到异机前执行 `sha256sum -c SHA256SUMS`。
 
-## 9. 恢复问题
+## 10. 恢复问题
 
-### 9.1 `matching release is not installed`
+### 10.1 `matching release is not installed`
 
 恢复要求 backup manifest 中的应用版本已经安装在：
 
@@ -347,12 +413,12 @@ df -h /srv/databench
 
 找到 manifest 指定 SHA-256 的完整离线包，先安装同版本，再重新执行恢复。
 
-### 9.2 `matching release bundle checksum is unavailable`
+### 10.2 `matching release bundle checksum is unavailable`
 
 安装的 release 与备份引用的归档不是同一个构建。不要绕过校验。根据 `backup-manifest` 找到
 精确的 bundle 文件名和 SHA-256。
 
-### 9.3 恢复中途失败
+### 10.3 恢复中途失败
 
 恢复是破坏性过程。脚本失败后默认不会假装服务可用。保留：
 
@@ -364,9 +430,9 @@ df -h /srv/databench
 不要连续重复恢复。先判断失败发生在 PG、MinIO、migration 还是 smoke，再选择恢复原目标或
 safety generation。
 
-## 10. 升级和回滚问题
+## 11. 升级和回滚问题
 
-### 10.1 目标版本不高于当前版本
+### 11.1 目标版本不高于当前版本
 
 ```bash
 sudo databenchctl version
@@ -375,7 +441,7 @@ cat release-manifest.json
 
 每个发布使用新的三段数字版本。相同版本重发或覆盖归档被明确禁止。
 
-### 10.2 previous release 已自动恢复
+### 11.2 previous release 已自动恢复
 
 升级命令非零退出，但看到：
 
@@ -393,7 +459,7 @@ curl -fsS http://127.0.0.1/api/version
 
 保留失败目标包和 pre-upgrade backup，修复发布问题后生成更高的新版本；不要用相同版本覆盖。
 
-### 10.3 `automatic recovery failed`
+### 11.3 `automatic recovery failed`
 
 停止新的写入和重复操作，保留失败终端的完整输出。人工恢复取决于目标发布的 rollback
 contract；以终端 `Manual recovery` 下打印的精确 release 和 generation 为准。
@@ -423,7 +489,7 @@ sudo docker compose --project-name databench-offline \
 `databenchctl status`、`databenchctl doctor` 和 `/api/version`；不能确认 contract 或 restore 失败时，
 停止操作并交由发布/数据库负责人处理。
 
-### 10.4 回滚要求 `--backup`
+### 11.4 回滚要求 `--backup`
 
 当前 release 声明 `restore-backup`。必须使用对应升级前 generation：
 
@@ -433,7 +499,7 @@ sudo databenchctl rollback <previous-version> --backup <generation>
 
 不要随便选择更早或其他版本的 generation。
 
-## 11. 宿主机重启后服务未恢复
+## 12. 宿主机重启后服务未恢复
 
 ```bash
 sudo systemctl status docker --no-pager
@@ -449,7 +515,7 @@ sudo systemctl start docker
 
 若个别容器 exited，查看对应日志。不要重新运行首次安装来掩盖数据盘、权限或容器启动问题。
 
-## 12. 禁止操作清单
+## 13. 禁止操作清单
 
 除非已有单独、评审过的恢复方案，否则禁止：
 

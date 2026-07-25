@@ -1,8 +1,9 @@
 # 项目结构与包边界（权威）
 
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
-> v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP agent 导入 M1b3 staged
-> runtime 已实现但默认关闭；M2 部署启用计划见 `docs/mcp/`。
+> v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M2 已完成；通用
+> runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
+> `docs/mcp/`。
 
 ## 顶层目录
 
@@ -75,7 +76,7 @@ tooling/v1-retirement 是显式 maintenance 边界
 - `apps/api`、`apps/cli → workspace, schema`
 - `apps/web` 不 import 后端包
 
-MCP M1a-M1b3 已内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
+MCP runtime 内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
 MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访问层。
 
 ## 硬边界
@@ -117,12 +118,14 @@ packages/<name>/
 - v2 对象 namespace：`objects/v2/`；manifest 与 artifact 均 conditional create。
 - 本地依赖：Postgres + MinIO，见 `docker-compose.yml`。
 - 托管对象存储：Aliyun OSS；本地及离线单机使用 S3-compatible MinIO adapter。
+- 离线 MCP：`/etc/databench/mcp.env` 独立保存匿名模式、agent 可达 `/api` public base 与可选
+  origins；旧 release 不读取该文件。
 - OpenAPI：API Zod route → `openapi/openapi.json` →
   `apps/web/src/api/generated/schema.ts`。
 - Node 版本：`.nvmrc`，当前 Node 22 LTS。
 
 ## 当前发布边界
 
-产品切换 R0-R5 已完成；v2-only 最终 gate、当前文档与离线包验证均已通过。
-V16/V17 的 recovery/security/capacity 状态不因产品切换自动完成；公共云 API 托管平台
-仍受 D3 owner 决策门约束。
+产品切换 R0-R5 与 MCP M0-M2 已完成。MCP 只获授权进入 ADR 0012 的匿名可信内网离线通道；
+通用部署保持默认关闭，公网部署未授权。V16/V17 的 recovery/security/capacity 状态不因产品切换
+或 MCP scoped gate 自动完成；公共云 API 托管平台仍受 D3 owner 决策门约束。

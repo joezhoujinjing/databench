@@ -13,10 +13,10 @@
 | 创建并删除临时 JSONL | ✅ 已验证 | 本地 harness 以 `wx` 创建 0600 临时 JSONL，传输后删除文件与临时目录 |
 | 流式 HTTP PUT/GET | ✅ 已验证 | 本地 loopback harness 从文件流 PUT 33 bytes，并分块 GET 22 bytes；M1a 再以真实 companion URL smoke |
 | Streamable HTTP MCP | ✅ GM1a 已验证 | 目标开发 agent 连接真实 TCP endpoint，完成 initialize/tools/list/tools/call 与四工具 smoke |
-| 访问绝对 URL | ✅ 本机已验证 | 目标开发 agent 使用 prepare 返回的 `http://127.0.0.1:18080` 绝对 URL 完成 PUT/GET；M2 用实际内网 Caddy `/api` 地址复验 |
+| 访问绝对 URL | ✅ GM2 已验证 | 目标开发 agent 使用显式配置的 `http://192.168.10.171:18081/api` 经 Caddy 完成 499 行三意图 PUT/GET |
 
-GM1a 的真实 endpoint 已完成；实际内网 DNS/Caddy 与防火墙环境仍不存在，因此只把该部署环境复验
-保留为 GM2 blocking smoke，不能用本机 loopback 证据替代。
+GM1a 的本机真实 endpoint 与 GM2 的显式 LAN public base/Caddy 已完成。企业现场仍需按 runbook
+配置获准网段与稳定 DNS/IP；这属于安装参数，不允许退回 Host header、首块网卡或容器名猜测。
 
 本地 HTTP harness 只证明 agent runtime 能创建/删除临时文件并进行流式 request/response；它不
 替代 MCP 协议、token 生命周期、Workspace 操作或 Caddy 前缀的真实联调。
@@ -126,3 +126,25 @@ materialize/import/export/reimport 的 exact version 一致性。
 
 在断开公网、使用实际内网 DNS/Caddy 地址的目标 agent 环境重跑 GM1b3 生命周期，确认不访问
 OpenAI、npm、镜像仓库或其他公网服务。
+
+**结果：✅ 2026-07-25 已完成。** 当前 Codex 目标开发 agent 与 Linux/amd64 离线管理 harness
+完成：
+
+- 对原始 Excel 只读导入 `Sheet1!A1:C500`，499 条 agent 生成训练对与用户已有参考 JSONL 的
+  `user → ai` 多重集合完全一致；经显式 LAN public base
+  `http://192.168.10.171:18081/api` 与 Caddy 重跑 direct、preview/修改后 import、JSONL-only；
+- direct version 为 `94f0dd5cbff04bfef6a64107d3e702b578d7786d8e2bb1907085f00cbabf7bc3`，
+  修改后 version 为 `f774bed7eee170795ff58e68cea1b304c6e740de6253d435f964c6af0215b138`，
+  JSONL-only prospective version 为
+  `b8236876fa42d8e3a7d2ecd7a19114a90a7e969dcadcb55cb72aa6aba31d8a69`；三者均为 499 条，
+  JSONL-only 用 `dataset_show` 确认未发布；
+- API restart 前签发的 process URL 在重启后返回 400；重新 prepare 后 499 条 preview 恢复；
+- 从不加载 `mcp.env` 的 0.5.0 fixture 升级到 M2 fixture：首次显式创建 0600 配置、备份、
+  `docker load`、迁移、真实 MCP smoke 后切换成功；回滚到 0.5.0 后配置文件保留但旧 Compose
+  不加载，`/api/mcp` 从 405 回到 404，499 条已导入数据仍可读取；
+- 独立 no-egress lifecycle 使用 Docker `Internal=true` 网络；同网 agent 经 Caddy 的完整 MCP/
+  companion smoke 通过，同时对 `example.com` 与 npm registry 的请求均失败。运行时不需要 npm、
+  OpenAI、镜像仓库或其他公网服务。
+
+企业安装现场仍必须用获准的真实稳定 DNS/IP 替换验收地址，并由防火墙限制到可信 agent 网段；
+当前匿名模式不适合公网。
