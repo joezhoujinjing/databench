@@ -15,6 +15,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "v2:status:check": "node scripts/check-v2-status.mjs",
+    "v1:retire": "pnpm --filter @databench/v1-retirement retire",
     "openapi:check": "turbo run openapi:check",
     "offline:check": "bash deploy/offline/test/offline-scripts.test.sh",
     "prepare": "lefthook install"

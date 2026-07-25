@@ -15,8 +15,8 @@ offline_production_release_authorized: true
 ## 当前检查点
 
 - **当前分支:** `feat/v2-product-cutover`
-- **下一步:** 产品切换 R3 已完成并过闸门；按 [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 进入 R4，
-  仅准备带dry-run清单、digest与operator确认的持久化清理；未确认前不删除任何数据，V16/V17仍不开始
+- **下一步:** 产品切换 R4 已完成并过闸门；按 [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 进入 R5
+  v2-only最终gate、文档与离线包验证，V16/V17仍不开始
 - **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
   不代表 V16、V17 或 GV-final 已完成
 - **离线发布:** owner于2026-07-24明确授权当前`main`直接生成production离线包；V16/V17
@@ -25,7 +25,7 @@ offline_production_release_authorized: true
   `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
 - **产品切换:** ADR 0013、产品切换技术方案与第三版视觉稿已于 2026-07-24 接受；
-  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0、R1、R2、R3 已完成，下一步为 R4
+  [CUTOVER-PLAN.md](CUTOVER-PLAN.md) 的 R0、R1、R2、R3、R4 已完成，下一步为 R5
 
 ## Step 状态
 
@@ -429,3 +429,31 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
 - `pnpm lint`（332 files）、全仓build（12/12）、typecheck（21/21）、test（21/21）、
   `pnpm openapi:check`（11/11）、`pnpm peers check`、`pnpm v2:status:check`与`git diff --check`
   全部通过；V16/V17状态不变。
+
+## 2026-07-25 产品切换 R4 Gate 记录
+
+- 新增独立 `@databench/v1-retirement` maintenance tooling、Prisma forward migration与
+  [V1-RETIREMENT-RUNBOOK.md](V1-RETIREMENT-RUNBOOK.md)；应用启动和普通请求不会隐式执行清理；
+- 只读 preflight 使用repeatable-read记录5张v1表的行数/内容digest/外键/大小，精确列出legacy
+  object key/size/ETag并显式保护`objects/v2/`；数据库与对象删除均要求operator原样确认digest并在
+  执行前重扫，v2九表、对象元数据及全部已登记dataset的真实audit组成前后不变的安全baseline；
+- preflight发现本地实际存在41条v1 catalog记录：datasets 14、runs 10、refs 14、vocabularies 2、
+  vocab_refs 1；MinIO有251个可识别legacy对象（123 Parquet、123 manifest、5 vocabulary JSON，
+  共6,849,730 bytes），无无法识别的legacy-prefix key；
+- 24个已登记v2 dataset中20个audit通过，4个失败；失败版本为`7cdcbaf0…79fd`、
+  `861e3775…09fd`、`e2d66c61…80f1`、`e4f6911a…25f9`。只读检查确认它们仍含2026-07-24
+  已删除的顶层`system_instruction`，属于schema修订前实验数据；R4始终保持audit严格，不通过放宽
+  schema绕过；
+- 已确认旧499条根版本`861e3775…09fd`已有修订后的499条替代版本`241436cb…5ea`，旧20条sample
+  `e4f6911a…25f9`也已有同参数替代版本`fe50d89d…cf9e`；owner明确确认全部为测试数据并授权只保留
+  正常v2后，精确删除上述4个异常snapshot、4个layout、3个Ref、3个run、3个run input、499个
+  revision locator及8个对应对象；检查证明没有正常output或lineage依赖这些版本；
+- 对象与catalog对账另发现6组、12个完全未登记的v2孤儿对象（6,719 bytes），确认在九张v2表中
+  均无引用后精确删除；最终只保留20个登记且audit通过的v2 dataset及其40个对象，无missing/orphan；
+- R4 migration除行数外还在`ACCESS EXCLUSIVE`锁内复核每表内容checksum，测试证明未approval、
+  approval后等行数改写均fail-closed；隔离测试schema改为每次从空白迁移，生产schema不走该reset；
+- 清理前最终manifest锁定database digest `3d667535…25467`、object digest `bb508224…cc8e`与
+  v2 baseline `e69b1e92…439a`；按精确digest批准后成功应用`0005_retire_v1_catalog`并删除251个
+  legacy对象，最终verify确认5张v1表与全部v1对象均不存在、v2 baseline前后一致；
+- R4 package 10/10 tests、全仓lint/build/typecheck/test、OpenAPI、status与peer gate通过；
+  V16/V17状态不变，下一步进入R5。

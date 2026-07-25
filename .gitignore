@@ -16,6 +16,7 @@ coverage/
 .shareone_history.json
 .playwright-cli/
 output/
+.databench-maintenance/
 design-qa.md
 fix-api-brief.md
 

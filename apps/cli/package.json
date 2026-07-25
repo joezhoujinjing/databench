@@ -13,7 +13,7 @@
     "build": "tsup src/index.ts --format esm --sourcemap --clean && tsc --emitDeclarationOnly",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node ../../scripts/with-test-db-schema.mjs databench_test_cli pnpm --dir ../.. exec prisma migrate deploy && node ../../scripts/with-test-db-schema.mjs databench_test_cli vitest run --passWithNoTests"
+    "test": "node ../../scripts/with-test-db-schema.mjs --reset databench_test_cli pnpm --dir ../.. exec prisma migrate deploy && node ../../scripts/with-test-db-schema.mjs databench_test_cli vitest run --passWithNoTests"
   },
   "dependencies": {
     "@databench/schema": "workspace:*",

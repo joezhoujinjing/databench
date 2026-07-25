@@ -227,6 +227,8 @@ v1 object key 位于 legacy `objects/<vv>/...`，v2 位于 `objects/v2/...`。�
 - 删除后再验证全部 v2 manifests/artifacts仍可 audit。
 
 应用发布与数据删除分开。先发布 v2-only 产品并观察，再执行不可逆清理。
+R4 的命令、确认顺序、失败 migration 恢复与最终验证以
+[V1-RETIREMENT-RUNBOOK.md](V1-RETIREMENT-RUNBOOK.md) 为准。
 
 ## 10. 实施切片与 Gate
 

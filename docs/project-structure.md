@@ -30,6 +30,7 @@ databench-ts/                   ← monorepo 根(pnpm + Turborepo)
 │  └─ processing-python/  原生 Python 3.11 + uv 的长驻内部 gRPC worker(Data-Juicer adapter)
 ├─ tooling/
 │  ├─ openapi-export/   启动 api 导出确定性 openapi.json（替代 scripts/export_openapi.py）
+│  ├─ v1-retirement/    R4 显式 preflight、digest确认、legacy object清理与v2前后audit
 │  ├─ proto/            @databench/proto    Buf/ts-proto/Python 双语言生成与兼容检查
 │  └─ tsconfig/         共享 tsconfig 基线（可选独立包）
 ├─ prisma/              Prisma schema + migrations（catalog 用）
@@ -84,6 +85,7 @@ L4  workspace         → engine, io, ops, store, catalog, schema, hashing
 L5  apps/api          → workspace, schema           （只经 workspace 触达数据,不直连 store/catalog/engine）
     apps/cli          → workspace, schema           （in-process client；同样不直连数据层包）
 L6  tooling/openapi-export → apps/api
+    tooling/v1-retirement → workspace, store, hashing, pg（只在显式maintenance命令中运行）
     tooling/proto    → proto（仅构建期生成；不成为 runtime import）
     apps/web          → （仅消费生成的 OpenAPI client,不 import 任何后端包）
 ```
@@ -119,6 +121,7 @@ adapter-local Python 类型和通过 gRPC 收到的短期签名 URL；它不 imp
 | `apps/api` | `API-01..14`、`SVC-01..05`、`ERR-01..06`、`CONTRACT-03..08` routes |
 | `apps/cli` | ADR-0007 thin adapter；复用 Workspace能力，不新增平行业务规则 |
 | `tooling/openapi-export` | `CONTRACT-02` |
+| `tooling/v1-retirement` | ADR-0013 R4；不进入应用启动、普通请求或runtime package DAG |
 
 ### ADR-0010 Processing 新增落点
 

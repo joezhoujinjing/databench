@@ -59,3 +59,8 @@ R1 不修改 `/v2` REST API，也不修改 v2 identity、schema、layout、对�
 后续退役按 Web/API/CLI → Workspace → Ops/IO/Store/Catalog → Schema/Engine/Hashing 的调用方向
 推进。R4 前只停止 v1 读写并生成清单，不删除持久化数据；R4 的实际删除必须由 operator 使用精确
 清单 digest 显式确认，并证明对象匹配不会触及 `objects/v2/`。
+
+R4 的标准操作入口与故障恢复见
+[V1-RETIREMENT-RUNBOOK.md](V1-RETIREMENT-RUNBOOK.md)。非空 v1 表的 forward migration
+没有 preflight approval 时必须 fail-closed；对象工具只接受 parser 验证的精确 key，不提供
+prefix delete。

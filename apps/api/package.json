@@ -18,7 +18,7 @@
     "build": "tsup src/index.ts --format esm --sourcemap --clean && tsc --emitDeclarationOnly",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node ../../scripts/with-test-db-schema.mjs databench_test_api pnpm --dir ../.. exec prisma migrate deploy && node ../../scripts/with-test-db-schema.mjs databench_test_api vitest run --passWithNoTests"
+    "test": "node ../../scripts/with-test-db-schema.mjs --reset databench_test_api pnpm --dir ../.. exec prisma migrate deploy && node ../../scripts/with-test-db-schema.mjs databench_test_api vitest run --passWithNoTests"
   },
   "dependencies": {
     "@databench/schema": "workspace:*",

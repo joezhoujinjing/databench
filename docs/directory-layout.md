@@ -276,6 +276,28 @@ src/
 └─ index.ts                # 启动 createApp() → getOpenAPIDocument() → 确定性 JSON(sorted keys/indent2/末尾 newline);默认覆盖写、`--check` 比对 exit1
 ```
 
+## `tooling/v1-retirement`（ADR-0013 R4）
+
+```text
+tooling/v1-retirement/
+├─ src/
+│  ├─ cli.ts               # preflight/approve-database/delete-objects/verify 显式 maintenance CLI
+│  ├─ database.ts          # v1 表清单、内容 digest、一次性 approval 与 v2 catalog fingerprint
+│  ├─ object-store.ts      # S3/OSS 分页清单与精确 key 删除；禁止 prefix delete
+│  ├─ legacy-keys.ts       # v1 dataset/vocabulary key parser；显式排除 objects/v2/
+│  ├─ manifest.ts          # canonical preflight/digest 与 v2 baseline
+│  ├─ retirement.ts        # 完整 v2 audit、前后比较与编排
+│  ├─ types.ts
+│  └─ index.ts
+├─ test/                   # parser、digest、drift、v2保护与真实PG migration gate
+├─ package.json
+└─ tsconfig.json
+```
+
+该工具不进入 API/CLI 产品面，也不由应用启动或普通 migration wrapper 隐式调用。它可以作为
+L6 maintenance owner直接读取 Postgres和对象存储，但 v2内容验证必须复用 `V2Workspace.audit`。
+操作顺序和operator确认见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。
+
 ## `proto`（内部 gRPC transport，ADR-0010）
 
 ```text
