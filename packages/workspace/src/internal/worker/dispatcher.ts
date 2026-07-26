@@ -84,6 +84,16 @@ export interface WorkerJobCleaner {
   cleanup(context: WorkerCleanupContext): Promise<void>
 }
 
+export interface WorkerDispatcherDiagnostic {
+  readonly level: 'warning' | 'error'
+  readonly code: string
+  readonly jobId?: string
+  readonly attempt?: number
+  readonly errorName?: string
+}
+
+export type WorkerDispatcherReporter = (event: WorkerDispatcherDiagnostic) => void
+
 export interface WorkerDispatcherOptions {
   readonly catalog: WorkerDispatcherCatalog
   readonly client: WorkerClient
@@ -95,6 +105,7 @@ export interface WorkerDispatcherOptions {
   readonly heartbeatMs?: number
   readonly pollMs?: number
   readonly jobDeadlineMs?: number
+  readonly reporter?: WorkerDispatcherReporter
 }
 
 interface ActiveExecution {
@@ -116,6 +127,7 @@ export class WorkerDispatcher {
   readonly #heartbeatMs: number
   readonly #pollMs: number
   readonly #jobDeadlineMs: number
+  readonly #reporter: WorkerDispatcherReporter
   readonly #loopController = new AbortController()
   #capabilities: WorkerCapabilities | null = null
   #active: ActiveExecution | null = null
@@ -132,6 +144,7 @@ export class WorkerDispatcher {
     this.#heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS
     this.#pollMs = options.pollMs ?? DEFAULT_POLL_MS
     this.#jobDeadlineMs = options.jobDeadlineMs ?? DEFAULT_JOB_DEADLINE_MS
+    this.#reporter = options.reporter ?? (() => undefined)
     if (!Number.isSafeInteger(leaseMs) || leaseMs <= 2 * this.#heartbeatMs) {
       throw new TypeError('Worker lease must be greater than two heartbeat intervals')
     }
@@ -175,7 +188,16 @@ export class WorkerDispatcher {
 
   async #loop(): Promise<void> {
     while (!this.#stopping) {
-      const handled = await this.#runOnce().catch(() => false)
+      const handled = await this.#runOnce().catch((error: unknown) => {
+        if (!(error instanceof CleanupFenceDrainError)) {
+          this.#report({
+            level: 'error',
+            code: 'worker_dispatch_cycle_failed',
+            errorName: safeErrorName(error),
+          })
+        }
+        return false
+      })
       if (!handled && !this.#stopping) {
         await waitFor(this.#pollMs, this.#loopController.signal)
       }
@@ -321,7 +343,23 @@ export class WorkerDispatcher {
       await this.#catalog.markTransformJobCancelled(active.lease).catch(() => null)
       return
     }
-    if (error instanceof LeaseLostError || active.leaseFailure !== null) return
+    if (error instanceof LeaseLostError || active.leaseFailure !== null) {
+      this.#report({
+        level: 'warning',
+        code: 'worker_execution_lease_lost',
+        jobId: active.job.id,
+        attempt: active.job.attempt,
+        errorName: safeErrorName(active.leaseFailure ?? error),
+      })
+      return
+    }
+    this.#report({
+      level: 'error',
+      code: 'worker_execution_failed',
+      jobId: active.job.id,
+      attempt: active.job.attempt,
+      errorName: safeErrorName(error),
+    })
     await this.#fail(active, {
       code: 'worker_execution_failed',
       message: 'Worker execution failed before a valid terminal result',
@@ -370,12 +408,13 @@ export class WorkerDispatcher {
   async #drainFence(job: CatalogTransformJobRowV2): Promise<void> {
     if (!job.leaseToken) return
     const lease = { id: job.id, attempt: job.attempt, leaseToken: job.leaseToken }
-    const result = await this.#client.cancelJob({
-      executionId: `${job.id}.${job.attempt}`,
-      attempt: job.attempt,
-      leaseToken: job.leaseToken,
-    })
-    if (result === 'stopped' || result === 'not_found') {
+    try {
+      const result = await this.#client.cancelJob({
+        executionId: `${job.id}.${job.attempt}`,
+        attempt: job.attempt,
+        leaseToken: job.leaseToken,
+      })
+      if (result === 'token_mismatch') throw new CleanupFenceTokenMismatchError()
       await this.#cleaner.cleanup({ job, lease })
       if (!(await this.#catalog.clearTransformJobStagingKeys(lease))) {
         throw new LeaseLostError()
@@ -383,6 +422,23 @@ export class WorkerDispatcher {
       if (!(await this.#catalog.clearTransformJobLeaseFence(lease))) {
         throw new LeaseLostError()
       }
+    } catch (error) {
+      this.#report({
+        level: 'error',
+        code: 'worker_cleanup_fence_failed',
+        jobId: job.id,
+        attempt: job.attempt,
+        errorName: safeErrorName(error),
+      })
+      throw new CleanupFenceDrainError()
+    }
+  }
+
+  #report(event: WorkerDispatcherDiagnostic): void {
+    try {
+      this.#reporter(event)
+    } catch {
+      return
     }
   }
 }
@@ -399,6 +455,34 @@ export class IncompleteWorkerJobFinalizer implements WorkerJobFinalizer {
 
 class LeaseLostError extends Error {
   override readonly name = 'LeaseLostError'
+}
+
+class CleanupFenceTokenMismatchError extends Error {
+  override readonly name = 'CleanupFenceTokenMismatchError'
+}
+
+class CleanupFenceDrainError extends Error {
+  override readonly name = 'CleanupFenceDrainError'
+}
+
+function safeErrorName(error: unknown): string {
+  if (error instanceof LeaseLostError) return error.name
+  if (error instanceof CleanupFenceTokenMismatchError) return error.name
+  if (!(error instanceof Error)) return 'UnknownError'
+  switch (error.name) {
+    case 'Error':
+    case 'TypeError':
+    case 'RangeError':
+    case 'SyntaxError':
+    case 'URIError':
+    case 'AggregateError':
+    case 'EvalError':
+    case 'ReferenceError':
+    case 'AbortError':
+      return error.name
+    default:
+      return 'ExternalError'
+  }
 }
 
 function safeCode(value: string): string {

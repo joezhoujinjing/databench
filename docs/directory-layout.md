@@ -287,8 +287,8 @@ R4 maintenance tool和 forward migration必须保留，供尚未执行退役的�
 
 ## Worker 布局（ADR 0010）
 
-P1 foundation、P2 job 控制面、P3 临时数据面、P4 Data-Juicer adapter 与 P5 canonical
-finalizer 已落地；标为 “planned”的产品面只在 P6 实现后成为 runtime：
+P0-P7 已完成并通过最终 Gate；Worker foundation、job 控制面、临时数据面、Data-Juicer adapter、
+canonical finalizer、REST/Web 产品面和生产 runtime 显式启用接线均已落地：
 
 ```text
 proto/

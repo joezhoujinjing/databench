@@ -42,8 +42,8 @@ REST: /v2/...
 
 ## Worker 执行边界
 
-ADR 0010 P1-P6 已在当前 v2-only 基线上落地 Worker foundation、控制面、临时数据面、首个
-Data-Juicer adapter、canonical finalizer 与 REST/Web 产品闭环：
+ADR 0010 P0-P7 已在当前 v2-only 基线上完成并通过最终 Gate，落地 Worker foundation、控制面、
+临时数据面、首个 Data-Juicer adapter、canonical finalizer 与 REST/Web 产品闭环：
 
 ```text
 proto/                  internal Worker gRPC 唯一 transport source
@@ -63,8 +63,8 @@ Proto/client、health、test-only `fixture.copy@1`、`transform_jobs_v2`、dispa
 lifecycle，以及 exact staging key/signed URL/bounded reader、固定 projection/retained reader 和
 cleanup fence drain，以及固定 `data_juicer.batch@1` allowlist、受控子进程和 TS-owned
 `basic-clean-v1` 参数编译器；P5 已实现 exact projector、retained→原 revision 重建、共享 canonical
-publication、layout+Run+job 原子完成、读回验证与成功后的 exact staging cleanup。REST/Web 产品面
-和生产 runtime 默认接线仍未实现。
+publication、layout+Run+job 原子完成、读回验证与成功后的 exact staging cleanup；P6/P7 已完成
+REST/Web 产品面、生产 runtime 显式启用接线和最终验证。
 进度与后续施工边界以 `docs/processing/` 为真源。
 
 ## 依赖方向

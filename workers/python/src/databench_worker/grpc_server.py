@@ -57,7 +57,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Databench Python Worker")
     parser.add_argument(
         "--listen",
-        default=os.environ.get("DATABENCH_WORKER_LISTEN", "127.0.0.1:50051"),
+        default=os.environ.get("DATABENCH_WORKER_BIND", "127.0.0.1:50051"),
     )
     args = parser.parse_args()
     asyncio.run(serve(args.listen))

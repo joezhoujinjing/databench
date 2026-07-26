@@ -14,6 +14,8 @@ import {
   IncompleteWorkerJobFinalizer,
   UnavailableWorkerJobPreparer,
   WorkerDispatcher,
+  type WorkerDispatcherDiagnostic,
+  type WorkerDispatcherReporter,
   type WorkerJobCleaner,
   type WorkerJobFinalizer,
   type WorkerJobPreparer,
@@ -42,6 +44,7 @@ export interface OpenWorkerRuntimeOptions {
   readonly preparer?: WorkerJobPreparer
   readonly finalizer?: WorkerJobFinalizer
   readonly cleaner?: WorkerJobCleaner
+  readonly reporter?: WorkerDispatcherReporter
 }
 
 export interface WorkerRuntime {
@@ -108,6 +111,7 @@ export async function openWorkerRuntime(options: OpenWorkerRuntimeOptions): Prom
       ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }),
       ...(options.heartbeatMs === undefined ? {} : { heartbeatMs: options.heartbeatMs }),
       ...(options.pollMs === undefined ? {} : { pollMs: options.pollMs }),
+      reporter: options.reporter ?? reportWorkerDispatcherDiagnostic,
     })
     let stopped = false
     return {
@@ -131,4 +135,8 @@ export async function openWorkerRuntime(options: OpenWorkerRuntimeOptions): Prom
     if (ownsClient) client.close()
     throw error
   }
+}
+
+function reportWorkerDispatcherDiagnostic(event: WorkerDispatcherDiagnostic): void {
+  process.stderr.write(`${JSON.stringify({ component: 'worker_dispatcher', ...event })}\n`)
 }

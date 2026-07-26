@@ -20,12 +20,16 @@ import {
   IncompleteWorkerJobFinalizer,
   WorkerDispatcher,
   type WorkerDispatcherCatalog,
+  type WorkerDispatcherDiagnostic,
+  type WorkerDispatcherReporter,
   type WorkerJobCleaner,
   type WorkerJobFinalizer,
   type WorkerJobPreparer,
 } from '../src/internal/worker/dispatcher.js'
 
 const TOKEN = new Uint8Array(32).fill(7)
+const SENSITIVE_ERROR =
+  'signed=https://objects.example.test/input?token=secret-token lease=secret-lease sample=private'
 
 describe('WorkerDispatcher', () => {
   test('maps Worker progress and an incomplete completion into a durable failed fence cleanup', async () => {
@@ -67,12 +71,15 @@ describe('WorkerDispatcher', () => {
 
   test('fails abnormal EOF and never treats it as completion', async () => {
     const catalog = new FakeCatalog()
+    const diagnostics: WorkerDispatcherDiagnostic[] = []
     const client = new FakeClient(async function* () {
       yield event('accepted')
       yield event('started')
-      throw new Error('abnormal eof')
+      throw new Error(SENSITIVE_ERROR)
     })
-    const dispatcher = createDispatcher(catalog, client)
+    const dispatcher = createDispatcher(catalog, client, undefined, undefined, (diagnostic) =>
+      diagnostics.push(diagnostic),
+    )
 
     await dispatcher.start()
     await waitUntil(() => catalog.row.status === 'failed' && catalog.row.leaseToken === null)
@@ -80,6 +87,38 @@ describe('WorkerDispatcher', () => {
 
     expect(catalog.transitions).toContain('failed:worker_execution_failed')
     expect(catalog.transitions).not.toContain('finalizing')
+    expect(diagnostics).toContainEqual({
+      level: 'error',
+      code: 'worker_execution_failed',
+      jobId: catalog.row.id,
+      attempt: 1,
+      errorName: 'Error',
+    })
+    expect(JSON.stringify(diagnostics)).not.toContain(SENSITIVE_ERROR)
+  })
+
+  test('reports dispatcher cycle failures without exposing error contents', async () => {
+    const catalog = new FakeCatalog()
+    vi.spyOn(catalog, 'failExpiredTransformJobLeases').mockRejectedValue(new Error(SENSITIVE_ERROR))
+    const diagnostics: WorkerDispatcherDiagnostic[] = []
+    const dispatcher = createDispatcher(
+      catalog,
+      new FakeClient(async function* () {}),
+      undefined,
+      undefined,
+      (diagnostic) => diagnostics.push(diagnostic),
+    )
+
+    await dispatcher.start()
+    await waitUntil(() => diagnostics.length > 0)
+    await dispatcher.stop()
+
+    expect(diagnostics[0]).toEqual({
+      level: 'error',
+      code: 'worker_dispatch_cycle_failed',
+      errorName: 'Error',
+    })
+    expect(JSON.stringify(diagnostics)).not.toContain(SENSITIVE_ERROR)
   })
 
   test('fails a missing exact capability without dispatching a Worker run', async () => {
@@ -158,6 +197,7 @@ describe('WorkerDispatcher', () => {
 
   test('retains the cleanup fence when exact staging deletion fails', async () => {
     const catalog = new FakeCatalog()
+    const diagnostics: WorkerDispatcherDiagnostic[] = []
     catalog.row = {
       ...catalog.row,
       inputKey: `staging/worker/v1/${catalog.row.id}/1/input.jsonl`,
@@ -174,10 +214,12 @@ describe('WorkerDispatcher', () => {
     })
     const cleaner: WorkerJobCleaner = {
       async cleanup() {
-        throw new Error('object store unavailable')
+        throw new Error(SENSITIVE_ERROR)
       },
     }
-    const dispatcher = createDispatcher(catalog, client, cleaner)
+    const dispatcher = createDispatcher(catalog, client, cleaner, undefined, (diagnostic) =>
+      diagnostics.push(diagnostic),
+    )
 
     await dispatcher.start()
     await waitUntil(() => catalog.row.status === 'failed')
@@ -187,6 +229,63 @@ describe('WorkerDispatcher', () => {
     expect(catalog.row.leaseToken).toBe(TOKEN)
     expect(catalog.transitions).not.toContain('staging-cleared')
     expect(catalog.transitions).not.toContain('fence-cleared')
+    expect(diagnostics).toContainEqual({
+      level: 'error',
+      code: 'worker_cleanup_fence_failed',
+      jobId: catalog.row.id,
+      attempt: 1,
+      errorName: 'Error',
+    })
+    expect(JSON.stringify(diagnostics)).not.toContain(SENSITIVE_ERROR)
+  })
+
+  test('treats a cleanup token mismatch as a retryable diagnosed fence failure', async () => {
+    const catalog = new FakeCatalog()
+    catalog.row = {
+      ...catalog.row,
+      status: 'failed',
+      attempt: 1,
+      leaseOwner: 'dispatcher.test',
+      leaseToken: TOKEN,
+      leaseExpiresAt: new Date(Date.now() + 1_000),
+      finishedAt: new Date(),
+    }
+    const diagnostics: WorkerDispatcherDiagnostic[] = []
+    const client = new FakeClient(async function* () {}, undefined, 'token_mismatch')
+    const dispatcher = createDispatcher(catalog, client, undefined, undefined, (diagnostic) =>
+      diagnostics.push(diagnostic),
+    )
+
+    await dispatcher.start()
+    await waitUntil(() => diagnostics.length > 0)
+    await dispatcher.stop()
+
+    expect(catalog.row.leaseToken).toBe(TOKEN)
+    expect(diagnostics[0]).toEqual({
+      level: 'error',
+      code: 'worker_cleanup_fence_failed',
+      jobId: catalog.row.id,
+      attempt: 1,
+      errorName: 'CleanupFenceTokenMismatchError',
+    })
+  })
+
+  test('does not let reporter failures break durable failure and cleanup', async () => {
+    const catalog = new FakeCatalog()
+    const client = new FakeClient(async function* () {
+      yield event('accepted')
+      throw new Error('transport failed')
+    })
+    const dispatcher = createDispatcher(catalog, client, undefined, undefined, () => {
+      throw new Error('reporter failed')
+    })
+
+    await dispatcher.start()
+    await waitUntil(() => catalog.row.status === 'failed' && catalog.row.leaseToken === null)
+    await dispatcher.stop()
+
+    expect(catalog.transitions).toContain('failed:worker_execution_failed')
+    expect(catalog.transitions).toContain('fence-cleared')
   })
 
   test('does not treat the expected completed lease clear as heartbeat lease loss', async () => {
@@ -223,6 +322,7 @@ function createDispatcher(
   client: FakeClient,
   cleaner: WorkerJobCleaner = { async cleanup() {} },
   finalizer: WorkerJobFinalizer = new IncompleteWorkerJobFinalizer(),
+  reporter?: WorkerDispatcherReporter,
 ): WorkerDispatcher {
   const preparer: WorkerJobPreparer = {
     async prepare() {
@@ -248,6 +348,7 @@ function createDispatcher(
     heartbeatMs: 20,
     pollMs: 1,
     jobDeadlineMs: 1_000,
+    ...(reporter === undefined ? {} : { reporter }),
   })
 }
 

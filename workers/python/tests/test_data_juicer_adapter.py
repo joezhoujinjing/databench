@@ -18,6 +18,7 @@ from databench_worker.adapters.data_juicer import (
     PARAMETER_VERSION,
     AdapterFailure,
     DataJuicerBatchAdapter,
+    _report_process_failure,
     _validate_artifact_contract,
 )
 from databench_worker.adapters.data_juicer import _validate_input, _write_retained_output
@@ -103,6 +104,24 @@ def test_input_and_retained_output_are_strict_and_bounded(tmp_path: Path) -> Non
     oversized.outputs[0].max_size = 1024 * 1024 * 1024 + 1
     with pytest.raises(AdapterFailure, match="artifact limit"):
         _validate_artifact_contract(RunContext(request=oversized, cancellation=asyncio.Event()))
+
+
+def test_process_failure_diagnostic_fingerprints_but_never_prints_the_log_tail(capsys) -> None:
+    log_tail = b"sample=private signed=https://objects.example.test/output?token=secret-token"
+
+    _report_process_failure(17, log_tail)
+
+    captured = capsys.readouterr()
+    diagnostic = json.loads(captured.err)
+    assert diagnostic == {
+        "component": "data_juicer_adapter",
+        "code": "data_juicer_process_failed",
+        "returncode": 17,
+        "log_tail_bytes": len(log_tail),
+        "log_tail_sha256": hashlib.sha256(log_tail).hexdigest(),
+    }
+    assert log_tail.decode() not in captured.err
+    assert "secret-token" not in captured.err
 
 
 async def test_real_data_juicer_100_row_semantics_and_cleanup() -> None:

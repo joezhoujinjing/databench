@@ -11,6 +11,10 @@ uv sync --directory workers/python --frozen
 uv run --directory workers/python databench-worker --listen 127.0.0.1:50051
 ```
 
+The gRPC bind address defaults to `127.0.0.1:50051`. Set `DATABENCH_WORKER_BIND` to change the
+service default, or pass `--listen` to override it explicitly. `DATABENCH_WORKER_TEMP_ROOT` selects
+the private root used for per-job temporary directories.
+
 The P1-only `fixture.copy@1` capability is disabled by default. Tests enable it explicitly with
 `DATABENCH_WORKER_ENABLE_TEST_CAPABILITIES=1`; it must not be enabled in a product deployment.
 

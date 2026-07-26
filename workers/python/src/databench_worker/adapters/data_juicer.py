@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -145,6 +146,7 @@ class DataJuicerBatchAdapter:
             if result.status == "deadline":
                 raise AdapterFailure("deadline_exceeded", "Data-Juicer execution exceeded its deadline")
             if result.returncode != 0:
+                _report_process_failure(result.returncode, result.log_tail)
                 raise AdapterFailure("data_juicer_failed", "Data-Juicer execution failed")
 
             output_count = await asyncio.to_thread(
@@ -322,6 +324,24 @@ def _child_environment(job_dir: Path) -> dict[str, str]:
         "TOKENIZERS_PARALLELISM": "false",
         "LANG": "C.UTF-8",
     }
+
+
+def _report_process_failure(returncode: int, log_tail: bytes) -> None:
+    diagnostic = {
+        "component": "data_juicer_adapter",
+        "code": "data_juicer_process_failed",
+        "returncode": returncode,
+        "log_tail_bytes": len(log_tail),
+        "log_tail_sha256": hashlib.sha256(log_tail).hexdigest(),
+    }
+    try:
+        print(
+            json.dumps(diagnostic, separators=(",", ":"), sort_keys=True),
+            file=sys.stderr,
+            flush=True,
+        )
+    except (OSError, ValueError):
+        pass
 
 
 def _strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

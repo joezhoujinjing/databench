@@ -884,8 +884,10 @@ SIGTERM/SIGINT：
 |---|---:|---|
 | `DATABENCH_WORKER_BIND` | `127.0.0.1:50051` | gRPC bind |
 | `DATABENCH_WORKER_TEMP_ROOT` | OS temp 下专属目录 | job 临时文件 |
-| `DATABENCH_WORKER_MAX_JOBS` | `1` | batch slot |
-| `DATABENCH_WORKER_LOG_LEVEL` | `info` | 结构化日志级别 |
+
+第一版 Worker 总 batch 并发固定为 1，不提供运行时并发变量。dispatcher 与 Data-Juicer 子进程
+失败使用固定的脱敏 JSON stderr 诊断，不提供运行时日志级别变量；诊断只含稳定 code、job/attempt、
+异常类型或子进程 return code，以及 bounded log tail 的长度与 SHA-256，不输出 log tail 原文。
 
 Data-Juicer adapter 的版本、`np`、operator allowlist 和网络禁用不是环境变量，不允许运维在
 运行时改变；它们由 capability version 和 lock 固定。
