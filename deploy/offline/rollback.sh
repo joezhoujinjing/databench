@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 # shellcheck source=lib/manifest.sh
 source "${SCRIPT_DIR}/lib/manifest.sh"
+# shellcheck source=lib/config.sh
+source "${SCRIPT_DIR}/lib/config.sh"
 # shellcheck source=lib/health.sh
 source "${SCRIPT_DIR}/lib/health.sh"
 
@@ -42,6 +44,9 @@ TARGET_RELEASE="${DATABENCH_RELEASES_DIR}/${TARGET_VERSION}"
 validate_release_contract "$TARGET_RELEASE"
 load_release_manifest "${CURRENT_RELEASE}/release-manifest.json"
 CURRENT_ROLLBACK_MODE="$MANIFEST_ROLLBACK_MODE"
+validate_existing_config
+validate_release_mcp_config_if_required "$CURRENT_RELEASE"
+validate_release_mcp_config_if_required "$TARGET_RELEASE"
 
 if [ "$CURRENT_ROLLBACK_MODE" = 'restore-backup' ] && [ -z "$BACKUP_INPUT" ]; then
   die "release $CURRENT_VERSION requires --backup for rollback"

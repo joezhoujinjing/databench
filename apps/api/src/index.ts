@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { Server as HttpServer } from 'node:http'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   DATA_JUICER_BATCH_CAPABILITY_V1,
@@ -9,6 +10,7 @@ import {
 import { serve } from '@hono/node-server'
 import { createApp, createOpenApiDocument } from './app.js'
 import { type ApiConfig, loadConfig } from './config.js'
+import { mcpHttpRequestTimeoutMs } from './mcp/config.js'
 
 export { createApp, createOpenApiDocument, loadConfig }
 
@@ -28,6 +30,7 @@ export function createAppFromConfig(config: ApiConfig) {
     ...(config.databaseUrl !== undefined ? { databaseUrl: config.databaseUrl } : {}),
     ...(config.openApiServerUrl !== undefined ? { openApiServerUrl: config.openApiServerUrl } : {}),
     corsOrigins: config.corsOrigins,
+    mcp: config.mcp,
     storeConfig: config.storeConfig,
     v2CursorSecret: config.v2CursorSecret,
     version: config.version,
@@ -56,6 +59,7 @@ export async function startApiRuntime(
   config: ApiConfig,
   dependencies: ApiRuntimeDependencies = DEFAULT_RUNTIME_DEPENDENCIES,
 ): Promise<ApiRuntime> {
+  const mcpConfig = config.mcp ?? { enabled: false }
   const workspace = await dependencies.openWorkspace({
     root: config.workspaceRoot,
     cursorSecret: config.v2CursorSecret,
@@ -85,12 +89,20 @@ export async function startApiRuntime(
         ? {}
         : { openApiServerUrl: config.openApiServerUrl }),
       corsOrigins: config.corsOrigins,
+      mcp: mcpConfig,
       version: config.version,
       workspaceRoot: config.workspaceRoot,
       workerJobsAvailable:
         workerRuntime?.supportsCapability(DATA_JUICER_BATCH_CAPABILITY_V1, '1') ?? false,
     })
     server = dependencies.serve({ fetch: app.fetch, port: config.port })
+    const requestTimeoutMs = mcpHttpRequestTimeoutMs(mcpConfig)
+    if (requestTimeoutMs !== undefined) {
+      if (!(server instanceof HttpServer)) {
+        throw new TypeError('MCP requires the Node HTTP/1 server request timeout boundary')
+      }
+      server.requestTimeout = requestTimeoutMs
+    }
   } catch (error) {
     await workerRuntime?.stop().catch(() => undefined)
     await workspace.close().catch(() => undefined)
@@ -143,6 +155,11 @@ async function startEntrypoint(): Promise<void> {
   process.once('SIGTERM', () => void shutdown())
   process.once('SIGINT', () => void shutdown())
   console.log(`databench api listening on :${config.port}`)
+  if (config.mcp.enabled) {
+    console.warn(
+      'WARNING: Databench MCP is anonymous with full access; use only on a trusted network',
+    )
+  }
 }
 
 async function withDeadline(operation: Promise<void>, milliseconds: number): Promise<void> {

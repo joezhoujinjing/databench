@@ -10,14 +10,16 @@
 - 允许升级和备份期间短暂停机。
 
 如果只需要快速安装，先看 [README.zh-CN.md](README.zh-CN.md)。遇到错误时看
-[TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)。
+[TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)。Agent 接入和 Excel 使用方式见
+[MCP-AGENT-GUIDE.zh-CN.md](MCP-AGENT-GUIDE.zh-CN.md)。
 
 ## 1. 重要边界
 
 1. 离线包不包含 Docker Engine，也不会在目标机安装或升级 Docker。
 2. 安装和运行期间不会执行 `docker pull`、`docker build`、`pnpm install` 或访问公网。
 3. 宿主机只发布 TCP 80。API、PostgreSQL、MinIO 和 MinIO Console不发布宿主机端口。
-4. 当前没有应用层鉴权。必须通过现场防火墙把 TCP 80 限制到获准内网网段，禁止暴露公网。
+4. 当前 Web、REST 和 MCP 都没有应用层鉴权。必须通过现场防火墙把 TCP 80 限制到获准内网
+   网段，禁止暴露公网；任何可访问者都有完整 MCP 能力。
 5. 单机部署没有高可用。生产数据必须备份到另一台机器、NAS 或离线介质。
 6. 不要执行 `docker compose down -v`，不要删除 `/srv/databench`，不要手工清理数据库目录。
 7. 应用版本只接受无前导零的三段数字，例如 `1.0.0`；不要使用 `v1.0.0`、`1.0` 或
@@ -146,6 +148,7 @@ deploy/offline/build-bundle.sh 2.0.0
 - Docker Compose plugin 2.20.0 或更新版本；
 - 根文件系统至少 20 GiB 可用空间；
 - TCP 80 未被其他容器发布；
+- 已确定 agent 可达的稳定内网 IP 或 DNS，用于 `http(s)://<host>/api`；
 - 管理员具备 `sudo` 权限。
 
 试运行容量建议为 8 vCPU、32 GiB RAM、100 GiB 系统盘。真实生产规格应根据最大数据集另做
@@ -212,25 +215,30 @@ cat release-manifest.json
 
 ### 6.1 执行安装
 
-在解压目录执行：
+在解压目录执行。运行安装器前，必须先由现场网络管理员按 7.4 把 TCP 80 限制到获准 CIDR，并
+分别从获准/未获准网段验证；匿名 MCP 启动后没有第二层认证，不能把防火墙留到安装后。随后必须
+显式提供 agent 可达的稳定 public base，安装器不会从 Host、容器名或 `hostname -I` 猜测：
 
 ```bash
-sudo ./install.sh
+sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./install.sh
 ```
 
-使用包内标准入口 `sudo ./install.sh`，不要手工改脚本，也不要在脚本前手工 `docker load`。
+不要手工改脚本，也不要在脚本前手工 `docker load`。Public base 必须是绝对 HTTP(S) URL，path
+精确为 `/api`，且不含 credential、query、fragment 或尾随 `/`；DNS 使用小写，默认 HTTP(S)
+端口必须省略，非默认端口使用无前导零的十进制。
 安装器会按固定顺序完成：
 
 1. 校验外层和包内 SHA-256；
 2. 检查 OS、架构、Docker、Compose、磁盘和端口；
 3. 创建安装、配置和数据目录；
-4. 自动生成数据库、MinIO、应用访问和 v2 cursor secret；
+4. 自动生成数据库、MinIO、应用访问和 v2 cursor secret，并把显式 MCP public base 写入独立的
+   `/etc/databench/mcp.env`；
 5. 导入五张离线镜像；
 6. 启动 PostgreSQL 和 MinIO；
 7. 创建 MinIO bucket、应用用户和 bucket-scoped policy；
 8. 执行 `prisma migrate deploy`；
 9. 启动 API 和 Web；
-10. 执行 doctor、Caddy proxy 检查和固定数据集生命周期 smoke；
+10. 执行 doctor、Caddy proxy、MCP SDK/companion 和固定数据集生命周期 smoke；
 11. 安装 `/usr/local/bin/databenchctl`。
 
 安装期间出现的密码不会输出到终端或日志。
@@ -244,6 +252,7 @@ Databench installation succeeded
 
 URL: http://10.0.0.10
 Configuration: /etc/databench/databench.env
+MCP endpoint: http://10.0.0.10/api/mcp
 Data: /srv/databench
 Version: 1.0.0
 ```
@@ -296,6 +305,16 @@ http://<服务器IP或内部DNS>
 Network 面板，API Request URL 应以 `/api/` 开头，响应 `Content-Type` 应为
 `application/json`，不能是 `text/html`。
 
+从目标 agent 配置 Streamable HTTP endpoint：
+
+```text
+http://<服务器IP或内部DNS>/api/mcp
+```
+
+不配置用户名、密码或 bearer token。确认 agent 可以 initialize、看到四个 tools，并能访问
+prepare 返回的同一 `/api` base 下绝对 PUT/GET URL。随后按
+[MCP-AGENT-GUIDE.zh-CN.md](MCP-AGENT-GUIDE.zh-CN.md) 用真实 Excel 完成三种意图验收。
+
 ### 7.3 端口检查
 
 ```bash
@@ -308,8 +327,8 @@ Databench 业务容器只应看到宿主机 `0.0.0.0:80->80/tcp`。PostgreSQL 54
 
 ### 7.4 防火墙
 
-安装器不会猜测现场网段，也不会修改宿主机防火墙。上线前必须由现场管理员把 TCP 80 限制到
-获准 CIDR。
+安装器不会猜测现场网段，也不会修改宿主机防火墙。运行 `install.sh` 或首次启用 MCP 的
+`upgrade.sh` 前，必须由现场管理员把 TCP 80 限制到获准 CIDR。
 
 优先使用企业边界防火墙或云/虚拟化平台安全策略。若使用 Docker 的 `DOCKER-USER` 链，可在
 变更窗口参考以下模板，先替换 `<APPROVED_CIDR>`：
@@ -331,6 +350,7 @@ sudo iptables -L DOCKER-USER -n --line-numbers
 | `/opt/databench-offline/current` | 当前版本原子软链接 | 不要手工改，使用升级/回滚脚本 |
 | `/opt/databench-offline/state` | current/previous/backup marker | 不要删除 |
 | `/etc/databench/databench.env` | 数据库、MinIO 和 v2 secret | 不要提交、打印或随意编辑 |
+| `/etc/databench/mcp.env` | 匿名模式与 agent 可达 public base | 维护窗口显式修改，禁止改成公网 URL |
 | `/etc/databench/backup.key` | 备份配置 escrow 加密密钥 | 必须异机单独保存 |
 | `/srv/databench/postgres` | PostgreSQL 数据目录 | 禁止手工修改 |
 | `/srv/databench/minio` | MinIO 对象数据 | 禁止手工修改 |
@@ -340,10 +360,11 @@ sudo iptables -L DOCKER-USER -n --line-numbers
 检查权限但不要输出内容：
 
 ```bash
-sudo stat -c '%U:%G %a %n' /etc/databench/databench.env /etc/databench/backup.key
+sudo stat -c '%U:%G %a %n' \
+  /etc/databench/databench.env /etc/databench/mcp.env /etc/databench/backup.key
 ```
 
-两个文件都应为 `root:root 600`。
+三个文件都应为 `root:root 600`。
 
 升级不会轮换 secret。需要轮换时必须另做维护方案和恢复演练，不要直接编辑 `.env` 后只重启
 部分容器。
@@ -445,8 +466,12 @@ sha256sum -c databench-offline-1.1.0-linux-amd64.tar.gz.sha256
 ```bash
 tar -xzf databench-offline-1.1.0-linux-amd64.tar.gz
 cd databench-offline-1.1.0-linux-amd64
-sudo ./upgrade.sh
+sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./upgrade.sh
 ```
+
+已有 `/etc/databench/mcp.env` 时可以省略该环境变量；传入时必须与已持久化值完全一致。首次从
+不含 MCP 配置的旧版本升级时必须提供，脚本会在停止写入前校验并原子创建独立配置，不修改已有
+secret。回滚到不包含 M2 配置的旧 release 时，该旧 Compose 不会加载 `mcp.env`，MCP 随旧版停用。
 
 升级会：
 
@@ -574,6 +599,7 @@ curl -fsS http://127.0.0.1/api/version
 ```
 
 再从获准内网客户端访问 Web，抽查已有数据仍可读取。重启验收不应执行重新安装。
+重启会使全部一次性 MCP URL 失效；目标 agent 必须重新 prepare，再确认导入/导出恢复。
 
 ## 15. 上线验收清单
 
@@ -584,10 +610,14 @@ curl -fsS http://127.0.0.1/api/version
 - [ ] `databenchctl version` 与发布版本一致；
 - [ ] `databenchctl doctor` 的 database/store 均为 true；
 - [ ] `/api/version` 的 `service_version` 正确；
+- [ ] `/etc/databench/mcp.env` 为 `root:root 0600`，public base 是实际 agent 可达的 `/api`；
+- [ ] 目标 agent 经 `/api/mcp` 完成 Excel direct import、preview/修改后 import 和 JSONL-only；
+- [ ] MCP/companion 的 prepare URL、单次消费、重启失效、abort 清理和 exact-byte replay 已通过；
+- [ ] API、Caddy 和现场前置代理日志不包含完整 `proc_*` / `exp_*` token；
 - [ ] Web 能从获准网段访问；
 - [ ] 未获准网段不能访问 TCP 80；
 - [ ] 5432、8000、9000、9001 未发布到宿主机；
-- [ ] `/etc/databench` 两个文件权限均为 `0600`；
+- [ ] `/etc/databench` 的 `databench.env`、`mcp.env`、`backup.key` 三个文件权限均为 `0600`；
 - [ ] 已创建一份一致性备份并校验；
 - [ ] backup generation、匹配发布包和 `backup.key` 已异机保存；
 - [ ] 已在测试机演练升级失败自动恢复；

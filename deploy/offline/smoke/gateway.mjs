@@ -25,6 +25,33 @@ for (const path of apiPaths) {
   }
 }
 
+const mcpMethodResponse = await fetch(`${origin}/api/mcp`)
+if (mcpMethodResponse.status !== 405 || mcpMethodResponse.headers.get('allow') !== 'POST') {
+  throw new Error('/api/mcp did not reach the MCP handler through Caddy')
+}
+
+const logSentinel = `proc_${'f'.repeat(64)}`
+const invalidTokenResponse = await fetch(`${origin}/api/mcp-files/process/${logSentinel}`, {
+  method: 'PUT',
+  headers: { 'content-type': 'application/x-ndjson' },
+  body: '{}\n',
+})
+if (invalidTokenResponse.status !== 400) {
+  throw new Error('invalid companion token did not reach the API through Caddy')
+}
+if ((await invalidTokenResponse.text()).includes(logSentinel)) {
+  throw new Error('companion error response leaked its bearer token')
+}
+
+const exportLogSentinel = `exp_${'e'.repeat(64)}`
+const invalidExportResponse = await fetch(`${origin}/api/mcp-files/export/${exportLogSentinel}`)
+if (invalidExportResponse.status !== 400) {
+  throw new Error('invalid export token did not reach the API through Caddy')
+}
+if ((await invalidExportResponse.text()).includes(exportLogSentinel)) {
+  throw new Error('export error response leaked its bearer token')
+}
+
 const pagePath = '/datasets/system-offline-smoke-v2'
 const apiPath = '/api/v2/datasets/system-offline-smoke-v2'
 const pageResponse = await fetch(origin + pagePath, { headers: { Accept: 'text/html' } })

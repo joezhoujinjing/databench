@@ -32,6 +32,7 @@ import {
 } from '@databench/engine'
 import {
   canonicalJsonV2,
+  createArtifactHasher,
   hashV2TransformCache,
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
@@ -39,6 +40,7 @@ import {
 import {
   createDefaultV2ConverterRegistry,
   DEFAULT_CANONICAL_JSONL_MAX_TRANSPORT_BYTES_V2,
+  readCanonicalDraftJsonlV1,
   readCanonicalJsonlV2,
   type V2ConverterRegistry,
 } from '@databench/io'
@@ -54,6 +56,7 @@ import {
   type AuditResultV2,
   AuditResultV2Schema,
   assertExportFidelityAcceptedV2,
+  type CanonicalDraftRecordV1,
   CapacityExceededError,
   type ConverterAnalysisV2,
   type ConverterDescriptorV2,
@@ -64,6 +67,7 @@ import {
   CreateBasicCleanJobRequestV2Schema,
   type CursorPageRequestV2,
   CursorPageRequestV2Schema,
+  canonicalPreviewRecordFromDraftV1,
   createExportPlanV2,
   createPostTrainingV2Capability,
   createRecordSummaryV2,
@@ -97,7 +101,14 @@ import {
   type JsonObjectV2,
   type LineagePageRequestV2,
   LineagePageRequestV2Schema,
+  MCP_MAX_PREVIEW_RECORDS,
+  type McpCanonicalDraftValidationPreviewResult,
+  McpCanonicalDraftValidationPreviewResultSchema,
+  type McpCanonicalValidationPreviewResult,
+  McpCanonicalValidationPreviewResultSchema,
   NotFoundError,
+  type PostTrainingRecordV2,
+  PostTrainingRecordV2Schema,
   type PostTrainingV2Capability,
   type PostTrainingV2Limits,
   type PutRefRequestV2,
@@ -116,6 +127,7 @@ import {
   RefOrVersionV2Schema,
   type RefPageV2,
   RefPageV2Schema,
+  ResourceLimitError,
   type RestoreRefRequestV2,
   RestoreRefRequestV2Schema,
   type RestoreRefResultV2,
@@ -148,6 +160,7 @@ import {
   type V2ObjectStoreConfig,
   type V2OperationContext,
   type V2Store,
+  V2TempStore,
   v2ObjectStoreConfigFromEnv,
   type WorkerStagingStoreV1,
   workerStagingKeyV1,
@@ -175,6 +188,11 @@ import {
   type V2DatasetLease,
   v2DatasetCacheRequiredWeight,
 } from './cache.js'
+import {
+  materializeCanonicalDraftJsonlV1,
+  type V2CanonicalDraftMaterialization,
+  type V2CanonicalDraftMaterializeOptions,
+} from './canonical-draft-materializer.js'
 import { V2CursorCodec } from './cursor.js'
 import { V2WorkspaceIdentityAllocator } from './identity-allocator.js'
 import {
@@ -244,6 +262,11 @@ export interface V2WorkspaceCatalog {
 
 export interface V2WorkspaceOperationOptions extends V2OperationContext {}
 
+export interface V2CanonicalJsonlPreviewOptions {
+  readonly previewRecords?: number
+  readonly maxResponseBytes: number
+}
+
 export interface V2TransformLimits {
   readonly max_input_datasets: number
   readonly max_working_set_bytes: number
@@ -269,6 +292,7 @@ export interface PostTrainingV2CapabilityOptions {
 export interface V2WorkspaceOptions {
   readonly catalog: V2WorkspaceCatalog
   readonly store: V2Store
+  readonly tempStore?: V2TempStore
   readonly cursorSecret: Uint8Array | string
   readonly cache?: V2DatasetCache
   readonly datasetLimits?: V2DatasetLimits
@@ -314,6 +338,7 @@ type CleanupOutcomeV2 =
 export class V2Workspace {
   readonly #catalog: V2WorkspaceCatalog
   readonly #store: V2Store
+  readonly #tempStore: V2TempStore
   readonly #cache: V2DatasetCache
   readonly #cursor: V2CursorCodec
   readonly #datasetLimits: Readonly<V2DatasetLimits>
@@ -335,14 +360,18 @@ export class V2Workspace {
     )
     try {
       const objectStore = createV2ObjectStore(options.storeConfig ?? v2ObjectStoreConfigFromEnv())
+      const tempRoot = v2WorkspaceTempRoot(options.root)
+      const tempStore = new V2TempStore({ tempRoot })
       const store = new FileBackedV2Store({
         objectStore,
-        tempRoot: v2WorkspaceTempRoot(options.root),
+        tempRoot,
+        tempStore,
         ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
       })
       const workspace = new V2Workspace({
         catalog,
         store,
+        tempStore,
         cursorSecret: options.cursorSecret,
         ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
         ...(options.transformLimits === undefined
@@ -374,8 +403,12 @@ export class V2Workspace {
     if (!options.store || typeof options.store !== 'object') {
       throw new TypeError('V2Workspace store is required')
     }
+    if (options.tempStore !== undefined && !(options.tempStore instanceof V2TempStore)) {
+      throw new TypeError('V2Workspace tempStore must be a V2TempStore')
+    }
     this.#catalog = options.catalog
     this.#store = options.store
+    this.#tempStore = options.tempStore ?? new V2TempStore({ tempRoot: v2WorkspaceTempRoot() })
     this.#cursor = new V2CursorCodec(options.cursorSecret)
     this.#datasetLimits = snapshotDatasetLimits(options.datasetLimits ?? DEFAULT_V2_DATASET_LIMITS)
     this.#transformRegistry = options.transformRegistry ?? BUILTIN_V2_TRANSFORM_REGISTRY
@@ -494,6 +527,146 @@ export class V2Workspace {
       if (optionsFailure !== NO_ASYNC_OPTIONS_FAILURE) throw optionsFailure
       throw error
     }
+  }
+
+  async previewCanonicalJsonl(
+    source: AsyncIterable<Uint8Array>,
+    optionsInput: V2CanonicalJsonlPreviewOptions,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<Readonly<McpCanonicalValidationPreviewResult>> {
+    context.signal?.throwIfAborted()
+    const options = snapshotCanonicalPreviewOptions(optionsInput)
+    const hasher = createArtifactHasher()
+    const previewRecordIds: string[] = []
+    let recordCount = 0
+    const operationOptions = operationContext(context.signal)
+    const parsed = readCanonicalJsonlV2(hashCanonicalSource(source, hasher, context.signal), {
+      limits: {
+        maxBytes: this.#datasetLimits.max_record_bytes,
+        maxDepth: this.#jsonlLimits.max_nesting_depth,
+      },
+      maxTransportBytes: this.#jsonlLimits.max_request_bytes,
+      ...operationOptions,
+    })
+    const observed = observePreviewRecords(parsed, previewRecordIds, options.previewRecords, () => {
+      recordCount += 1
+    })
+
+    const dataset = await V2Dataset.fromAsyncRecords(
+      observed,
+      this.#datasetLimits,
+      operationOptions,
+    )
+    context.signal?.throwIfAborted()
+    const records = previewRecordIds.map((recordId) => {
+      const revision = dataset.get(recordId)
+      if (revision === null) {
+        throw new IntegrityError('Canonical preview record is missing from the validated dataset', {
+          reason: 'canonical_preview_record_missing',
+          record_id: recordId,
+        })
+      }
+      return PostTrainingRecordV2Schema.parse(revision.record)
+    })
+    return fitCanonicalPreviewResult(
+      {
+        format: 'canonical-jsonl',
+        input_digest: hasher.digestHex(),
+        record_count: recordCount,
+        records,
+        records_truncated: false,
+      },
+      options.previewRecords,
+      options.maxResponseBytes,
+    )
+  }
+
+  async previewCanonicalDraftJsonl(
+    source: AsyncIterable<Uint8Array>,
+    optionsInput: V2CanonicalJsonlPreviewOptions,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<Readonly<McpCanonicalDraftValidationPreviewResult>> {
+    context.signal?.throwIfAborted()
+    const options = snapshotCanonicalPreviewOptions(optionsInput)
+    const hasher = createArtifactHasher()
+    const previewDrafts: CanonicalDraftRecordV1[] = []
+    let recordCount = 0
+    const operationOptions = operationContext(context.signal)
+    const parsed = readCanonicalDraftJsonlV1(hashCanonicalSource(source, hasher, context.signal), {
+      limits: {
+        maxBytes: this.#datasetLimits.max_record_bytes,
+        maxDepth: this.#jsonlLimits.max_nesting_depth,
+      },
+      maxTransportBytes: this.#jsonlLimits.max_request_bytes,
+      ...operationOptions,
+    })
+    const canonicalRecords = canonicalPreviewRecordsFromDrafts(
+      parsed,
+      previewDrafts,
+      options.previewRecords,
+      () => {
+        recordCount += 1
+      },
+    )
+
+    await V2Dataset.fromAsyncRecords(canonicalRecords, this.#datasetLimits, operationOptions)
+    context.signal?.throwIfAborted()
+    return fitPreviewResult(
+      {
+        format: 'canonical-draft-jsonl-v1',
+        input_digest: hasher.digestHex(),
+        record_count: recordCount,
+        records: previewDrafts,
+        records_truncated: false,
+      },
+      options.previewRecords,
+      options.maxResponseBytes,
+      (value) => McpCanonicalDraftValidationPreviewResultSchema.parse(value),
+    )
+  }
+
+  async materializeCanonicalDraftJsonl(
+    source: AsyncIterable<Uint8Array>,
+    options: V2CanonicalDraftMaterializeOptions = {},
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<Readonly<V2CanonicalDraftMaterialization>> {
+    context.signal?.throwIfAborted()
+    const signal = context.signal ?? new AbortController().signal
+    return await materializeCanonicalDraftJsonlV1({
+      source,
+      options,
+      tempStore: this.#tempStore,
+      catalog: this.#catalog,
+      getNamespace: async () => await this.#namespace(signal),
+      datasetLimits: this.#datasetLimits,
+      jsonlLimits: this.#jsonlLimits,
+      signal,
+    })
+  }
+
+  async addCanonicalDraftJsonl(
+    source: AsyncIterable<Uint8Array>,
+    options: V2CanonicalDraftMaterializeOptions = {},
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<IngestResultV2> {
+    const materialized = await this.materializeCanonicalDraftJsonl(source, options, context)
+    let result: IngestResultV2
+    try {
+      result = await this.addJsonl(
+        materialized.bytes,
+        { ref: null, expected_ref_version: null, message: null },
+        context,
+      )
+    } catch (error) {
+      try {
+        await materialized.dispose()
+      } catch (cleanupError) {
+        attachSuppressed(error, cleanupError)
+      }
+      throw error
+    }
+    await materialized.dispose()
+    return result
   }
 
   listTransforms(): readonly Readonly<TransformDescriptorV2>[] {
@@ -2558,6 +2731,117 @@ function registeredObjectMissing(
     Object.defineProperty(error, 'cause', { configurable: true, value: cause })
   }
   return error
+}
+
+function snapshotCanonicalPreviewOptions(
+  input: V2CanonicalJsonlPreviewOptions,
+): Readonly<Required<V2CanonicalJsonlPreviewOptions>> {
+  if (input === null || typeof input !== 'object') {
+    throw new TypeError('Canonical JSONL preview options must be an object')
+  }
+  const previewRecords = input.previewRecords ?? 3
+  if (
+    !Number.isSafeInteger(previewRecords) ||
+    previewRecords < 0 ||
+    previewRecords > MCP_MAX_PREVIEW_RECORDS
+  ) {
+    throw new TypeError(
+      `Canonical JSONL previewRecords must be between 0 and ${MCP_MAX_PREVIEW_RECORDS}`,
+    )
+  }
+  if (!Number.isSafeInteger(input.maxResponseBytes) || input.maxResponseBytes <= 0) {
+    throw new TypeError('Canonical JSONL maxResponseBytes must be a positive safe integer')
+  }
+  return Object.freeze({ previewRecords, maxResponseBytes: input.maxResponseBytes })
+}
+
+async function* hashCanonicalSource(
+  source: AsyncIterable<Uint8Array>,
+  hasher: ReturnType<typeof createArtifactHasher>,
+  signal: AbortSignal | undefined,
+): AsyncIterableIterator<Uint8Array> {
+  signal?.throwIfAborted()
+  for await (const chunk of source) {
+    signal?.throwIfAborted()
+    if (!(chunk instanceof Uint8Array)) {
+      throw new TypeError('Canonical JSONL source must yield Uint8Array chunks')
+    }
+    hasher.update(chunk)
+    yield chunk
+    signal?.throwIfAborted()
+  }
+}
+
+async function* observePreviewRecords(
+  source: AsyncIterable<PostTrainingRecordV2>,
+  recordIds: string[],
+  limit: number,
+  onRecord: () => void,
+): AsyncIterableIterator<PostTrainingRecordV2> {
+  for await (const record of source) {
+    onRecord()
+    if (recordIds.length < limit) recordIds.push(record.id)
+    yield record
+  }
+}
+
+function fitCanonicalPreviewResult(
+  input: McpCanonicalValidationPreviewResult,
+  requestedRecords: number,
+  maxResponseBytes: number,
+): Readonly<McpCanonicalValidationPreviewResult> {
+  return fitPreviewResult(input, requestedRecords, maxResponseBytes, (value) =>
+    McpCanonicalValidationPreviewResultSchema.parse(value),
+  )
+}
+
+function fitPreviewResult<
+  T extends {
+    readonly record_count: number
+    readonly records: readonly unknown[]
+    readonly records_truncated: boolean
+  },
+>(
+  input: T,
+  requestedRecords: number,
+  maxResponseBytes: number,
+  parse: (input: unknown) => T,
+): Readonly<T> {
+  const records = [...input.records]
+  while (true) {
+    const result = parse({
+      ...input,
+      records,
+      records_truncated: records.length < Math.min(input.record_count, requestedRecords),
+    })
+    // This JSON is transport sizing only. Identity serialization remains exclusively
+    // owned by @databench/hashing.
+    const responseBytes = Buffer.byteLength(JSON.stringify(result), 'utf8')
+    if (responseBytes <= maxResponseBytes) return deepFreeze(result)
+    if (records.length === 0) {
+      throw new ResourceLimitError('Canonical preview exceeds the response byte limit', {
+        resource: 'preview_response_bytes',
+        limit: maxResponseBytes,
+        actual: responseBytes,
+      })
+    }
+    records.pop()
+  }
+}
+
+async function* canonicalPreviewRecordsFromDrafts(
+  source: AsyncIterable<CanonicalDraftRecordV1>,
+  previewDrafts: CanonicalDraftRecordV1[],
+  limit: number,
+  onRecord: () => void,
+): AsyncIterableIterator<PostTrainingRecordV2> {
+  let dataRowIndex = 0
+  for await (const draft of source) {
+    onRecord()
+    if (previewDrafts.length < limit) previewDrafts.push(draft)
+    yield PostTrainingRecordV2Schema.parse(canonicalPreviewRecordFromDraftV1(draft, dataRowIndex))
+    dataRowIndex += 1
+  }
 }
 
 export function postTrainingV2Capability(

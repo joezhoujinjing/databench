@@ -22,5 +22,14 @@ export {
   FileBackedV2Store,
   type FileBackedV2StoreConfig,
 } from './store.js'
+export {
+  DEFAULT_V2_TEMP_SAFETY_MARGIN_BYTES,
+  DEFAULT_V2_TEMP_STALE_AGE_MS,
+  type V2TempFile,
+  type V2TempFileKind,
+  type V2TempReservation,
+  V2TempStore,
+  type V2TempStoreConfig,
+} from './temp-store.js'
 export * from './worker-staging.js'
 export * from './worker-staging-keys.js'

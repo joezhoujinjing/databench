@@ -3,7 +3,8 @@
 set -Eeuo pipefail
 
 offline_preflight() {
-  local docker_version compose_version free_kb min_free_kb published
+  local docker_version compose_version free_kb min_free_kb published data_probe
+  local workspace_free_kb min_workspace_free_kb
   [ -r /etc/os-release ] || die "cannot identify the target operating system"
   # shellcheck disable=SC1091
   source /etc/os-release
@@ -25,6 +26,15 @@ offline_preflight() {
   min_free_kb=$(( ${DATABENCH_MIN_FREE_GB:-20} * 1024 * 1024 ))
   [ "$free_kb" -ge "$min_free_kb" ] ||
     die "at least ${DATABENCH_MIN_FREE_GB:-20} GiB free disk space is required"
+
+  data_probe="$DATABENCH_DATA_ROOT"
+  while [ ! -e "$data_probe" ]; do
+    data_probe="$(dirname "$data_probe")"
+  done
+  workspace_free_kb="$(df -Pk "$data_probe" | awk 'NR==2 {print $4}')"
+  min_workspace_free_kb=$(( ${DATABENCH_MIN_WORKSPACE_FREE_GB:-4} * 1024 * 1024 ))
+  [ "$workspace_free_kb" -ge "$min_workspace_free_kb" ] ||
+    die "at least ${DATABENCH_MIN_WORKSPACE_FREE_GB:-4} GiB free space is required on the Databench data filesystem"
 
   published="$(docker ps --filter publish=80 --format '{{.Names}}' | grep -v '^databench-offline-web$' || true)"
   [ -z "$published" ] || die "TCP port 80 is already published by another container: $published"

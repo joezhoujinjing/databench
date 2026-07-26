@@ -1,0 +1,61 @@
+{
+  "fixture_version": 1,
+  "name": "canonical-draft-dpo-v1",
+  "namespace": "11111111-1111-4111-8111-111111111111",
+  "source_artifact_digest": "6e7a61e65d1f64e92733f18e91efa4e3232d4be0660a5133fc8b317e304a5612",
+  "raw_byte_length": 1138,
+  "dataset_version": "54ad8339649b669e4698b594305421d31148602053eb502e3b96e29b4256cbee",
+  "rows": [
+    {
+      "data_row_index": 0,
+      "generation_run_id": "canonical-draft-jsonl-v1:6e7a61e65d1f64e92733f18e91efa4e3232d4be0660a5133fc8b317e304a5612:row:0",
+      "event_keys": [
+        "canonical-draft-jsonl-v1:6e7a61e65d1f64e92733f18e91efa4e3232d4be0660a5133fc8b317e304a5612:row:0:preference:0",
+        "canonical-draft-jsonl-v1:6e7a61e65d1f64e92733f18e91efa4e3232d4be0660a5133fc8b317e304a5612:row:0:preference:1"
+      ],
+      "root_initial_record_jcs": "{\"candidates\":[],\"contents\":[{\"loss_weight\":0,\"parts\":[{\"part_metadata\":{},\"text\":\"Explain overfitting in one sentence.\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"user\"}],\"extra\":{},\"lang\":\"en\",\"lineage\":null,\"preference_relations\":[],\"schema_version\":\"2.0.0\",\"source\":null,\"tags\":[\"task:dpo\"],\"tools\":[],\"verification\":null}",
+      "candidate_initial_jcs": [
+        "{\"avg_logprobs\":null,\"contents\":[{\"loss_weight\":1,\"parts\":[{\"part_metadata\":{},\"text\":\"Overfitting is learning training noise that does not generalize.\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"ai\"}],\"finish_reason\":null,\"generator\":null,\"rank\":0,\"selected\":true,\"signals\":[],\"token_count\":null}",
+        "{\"avg_logprobs\":null,\"contents\":[{\"loss_weight\":1,\"parts\":[{\"part_metadata\":{},\"text\":\"Overfitting means a model is always too small.\",\"thought\":false,\"thought_signature\":null,\"type\":\"text\"}],\"role\":\"ai\"}],\"finish_reason\":null,\"generator\":null,\"rank\":1,\"selected\":false,\"signals\":[],\"token_count\":null}"
+      ],
+      "record_digest": "e91db4d2b705e9afb2c53910cf96467858bb331410a40d533407d26a646ed6aa",
+      "claims": [
+        {
+          "creation_profile": "artifact-row-v1",
+          "entity_kind": "record",
+          "entity_id": "rec_392aff275d4956b84c00ae228a5cd237e0132434537053fab5e159846c10b4d6",
+          "claim_key_digest": "ed7a0118411c72c31f85232d9dca215c31efd282ce304b00960871ae41fe1498",
+          "request_digest": "511318b2adb4fe8451634c278bb8cca5b50790ba106805bf9ecd78f577e17c3c"
+        },
+        {
+          "creation_profile": "candidate-v1",
+          "entity_kind": "candidate",
+          "entity_id": "cand_b4bcb70e70f2d3bba605309d4d22feaa0acbff0f9481a53989314acaa2a06f63",
+          "claim_key_digest": "2941187aa6d9e029800dc0cf705ac4a053f888d6cd4e13db7763ab8c055eb692",
+          "request_digest": "fc82f3ae421533ef779c81af0fc7fff3d7c86e9fe0dcd74a40bcce1045fd0296"
+        },
+        {
+          "creation_profile": "candidate-v1",
+          "entity_kind": "candidate",
+          "entity_id": "cand_54c14306b23ef7edd40ef5c7045f52365fdc9639cfa506c290daa12366d15d0b",
+          "claim_key_digest": "7ae761311129a88a1cc8e28247d91ad6ecce901b36d2f5880efd99bba27f0ea4",
+          "request_digest": "15b49244ec3f5b0ee1b687e3d6b34150b57b05ed365d04c767f39ea81b8cbf50"
+        },
+        {
+          "creation_profile": "preference-event-v1",
+          "entity_kind": "preference",
+          "entity_id": "pref_3a27f661914556ac5a1cd790548b01537b35f272efee0a677f766bb69c188f1b",
+          "claim_key_digest": "f461c6a3e02fce161235614fe25b94bc1447f13ce54975d53452209702e80a19",
+          "request_digest": "4779fd0f140f998d4d8ce9ac0624ee5f4d220d2478572f551b825981db5fa59b"
+        },
+        {
+          "creation_profile": "preference-event-v1",
+          "entity_kind": "preference",
+          "entity_id": "pref_cd477b8b615404b522db28bc2ace8da8f0a40cfb8fba7402206080bc6cc56bc5",
+          "claim_key_digest": "0998f41746e6261d31964dc74f09e32686f87e775b680553d96a0efa6e28ac75",
+          "request_digest": "0612f101c97f115db17e64a5b667a70276111391aea87bb6cf25d4350924d56b"
+        }
+      ]
+    }
+  ]
+}

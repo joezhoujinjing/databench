@@ -197,22 +197,31 @@ export class V2WorkspaceIdentityAllocator implements V2IdentityAllocator {
   }
 
   async #writeClaim(proposal: PreparedIdentityClaimV2, derived: boolean): Promise<string> {
-    this.#signal.throwIfAborted()
-    let result: CatalogIdentityClaimResultV2
-    try {
-      result = await this.#catalog.insertOrReadIdentityClaim(toCatalogClaim(proposal))
-    } catch (error) {
-      mapV2CatalogError(error, false)
-    }
-    const stored = fromCatalogClaim(result.row)
-    if (derived) {
-      compareExistingDerivedRevisionClaimV2(stored, proposal)
-    } else {
-      compareExistingIdentityClaimV2(stored, proposal)
-    }
-    this.#signal.throwIfAborted()
-    return proposal.entity_id
+    return await insertOrReplayV2IdentityClaim(this.#catalog, proposal, this.#signal, derived)
   }
+}
+
+export async function insertOrReplayV2IdentityClaim(
+  catalog: V2IdentityAllocatorCatalog,
+  proposal: PreparedIdentityClaimV2,
+  signal: AbortSignal,
+  derived = false,
+): Promise<string> {
+  signal.throwIfAborted()
+  let result: CatalogIdentityClaimResultV2
+  try {
+    result = await catalog.insertOrReadIdentityClaim(toCatalogClaim(proposal))
+  } catch (error) {
+    mapV2CatalogError(error, false)
+  }
+  const stored = fromCatalogClaim(result.row)
+  if (derived) {
+    compareExistingDerivedRevisionClaimV2(stored, proposal)
+  } else {
+    compareExistingIdentityClaimV2(stored, proposal)
+  }
+  signal.throwIfAborted()
+  return proposal.entity_id
 }
 
 function addOwner(

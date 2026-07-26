@@ -31,9 +31,18 @@ export class CanonicalJsonlValidationErrorV2 extends ValidationError {
   override readonly name = 'CanonicalJsonlValidationErrorV2'
   readonly issues: readonly CanonicalJsonlIssueV2[]
 
-  constructor(line: number, issuesInput: readonly Omit<CanonicalJsonlIssueV2, 'line'>[]) {
+  constructor(
+    line: number,
+    issuesInput: readonly Omit<CanonicalJsonlIssueV2, 'line'>[],
+    format: 'canonical' | 'canonical-draft' = 'canonical',
+  ) {
     const issues = Object.freeze(issuesInput.map((issue) => Object.freeze({ ...issue, line })))
-    super(`Canonical JSONL line ${line} is not a valid v2 record`, { issues })
+    super(
+      format === 'canonical'
+        ? `Canonical JSONL line ${line} is not a valid v2 record`
+        : `Canonical draft JSONL line ${line} is not a valid draft record`,
+      { issues },
+    )
     this.issues = issues
   }
 }

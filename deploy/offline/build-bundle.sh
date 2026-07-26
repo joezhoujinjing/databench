@@ -133,6 +133,7 @@ install -d -m 0755 "$BUNDLE_DIR"
 cp -a \
   deploy/offline/compose.yml \
   deploy/offline/env.example \
+  deploy/offline/mcp.env.example \
   deploy/offline/Caddyfile \
   deploy/offline/install.sh \
   deploy/offline/upgrade.sh \
@@ -144,6 +145,7 @@ cp -a \
   deploy/offline/README.zh-CN.md \
   deploy/offline/DEPLOYMENT-GUIDE.zh-CN.md \
   deploy/offline/TROUBLESHOOTING.zh-CN.md \
+  deploy/offline/MCP-AGENT-GUIDE.zh-CN.md \
   "$BUNDLE_DIR/"
 cp -a deploy/offline/lib deploy/offline/minio deploy/offline/smoke "$BUNDLE_DIR/"
 install -d -m 0755 "${BUNDLE_DIR}/docs"

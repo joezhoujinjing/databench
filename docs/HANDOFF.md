@@ -9,6 +9,9 @@
 - v1 产品面、runtime、领域代码和已确认的本地持久化数据已删除。
 - R4 maintenance tool、forward migration 和 runbook保留，供其他安装环境显式退役。
 - 公共云 API 托管平台 D3 未决定；不得擅自进入 S22。ADR 0012 离线单机发布是独立通道。
+- MCP Excel/CSV agent 导入 M0-M2 已完成；当前进度见 `docs/mcp/STATUS.md`。通用 runtime 仍
+  disabled-by-default；ADR 0012 离线包会在 operator 显式提供稳定、agent 可达的 `/api` public
+  base 后，以 `auth_mode=none` 在可信内网启用。该 scoped gate 不授权公网部署，也不改变 V16/V17。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -22,6 +25,8 @@
    `docs/v2/PLAN.md`。
 5. 对照 `docs/project-structure.md`、`docs/directory-layout.md`、
    `docs/conventions.md`。
+6. 若处理 MCP/agent 导入，依次读 ADR 0015、ADR 0016、`docs/mcp/TECHNICAL-DESIGN.md`、
+   `docs/mcp/PLAN.md` 与 `docs/mcp/STATUS.md`。
 
 不要用旧 v1 migration inventory 覆盖当前实现。
 

@@ -73,6 +73,7 @@ const preparedArtifactInternals = new WeakMap<PreparedArtifactV2Impl, PreparedAr
 export interface FileBackedV2StoreConfig {
   readonly objectStore: ConditionalObjectStoreV2
   readonly tempRoot: string
+  readonly tempStore?: V2TempStore
   readonly staleAgeMs?: number
   readonly safetyMarginBytes?: number
   readonly prepareConcurrency?: number
@@ -124,11 +125,16 @@ export class FileBackedV2Store implements V2Store {
       throw new TypeError('objectStore must implement ConditionalObjectStoreV2')
     }
     this.#objectStore = config.objectStore
-    this.#temp = new V2TempStore({
-      tempRoot: config.tempRoot,
-      staleAgeMs: config.staleAgeMs ?? DEFAULT_V2_TEMP_STALE_AGE_MS,
-      safetyMarginBytes: config.safetyMarginBytes ?? DEFAULT_V2_TEMP_SAFETY_MARGIN_BYTES,
-    })
+    if (config.tempStore !== undefined && !(config.tempStore instanceof V2TempStore)) {
+      throw new TypeError('tempStore must be a V2TempStore')
+    }
+    this.#temp =
+      config.tempStore ??
+      new V2TempStore({
+        tempRoot: config.tempRoot,
+        staleAgeMs: config.staleAgeMs ?? DEFAULT_V2_TEMP_STALE_AGE_MS,
+        safetyMarginBytes: config.safetyMarginBytes ?? DEFAULT_V2_TEMP_SAFETY_MARGIN_BYTES,
+      })
     this.#prepareSemaphore = new SemaphoreV2(
       positiveSafeInteger(
         'prepareConcurrency',

@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 
 export type ApiV2Workspace = Pick<
   V2Workspace,
+  | 'addCanonicalDraftJsonl'
   | 'addJsonl'
   | 'audit'
   | 'cancelTransformJob'
@@ -23,7 +24,10 @@ export type ApiV2Workspace = Pick<
   | 'listRefs'
   | 'listTransforms'
   | 'listTransformJobs'
+  | 'materializeCanonicalDraftJsonl'
   | 'postTrainingV2Capability'
+  | 'previewCanonicalJsonl'
+  | 'previewCanonicalDraftJsonl'
   | 'putRef'
   | 'runTransform'
   | 'restoreRef'

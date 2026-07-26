@@ -91,6 +91,7 @@ services:
     restart: unless-stopped
     env_file:
       - /etc/databench/databench.env
+      - /etc/databench/mcp.env
     environment:
       DATABENCH_OPENAPI_SERVER_URL: "/api"
       NODE_ENV: production

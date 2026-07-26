@@ -1,7 +1,8 @@
 # 具体目录布局（文件级，权威）
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
-> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。
+> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M2 已完成；
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。
 
 ## `apps/api`
 
@@ -14,6 +15,14 @@ apps/api/
 │  ├─ config.ts                DB、Store、CORS、cursor、PORT 配置
 │  ├─ context.ts               Hono context 中的 V2Workspace
 │  ├─ openapi.ts               OpenAPI 元信息与 server URL
+│  ├─ response.ts              REST/MCP 共用 response stream 与附件 header
+│  ├─ mcp/
+│  │  ├─ register.ts           stateless MCP server 与四个 tools
+│  │  ├─ config.ts · origin.ts disabled-by-default config 与 Origin 防护
+│  │  ├─ contracts.ts          canonical contract JSON Schema projection
+│  │  ├─ file-tokens.ts        process/export 一次性 token registry
+│  │  ├─ file-streams.ts       timeout、abort 与 cleanup
+│  │  └─ file-routes.ts        /mcp-files/process|export
 │  ├─ middleware/
 │  │  ├─ cors.ts
 │  │  ├─ error.ts              领域错误 → 统一 HTTP error envelope
@@ -34,17 +43,20 @@ apps/api/
 ├─ test/
 │  ├─ app-support.test.ts
 │  ├─ errors.test.ts
+│  ├─ mcp-config.test.ts · mcp-file-tokens.test.ts · mcp.test.ts
 │  ├─ v2-http.test.ts
 │  ├─ v2-http.integration.test.ts
 │  ├─ v2-multipart.test.ts
 │  ├─ v2-schema-openapi.test.ts
-│  └─ v2-transport.test.ts
+│  ├─ v2-transport.test.ts
+│  └─ golden/fixtures/         真实 Excel 派生 draft 与 namespace-independent expected metadata
 ├─ Dockerfile
 ├─ package.json
 └─ tsconfig.json
 ```
 
-公开业务路径只有 `/v2/*`。meta routes 不带版本。`apps/api` 只 import
+公开业务路径只有 `/v2/*`。meta routes 不带版本。MCP enabled 时另注册 `/mcp` 与
+`/mcp-files/*`，它们不进入 OpenAPI。`apps/api` 只 import
 `@databench/workspace` 与 `@databench/schema`，不得直连下层数据包。
 
 ## `apps/cli`
@@ -147,6 +159,7 @@ src/
    ├─ record/content/candidate/preference/signal/tool schemas
    ├─ revision/provenance/manifest/identity schemas
    ├─ transform/converter/projection contracts
+   ├─ mcp.ts                    MCP tool/result contracts
    ├─ reader/raw-json/json-value verification
    ├─ contracts.type-test.ts
    └─ index.ts
@@ -209,7 +222,7 @@ src/
    ├─ store.ts · contracts.ts · keys.ts · runtime.ts · object-store.ts
    ├─ oss-adapter.ts
    ├─ s3-adapter.ts
-   ├─ temp-store.ts
+   ├─ temp-store.ts             shared bounded temp admission for canonical, draft and Worker spools
    ├─ worker-staging.ts · worker-staging-keys.ts
    ├─ config.ts
    └─ index.ts
@@ -246,14 +259,17 @@ src/
 └─ v2/
    ├─ workspace.ts · batch-transform.ts
    ├─ identity-allocator.ts
+   ├─ canonical-draft-identity.ts
+   ├─ canonical-draft-materializer.ts
    ├─ cache.ts · cursor.ts
    ├─ mappings.ts
    ├─ transform-semaphore.ts
    └─ index.ts
 ```
 
-这是应用访问数据的唯一可信编排边界，拥有 ingest、persist、transform、CAS ref、
-record/dataset lineage、audit、converter inspect/export 与取消语义。
+这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
+deterministic identity/materialize/import、persist、transform、CAS ref、record/dataset lineage、
+audit、converter inspect/export 与取消语义。
 
 ## Tooling 与根目录
 
@@ -322,3 +338,35 @@ apps/web/src/v2/features/transforms/           已实现提交、轮询、取消
 Proto/generated code 只在 Workspace internal 与 Worker generated package 出现。`apps/api`、
 `apps/cli` 和 `apps/web` 不导入 generated Proto；公共 contract 仍为 Zod → OpenAPI → generated
 Web client。完整边界与每个实施切片见 `docs/processing/TECHNICAL_DESIGN.md`。
+
+## MCP 与离线交付
+
+```text
+docs/mcp/
+├─ TECHNICAL-DESIGN.md   已接受的最终技术边界
+├─ PLAN.md               M0-M2 accepted steps 与 gates
+├─ STATUS.md             当前真实进度；runtime enabled 状态
+└─ AGENT-PREFLIGHT.md    目标 agent/真实 Excel 能力证据
+```
+
+```text
+deploy/offline/
+├─ compose.yml                    API 加载独立 /etc/databench/mcp.env
+├─ mcp.env.example                匿名可信内网 MCP 配置示例
+├─ MCP-AGENT-GUIDE.zh-CN.md       agent endpoint、三种意图与恢复规则
+├─ README.zh-CN.md
+├─ DEPLOYMENT-GUIDE.zh-CN.md
+├─ TROUBLESHOOTING.zh-CN.md
+├─ install.sh · upgrade.sh        显式创建或复用 MCP 配置
+├─ rollback.sh                    停服务前校验 current/target 所需 MCP 配置
+├─ lib/config.sh                  public base 校验与原子配置
+├─ lib/preflight.sh               根盘与 Databench 数据盘容量检查
+└─ smoke/
+   ├─ mcp.mjs                     官方 SDK + companion lifecycle smoke
+   ├─ upstream-failure.mjs        Caddy 502 runtime-log 脱敏 probe
+   └─ mcp-draft.jsonl             最小 canonical draft fixture
+```
+
+MCP runtime 与真实 Excel fixture 已按上文实际落点登记。离线配置只在 operator 显式提供稳定、agent
+可达的 `http(s)://host[:port]/api` 后启用；不从 Host、网卡或容器名推断，也不引入独立服务、认证
+平台或审批状态机。

@@ -156,6 +156,7 @@ describe('api support', () => {
   test('entrypoint config is passed into app creation', async () => {
     const app = createAppFromConfig({
       corsOrigins: ['https://web.example.test'],
+      mcp: { enabled: false },
       openApiServerUrl: '/api',
       port: 8000,
       storeConfig: {

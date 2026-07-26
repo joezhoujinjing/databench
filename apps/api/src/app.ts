@@ -1,6 +1,11 @@
 import type { V2WorkspaceOpenOptions } from '@databench/workspace'
 import { OpenAPIHono } from '@hono/zod-openapi'
 import type { ApiEnv, ApiV2Workspace } from './context.js'
+import type { McpRuntimeConfig } from './mcp/config.js'
+import { registerMcpFileRoutes } from './mcp/file-routes.js'
+import { McpFileTokenRegistry } from './mcp/file-tokens.js'
+import { createMcpOriginMiddleware } from './mcp/origin.js'
+import { registerMcpRoutes } from './mcp/register.js'
 import { createCorsMiddleware } from './middleware/cors.js'
 import { installErrorHandlers, validationErrorResponse } from './middleware/error.js'
 import {
@@ -19,6 +24,7 @@ export interface CreateAppOptions {
   readonly version?: string
   readonly corsOrigins?: readonly string[]
   readonly databaseUrl?: string
+  readonly mcp?: McpRuntimeConfig
   readonly openApiServerUrl?: string
   readonly storeConfig?: V2WorkspaceOpenOptions['storeConfig']
   readonly v2CursorSecret?: Uint8Array | string
@@ -48,13 +54,45 @@ function createRoutedApp(
 
   installErrorHandlers(app)
   app.use('*', createRequestIdMiddleware())
+  const mcpConfig = options.mcp ?? { enabled: false }
+  const mcpRuntime =
+    mcpConfig.enabled && v2Runtime !== undefined
+      ? {
+          config: mcpConfig,
+          tokens: new McpFileTokenRegistry({
+            maxEntries: mcpConfig.maxTokens,
+            maxActive: mcpConfig.maxActiveFileOperations,
+            ttlMs: mcpConfig.tokenTtlMs,
+          }),
+          version: options.version ?? '0.0.0',
+        }
+      : undefined
+  if (mcpRuntime !== undefined) {
+    const originMiddleware = createMcpOriginMiddleware(mcpRuntime.config)
+    app.use('/mcp', createV2PrivateResponseMiddleware())
+    app.use('/mcp-files/*', createV2PrivateResponseMiddleware())
+    app.use('/mcp', originMiddleware)
+    app.use('/mcp-files/*', originMiddleware)
+  }
   app.use('*', createCorsMiddleware({ origins: options.corsOrigins ?? [] }))
   app.use('/v2/*', createV2PrivateResponseMiddleware())
   if (v2Runtime !== undefined) {
-    app.use('/v2/*', createV2WorkspaceMiddleware(v2Runtime))
+    const workspaceMiddleware = createV2WorkspaceMiddleware(v2Runtime)
+    app.use('/v2/*', workspaceMiddleware)
+    if (mcpRuntime !== undefined) {
+      app.use('/mcp', async (context, next) => {
+        if (context.req.method !== 'POST') return next()
+        return workspaceMiddleware(context, next)
+      })
+      app.use('/mcp-files/*', workspaceMiddleware)
+    }
   }
   registerMetaRoutes(app, options)
   registerV2Routes(app, { workerJobsAvailable: options.workerJobsAvailable ?? false })
+  if (mcpRuntime !== undefined) {
+    registerMcpRoutes(app, mcpRuntime)
+    registerMcpFileRoutes(app, mcpRuntime)
+  }
 
   return app
 }

@@ -8,6 +8,11 @@ import type { Context } from 'hono'
 import type { z } from 'zod'
 import type { ApiEnv } from '../../context.js'
 
+export {
+  contentDispositionAttachment as contentDispositionAttachmentV2,
+  streamAsyncIterable as streamAsyncIterableV2,
+} from '../../response.js'
+
 export async function readRawJsonRequestV2<T>(
   context: Context<ApiEnv>,
   schema: z.ZodType<T>,
@@ -106,82 +111,6 @@ function cancelReaderBestEffort(
   } catch {
     // Preserve the primary request failure.
   }
-}
-
-export function streamAsyncIterableV2(
-  source: AsyncIterable<Uint8Array>,
-  onCancel: (reason: unknown) => void,
-): ReadableStream<Uint8Array> {
-  const iterator = source[Symbol.asyncIterator]()
-  let closed = false
-  let pulling = false
-
-  const closeIterator = async (): Promise<void> => {
-    if (closed) return
-    closed = true
-    await iterator.return?.()
-  }
-
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      if (closed || pulling) return
-      pulling = true
-      try {
-        const next = await iterator.next()
-        if (next.done) {
-          closed = true
-          controller.close()
-          return
-        }
-        controller.enqueue(next.value)
-      } catch (error) {
-        try {
-          await closeIterator()
-        } catch {
-          // The stream failure remains the useful response-side error.
-        }
-        controller.error(error)
-      } finally {
-        pulling = false
-      }
-    },
-    async cancel(reason) {
-      onCancel(reason)
-      await closeIterator()
-    },
-  })
-}
-
-export function contentDispositionAttachmentV2(suggestedFilename: string): string {
-  const safe = sanitizeFilename(suggestedFilename)
-  const fallback =
-    [...safe]
-      .map((character) => {
-        const codePoint = character.codePointAt(0) ?? 0
-        return codePoint >= 0x20 && codePoint <= 0x7e && character !== '"' && character !== '\\'
-          ? character
-          : '_'
-      })
-      .join('')
-      .replace(/^\.+$/, '_') || 'dataset.ndjson'
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeRfc5987(safe)}`
-}
-
-function sanitizeFilename(input: string): string {
-  const withoutPaths = input.replaceAll('/', '_').replaceAll('\\', '_')
-  let safe = ''
-  for (const character of withoutPaths) {
-    const codePoint = character.codePointAt(0) ?? 0
-    safe += codePoint <= 0x1f || codePoint === 0x7f ? '_' : character
-  }
-  return safe.trim() || 'dataset.ndjson'
-}
-
-function encodeRfc5987(value: string): string {
-  return encodeURIComponent(value).replace(
-    /['()*]/g,
-    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-  )
 }
 
 function checkedRequestSize(current: number, next: number): number {
