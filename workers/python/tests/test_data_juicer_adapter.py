@@ -5,6 +5,7 @@ import hashlib
 import json
 import socket
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from databench_worker.adapters.data_juicer import (
     AdapterFailure,
     DataJuicerBatchAdapter,
     _report_process_failure,
+    _run_blocking,
     _validate_artifact_contract,
 )
 from databench_worker.adapters.data_juicer import _validate_input, _write_retained_output
@@ -124,6 +126,29 @@ def test_process_failure_diagnostic_fingerprints_but_never_prints_the_log_tail(c
     assert "secret-token" not in captured.err
 
 
+async def test_cancelled_blocking_call_is_joined_before_the_adapter_task_exits() -> None:
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def blocking_call() -> None:
+        started.set()
+        release.wait(timeout=2)
+        finished.set()
+
+    task = asyncio.create_task(_run_blocking(blocking_call))
+    assert await asyncio.to_thread(started.wait, 1)
+    task.cancel()
+    await asyncio.sleep(0.01)
+    assert not task.done()
+    assert not finished.is_set()
+
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert finished.is_set()
+
+
 async def test_real_data_juicer_100_row_semantics_and_cleanup() -> None:
     rows, expected = semantic_fixture(100)
     input_bytes = encode_rows(rows)
@@ -203,6 +228,44 @@ async def test_real_data_juicer_cancellation_is_terminal_and_cleans_temp() -> No
         assert "failed" not in event_types
         assert server.put_count == 0
 
+        assert list(temp_root.iterdir()) == []
+
+
+async def test_real_data_juicer_handler_cancellation_stops_child_and_cleans_temp() -> None:
+    rows, _ = semantic_fixture(50_000)
+    input_bytes = encode_rows(rows)
+
+    with tempfile.TemporaryDirectory(
+        prefix="databench-worker-test-", dir="/tmp"
+    ) as temp_value, ArtifactServer(input_bytes) as server:
+        temp_root = Path(temp_value)
+        adapter = DataJuicerBatchAdapter(temp_root)
+        context = RunContext(
+            request=run_request(
+                server.input_url,
+                server.output_url,
+                size=len(input_bytes),
+                digest=hashlib.sha256(input_bytes).hexdigest(),
+            ),
+            cancellation=asyncio.Event(),
+        )
+        input_ready = asyncio.Event()
+
+        async def consume() -> None:
+            async for event in adapter.run(
+                context, adapter.validate_parameters(parameter_payload())
+            ):
+                if event.WhichOneof("event") == "progress" and event.progress.phase == "input_ready":
+                    input_ready.set()
+
+        task = asyncio.create_task(consume())
+        await asyncio.wait_for(input_ready.wait(), timeout=5)
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert server.put_count == 0
         assert list(temp_root.iterdir()) == []
 
 

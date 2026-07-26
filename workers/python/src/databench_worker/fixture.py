@@ -49,7 +49,13 @@ class FixtureCopyAdapter:
         mode = value.get("mode", "complete")
         delay_ms = value.get("delay_ms", 1)
         steps = value.get("steps", 1)
-        if mode not in {"complete", "wait_for_cancel", "eof_without_terminal"}:
+        if mode not in {
+            "complete",
+            "wait_for_cancel",
+            "eof_without_terminal",
+            "terminal_then_wait_for_cancel",
+            "terminal_then_raise",
+        }:
             raise ValueError("unsupported fixture mode")
         if not isinstance(delay_ms, int) or isinstance(delay_ms, bool) or not 0 <= delay_ms <= 5000:
             raise ValueError("fixture delay_ms is outside the allowed range")
@@ -113,6 +119,10 @@ class FixtureCopyAdapter:
                 ],
             )
         )
+        if parameters.mode == "terminal_then_wait_for_cancel":
+            await context.cancellation.wait()
+        elif parameters.mode == "terminal_then_raise":
+            raise RuntimeError("fixture failure after terminal")
 
 
 async def _wait_or_cancel(context: RunContext, delay_ms: int) -> bool:

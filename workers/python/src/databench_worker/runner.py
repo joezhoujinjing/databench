@@ -78,6 +78,9 @@ class WorkerService(worker_pb2_grpc.WorkerServiceServicer):
             if self._active:
                 await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "worker batch slot is busy")
             self._active[request.execution_id] = active
+        context.add_done_callback(
+            lambda rpc_context: _cancel_if_rpc_cancelled(rpc_context, active)
+        )
 
         try:
             async with self._slot:
@@ -106,6 +109,9 @@ class WorkerService(worker_pb2_grpc.WorkerServiceServicer):
                             retryable=False,
                         )
                     )
+        except asyncio.CancelledError:
+            active.cancellation.set()
+            raise
         finally:
             active.done.set()
             async with self._active_lock:
@@ -142,6 +148,11 @@ def _validate_request(request: worker_pb2.RunJobRequest) -> str | None:
     if request.deadline_unix_ms <= _now_ms():
         return "job deadline has expired"
     return None
+
+
+def _cancel_if_rpc_cancelled(context, active: ActiveExecution) -> None:
+    if context.cancelled():
+        active.cancellation.set()
 
 
 def _now_ms() -> int:

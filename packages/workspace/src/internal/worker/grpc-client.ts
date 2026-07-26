@@ -87,18 +87,12 @@ export class GrpcWorkerClient implements WorkerClient {
     const iterator = call[Symbol.asyncIterator]()
     let accepted = false
     let started = false
-    let terminal = false
 
     try {
       while (true) {
-        const result = terminal
-          ? await nextWithTimeout(iterator, this.#terminalEofTimeoutMs, call)
-          : await iterator.next()
+        const result = await iterator.next()
         if (result.done) {
-          if (!terminal) {
-            throw new WorkerProtocolError('Worker stream ended without a terminal event')
-          }
-          return
+          throw new WorkerProtocolError('Worker stream ended without a terminal event')
         }
 
         const event = mapEvent(result.value)
@@ -111,9 +105,6 @@ export class GrpcWorkerClient implements WorkerClient {
           throw new WorkerProtocolError('Worker emitted accepted more than once')
         }
 
-        if (terminal) {
-          throw new WorkerProtocolError('Worker emitted an event after its terminal event')
-        }
         if (event.type === 'started') {
           if (started) {
             throw new WorkerProtocolError('Worker emitted started more than once')
@@ -127,7 +118,12 @@ export class GrpcWorkerClient implements WorkerClient {
           if (!started) {
             throw new WorkerProtocolError('Worker emitted a terminal event before started')
           }
-          terminal = true
+          const eof = await nextWithTimeout(iterator, this.#terminalEofTimeoutMs, call)
+          if (!eof.done) {
+            throw new WorkerProtocolError('Worker emitted an event after its terminal event')
+          }
+          yield event
+          return
         }
         yield event
       }

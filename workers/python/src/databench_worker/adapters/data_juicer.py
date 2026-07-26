@@ -9,8 +9,10 @@ import shutil
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
 
 from databench.worker.v1 import worker_pb2
 
@@ -35,6 +37,7 @@ FIXED_PROCESS = (
     {"text_length_filter": {"min_len": 40}},
     {"document_deduplicator": {"lowercase": False}},
 )
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True)
@@ -95,6 +98,7 @@ class DataJuicerBatchAdapter:
             raise TypeError("Data-Juicer parameters were not validated")
         yield _started_event()
         job_dir: Path | None = None
+        process_task: asyncio.Task | None = None
         try:
             input_artifact, output_target = _validate_artifact_contract(context)
             _raise_if_stopped(context)
@@ -107,7 +111,7 @@ class DataJuicerBatchAdapter:
             retained_path = job_dir / "output.jsonl"
             config_path = job_dir / "config.json"
 
-            await asyncio.to_thread(
+            await _run_blocking(
                 download_artifact,
                 input_artifact.read_url,
                 input_path,
@@ -117,7 +121,7 @@ class DataJuicerBatchAdapter:
                 timeout_seconds=_transfer_timeout(context),
                 stop_requested=lambda: _is_stopped(context),
             )
-            input_count = await asyncio.to_thread(_validate_input, input_path)
+            input_count = await _run_blocking(_validate_input, input_path)
             yield _progress_event("input_ready", 0, input_count)
             _raise_if_stopped(context)
 
@@ -149,7 +153,7 @@ class DataJuicerBatchAdapter:
                 _report_process_failure(result.returncode, result.log_tail)
                 raise AdapterFailure("data_juicer_failed", "Data-Juicer execution failed")
 
-            output_count = await asyncio.to_thread(
+            output_count = await _run_blocking(
                 _write_retained_output,
                 processed_path,
                 retained_path,
@@ -157,7 +161,7 @@ class DataJuicerBatchAdapter:
             )
             yield _progress_event("output_ready", input_count, input_count)
             _raise_if_stopped(context)
-            descriptor = await asyncio.to_thread(
+            descriptor = await _run_blocking(
                 upload_artifact,
                 output_target.write_url,
                 retained_path,
@@ -196,8 +200,12 @@ class DataJuicerBatchAdapter:
         except (OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
             yield _failed_event("invalid_execution_input", "Data-Juicer execution input is invalid")
         finally:
+            if process_task is not None:
+                if not process_task.done():
+                    process_task.cancel()
+                await asyncio.gather(process_task, return_exceptions=True)
             if job_dir is not None:
-                await asyncio.to_thread(shutil.rmtree, job_dir, True)
+                await _run_blocking(shutil.rmtree, job_dir, True)
 
 
 def _validate_artifact_contract(context: RunContext):
@@ -342,6 +350,17 @@ def _report_process_failure(returncode: int, log_tail: bytes) -> None:
         )
     except (OSError, ValueError):
         pass
+
+
+async def _run_blocking(
+    function: Callable[..., _T], /, *args: object, **kwargs: object
+) -> _T:
+    task: asyncio.Task[_T] = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await asyncio.gather(task, return_exceptions=True)
+        raise
 
 
 def _strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

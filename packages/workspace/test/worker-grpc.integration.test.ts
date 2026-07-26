@@ -28,7 +28,12 @@ import {
   WorkerCanonicalJobFinalizerV1,
   WorkerWorkspaceInputProjectorV1,
 } from '../src/internal/worker/canonical-finalizer.js'
-import type { WorkerProtocolError, WorkerRunJobRequest } from '../src/internal/worker/client.js'
+import type {
+  WorkerJobEvent,
+  WorkerProtocolError,
+  WorkerRunJobRequest,
+  WorkerTransportError,
+} from '../src/internal/worker/client.js'
 import {
   compileBasicCleanWorkerParametersV1,
   DATA_JUICER_BATCH_CAPABILITY_V1,
@@ -206,6 +211,49 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
         },
       ],
     })
+  })
+
+  test('withholds completed until the Worker closes the stream with OK EOF', async () => {
+    uploaded = Buffer.alloc(0)
+    const request = requestFor('terminal-eof-barrier', 'terminal_then_wait_for_cancel')
+    const events: WorkerJobEvent[] = []
+    const consume = (async () => {
+      for await (const event of client.runJob(request)) events.push(event)
+    })()
+
+    await waitUntil(() => uploaded.equals(INPUT), 5_000)
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 50))
+    expect(events.some((event) => event.type === 'completed')).toBe(false)
+
+    await expect(
+      client.cancelJob({
+        executionId: request.executionId,
+        attempt: request.attempt,
+        leaseToken: request.leaseToken,
+      }),
+    ).resolves.toBe('stopped')
+    await consume
+
+    expect(events.at(-1)?.type).toBe('completed')
+  })
+
+  test('never exposes a terminal event when the Worker emits another event before EOF', async () => {
+    const events: WorkerJobEvent[] = []
+    const consume = async () => {
+      for await (const event of client.runJob(
+        requestFor('terminal-followed-by-event', 'terminal_then_raise'),
+      )) {
+        events.push(event)
+      }
+    }
+
+    await expect(consume()).rejects.toEqual(
+      expect.objectContaining<Partial<WorkerProtocolError>>({
+        name: 'WorkerProtocolError',
+        message: 'Worker emitted an event after its terminal event',
+      }),
+    )
+    expect(events.some((event) => event.type === 'completed')).toBe(false)
   })
 
   test('runs basic-clean@1 through real MinIO signed URLs and exact cleanup', async () => {
@@ -556,6 +604,36 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
     ])
   })
 
+  test('releases the execution when the streaming client disconnects', async () => {
+    const request = requestFor('client-disconnect', 'wait_for_cancel')
+    const controller = new AbortController()
+    let markStarted: (() => void) | undefined
+    const started = new Promise<void>((resolveStarted) => {
+      markStarted = resolveStarted
+    })
+    const consume = (async () => {
+      for await (const event of client.runJob(request, { signal: controller.signal })) {
+        if (event.type === 'started') markStarted?.()
+      }
+    })()
+
+    await started
+    controller.abort()
+    await expect(consume).rejects.toEqual(
+      expect.objectContaining<Partial<WorkerTransportError>>({ name: 'WorkerTransportError' }),
+    )
+
+    await waitUntilAsync(
+      async () =>
+        (await client.cancelJob({
+          executionId: request.executionId,
+          attempt: request.attempt,
+          leaseToken: randomBytes(32),
+        })) === 'not_found',
+      5_000,
+    )
+  })
+
   test('rejects OK EOF when no terminal event was emitted', async () => {
     const consume = async () => {
       for await (const _event of client.runJob(requestFor('bad-eof', 'eof_without_terminal'))) {
@@ -628,6 +706,22 @@ async function waitForTransformJob(workspace: V2Workspace, id: string, timeoutMs
     await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 25))
   }
   throw new Error('Timed out waiting for transform job completion')
+}
+
+async function waitUntil(condition: () => boolean, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!condition()) {
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for condition')
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 10))
+  }
+}
+
+async function waitUntilAsync(condition: () => Promise<boolean>, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!(await condition())) {
+    if (Date.now() >= deadline) throw new Error('Timed out waiting for async condition')
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 10))
+  }
 }
 
 async function deleteAllObjects(admin: S3Client, bucket: string): Promise<void> {

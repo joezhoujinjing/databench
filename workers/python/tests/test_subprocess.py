@@ -95,5 +95,38 @@ async def test_cancellation_terminates_the_process_group(
     assert child_marker.read_text() == "stopped"
 
 
+async def test_handler_task_cancellation_terminates_the_process_group(tmp_path: Path) -> None:
+    marker = tmp_path / "task-cancelled"
+    ready = tmp_path / "task-ready"
+    code = (
+        "import signal,time,pathlib;"
+        f"marker=pathlib.Path({str(marker)!r});"
+        f"pathlib.Path({str(ready)!r}).write_text('ready');"
+        "signal.signal(signal.SIGTERM,lambda *_:(marker.write_text('stopped'),exit(0)));"
+        "time.sleep(30)"
+    )
+    task = asyncio.create_task(
+        controlled.run_controlled_process(
+            (sys.executable, "-I", "-c", code),
+            cwd=tmp_path,
+            env={"PATH": "/usr/bin:/bin"},
+            cancellation=asyncio.Event(),
+            deadline_unix_ms=_now_ms() + 5_000,
+            heartbeats=asyncio.Queue(),
+        )
+    )
+    for _ in range(200):
+        if ready.exists():
+            break
+        await asyncio.sleep(0.01)
+    assert ready.exists()
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert marker.read_text() == "stopped"
+
+
 def _now_ms() -> int:
     return time.time_ns() // 1_000_000
