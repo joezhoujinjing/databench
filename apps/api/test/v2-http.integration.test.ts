@@ -114,6 +114,33 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
     expect(described).toEqual(directView)
     expect(ingested.manifest).toEqual(directView.manifest)
 
+    const evalScopeConverter = await responseJson(
+      await app.fetch(request('/v2/converters/evalscope-general-qa')),
+    )
+    expect(evalScopeConverter).toMatchObject({
+      name: 'evalscope-general-qa',
+      version: '1.0.0',
+      media_type: 'application/x-ndjson',
+      task_views: ['evaluation-qa'],
+    })
+    const evalScopeInspectResponse = await app.fetch(
+      request(`/v2/datasets/${REF_NAME}:inspect-export`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          converter: 'evalscope-general-qa',
+          options: { target_source: 'none' },
+        }),
+      }),
+    )
+    expect(evalScopeInspectResponse.status).toBe(200)
+    expect(await responseJson(evalScopeInspectResponse)).toEqual(
+      await workspace.inspectExport(REF_NAME, {
+        converter: 'evalscope-general-qa',
+        options: { target_source: 'none' },
+      }),
+    )
+
     const sharedInspectResponse = await app.fetch(
       request(`/v2/datasets/${REF_NAME}:inspect-export`, {
         method: 'POST',

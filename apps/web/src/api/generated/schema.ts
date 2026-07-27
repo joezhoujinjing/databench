@@ -543,11 +543,17 @@ export interface components {
       options_schema: {
         [key: string]: unknown
       }
-      task_views: ('canonical' | 'sft' | 'dpo' | 'rlvr-grpo' | 'ms-swift')[]
+      task_views: ('canonical' | 'evaluation-qa' | 'sft' | 'dpo' | 'rlvr-grpo' | 'ms-swift')[]
       version: string
     }
     /** @enum {string} */
-    ConverterNameV2: 'canonical-jsonl' | 'trl-sft' | 'trl-dpo' | 'trl-grpo-rlvr' | 'ms-swift'
+    ConverterNameV2:
+      | 'canonical-jsonl'
+      | 'evalscope-general-qa'
+      | 'trl-sft'
+      | 'trl-dpo'
+      | 'trl-grpo-rlvr'
+      | 'ms-swift'
     ConverterRegistryNameV2: string
     ConverterRegistryPageV2: {
       items: components['schemas']['ConverterDescriptorV2'][]

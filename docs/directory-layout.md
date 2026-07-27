@@ -2,8 +2,8 @@
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
-> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope 当前只完成
-> E0 来源/能力基线，没有产品路由或 runtime。
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope 已完成 E0
+> 来源/能力基线和 E1 Dataset projection，没有产品路由或 runtime。
 
 ## `apps/api`
 
@@ -200,6 +200,7 @@ src/
 └─ v2/
    ├─ canonical-jsonl.ts
    ├─ converter-registry.ts · converter-projection.ts
+   ├─ evalscope-general-qa.ts  E1 strict options、eligibility、fidelity 与确定性 rows
    ├─ adapters.ts
    ├─ deterministic-json.ts
    ├─ errors.ts
@@ -321,7 +322,8 @@ docs/evalscope/evidence/E0-BASELINE.md
 THIRD_PARTY_NOTICES.md
 ```
 
-`deploy/evalscope/` 当前没有 Dockerfile、patch 或可执行服务；它们属于 E3。`upstream-manifest.json` 是
+`deploy/evalscope/` 当前没有 Dockerfile、patch 或可执行服务；它们属于 E3。E1 只扩展既有 converter
+registry/OpenAPI/export 链，不在该目录放 runtime。`upstream-manifest.json` 是
 文件来源真源，`ui-capability-manifest.json` 是业务能力验收真源；前者的 `adapted` 不能替代后者的 green。
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是

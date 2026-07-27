@@ -142,6 +142,9 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
     integrationStdout.length = 0
     expect(await run(['converter', 'show', 'canonical-jsonl', '--compact'])).toBe(EXIT.ok)
     expect(outputJson()).toEqual(workspace.getConverter('canonical-jsonl'))
+    integrationStdout.length = 0
+    expect(await run(['converter', 'show', 'evalscope-general-qa', '--compact'])).toBe(EXIT.ok)
+    expect(outputJson()).toEqual(workspace.getConverter('evalscope-general-qa'))
 
     integrationStdout.length = 0
     expect(await run(['transform', 'list', '--compact'])).toBe(EXIT.ok)
@@ -175,6 +178,27 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
       suggested_filename: fixture.export.suggested_filename,
       output_count: fixture.export.output_count,
     })
+
+    const evalScopeOptions = { target_source: 'none' as const }
+    const directEvalScopePlan = await workspace.inspectExport(refName, {
+      converter: 'evalscope-general-qa',
+      options: evalScopeOptions,
+    })
+    integrationStdout.length = 0
+    expect(
+      await run([
+        'dataset',
+        'export',
+        refName,
+        '--converter',
+        'evalscope-general-qa',
+        '--options',
+        JSON.stringify(evalScopeOptions),
+        '--inspect',
+        '--compact',
+      ]),
+    ).toBe(EXIT.ok)
+    expect(outputJson()).toEqual(directEvalScopePlan)
 
     const outputPath = join(temporaryRoot, 'exported.jsonl')
     integrationStdout.length = 0

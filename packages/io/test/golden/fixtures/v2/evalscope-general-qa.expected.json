@@ -1,0 +1,222 @@
+{
+  "source_fixture": "packages/io/test/golden/fixtures/v2/converter-output-bytes-and-fidelity.input.json",
+  "dataset_version": "06969f76a5f7c17c8799f3a4915b4870bcfd63422d427c35a9ed2ab9b44f3314",
+  "profiles": [
+    {
+      "target_source": "selected-candidate",
+      "plan": {
+        "export_fidelity_profile": "databench-export-fidelity-1",
+        "dataset_version": "06969f76a5f7c17c8799f3a4915b4870bcfd63422d427c35a9ed2ab9b44f3314",
+        "converter": "evalscope-general-qa",
+        "converter_version": "1.0.0",
+        "normalized_options": {
+          "target_source": "selected-candidate"
+        },
+        "media_type": "application/x-ndjson",
+        "suggested_filename": "databench.jsonl",
+        "output_count": 2,
+        "config_hints": {
+          "evalscope": {
+            "benchmark": "general_qa",
+            "subset": "databench",
+            "total_records": 1,
+            "output_count": 2,
+            "excluded_records": 0,
+            "excluded_by_reason": {}
+          }
+        },
+        "fidelity": {
+          "preserved": ["/candidates", "/contents"],
+          "changes": [
+            {
+              "path": "/candidates",
+              "action": "transformed",
+              "impact": "none",
+              "reason": "selected_candidate_text_to_evalscope_response"
+            },
+            {
+              "path": "/contents",
+              "action": "transformed",
+              "impact": "none",
+              "reason": "canonical_roles_to_evalscope_roles"
+            },
+            {
+              "path": "/id",
+              "action": "transformed",
+              "impact": "none",
+              "reason": "canonical_identity_to_databench_locator"
+            },
+            {
+              "path": "/preference_relations",
+              "action": "dropped",
+              "impact": "semantic",
+              "reason": "preference_relations_not_interpreted_as_qa_reference"
+            },
+            {
+              "path": "/schema_version",
+              "action": "dropped",
+              "impact": "informational",
+              "reason": "canonical_metadata_not_used_by_evaluation"
+            },
+            {
+              "path": "/verification",
+              "action": "dropped",
+              "impact": "semantic",
+              "reason": "verification_not_used_as_reference"
+            }
+          ]
+        },
+        "fidelity_digest": "98a9bfba73cb0221050d745444c98b98f8f48ffca42231c046bafb5da1ed8d0f"
+      },
+      "output_utf8": "{\"_databench\":{\"candidate_id\":\"cand_2020202020202020202020202020202020202020202020202020202020202020\",\"dataset_version\":\"06969f76a5f7c17c8799f3a4915b4870bcfd63422d427c35a9ed2ab9b44f3314\",\"record_digest\":\"2eae374d15e4941ee4439e274a1f2a137b8c3613ff1d8bc2ea5aeb7a675bdead\",\"record_id\":\"rec_1010101010101010101010101010101010101010101010101010101010101010\"},\"messages\":[{\"content\":\"Choose the accurate answer.\",\"role\":\"user\"}],\"response\":\"The verified answer.\"}\n{\"_databench\":{\"candidate_id\":\"cand_3030303030303030303030303030303030303030303030303030303030303030\",\"dataset_version\":\"06969f76a5f7c17c8799f3a4915b4870bcfd63422d427c35a9ed2ab9b44f3314\",\"record_digest\":\"2eae374d15e4941ee4439e274a1f2a137b8c3613ff1d8bc2ea5aeb7a675bdead\",\"record_id\":\"rec_1010101010101010101010101010101010101010101010101010101010101010\"},\"messages\":[{\"content\":\"Choose the accurate answer.\",\"role\":\"user\"}],\"response\":\"The rejected answer.\"}\n"
+    },
+    {
+      "target_source": "verification-ground-truth",
+      "plan": {
+        "export_fidelity_profile": "databench-export-fidelity-1",
+        "dataset_version": "06969f76a5f7c17c8799f3a4915b4870bcfd63422d427c35a9ed2ab9b44f3314",
+        "converter": "evalscope-general-qa",
+        "converter_version": "1.0.0",
+        "normalized_options": {
+          "target_source": "verification-ground-truth"
+        },
+        "media_type": "application/x-ndjson",
+        "suggested_filename": "databench.jsonl",
+        "output_count": 1,
+        "config_hints": {
+          "evalscope": {
+            "benchmark": "general_qa",
+            "subset": "databench",
+            "total_records": 1,
+            "output_count": 1,
+            "excluded_records": 0,
+            "excluded_by_reason": {}
+          }
+        },
+        "fidelity": {
+          "preserved": ["/contents", "/verification"],
+          "changes": [
+            {
+              "path": "/candidates",
+              "action": "dropped",
+              "impact": "semantic",
+              "reason": "candidates_not_used_as_reference"
+            },
+            {
+              "path": "/contents",
+              "action": "transformed",
+              "impact": "none",
+              "reason": "canonical_roles_to_evalscope_roles"
+            },
+            {
+              "path": "/id",
+              "action": "transformed",
+              "impact": "none",
+              "reason": "canonical_identity_to_databench_locator"
+            },
+            {
+              "path": "/preference_relations",
+              "action": "dropped",
+              "impact": "semantic",
+              "reason": "preference_relations_not_interpreted_as_qa_reference"
+            },
+            {
+              "path": "/schema_version",
+              "action": "dropped",
+              "impact": "informational",
+              "reason": "canonical_metadata_not_used_by_evaluation"
+            },
+            {
+              "path": "/verification",
+              "action": "dropped",
+              "impact": "informational",
+              "reason": "verification_metadata_not_used_by_evaluation"
+            },
+            {
+              "path": "/verification",
+              "action": "transformed",
+              "impact": "none",
+              "reason": "verification_ground_truth_to_evalscope_response"
+            }
+          ]
+        },
+        "fidelity_digest": "69eb53c8cf38644f27af134d052ab0729e1db36caf74bb412225dff101a02400"
+      },
+      "output_utf8": "{\"_databench\":{\"dataset_version\":\"06969f76a5f7c17c8799f3a4915b4870bcfd63422d427c35a9ed2ab9b44f3314\",\"record_digest\":\"2eae374d15e4941ee4439e274a1f2a137b8c3613ff1d8bc2ea5aeb7a675bdead\",\"record_id\":\"rec_1010101010101010101010101010101010101010101010101010101010101010\"},\"messages\":[{\"content\":\"Choose the accurate answer.\",\"role\":\"user\"}],\"response\":\"The verified answer.\"}\n"
+    },
+    {
+      "target_source": "none",
+      "plan": {
+        "export_fidelity_profile": "databench-export-fidelity-1",
+        "dataset_version": "06969f76a5f7c17c8799f3a4915b4870bcfd63422d427c35a9ed2ab9b44f3314",
+        "converter": "evalscope-general-qa",
+        "converter_version": "1.0.0",
+        "normalized_options": {
+          "target_source": "none"
+        },
+        "media_type": "application/x-ndjson",
+        "suggested_filename": "databench.jsonl",
+        "output_count": 1,
+        "config_hints": {
+          "evalscope": {
+            "benchmark": "general_qa",
+            "subset": "databench",
+            "total_records": 1,
+            "output_count": 1,
+            "excluded_records": 0,
+            "excluded_by_reason": {}
+          }
+        },
+        "fidelity": {
+          "preserved": ["/contents"],
+          "changes": [
+            {
+              "path": "",
+              "action": "dropped",
+              "impact": "semantic",
+              "reason": "reference_omitted_requires_judge"
+            },
+            {
+              "path": "/candidates",
+              "action": "dropped",
+              "impact": "semantic",
+              "reason": "candidates_not_used_as_reference"
+            },
+            {
+              "path": "/contents",
+              "action": "transformed",
+              "impact": "none",
+              "reason": "canonical_roles_to_evalscope_roles"
+            },
+            {
+              "path": "/id",
+              "action": "transformed",
+              "impact": "none",
+              "reason": "canonical_identity_to_databench_locator"
+            },
+            {
+              "path": "/preference_relations",
+              "action": "dropped",
+              "impact": "semantic",
+              "reason": "preference_relations_not_interpreted_as_qa_reference"
+            },
+            {
+              "path": "/schema_version",
+              "action": "dropped",
+              "impact": "informational",
+              "reason": "canonical_metadata_not_used_by_evaluation"
+            },
+            {
+              "path": "/verification",
+              "action": "dropped",
+              "impact": "semantic",
+              "reason": "verification_not_used_as_reference"
+            }
+          ]
+        },
+        "fidelity_digest": "a695e9b6ad38b5fae3a3fcb811171685a1bbae0ced3227d71b2c0c8473e982af"
+      },
+      "output_utf8": "{\"_databench\":{\"dataset_version\":\"06969f76a5f7c17c8799f3a4915b4870bcfd63422d427c35a9ed2ab9b44f3314\",\"record_digest\":\"2eae374d15e4941ee4439e274a1f2a137b8c3613ff1d8bc2ea5aeb7a675bdead\",\"record_id\":\"rec_1010101010101010101010101010101010101010101010101010101010101010\"},\"messages\":[{\"content\":\"Choose the accurate answer.\",\"role\":\"user\"}]}\n"
+    }
+  ]
+}

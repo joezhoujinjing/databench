@@ -16,6 +16,7 @@ export const V2_FIDELITY_MAX_CHANGES = 1_024
 
 export const V2_CONVERTER_NAMES = [
   'canonical-jsonl',
+  'evalscope-general-qa',
   'trl-sft',
   'trl-dpo',
   'trl-grpo-rlvr',
@@ -57,6 +58,7 @@ export type ConverterRegistryNameV2 = z.infer<typeof ConverterRegistryNameV2Sche
 
 export const ConverterTaskViewV2Schema = z.enum([
   'canonical',
+  'evaluation-qa',
   'sft',
   'dpo',
   'rlvr-grpo',

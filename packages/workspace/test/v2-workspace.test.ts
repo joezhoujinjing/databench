@@ -1561,6 +1561,7 @@ describe('V2Workspace converter and fidelity orchestration', () => {
 
     expect(rig.workspace.listConverters().map(({ name }) => name)).toEqual([
       'canonical-jsonl',
+      'evalscope-general-qa',
       'ms-swift',
       'trl-dpo',
       'trl-grpo-rlvr',
@@ -1634,6 +1635,83 @@ describe('V2Workspace converter and fidelity orchestration', () => {
       detail: { reason: 'fidelity_digest_mismatch' },
     })
     expect(stream).not.toHaveBeenCalled()
+  })
+
+  test('exports EvalScope general_qa locators for the exact Dataset and binds fidelity approval', async () => {
+    const registry = createDefaultV2ConverterRegistry()
+    const rig = createRig({}, undefined, registry)
+    const dataset = V2Dataset.fromRecords([makeSelectedSftRecord('f')])
+    rig.seed(dataset)
+    const options = { target_source: 'selected-candidate' as const }
+    const plan = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options,
+    })
+
+    expect(plan).toMatchObject({
+      dataset_version: dataset.version,
+      converter: 'evalscope-general-qa',
+      converter_version: '1.0.0',
+      normalized_options: options,
+      media_type: 'application/x-ndjson',
+      suggested_filename: 'databench.jsonl',
+      output_count: 1,
+      config_hints: {
+        evalscope: {
+          benchmark: 'general_qa',
+          subset: 'databench',
+          total_records: 1,
+          output_count: 1,
+          excluded_records: 0,
+          excluded_by_reason: {},
+        },
+      },
+    })
+    await expect(
+      rig.workspace.export(dataset.version, {
+        converter: 'evalscope-general-qa',
+        options,
+        accepted_fidelity_digest: '0'.repeat(64),
+      }),
+    ).rejects.toMatchObject({
+      code: 'fidelity_error',
+      detail: { reason: 'fidelity_digest_mismatch' },
+    })
+
+    const exported = await rig.workspace.export(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options,
+      accepted_fidelity_digest: plan.fidelity_digest,
+    })
+    expect(exported.plan).toEqual(plan)
+    expect(JSON.parse(await collectUtf8(exported.bytes))).toMatchObject({
+      messages: [{ role: 'user', content: 'semantic loss prompt' }],
+      response: 'selected answer',
+      _databench: {
+        dataset_version: dataset.version,
+        record_id: `rec_${'f'.repeat(64)}`,
+        record_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+        candidate_id: `cand_${'f'.repeat(64)}`,
+      },
+    })
+
+    const noReferencePlan = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    await expect(
+      rig.workspace.export(dataset.version, {
+        converter: 'evalscope-general-qa',
+        options: { target_source: 'none' },
+        accepted_fidelity_digest: null,
+      }),
+    ).rejects.toMatchObject({
+      code: 'fidelity_error',
+      detail: {
+        reason: 'semantic_loss_requires_approval',
+        plan: { fidelity_digest: noReferencePlan.fidelity_digest },
+      },
+    })
   })
 
   test('does not pin an unconsumed export and pins only for active byte iteration', async () => {
@@ -2283,7 +2361,14 @@ describe('V2Workspace production runtime', () => {
       identity_profiles: ['databench-v2-jcs-1'],
       layout_versions: ['record-json-v1'],
       export_fidelity_profiles: ['databench-export-fidelity-1'],
-      converters: ['canonical-jsonl', 'ms-swift', 'trl-dpo', 'trl-grpo-rlvr', 'trl-sft'],
+      converters: [
+        'canonical-jsonl',
+        'evalscope-general-qa',
+        'ms-swift',
+        'trl-dpo',
+        'trl-grpo-rlvr',
+        'trl-sft',
+      ],
       limits: {
         max_record_bytes: 2048,
         max_snapshot_records: 12,
@@ -3088,6 +3173,13 @@ async function collectWorkerBytes(source: AsyncIterable<Uint8Array>): Promise<Ui
     offset += chunk.byteLength
   }
   return result
+}
+
+async function collectUtf8(source: AsyncIterable<Uint8Array>): Promise<string> {
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  let output = ''
+  for await (const chunk of source) output += decoder.decode(chunk, { stream: true })
+  return output + decoder.decode()
 }
 
 class MemoryWorkerStagingObjectStore implements WorkerStagingObjectStoreV1 {

@@ -78,7 +78,14 @@ const VERSION = 'a'.repeat(64)
 const OTHER_VERSION = 'b'.repeat(64)
 const RECORD_ID = `rec_${'c'.repeat(64)}`
 const CACHE_KEY = 'd'.repeat(64)
-const CONVERTERS = ['canonical-jsonl', 'ms-swift', 'trl-dpo', 'trl-grpo-rlvr', 'trl-sft'] as const
+const CONVERTERS = [
+  'canonical-jsonl',
+  'evalscope-general-qa',
+  'ms-swift',
+  'trl-dpo',
+  'trl-grpo-rlvr',
+  'trl-sft',
+] as const
 
 const limits = {
   max_record_bytes: 16 * 1024 * 1024,

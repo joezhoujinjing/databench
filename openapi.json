@@ -298,6 +298,7 @@
             "items": {
               "enum": [
                 "canonical",
+                "evaluation-qa",
                 "sft",
                 "dpo",
                 "rlvr-grpo",
@@ -327,6 +328,7 @@
       "ConverterNameV2": {
         "enum": [
           "canonical-jsonl",
+          "evalscope-general-qa",
           "trl-sft",
           "trl-dpo",
           "trl-grpo-rlvr",
@@ -345,11 +347,11 @@
             "items": {
               "$ref": "#/components/schemas/ConverterDescriptorV2"
             },
-            "maxItems": 5,
+            "maxItems": 6,
             "type": "array"
           },
           "total": {
-            "maximum": 5,
+            "maximum": 6,
             "minimum": 0,
             "type": "integer"
           }
@@ -2681,7 +2683,7 @@
             "items": {
               "$ref": "#/components/schemas/ConverterNameV2"
             },
-            "maxItems": 5,
+            "maxItems": 6,
             "type": "array"
           },
           "enabled": {

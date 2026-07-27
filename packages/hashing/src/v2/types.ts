@@ -133,6 +133,7 @@ export interface TransformCacheIdentityV1 {
 
 export type V2ConverterName =
   | 'canonical-jsonl'
+  | 'evalscope-general-qa'
   | 'trl-sft'
   | 'trl-dpo'
   | 'trl-grpo-rlvr'

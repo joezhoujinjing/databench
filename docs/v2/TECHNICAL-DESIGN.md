@@ -1869,7 +1869,9 @@ interface ConverterDescriptorV2 {
   version: string
   options_schema: JsonObject
   media_type: string
-  task_views: Array<'canonical' | 'sft' | 'dpo' | 'rlvr-grpo' | 'ms-swift'>
+  task_views: Array<
+    'canonical' | 'evaluation-qa' | 'sft' | 'dpo' | 'rlvr-grpo' | 'ms-swift'
+  >
   export_fidelity_profile: 'databench-export-fidelity-1'
 }
 ```
@@ -1888,10 +1890,13 @@ POST /v2/datasets/{dataset_version}:export
 ```ts
 type ConverterNameV2 =
   | 'canonical-jsonl'
+  | 'evalscope-general-qa'
   | 'trl-sft'
   | 'trl-dpo'
   | 'trl-grpo-rlvr'
   | 'ms-swift'
+
+// `evalscope-general-qa@1.0.0` and `evaluation-qa` are additive ADR 0017 E1 extensions.
 
 interface InspectExportRequestV2 {
   converter: ConverterNameV2
@@ -1921,6 +1926,9 @@ interface ExportRequestV2 {
   accepted_fidelity_digest: string | null
 }
 ```
+
+`evalscope-general-qa` 的 strict options、准入、fidelity 和 JSONL wire shape 以
+[`docs/evalscope/TECHNICAL-DESIGN.md`](../evalscope/TECHNICAL-DESIGN.md) §7 为准。
 
 Inspect 是无状态、无副作用的 JSON 请求。它只解析 ref 一次，运行资格/fidelity analysis，
 物化 converter options 默认值，并返回 exact `dataset_version` 与 `ExportPlanV2`。不创建

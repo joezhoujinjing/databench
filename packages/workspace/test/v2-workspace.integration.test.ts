@@ -585,6 +585,39 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       role: 'user',
     })
     expect(row.completion).toEqual([{ content: 'Persisted export completed.', role: 'assistant' }])
+
+    const evalScopePlan = await fresh.inspectExport(published.dataset_version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'selected-candidate' },
+    })
+    const evalScopeExport = await fresh.export(published.dataset_version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'selected-candidate' },
+      accepted_fidelity_digest: evalScopePlan.fidelity_digest,
+    })
+    const evalScopeRow = JSON.parse(await collectUtf8(evalScopeExport.bytes)) as {
+      messages: Array<{ content: string; role: string }>
+      response: string
+      _databench: {
+        dataset_version: string
+        record_id: string
+        record_digest: string
+        candidate_id: string
+      }
+    }
+    expect(evalScopeRow).toMatchObject({
+      messages: [
+        { content: 'Answer precisely.', role: 'system' },
+        { content: 'Export this persisted training row.', role: 'user' },
+      ],
+      response: 'Persisted export completed.',
+      _databench: {
+        dataset_version: published.dataset_version,
+        record_id: `rec_${'3'.repeat(64)}`,
+        record_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+        candidate_id: `cand_${'2'.repeat(64)}`,
+      },
+    })
   })
 
   test('production open composes Catalog, S3, and file-backed Store end to end', async () => {
