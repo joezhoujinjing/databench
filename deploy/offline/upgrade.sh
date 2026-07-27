@@ -93,7 +93,8 @@ BACKUP_GENERATION="$(read_state_value last-backup-generation)"
 
 log "loading target images"
 docker load --input "${SCRIPT_DIR}/images.tar" >/dev/null
-validate_images_lock "${SCRIPT_DIR}/images.lock" true
+validate_images_lock \
+  "${SCRIPT_DIR}/images.lock" true "$(release_image_count "$SCRIPT_DIR")"
 
 log "ensuring MinIO application policy"
 compose_for_release "$TARGET_RELEASE" run --rm minio-init

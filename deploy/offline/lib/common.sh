@@ -203,6 +203,15 @@ release_has_worker() {
   grep -Eq '^DATABENCH_WORKER_IMAGE=[A-Za-z0-9._/@:+-]+$' "${release_dir}/release.env"
 }
 
+release_image_count() {
+  local release_dir="$1"
+  if release_has_worker "$release_dir"; then
+    printf '6\n'
+  else
+    printf '5\n'
+  fi
+}
+
 stop_application_services() {
   local release_dir="$1"
   compose_for_release "$release_dir" stop web api

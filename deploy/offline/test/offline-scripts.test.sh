@@ -222,6 +222,12 @@ for health_script in install.sh upgrade.sh rollback.sh restore.sh; do
   grep -Fq 'wait_application_services' "${SCRIPT_DIR}/${health_script}" ||
     fail "${health_script} does not wait for the selected release application health"
 done
+for image_validation_script in install.sh upgrade.sh; do
+  grep -Fq 'release_image_count "$SCRIPT_DIR"' "${SCRIPT_DIR}/${image_validation_script}" ||
+    fail "${image_validation_script} infers the target image count from ambient release state"
+done
+grep -Fq 'release_image_count "$release_dir"' "${SCRIPT_DIR}/lib/manifest.sh" ||
+  fail 'release contract validation infers the image count from ambient release state'
 (
   # shellcheck source=../lib/common.sh
   source "${SCRIPT_DIR}/lib/common.sh"
@@ -341,6 +347,17 @@ printf '%s\n' \
   validate_release_contract "${TEMP_DIR}/legacy-release"
   [ -z "${DATABENCH_WORKER_IMAGE:-}" ]
   ! release_has_worker "${TEMP_DIR}/legacy-release"
+)
+
+(
+  source "${SCRIPT_DIR}/lib/common.sh"
+  source "${SCRIPT_DIR}/lib/manifest.sh"
+  validate_release_contract "${TEMP_DIR}/release"
+  load_release_env "${TEMP_DIR}/legacy-release/release.env"
+  [ -z "${DATABENCH_WORKER_IMAGE:-}" ]
+  [ "$(release_image_count "${TEMP_DIR}/release")" -eq 6 ]
+  validate_images_lock "${TEMP_DIR}/release/images.lock" false \
+    "$(release_image_count "${TEMP_DIR}/release")"
 )
 
 cp "${TEMP_DIR}/release/release-manifest.json" "${TEMP_DIR}/bad-manifest.json"

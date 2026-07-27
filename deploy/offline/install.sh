@@ -37,7 +37,8 @@ ensure_mcp_config
 
 log "loading offline images"
 docker load --input "${SCRIPT_DIR}/images.tar" >/dev/null
-validate_images_lock "${SCRIPT_DIR}/images.lock" true
+validate_images_lock \
+  "${SCRIPT_DIR}/images.lock" true "$(release_image_count "$SCRIPT_DIR")"
 
 log "starting PostgreSQL and MinIO"
 compose_for_release "$RELEASE_DIR" up -d postgres minio

@@ -44,7 +44,8 @@ validate_release_contract() {
     die "release.env and manifest application versions differ"
   lock_sha="$(sha256_file "${release_dir}/images.lock")"
   [ "$lock_sha" = "$MANIFEST_IMAGES_LOCK_SHA256" ] || die "images.lock checksum mismatch"
-  validate_images_lock "${release_dir}/images.lock" false
+  validate_images_lock \
+    "${release_dir}/images.lock" false "$(release_image_count "$release_dir")"
   images=(
     "$DATABENCH_API_IMAGE"
     "$DATABENCH_WEB_IMAGE"
