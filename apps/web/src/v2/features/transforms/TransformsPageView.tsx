@@ -166,7 +166,14 @@ function BasicCleanJobs() {
         ) : null}
         {create.isError ? (
           <div className="mt-4">
-            <V2MutationError error={create.error} />
+            <V2MutationError
+              error={create.error}
+              message={
+                isTransformJobIdentityConflict(create.error)
+                  ? t('v2.transforms.jobs.identityConflict')
+                  : undefined
+              }
+            />
           </div>
         ) : null}
       </SurfaceBody>
@@ -394,6 +401,11 @@ export function transformJobProgressPercent(job: TransformJobV2): number | null 
   const progress = job.progress
   if (progress === null || progress.total_units === null || progress.total_units === 0) return null
   return Math.min(100, Math.round((progress.completed_units / progress.total_units) * 100))
+}
+
+export function isTransformJobIdentityConflict(error: unknown): boolean {
+  if (!isApiError(error) || error.detail === null || typeof error.detail !== 'object') return false
+  return 'reason' in error.detail && error.detail.reason === 'transform_job_identity_conflict'
 }
 
 function transformJobTone(status: TransformJobV2['status']): 'blue' | 'green' | 'orange' | 'muted' {

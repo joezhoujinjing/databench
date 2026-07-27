@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest'
+import { ApiError } from '@/api/errors.js'
 import {
   createOrderedInputs,
   formatParamsExample,
   hasTransformParams,
+  isTransformJobIdentityConflict,
   parseJsonObject,
   transformJobProgressPercent,
 } from './TransformsPageView.js'
@@ -53,5 +55,23 @@ describe('V2 transform form helpers', () => {
     expect(
       transformJobProgressPercent({ ...job, progress: { ...job.progress, total_units: null } }),
     ).toBeNull()
+  })
+
+  test('recognizes a repeated basic-clean job with a different result name', () => {
+    expect(
+      isTransformJobIdentityConflict(
+        new ApiError({
+          code: 'integrity_error',
+          detail: { reason: 'transform_job_identity_conflict' },
+          message: 'internal message',
+          status: 500,
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      isTransformJobIdentityConflict(
+        new ApiError({ code: 'integrity_error', message: 'other error', status: 500 }),
+      ),
+    ).toBe(false)
   })
 })
