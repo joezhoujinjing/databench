@@ -23,6 +23,21 @@
 MCP M0-M3 已完成并获准进入匿名可信内网离线通道。通用 runtime
 仍默认关闭，公网部署未授权。
 
+## EvalScope 集成（实施中）
+
+- [ADR 0017](decisions/0017-evalscope-native-ui-integration.md) — 锁定最新 EvalScope React UI 的业务
+  功能等价迁移、Databench 产品/视觉所有权与 backend-only EvalScope 边界。
+- [EvalScope 技术方案](evalscope/TECHNICAL-DESIGN.md) — 全页面 parity、TanStack Router、scoped
+  visual tokens、same-origin API adapter、`general_qa`、run、归档、许可证与升级设计。
+- [EvalScope 实施计划](evalscope/PLAN.md) / [状态](evalscope/STATUS.md) — E0-E9 纵向交付；E0 已完成，
+  GE7 是完整 UI parity gate，GE9 是最终安全/离线集成 gate。
+
+owner 已确认“功能完整复刻、UI 使用 Databench 风格、不使用 iframe 嵌入 EvalScope SPA”的总体方向；
+file-level source manifest 与 capability-level parity manifest 分开验收，上游功能、安全替代和
+Databench 扩展分类追踪，扩展不计入上游 parity coverage。
+generated report/chart 为保留业务能力，只能在清洗重写后进入不含 `allow-same-origin` 的受限 sandbox
+frame。ADR、技术方案和计划已接受；E0 基线门已完成，当前进入 E1，尚未发布 EvalScope runtime surface。
+
 ## 产品切换
 
 - [ADR 0013](decisions/0013-v2-product-cutover-and-v1-retirement.md) — v2 成为唯一

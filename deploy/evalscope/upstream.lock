@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/modelscope/evalscope.git",
+  "commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
+  "tree": "a47b532bc1644e9d19a4dac4110cf9dfcc7705bd",
+  "commit_date": "2026-07-27T10:47:59+08:00",
+  "web": {
+    "root": "evalscope/web",
+    "package_json_sha256": "1a766214403efa41b29e51b7c1a974e0527b461c3fee69e5ee0938dd887340be",
+    "package_lock_sha256": "3f2ccf1f9fd095cb2294ead274f27dcc67975866d0bc25f2ff2104b9285aeba5",
+    "typescript_line_count": 21096,
+    "source_file_count": 183,
+    "test_file_count": 34
+  },
+  "python": {
+    "pyproject_sha256": "70b7dad05d53f86210edfcb8891cd1673157f0c00d67d09bd0ab91e5acc513a7",
+    "framework_requirements_sha256": "a6835f0eaa63fdbff59a688311e5ee03d3c65b374032455d4af7255a4093865a",
+    "setup_py_sha256": "772f7c75744d98bfeb69e345ce17436211b457e46cc295485b937f8aacac36f0",
+    "setup_cfg_sha256": "0db05e02d863191e1ed2c058dc9e257d60ea7ba506652bdf438f7576ea706eb3"
+  },
+  "license": {
+    "spdx": "Apache-2.0",
+    "path": "LICENSE",
+    "sha256": "2bfd8cd37a4dd0fc55332c7d21050ab071a1843324c39af2434dab94cbf38f72"
+  },
+  "plotly": {
+    "version": "2.35.2",
+    "upstream_url": "https://resources.modelscope.cn/third-part/js/plotly/plotly-2.35.2.min.js",
+    "bytes": 4558696,
+    "sha256": "6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603",
+    "license_spdx": "MIT",
+    "license_url": "https://github.com/plotly/plotly.js/blob/v2.35.2/LICENSE"
+  }
+}

@@ -3,7 +3,7 @@
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
-> `docs/mcp/`。
+> `docs/mcp/`。EvalScope ADR 0017 已接受，当前只完成 E0 来源/能力基线；尚未增加 runtime 或产品路由。
 
 ## 顶层目录
 
@@ -28,10 +28,13 @@ databench-ts/
 ├─ prisma/              v2-only schema 与 forward migrations
 ├─ deploy/
 │  ├─ ecs/              既有托管部署资产
+│  ├─ evalscope/        E0 upstream/API/Plotly locks；E3 前不含可运行镜像
 │  └─ offline/          ADR 0012 Ubuntu 单机离线发布
-├─ scripts/             repo gate、测试 schema 与辅助脚本
+├─ scripts/             repo gate、测试 schema、EvalScope parity 与辅助脚本
+├─ THIRD_PARTY_NOTICES.md
 └─ docs/
-   └─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
+   ├─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
+   └─ evalscope/         已接受的设计、E0 evidence、实施计划与状态
 ```
 
 `v2` 仍出现在 REST 路径、数据库表、对象 key、类型和测试名中。它是稳定协议/持久化命名，
@@ -93,6 +96,7 @@ hashing
 apps/web 仅消费 generated OpenAPI client
 tooling/openapi-export 仅装配 apps/api
 tooling/v1-retirement 是显式 maintenance 边界
+deploy/evalscope 在 E3 前只含不可执行的 upstream/API/asset locks
 ```
 
 精确允许关系：
@@ -107,6 +111,10 @@ tooling/v1-retirement 是显式 maintenance 边界
 - `apps/api`、`apps/cli → workspace, schema`
 - `apps/web` 不 import 后端包
 
+EvalScope E0 在 `apps/web/src/evaluations/` 只放置来源、能力 manifest 和 pinned fixtures，不注册路由、
+不发网络请求。后续 UI 对 Databench `/v2/*` 仍只用 generated client；隔离的 EvalScope Zod client 只能访问
+`deploy/evalscope/api-routes.json` 明确允许的方法与精确路径，不能成为通用反向代理。
+
 MCP runtime 内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
 MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访问层。
 
@@ -119,8 +127,9 @@ MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访
 3. `hashing` 和 `schema` 保持纯；不得依赖 Prisma、对象存储或 Parquet runtime。
 4. 样本 payload 只存在对象存储的 immutable Parquet artifact；Postgres 只存 catalog
    元数据、身份 claim、lineage、run 与 ref。
-5. `apps/web` 的 wire 类型只来自生成的
-   `apps/web/src/api/generated/schema.ts`。
+5. `apps/web` 对 Databench REST 的 wire 类型只来自生成的
+   `apps/web/src/api/generated/schema.ts`；后续 EvalScope provider API 使用 `apps/web/src/evaluations/`
+   内隔离的 pinned Zod adapter，不能混入 Databench contract 或成为任意 HTTP client。
 6. `tooling/v1-retirement` 不得被应用启动、普通请求或隐式 migration 调用；它只服务
    ADR 0013 的显式数据退役流程。
 
@@ -159,7 +168,8 @@ packages/<name>/
 
 ## 当前发布边界
 
-产品切换 R0-R5 与 MCP M0-M3 已完成。MCP 和单个 CPU-only Worker 只获授权进入 ADR 0012 的
+产品切换 R0-R5、MCP M0-M3 与 EvalScope E0 baseline 已完成。EvalScope runtime 和产品面尚未实现、仍
+disabled-by-default。MCP 和单个 CPU-only Worker 只获授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台
 仍受 D3 owner 决策门约束。

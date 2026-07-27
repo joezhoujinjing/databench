@@ -1,0 +1,1914 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "https://github.com/modelscope/evalscope.git",
+    "commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
+    "web_root": "evalscope/web",
+    "source_root": "evalscope/web/src",
+    "source_file_count": 183,
+    "test_file_count": 34,
+    "typescript_line_count": 21096,
+    "license_spdx": "Apache-2.0",
+    "license_sha256": "2bfd8cd37a4dd0fc55332c7d21050ab071a1843324c39af2434dab94cbf38f72"
+  },
+  "files": [
+    {
+      "upstream_path": "evalscope/web/src/api/client.ts",
+      "upstream_sha256": "8fc8c6c753745fd13dd634de9bda25370c0f37bae4e257a95fa82d0976a9fc50",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/client.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/errors.ts",
+      "upstream_sha256": "e155cf73a76ea7d5818ccba7fc7078b9dd33e273a1a06a36cc84e725b5397419",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/errors.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/eval.ts",
+      "upstream_sha256": "2bbabf460fe02f4bbd1683d8ac286c702e813ff724d411d5c55bb2356c0675f1",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/eval.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/perf.ts",
+      "upstream_sha256": "2f4cd518b423821e614e21f892c35b29bcf0457e3b81da6ce19b2f1f22876e92",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/perf.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/reports.ts",
+      "upstream_sha256": "8682dd6b9a098bdabd2fea374a2c4c5f1fe14b54f5ca58fa907b490fd250cb86",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/reports.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/schemas/common.schema.ts",
+      "upstream_sha256": "bca3bf1c70e679aa641f650c55e7734a92fe5e43de28bdd9e090d3d5e76d858a",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/schemas/common.schema.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/schemas/endpointSchemas.test.ts",
+      "upstream_sha256": "720b151bebb3903670a9e058e9461bcf4ef23a860cf6aeb059f1610120c9f7c9",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/schemas/endpointSchemas.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/schemas/eval.schema.ts",
+      "upstream_sha256": "ae26af3d80ad7e92bdde25e9aa3bafd3792d614d97d71d7da3d54eb25e487bae",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/schemas/eval.schema.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/schemas/index.ts",
+      "upstream_sha256": "e7cfdd4182d51288432d493718da42305e6109833a3fd6aebdc9edd0562e0aef",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/schemas/index.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/schemas/perf.schema.ts",
+      "upstream_sha256": "74290b116990e3c01f430d549c647035c27499936c4f38ce28960122c3bceaeb",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/schemas/perf.schema.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/schemas/reports.schema.test.ts",
+      "upstream_sha256": "12cabf3372ecdc6270015dc899b5669e93c676823a89aa880c0cf8255501e8b0",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/schemas/reports.schema.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/schemas/reports.schema.ts",
+      "upstream_sha256": "fecec869b17b49c7deacf6758df0a64fb972fcdcd9c00b702332ca7efebe45ce",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/schemas/reports.schema.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/schemas/schemas.property.test.ts",
+      "upstream_sha256": "e812718b012e722280e1c163965bbe4beb63f078e0d0145936567c85f4df35b0",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/schemas/schemas.property.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/task.test.ts",
+      "upstream_sha256": "4755d7808ffd64698c0d164bd9015ac4b4d4fc0203230cfdf860fdd3eef8c6ff",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/task.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/task.ts",
+      "upstream_sha256": "c82b4fcb5438d621e88e14ed25356130c52a07ef77f72f96f4b832e045b354b0",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/task.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/types/common.ts",
+      "upstream_sha256": "90637729f1a42b8eb3432caddcab65682111b2915c26042408d987f0e2af18cb",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/types/common.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/types/eval.ts",
+      "upstream_sha256": "ad7282869ce95e96b99049d119185c8bb06686efef9954c1458046ed8e91ba82",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/types/eval.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/types/index.ts",
+      "upstream_sha256": "5442c4ecc571d02a418d50842f7fb881da679adcab2781ec5c41b8d6344417d6",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/types/index.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/types/perf.ts",
+      "upstream_sha256": "e76ac63633991ba67c65a977269b88e61e79ece88b5376e22c17325f0ad92821",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/types/perf.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/api/types/reports.ts",
+      "upstream_sha256": "37f2008c14c18ded1e029b007af8e314de449179417b15e607a161f338725d53",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/api/types/reports.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.api-contracts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/App.tsx",
+      "upstream_sha256": "74c61e23a03e6927ac2dfcba2628cfb2461f49dfdf0a0e60f30f408822164918",
+      "kind": "production",
+      "status": "excluded",
+      "coverage_kind": "brand-shell-exclusion",
+      "target_path": null,
+      "reason": "standalone BrowserRouter application boot",
+      "parity_ids": ["shell.standalone-app"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/a11yResponsive.test.tsx",
+      "upstream_sha256": "f98028e3faa282d5502f943f722c80faa17459b72999a59e9ccb7ca2ccf9d79f",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/a11yResponsive.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/charts/ChartFrame.test.tsx",
+      "upstream_sha256": "698794b66c4d0281aa30000e75aaa90512e7d4c40c4cc0505b7cde4d39fc2500",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/charts/ChartFrame.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["viewer.sanitized-document"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/charts/ChartFrame.tsx",
+      "upstream_sha256": "e653d514cbbf21007217bc21b18637fe8a59e43e697e727e7acea60810220cfa",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/charts/ChartFrame.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["viewer.sanitized-document"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/charts/PlotlyChart.tsx",
+      "upstream_sha256": "7babd634e6084d56f51bf4936cc84773c6d7fe619de80c265cd3d30d561a66a6",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/charts/PlotlyChart.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["viewer.sanitized-document"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/DataTable.tsx",
+      "upstream_sha256": "2a41eb6588c6f96fdcf6cc93a71425271ca2b3a3d08f7f300254667696d92959",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/DataTable.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/DataTableFallback.tsx",
+      "upstream_sha256": "516fc2deceda27cc425e22323688883be4221ab4ac5d6ad3d3f973bd36f32e47",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/DataTableFallback.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/EmptyState.tsx",
+      "upstream_sha256": "162906a7bbfd78a1f0ac5aad18cc70dad4962379a2e6db1ed020d125fc0b5c48",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/EmptyState.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/EmptyStateSystem.test.tsx",
+      "upstream_sha256": "31b165713042e74495ac53d90ac6797c55d8028ba35f0518981098b2ab483167",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/EmptyStateSystem.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/EmptyStateSystem.tsx",
+      "upstream_sha256": "22fccf8716885b4a1703c6823e019efda5ca30035d701488f4f0de9f7598c42e",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/EmptyStateSystem.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "dashboard.partial-empty-states",
+        "reports.catalogue-states-actions",
+        "sample.rich-content-virtualization"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/ErrorBoundary.tsx",
+      "upstream_sha256": "807fc53aa5ade74016c15ecc1a5f6d312c90f075e2fc262eedff74bd8d73bfa1",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/ErrorBoundary.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/ImageLightbox.tsx",
+      "upstream_sha256": "854d143cf743127759837cb1bb3da8085338857730f68a6a95bcef1cbe946023",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/ImageLightbox.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/JsonViewer.tsx",
+      "upstream_sha256": "f7f23f24cd47d94171885361cf208c8343fa19e23f2106381324fcf467bbc71c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/JsonViewer.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/LazyCodeBlock.tsx",
+      "upstream_sha256": "7441f352e5f6976b779d63e375b29683abdbc8a668c551fd56a06c25a063f5d5",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/LazyCodeBlock.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/LoadingSpinner.tsx",
+      "upstream_sha256": "a41cbe1959646d83e572ee885dcbcfa991fa94eb4d21d0a32b9c7dbbf4f00042",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/LoadingSpinner.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/LogViewer.tsx",
+      "upstream_sha256": "c44e40cc440fdaebd2b91d6e64c67be3117a2297383ab46efbaab8f201a980dd",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/LogViewer.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/MarkdownRenderer.test.tsx",
+      "upstream_sha256": "81914803de8a6814fa7ad763c31a184dbe8ba62436a169331097482ecbdb8474",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/MarkdownRenderer.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/MarkdownRenderer.tsx",
+      "upstream_sha256": "f63e1322129fe00d7d42d33e962145b1e5721aca73e7396fa164a1a8ac30d748",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/MarkdownRenderer.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/VirtualList.tsx",
+      "upstream_sha256": "7e1a0995e2b64ad3cb04ac1c00e4c388f6f5717f2337e016e62668065ec85705",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/VirtualList.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/virtualWindow.test.ts",
+      "upstream_sha256": "3bcd7f4f43be6d4db0fc1ea6bc5f5a3e190ca244ca246de180171f245018b9ca",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/virtualWindow.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/common/virtualWindow.ts",
+      "upstream_sha256": "d56f02a8a63d9302addf02f70d567b4ff39bddd4b2a89fd9085ede7902232e63",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/common/virtualWindow.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/eval/EvalConfigForm.tsx",
+      "upstream_sha256": "24de6d1303a05129e1e17455630c9de295e1d92356b74dc14349ce358f913bf2",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/eval/EvalConfigForm.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "tasks.benchmark-autocomplete",
+        "tasks.dataset-args-editor",
+        "tasks.evaluation-form-fields"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/eval/TaskMonitor.tsx",
+      "upstream_sha256": "a8dac5ad20dfddc242bd5b87a8c9e7e5ab3fbc49d8781cbd9a4a3e511bfd716c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/eval/TaskMonitor.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["shell.safe-report-new-tab", "tasks.monitor-lifecycle"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/nav/LocaleToggle.tsx",
+      "upstream_sha256": "7d7a46f8405b729330ed7387cc7a1f64427805cba2919b27436e08d0f91cb784",
+      "kind": "production",
+      "status": "excluded",
+      "coverage_kind": "brand-shell-exclusion",
+      "target_path": null,
+      "reason": "duplicate locale shell control",
+      "parity_ids": ["shell.brand-nav-theme-locale"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/nav/ThemeToggle.tsx",
+      "upstream_sha256": "23f60f3be59b3b32c7303820a72823671078a228fe8685bc9af3ec12726d1baf",
+      "kind": "production",
+      "status": "excluded",
+      "coverage_kind": "brand-shell-exclusion",
+      "target_path": null,
+      "reason": "duplicate theme shell control",
+      "parity_ids": ["shell.brand-nav-theme-locale"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/nav/TopNav.tsx",
+      "upstream_sha256": "137743cd63c49573dd576bde9ac5abaa2e31e2067e5460ae0e99edaf9cb2ec03",
+      "kind": "production",
+      "status": "excluded",
+      "coverage_kind": "brand-shell-exclusion",
+      "target_path": null,
+      "reason": "EvalScope-branded standalone navigation",
+      "parity_ids": ["shell.brand-nav-theme-locale"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/perf/PerfChartGroup.tsx",
+      "upstream_sha256": "d2e5f32b370a760b129817c386b848cf2ba7f2404a632df162145521d5a08efe",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/perf/PerfChartGroup.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "performance.compare-conditional-charts",
+        "performance.detail-summary-closed-loop"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/perf/PerfConfigForm.tsx",
+      "upstream_sha256": "2dece05b4edb66c82df56b4c9992584bbd61900d835e371399087cbfaf370214",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/perf/PerfConfigForm.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["tasks.performance-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/DatasetNav.tsx",
+      "upstream_sha256": "6a100a92a5242b32b0d7c448089fc5ca1a5a9ebfa206c6f877a77fe0f09f154d",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/DatasetNav.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["report.details-analysis-subsets"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/DetailsTab.test.tsx",
+      "upstream_sha256": "e1729ba9463430f429b1cb72be0e709b1171e93c5edf92131cd69da060e7d513",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/DetailsTab.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["report.details-analysis-subsets"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/DetailsTab.tsx",
+      "upstream_sha256": "c77fe231e74e840f75b527d544c2f56756a39470e9ae731c560ebf1c559315a4",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/DetailsTab.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["report.details-analysis-subsets"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/metricConsistency.test.tsx",
+      "upstream_sha256": "fb805bdb78caa4c7f21df0bc8e9ef394b917d928379f48a4a8ffc50d588fe1e7",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/metricConsistency.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["report.overview-table-radar"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/OverviewTab.test.tsx",
+      "upstream_sha256": "8cb1e96894531d949d8380b939d100a88e393a24a55987688b0ef4797dfb25e9",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/OverviewTab.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["report.overview-table-radar"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/OverviewTab.tsx",
+      "upstream_sha256": "4cabff2a37d685386c16d6f88f394ee6d3239a90f9268bfef8d3f5583ae03852",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/OverviewTab.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["report.overview-table-radar"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/PerfMetricsPanel.test.tsx",
+      "upstream_sha256": "77b2a50dc5d12d7e226066d1485e6734040b8b2d90545b551ed697c6a0d50ff2",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/PerfMetricsPanel.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["report.details-analysis-subsets"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/PerfMetricsPanel.tsx",
+      "upstream_sha256": "78c06e209dee9ca1a3489a4bdd109150ab833190788aa26474948ea05091e5ec",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/PerfMetricsPanel.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["report.details-analysis-subsets"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/PredictionsTab.test.tsx",
+      "upstream_sha256": "b80e18b97ede64f3086fe8a652917e804c83285b217c4393313ec8fc2339a98c",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/PredictionsTab.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["predictions.threshold-status-counts"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/PredictionsTab.tsx",
+      "upstream_sha256": "eb335da0c2d51192b7246f550b3ea9d5d790343287315ee27e06509b151a8384",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/PredictionsTab.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "predictions.index-navigation",
+        "predictions.message-id-search-highlight",
+        "predictions.threshold-status-counts"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/ReportCard.tsx",
+      "upstream_sha256": "0f5eb21b95eb1b64390202dd3c2928fa21b2d13d5b35af49a684dfe2c0b28eb7",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/ReportCard.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["reports.catalogue-responsive-list"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/ReportFilters.tsx",
+      "upstream_sha256": "20904735dd2ebc2a2fb9090ff0b24b37aad09c8ffe0fe7db8f6b2d97edfc6fd5",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/ReportFilters.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["reports.catalogue-filters-sort"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/ReportHeader.tsx",
+      "upstream_sha256": "7744afa9352ef22b4a70a312c7a3db0fd0047417c3c4eeadd0406c0f9780c538",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/ReportHeader.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["report.header-summary-navigation", "shell.safe-report-new-tab"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/ReportsTable.tsx",
+      "upstream_sha256": "78733a5e9c105cebc4cb04ca5aab53bb4585d7fab2a8d5b3400fc10b694176b4",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/ReportsTable.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["reports.catalogue-responsive-list"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/ReportSummaryStats.tsx",
+      "upstream_sha256": "47a8244e7fd245f16982f42283f8a540d41bda6d34dfeef63dee097095a61bfb",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/ReportSummaryStats.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["report.header-summary-navigation"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/SelectionControls.test.tsx",
+      "upstream_sha256": "ff5835ae57b859f5ee72c7d3184752a6c8c80f30f22aaf43b4188491bc9b246e",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/SelectionControls.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["reports.selection-actions"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/reports/SelectionTray.tsx",
+      "upstream_sha256": "1e863c5301c4908a59703722ed54fafcdbab03a040a9d83af5c85b731e7c5ed4",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/reports/SelectionTray.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["reports.selection-actions"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/chat/AgentTraceView.tsx",
+      "upstream_sha256": "3f476412ea1cbd2e0b82bb2f2617b9f22031f523b0915f049b0d3bc5d61d61f8",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/chat/AgentTraceView.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.agent-trace-linkage"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/chat/chatHelpers.ts",
+      "upstream_sha256": "b525b7923ed83d7a8639c0010f1140ec31686352cd3a374e4084f4aac4c0cc93",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/chat/chatHelpers.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.messages-reasoning-tools"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/chat/EvalResultPanel.test.tsx",
+      "upstream_sha256": "6fa345c939b2469cd397918024941f728e22aeecfe940df1ec4e249c387a44a0",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/chat/EvalResultPanel.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["sample.chat-presentations-results"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/chat/EvalResultPanel.tsx",
+      "upstream_sha256": "38bfefdb6cb066885895cd157b0c5e5708fc7ec38917dce150a5867b0f50f47c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/chat/EvalResultPanel.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.chat-presentations-results"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/chat/MediaBlocks.tsx",
+      "upstream_sha256": "5141abaf8c78def95eb04c3b576f6e40cbfdce4a5b40d5d736b0d5ab1a2618f0",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/chat/MediaBlocks.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.rich-content-virtualization"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/chat/MessageComponents.tsx",
+      "upstream_sha256": "859526a8683e146e22844320d017ec554ca2c4afb0df48b7bdddda7ed77a04ba",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/chat/MessageComponents.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.messages-reasoning-tools"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/chat/roleConfig.ts",
+      "upstream_sha256": "ead1bb296816a72e32981b81e5b159859c404049907f23a5517bdb8a3617df94",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/chat/roleConfig.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.messages-reasoning-tools"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/chat/ToolCallComponents.tsx",
+      "upstream_sha256": "0b9511366d5ff54f08083da431ffd0c64f608bac511052d426d5a4830609b600",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/chat/ToolCallComponents.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.messages-reasoning-tools"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/ChatView.test.tsx",
+      "upstream_sha256": "f334c52cf3c99aff7083858665babddad63ae599e0b67d5dbbd62c74c8308237",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/ChatView.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["sample.chat-presentations-results"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/single/ChatView.tsx",
+      "upstream_sha256": "1aa08fba50af91447110c23dc06a49e472879efdd2ef29c0281568594885a7e9",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/single/ChatView.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.chat-presentations-results"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/tasks/TaskFormFields.test.tsx",
+      "upstream_sha256": "c91732594645ab426628dbc49fe5786ab9b29c06bd1829c092fcdb8ad92628a7",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/tasks/TaskFormFields.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["tasks.evaluation-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/tasks/TaskFormFields.tsx",
+      "upstream_sha256": "bf0c7a5c393b2484e29cf431bf33161af1eb27a79613cd4a46c04a19128905d2",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/tasks/TaskFormFields.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["tasks.evaluation-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/tasks/TaskRunnerPage.test.tsx",
+      "upstream_sha256": "fcb7eefc7a13bb86825f9033a4a1510b5085d92fa16e26f3af44b53f92ab5e98",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/tasks/TaskRunnerPage.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["tasks.evaluation-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/tasks/TaskRunnerPage.tsx",
+      "upstream_sha256": "4dc86df971e6867670b0501d6678afd790972d24f04be635c2009d98c2aba29b",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/tasks/TaskRunnerPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["tasks.evaluation-form-fields", "tasks.monitor-lifecycle"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Badge.tsx",
+      "upstream_sha256": "8fe70f5c1a88c7488f7ca8b6aa2d138dff7568fc50b249389bc647ee1602cb5c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Badge.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Breadcrumb.tsx",
+      "upstream_sha256": "c23c8dd63d6025d0d127e42823eca6dab221f7a36916e0915a063c4acc597e88",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Breadcrumb.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Button.tsx",
+      "upstream_sha256": "85d4f7dcaa9e1dc38668a0ea25da8067374510aa43b6de12fc5f0b042947f88c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Button.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Card.tsx",
+      "upstream_sha256": "f8bf258f4eed5f4fa663c2e8a477c4a230e61eed8c5e979334cd05d3c5b78be3",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Card.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/ChatBubble.tsx",
+      "upstream_sha256": "a31091047f9e3ed9820c251c76d251ffeb9d1785faabd332109e2ab4dc5cd566",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/ChatBubble.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Collapsible.tsx",
+      "upstream_sha256": "0309ef46d7a5f1536deef1e4f787b1c0c121edc98fe4d45403e93a28265a27c4",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Collapsible.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/ErrorAlert.tsx",
+      "upstream_sha256": "08622c3f6308e2d470aab01f3b618514c26ece77fc3036753318bda505764044",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/ErrorAlert.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Eyebrow.tsx",
+      "upstream_sha256": "148b16d08edf4b05577ba70886c63fc3d51cb3e4da3887681971f0472c0224cf",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Eyebrow.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Field.test.tsx",
+      "upstream_sha256": "a1aca4c2a75215183c14f3cdd36e466b04118d2f08366e3f8276389270161d61",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Field.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Field.tsx",
+      "upstream_sha256": "6c3478d280fc20d93e7b55d67404718cec0aa89938060e0fc52501321465cff0",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Field.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/FilterChip.tsx",
+      "upstream_sha256": "02c7e665eb3929a87bfebca65ae67fef4795167d89cd4f2bd6daa226d06ff2e4",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/FilterChip.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/formStyles.ts",
+      "upstream_sha256": "d29f2c7f6ecef45c69afd62c92fff1167dedc6e65f3f321828a1424000861508",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/formStyles.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/KpiCard.tsx",
+      "upstream_sha256": "6fe23a46d8c876eae5eb2400bdb787371d916eda55a96f8b9dc612da3ab74938",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/KpiCard.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Pagination.test.tsx",
+      "upstream_sha256": "d916abfa5843262a61c2908b49c3693a063781d0c3cbb64a55ff5b01244b8c81",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Pagination.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Pagination.tsx",
+      "upstream_sha256": "6bed144805d0570add8c34ed7ad1729e424055949096193b6a19483bcb10a790",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Pagination.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/PathBar.tsx",
+      "upstream_sha256": "f2439ac00e5fb3f184bf0a542938a4ed7961c9748064010dbc4703e0925a1a92",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/PathBar.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives", "shell.configured-source-refresh"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/ScoreBadge.tsx",
+      "upstream_sha256": "f28a0010cb90946a9bc19b7f3922d6f9ab2177a0248476237ff8e47c46d4a599",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/ScoreBadge.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/SearchInput.tsx",
+      "upstream_sha256": "92532001c555d4ee341573048dfbf61bf1345cf79dc04a6f5411a621e17c3f13",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/SearchInput.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Select.tsx",
+      "upstream_sha256": "ec4349ef46e0c24e39969475c3349c1b12e011438bb38d566dcbbeff528f0248",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Select.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/SelectionCheckbox.tsx",
+      "upstream_sha256": "178e193be4b761c18195d1934478b0666abc40d97795b746be2e4a35630810bf",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/SelectionCheckbox.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Skeleton.tsx",
+      "upstream_sha256": "3068d89324b9c64515a6d97afc927d77e87e2d28e7601f404622c88684d1bb69",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Skeleton.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Table.tsx",
+      "upstream_sha256": "b6914f4fe01259e3cb04672a0c16ac8cb780a1d0d2d677deea1b88a25705e250",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Table.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Tabs.test.tsx",
+      "upstream_sha256": "67e3755e26086cc0ba1951379a01529685f5e486e936aef6ec81af62a87b6563",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Tabs.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/components/ui/Tabs.tsx",
+      "upstream_sha256": "f7d33fc7935225e9f92368f163f3aa7e8d3df8de32edb9ad59c6f18c4e2dfd6e",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/components/ui/Tabs.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.responsive-a11y-primitives"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/contexts/LocaleContext.tsx",
+      "upstream_sha256": "c9a9ce8341693a42d7cca4b3aeb18e359457af32a064e4ea7199b97b23429ea2",
+      "kind": "production",
+      "status": "excluded",
+      "coverage_kind": "brand-shell-exclusion",
+      "target_path": null,
+      "reason": "replaced by Databench react-i18next shell",
+      "parity_ids": ["shell.brand-nav-theme-locale"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/contexts/ReportsContext.tsx",
+      "upstream_sha256": "9fbb22cbdbb3ad30d06789cd0a8823dd349b9ff11453b2f0a6d4d05d7a3938e1",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/contexts/ReportsContext.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["shell.configured-source-refresh"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/contexts/ThemeContext.tsx",
+      "upstream_sha256": "ebf61aa28b9c374ba6fea5a0379b59746f4463ee7495c8bcfb8a9a30f1f6f40d",
+      "kind": "production",
+      "status": "excluded",
+      "coverage_kind": "brand-shell-exclusion",
+      "target_path": null,
+      "reason": "replaced by Databench theme shell",
+      "parity_ids": ["shell.brand-nav-theme-locale"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/compare/compareModel.test.ts",
+      "upstream_sha256": "2a64d4b9329bb7cd2099dcf39c13633cc2eee7ccc110300f0e0c1c3464b328fd",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/compare/compareModel.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": [
+        "compare.dataset-subset-intersection",
+        "compare.model-slots-url",
+        "compare.score-domain"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/compare/compareModel.ts",
+      "upstream_sha256": "ff048eb0990e37d842e31387d93b6830ff22b642defd9f5754cf089cca7fef16",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/compare/compareModel.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "compare.dataset-subset-intersection",
+        "compare.model-slots-url",
+        "compare.score-domain"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/drift/localeKeyCheck.test.ts",
+      "upstream_sha256": "027a7a32affb2ed425d74099e2f87b36bc5fb6575f5827335097dd5d0e3984b2",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/drift/localeKeyCheck.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/form/validation.datasetArgs.test.ts",
+      "upstream_sha256": "aa19112a83ad5f0cb6dbf6adabbb7a7de242ff48dd055224fe7d5f3d0408f831",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/form/validation.datasetArgs.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["tasks.dataset-args-editor", "tasks.evaluation-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/form/validation.firstInvalid.test.ts",
+      "upstream_sha256": "51e0090f370f27d3826c7561d7b1111a0054045d5bc1d8387fee86d542907de9",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/form/validation.firstInvalid.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["tasks.evaluation-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/form/validation.numeric.test.ts",
+      "upstream_sha256": "bdd92d2b715301dbcc84efcd94034012257dd458e9ae07fa0895d3988ab33221",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/form/validation.numeric.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["tasks.evaluation-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/form/validation.ts",
+      "upstream_sha256": "357ebbdbed19b420817c1de59aa3c699b74565f6ebc6784b67f6e7caebc6740c",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/form/validation.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["tasks.evaluation-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/metric/MetricDisplaySpec.ts",
+      "upstream_sha256": "ab7094a6dc4de72c915860beaf4707536e749d13acdcf3c58bfc1df5fa06d3c7",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/metric/MetricDisplaySpec.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.metric-native-format"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/metric/metricFormat.test.ts",
+      "upstream_sha256": "ae659329cb653cc3b1e2968f67b2a2ae953167a05c31d3eb6227fa7cd5133e71",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/metric/metricFormat.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.metric-native-format"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/metric/metricFormat.ts",
+      "upstream_sha256": "01ec1d36a824fa8d1cd31f979cfeff0302ed3927d7600f57de5f268ee5a08024",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/metric/metricFormat.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.metric-native-format"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/metric/registry.test.ts",
+      "upstream_sha256": "84e4b7235f2873e090fedbf96ee28c382e69f87174521d1a4c7af01c9fcd7c4d",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/metric/registry.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["foundation.metric-native-format"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/metric/registry.ts",
+      "upstream_sha256": "9d746157b00308e0e4e229b19336f909697b5a5644a70d6a7c26bbd51f33df6d",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/metric/registry.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.metric-native-format"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/perf/compareModel.test.ts",
+      "upstream_sha256": "963f72748c6de012b898fe9dc396c210469e3d58c0480c2e1b06e65eb5374d51",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/perf/compareModel.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["performance.compare-baseline-url"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/perf/compareModel.ts",
+      "upstream_sha256": "e7790ea1253e3d45ab3e649ca39f66010909fb16ccd0f113737a4c9995084ced",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/perf/compareModel.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "performance.compare-baseline-url",
+        "performance.compare-compatibility-config",
+        "performance.compare-delta-verdict"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/perf/perfWorkload.test.ts",
+      "upstream_sha256": "1f76af923bc47d64e8bf79b19277d82ab49e39441506e285b69cda6785dc4c59",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/perf/perfWorkload.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["performance.runs-workload-percentiles"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/perf/perfWorkload.ts",
+      "upstream_sha256": "583f06b7933452f583ae99d5ecfea44e87ffde4f7017094402e71ca09d2680e6",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/perf/perfWorkload.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "performance.compare-compatibility-config",
+        "performance.runs-workload-percentiles"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/perf/providerResolution.test.ts",
+      "upstream_sha256": "e7cf4d92d719fead2d7275dd7ea9312d6a43fcd1b9d462774121c259b5c4b02e",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/perf/providerResolution.test.ts",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["performance.detail-provider-metadata"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/domain/perf/providerResolution.ts",
+      "upstream_sha256": "235eb436237961b08da996765823f77ea393d06c7e863de1a82416fa9f4ffc38",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/domain/perf/providerResolution.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["performance.detail-provider-metadata"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/hooks/useCopy.ts",
+      "upstream_sha256": "4b26f1c04caab0c0da6338b8931dab7ef673ec5fda83f1598d90d504c0371a1b",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/hooks/useCopy.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.polling-query-abort"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/hooks/useFormErrors.ts",
+      "upstream_sha256": "2bd904f266619612af7ae4e459fda509e469ff96d9c8c44fdcb9a571e51f5a08",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/hooks/useFormErrors.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.polling-query-abort"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/hooks/usePolling.ts",
+      "upstream_sha256": "36a970522b502d8a1d1438004b179362bffd555a4e956040cecedb2332d88c54",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/hooks/usePolling.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.polling-query-abort"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/hooks/useQueryParams.ts",
+      "upstream_sha256": "c76b77df55e541cafdc4ef3bad340515ce733d01fc594b86753ed1279eec6490",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/hooks/useQueryParams.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.polling-query-abort"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations.ts",
+      "upstream_sha256": "f949ae4c1468be74c412b96025fd5fd3bf8abb095088f447da319a9b8d238f4f",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/benchmarks.ts",
+      "upstream_sha256": "f2128fada366fd6d667f584d2c2495db4ce638f2d5f99af667cebe1e09e49188",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/benchmarks.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/charts.ts",
+      "upstream_sha256": "aae882bb086a1e293f8d1f3a581629c13f9dc72e944645a8e313ba9f329009c0",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/charts.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/common.ts",
+      "upstream_sha256": "2689633b4229aff63affef2756d8bfa6e3b9763765c9e776579d11bcf5b1429b",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/common.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/compare.ts",
+      "upstream_sha256": "a32c9f91d5d352152e15742c62f14ad7b952ba58582ac1af986af01dd4f4bf35",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/compare.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/dashboard.ts",
+      "upstream_sha256": "a7d298f6d3d567f8211c95e0a737c8bd645a47462e8bf26c3a7b2b709af7b80b",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/dashboard.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/empty.ts",
+      "upstream_sha256": "759013a8ad34bb4957c45f55a4a6d9843b398012187164b11a49ea5654716d07",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/empty.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/eval.ts",
+      "upstream_sha256": "97a7b320ae31723da46f096bc12441080b7f11b2cc65843a346c9f68c529823b",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/eval.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/form.ts",
+      "upstream_sha256": "db5a7827a65d76330c807a05d21b184494faf38730b81989519e889263d0d6ca",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/form.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/index.ts",
+      "upstream_sha256": "81d29a03c8a982b74d3d52aa88b5506ad954e6f17fac857fc8de4f9449c3f3e6",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/index.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/markdown.ts",
+      "upstream_sha256": "7139fd479a7a335a6b8cb9a607816fc5f9415f1640c50d2875ebe8fc1edf7008",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/markdown.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/metrics.ts",
+      "upstream_sha256": "c67350bb93d65f57712f30597a384f3672d3ed0b6a09a0a20cb07eac795c4e9b",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/metrics.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/multi.ts",
+      "upstream_sha256": "d6551961589ab03490de1b8c7c3f92b5ec58a3495b7d5f93e8631b860e3f07b2",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/multi.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/nav.ts",
+      "upstream_sha256": "6543f149eb318050b8cc4033f1cd68bc34ab70c5c6f88f1949aa80facd2cf3e8",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/nav.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/perf.ts",
+      "upstream_sha256": "0313810c184c699b6e98d9f00fc5d29d079c7d64d66d93249618a9834aa816ee",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/perf.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/performance.ts",
+      "upstream_sha256": "d261155ccdf79825301738a96f4022476a1593ff2346000a8e10ee0fd9c7665c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/performance.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/prediction.ts",
+      "upstream_sha256": "f7b091fa7bd472847a950e3881155b613a1814f3807ebb37a39eafb432d0e5c2",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/prediction.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/reportDetail.ts",
+      "upstream_sha256": "f4e636eb178cbb541778ec0fafe5c7273464153bf0216a7cbafe68dc1cd235e9",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/reportDetail.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/reports.ts",
+      "upstream_sha256": "899cdb69175b1b84fee0f250667f09dcc6378a8f719249f8732b0833fce05a85",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/reports.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/single.ts",
+      "upstream_sha256": "9f8364bd3a8b8e079926e75ec61cf49ee819a2fec8165647ddb9f3b87cbb9104",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/single.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/tabs.ts",
+      "upstream_sha256": "80f43d1dc2aab7172ea425c8ae4f5dc21750f310b8376d07270df056370ebfad",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/tabs.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/tasks.ts",
+      "upstream_sha256": "16acfe1adbbea82e586e644e8ac41dc820d215caad1c640c99ca03d75454d8bb",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/tasks.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/trace.ts",
+      "upstream_sha256": "32f3c139da3dd00babfea73bae5c0c1f040f237e7b81000708ea3c3fa983ff5c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/trace.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/i18n/translations/types.ts",
+      "upstream_sha256": "3bcd805a0c62008998dbd6143b572b930621852ea8658940c6fc48a571226a71",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/i18n/translations/types.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.locale-content"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/index.css",
+      "upstream_sha256": "b0b6482d91b7a92761e81634a99e443c59cfd83ca1837aefab404ba06e4fdd0c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/index.css",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/layouts/MainLayout.tsx",
+      "upstream_sha256": "645b607c16c18f3a9a7b3a7331f4277fea32951ded44dc4f91b3903269c61c72",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/layouts/MainLayout.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["shell.configured-source-refresh"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/lib/utils.ts",
+      "upstream_sha256": "e46429536f43f5910f5b2b0c50bb2769b510a4558bb4b5d20a3b0a9091dbf7c3",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/lib/utils.ts",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/main.tsx",
+      "upstream_sha256": "c89383baab814e1388ba5d9aa211b237ba9a35bf0a07ef3e73364a7fff84361b",
+      "kind": "production",
+      "status": "excluded",
+      "coverage_kind": "brand-shell-exclusion",
+      "target_path": null,
+      "reason": "standalone Vite application boot",
+      "parity_ids": ["shell.standalone-app"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/BenchmarksPage.tsx",
+      "upstream_sha256": "39d1df6ed5a99c80103d1249f00927d9cc027dd6fb7fbc5dcc538938f4aa3d0b",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/BenchmarksPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "benchmarks.cards-pagination",
+        "benchmarks.categories-counts",
+        "benchmarks.detail-markdown-paper",
+        "benchmarks.loading-no-result",
+        "benchmarks.search-tag-filters"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/ComparePage.tsx",
+      "upstream_sha256": "f363c02ab014ceb25413e6089b3d1d74e2a3c460f031a97f49ef35fdd69e8bf4",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/ComparePage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "compare.aligned-navigation-keyboard",
+        "compare.dataset-subset-intersection",
+        "compare.model-slots-url",
+        "compare.parallel-samples-errors",
+        "compare.prediction-filters-presets",
+        "compare.score-domain"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/DashboardPage.tsx",
+      "upstream_sha256": "0443a13a879d0e47e60fd3cf9dd2cab5114aed88404e54941a87231138102354",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/DashboardPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "dashboard.kpis-navigation",
+        "dashboard.partial-empty-states",
+        "dashboard.recent-feed-filters"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/EvalTaskPage.tsx",
+      "upstream_sha256": "628d76728f408159153d0ca8387f137983f95d25d334192bb154bb7b491fc95c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/EvalTaskPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["tasks.evaluation-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/PerfComparePage.test.tsx",
+      "upstream_sha256": "365f91c9299a815972fd63225ca66353abf527fc4bd658a2f504e0b42684f998",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/PerfComparePage.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": ["performance.compare-baseline-url"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/PerfComparePage.tsx",
+      "upstream_sha256": "99bd1f995eddc8f96e6b79c1104f289a45143afb5726388abe7df9b9dd029ffe",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/PerfComparePage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "performance.compare-baseline-url",
+        "performance.compare-compatibility-config",
+        "performance.compare-conditional-charts",
+        "performance.compare-delta-verdict",
+        "performance.compare-low-sample"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/performanceView.test.tsx",
+      "upstream_sha256": "7a668bc2d1aae23f4de043eff8719934859882b609894f5b5211ea49d844bf9c",
+      "kind": "test",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/performanceView.test.tsx",
+      "reason": "adapt test to Databench router, API and visual primitives",
+      "parity_ids": [
+        "performance.detail-embedding-conditions",
+        "performance.detail-tabs-single-run"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/PerfReportDetailPage.tsx",
+      "upstream_sha256": "f9614d41a98c017b6cdbe3b68702317566958297a61e74c3fa5531c9ff753b94",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/PerfReportDetailPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "performance.detail-embedding-conditions",
+        "performance.detail-provider-metadata",
+        "performance.detail-summary-closed-loop",
+        "performance.detail-tabs-single-run"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/PerfReportsPage.tsx",
+      "upstream_sha256": "7bacbce859c84cae59c8f3b73952794d720002c086cb501477337587b513ba49",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/PerfReportsPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "performance.catalogue-refresh-states",
+        "performance.catalogue-search-sort",
+        "performance.catalogue-selection-actions"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/PerfRunsTab.tsx",
+      "upstream_sha256": "390f20c9789b9028fc1132cc8366e6204306274093948ba14dbea733dad9f2cb",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/PerfRunsTab.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": [
+        "performance.requests-filter-pagination",
+        "performance.runs-workload-percentiles"
+      ]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/PerfTaskPage.tsx",
+      "upstream_sha256": "2b03acb97d85415d6b1271f8d49600bdfcb30aab62401f1cc24238a29dc36a99",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/PerfTaskPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["tasks.performance-form-fields"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/ReportDetailPage.tsx",
+      "upstream_sha256": "9546d8da336c5e4ae43c2328247a5399d9ebde9d09d7aebed7c68b86e9ed6123",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/ReportDetailPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["report.header-summary-navigation"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/ReportsPage.tsx",
+      "upstream_sha256": "e0a83e3556dea7b0d47fdc1a724b68f875a2267329e91182451896e76011fc96",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/ReportsPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["reports.catalogue-filters-sort", "reports.catalogue-states-actions"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/ReportViewerPage.tsx",
+      "upstream_sha256": "7efd38205f98b718c692ffdd49cc42ca73489bef1fe66d8341959412ee46fc5d",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/ReportViewerPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["shell.safe-report-new-tab", "viewer.sanitized-document"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/pages/TasksPage.tsx",
+      "upstream_sha256": "3a4f03a2c7b7d680534346513549aff8c1cd2d12570dd632de696d08147ac55a",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/pages/TasksPage.tsx",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["tasks.tabs-url-state"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/test/fixtures/perf-detail.json",
+      "upstream_sha256": "41e2fe3a52c2cd453149cc628b6a76b3271234cead4ba29d8bfb205016750612",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/test/fixtures/perf-detail.json",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/test/fixtures/perf-single-run.json",
+      "upstream_sha256": "49ac2ed8de74270010b5a14e28ce6647da934f6d575cff67ec1d873df8143b07",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/test/fixtures/perf-single-run.json",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/test/fixtures/predictions-tool-trace.json",
+      "upstream_sha256": "53ee9e8143d9115f5f52b3d8780cbfb79eaa680f42290ea29841275712c166f9",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/test/fixtures/predictions-tool-trace.json",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/test/fixtures/README.md",
+      "upstream_sha256": "a4656e492efdd2e3071bbb61f5148d4a3bb60695090bd1f58a356aaf28122599",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/test/fixtures/README.md",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/test/fixtures/report-multi-dataset.json",
+      "upstream_sha256": "48990ca18699546e2e884bbabd147bb8f84fe1369e52ff1245cc09ad58dee698",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/test/fixtures/report-multi-dataset.json",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/test/fixtures/report-real-single-sample.json",
+      "upstream_sha256": "998778f63b6a2c6058a1f1c2e45b04ebe0f083a748b154af7a7c19145cace96f",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/test/fixtures/report-real-single-sample.json",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/test/loadFixture.ts",
+      "upstream_sha256": "8f7ec84c7d29ccc43ac0edc1c36842bfdba338b6598cf00c34bb9db0a1f80978",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/test/loadFixture.ts",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/test/setup.ts",
+      "upstream_sha256": "e29fe9d6beef8f4c7ca1890c07f48fcdc854bd7c2ac4207c7aaeca138c50900c",
+      "kind": "production",
+      "status": "adapted",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/test/setup.ts",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/utils/colorScale.ts",
+      "upstream_sha256": "c2589676febbd87a015530d68ce4812aa8c51e14b7a775d1181bfc8124bdf4d5",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "supporting-source",
+      "target_path": "apps/web/src/evaluations/utils/colorScale.ts",
+      "reason": "supporting source; behavior is consumed by tracked page and component capabilities",
+      "parity_ids": []
+    },
+    {
+      "upstream_path": "evalscope/web/src/utils/formatUtils.ts",
+      "upstream_sha256": "6488d26beca7e1c87f0816d3ceda90d6afb8f1f37a1ca4f6188796895c0d0d96",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/utils/formatUtils.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["foundation.metric-native-format"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/utils/perf.ts",
+      "upstream_sha256": "7c461cf2c70adeaaeb03065880601020858449f06232eb969f1885a8ba405340",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/utils/perf.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["performance.catalogue-search-sort"]
+    },
+    {
+      "upstream_path": "evalscope/web/src/utils/reportParser.ts",
+      "upstream_sha256": "4594443724103c4f70d537cb8da418de451c2321c4b8dc7f750f302e054c2ef5",
+      "kind": "production",
+      "status": "migrated",
+      "coverage_kind": "capability-source",
+      "target_path": "apps/web/src/evaluations/utils/reportParser.ts",
+      "reason": "capability source tracked by the capability manifest",
+      "parity_ids": ["sample.chat-presentations-results"]
+    }
+  ]
+}

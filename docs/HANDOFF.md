@@ -17,6 +17,9 @@
   Worker → API → Web 生命周期、`basic-clean@1` smoke 和旧五镜像回滚兼容已在
   `feat/offline-worker` 实现并通过本地 `linux/amd64` Compose gate，仍待真实 Ubuntu 22.04
   amd64 断网验收。
+- ADR 0017 EvalScope 原生 UI 集成已接受并开始实施。E0 已固定 upstream commit、183 个 Web source
+  文件、60 个能力、default-deny API 路由、五类 Benchmark fixture 和 Plotly 证据；当前没有
+  `/evaluations/*` 产品路由或 EvalScope runtime，下一步是 E1 `evalscope-general-qa` converter。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -34,6 +37,8 @@
    `docs/mcp/PLAN.md` 与 `docs/mcp/STATUS.md`。
 7. 若处理离线发布或 Worker，读 ADR 0010/0012、`docs/processing/TECHNICAL_DESIGN.md` 和
    `docs/deployment/offline-single-host-plan.zh-CN.md`。
+8. 若处理 EvalScope，依次读 ADR 0017、`docs/evalscope/TECHNICAL-DESIGN.md`、
+   `docs/evalscope/PLAN.md`、`docs/evalscope/STATUS.md` 和 E0 evidence。
 
 不要用旧 v1 migration inventory 覆盖当前实现。
 

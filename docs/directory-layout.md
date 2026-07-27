@@ -2,7 +2,8 @@
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
-> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope 当前只完成
+> E0 来源/能力基线，没有产品路由或 runtime。
 
 ## `apps/api`
 
@@ -104,6 +105,12 @@ apps/web/
 │  │  ├─ shell/                 导航、连接设置、语言切换
 │  │  ├─ common/                状态、JSON、复制
 │  │  └─ ui/                    基础 UI primitives
+│  ├─ evaluations/              ADR 0017；E0 仅含不可执行的 provenance/parity 基线
+│  │  ├─ UPSTREAM.md
+│  │  ├─ upstream-manifest.json
+│  │  ├─ ui-capability-manifest.json
+│  │  ├─ implemented-capabilities.json
+│  │  └─ fixtures/benchmarks-five-categories.json
 │  ├─ v2/
 │  │  ├─ api/                   v2 client/hooks/query keys/stream export
 │  │  ├─ components/            gate、冲突恢复、records、fidelity review
@@ -132,7 +139,8 @@ apps/web/
 ```
 
 `/recipe`、`/vocabularies`、`/v2/...` 等旧产品页面不在 route tree。Web 只通过生成的
-OpenAPI 类型和 REST client 访问后端。
+OpenAPI 类型和 REST client 访问后端。E0 manifest 不注册 `/evaluations/*`；这些路由只能随 E4-E7 对应
+gate 分步加入。
 
 ## `packages/hashing`
 
@@ -297,6 +305,24 @@ prisma/
    ├─ 0007_transform_jobs_v2/
    └─ 0008_worker_staging_v1/
 ```
+
+EvalScope E0 另有：
+
+```text
+deploy/evalscope/
+├─ upstream.lock                commit/tree/dependency/license/Plotly evidence
+└─ api-routes.json              default-deny method + exact-path classification
+
+scripts/
+├─ generate-evalscope-upstream-manifest.mjs
+└─ check-evalscope-parity.mjs
+
+docs/evalscope/evidence/E0-BASELINE.md
+THIRD_PARTY_NOTICES.md
+```
+
+`deploy/evalscope/` 当前没有 Dockerfile、patch 或可执行服务；它们属于 E3。`upstream-manifest.json` 是
+文件来源真源，`ui-capability-manifest.json` 是业务能力验收真源；前者的 `adapted` 不能替代后者的 green。
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。

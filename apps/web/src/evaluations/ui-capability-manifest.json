@@ -1,0 +1,1242 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
+  "phase": "E0-baseline",
+  "capability_schema": {
+    "status_values": ["planned", "green"],
+    "classifications": [
+      "upstream-parity",
+      "security-replacement",
+      "databench-extension",
+      "brand-shell-exclusion"
+    ],
+    "green_gate": "pnpm evalscope:parity:check:green"
+  },
+  "capabilities": [
+    {
+      "parity_id": "shell.standalone-app",
+      "classification": "brand-shell-exclusion",
+      "upstream_routes": ["*"],
+      "upstream_sources": ["evalscope/web/src/App.tsx", "evalscope/web/src/main.tsx"],
+      "capability": "application-shell",
+      "contract": "Do not mount a second Vite application or BrowserRouter inside Databench.",
+      "default_or_rule": "Databench owns boot, route registration and the top-level error boundary.",
+      "responsive_a11y": "Databench shell behavior is authoritative.",
+      "api_operations": [],
+      "target": null,
+      "upstream_coverage": false,
+      "tests": ["planned:GE4:shell-singleton"],
+      "browser_evidence": ["planned:GE4:no-second-shell"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "shell.brand-nav-theme-locale",
+      "classification": "brand-shell-exclusion",
+      "upstream_routes": ["*"],
+      "upstream_sources": [
+        "evalscope/web/src/components/nav/LocaleToggle.tsx",
+        "evalscope/web/src/components/nav/ThemeToggle.tsx",
+        "evalscope/web/src/components/nav/TopNav.tsx",
+        "evalscope/web/src/contexts/LocaleContext.tsx",
+        "evalscope/web/src/contexts/ThemeContext.tsx"
+      ],
+      "capability": "brand-shell",
+      "contract": "EvalScope logo, GitHub entry and duplicate theme/locale controls are not presented as Databench assets.",
+      "default_or_rule": "Use the existing Databench navigation, theme and react-i18next locale.",
+      "responsive_a11y": "Existing Databench shell keyboard and narrow-screen behavior remains authoritative.",
+      "api_operations": [],
+      "target": null,
+      "upstream_coverage": false,
+      "tests": ["planned:GE4:brand-shell-exclusion"],
+      "browser_evidence": ["planned:GE7:databench-brand-review"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "shell.configured-source-refresh",
+      "classification": "security-replacement",
+      "upstream_routes": ["/", "/reports", "/performance"],
+      "upstream_sources": [
+        "evalscope/web/src/components/ui/PathBar.tsx",
+        "evalscope/web/src/layouts/MainLayout.tsx",
+        "evalscope/web/src/contexts/ReportsContext.tsx"
+      ],
+      "capability": "action-state",
+      "contract": "Keep visible Refresh/Rescan while removing editable absolute report-root input.",
+      "default_or_rule": "Refresh cancels stale requests, advances generation and resets cache, filters, page and selection.",
+      "responsive_a11y": "Named button remains visible and keyboard operable on dashboard, reports and performance pages.",
+      "api_operations": ["GET /api/v1/reports/list", "GET /api/v1/perf/list"],
+      "target": "apps/web/src/evaluations/components/ConfiguredSourceRefresh.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:configured-source-refresh"],
+      "browser_evidence": ["upstream-code:components/ui/PathBar.tsx", "planned:GE7:refresh-reset"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "shell.safe-report-new-tab",
+      "classification": "security-replacement",
+      "upstream_routes": ["/tasks", "/reports/:reportId", "/performance", "/viewer"],
+      "upstream_sources": [
+        "evalscope/web/src/components/eval/TaskMonitor.tsx",
+        "evalscope/web/src/components/reports/ReportHeader.tsx",
+        "evalscope/web/src/pages/ReportViewerPage.tsx"
+      ],
+      "capability": "navigation-action",
+      "contract": "Preserve every user-visible open-in-new-tab action without exposing raw active HTML.",
+      "default_or_rule": "Open /evaluations/viewer?document=<opaque-id> with noopener and noreferrer.",
+      "responsive_a11y": "Use a named link; popup-blocked state is visible and announced.",
+      "api_operations": ["GET /generated-documents/{opaque_id}"],
+      "target": "apps/web/src/evaluations/components/SafeReportLink.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE5:safe-new-tab", "planned:GE6:raw-html-navigation-negative"],
+      "browser_evidence": [
+        "upstream-code:components/eval/TaskMonitor.tsx",
+        "planned:GE7:safe-new-tab"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "foundation.api-contracts",
+      "classification": "upstream-parity",
+      "upstream_routes": ["*"],
+      "upstream_sources": ["evalscope/web/src/api/**"],
+      "capability": "api-contract",
+      "contract": "Pinned Zod request and response adapters cover every UI-used EvalScope endpoint and typed error.",
+      "default_or_rule": "Unknown response shapes fail closed before reaching a page domain model.",
+      "responsive_a11y": "Schema failures render the page's accessible error state.",
+      "api_operations": ["all §8.1 exact allowed operations"],
+      "target": "apps/web/src/evaluations/api/schemas.ts",
+      "upstream_coverage": true,
+      "tests": ["planned:GE4:api-fixture-parity"],
+      "browser_evidence": ["upstream-code:api/schemas", "planned:GE7:schema-mismatch"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "foundation.responsive-a11y-primitives",
+      "classification": "upstream-parity",
+      "upstream_routes": ["*"],
+      "upstream_sources": [
+        "evalscope/web/src/components/a11yResponsive.test.tsx",
+        "evalscope/web/src/components/ui/**"
+      ],
+      "capability": "responsive-a11y-default",
+      "contract": "Preserve the business controls' upstream keyboard, focus, screen-reader and narrow-layout behavior while restyling them with Databench primitives.",
+      "default_or_rule": "A visual primitive replacement cannot remove labels, touch targets, focus visibility, state semantics or responsive presentation.",
+      "responsive_a11y": "This capability is the shared responsive and accessibility contract for all migrated routes.",
+      "api_operations": [],
+      "target": "apps/web/src/components/ui",
+      "upstream_coverage": true,
+      "tests": ["planned:GE4:primitive-a11y", "planned:GE7:all-routes-responsive-a11y"],
+      "browser_evidence": [
+        "upstream-code:components/a11yResponsive.test.tsx",
+        "planned:GE7:keyboard-focus-narrow"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "foundation.metric-native-format",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId", "/compare", "/performance/*"],
+      "upstream_sources": [
+        "evalscope/web/src/domain/metric/**",
+        "evalscope/web/src/utils/formatUtils.ts"
+      ],
+      "capability": "domain-default",
+      "contract": "Render every metric using its native scale, precision, direction and boundedness.",
+      "default_or_rule": "Do not assume scores are 0..1; unbounded or heterogeneous metrics cannot produce a misleading radar.",
+      "responsive_a11y": "Text and table fallback carries the same formatted value and direction as charts.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/domain/metric.ts",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:metric-registry", "planned:GE7:metric-chart-fallback"],
+      "browser_evidence": ["upstream-code:domain/metric", "planned:GE7:metric-native-format"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "foundation.polling-query-abort",
+      "classification": "upstream-parity",
+      "upstream_routes": ["*"],
+      "upstream_sources": ["evalscope/web/src/hooks/**"],
+      "capability": "async-state",
+      "contract": "Polling, URL query state, copy actions and form errors preserve upstream cancellation and cleanup behavior.",
+      "default_or_rule": "Unmount, route change and refresh abort obsolete work; degraded polling keeps the last valid state.",
+      "responsive_a11y": "Copy and field errors expose named controls and announced status.",
+      "api_operations": ["task polling operations"],
+      "target": "apps/web/src/evaluations/hooks/useEvaluationPolling.ts",
+      "upstream_coverage": true,
+      "tests": ["planned:GE5:polling-abort", "planned:GE7:query-direct-refresh"],
+      "browser_evidence": ["upstream-code:hooks", "planned:GE7:async-cleanup"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "foundation.locale-content",
+      "classification": "upstream-parity",
+      "upstream_routes": ["*"],
+      "upstream_sources": [
+        "evalscope/web/src/i18n/**",
+        "evalscope/web/src/domain/drift/localeKeyCheck.test.ts"
+      ],
+      "capability": "localized-content",
+      "contract": "Every upstream business label, state and Benchmark Markdown language choice has a Databench locale mapping.",
+      "default_or_rule": "Use current Databench locale; missing keys fail parity drift tests.",
+      "responsive_a11y": "Localized accessible names remain present in Chinese and English.",
+      "api_operations": [],
+      "target": "apps/web/src/i18n/locales/zh.json",
+      "upstream_coverage": true,
+      "tests": ["planned:GE4:locale-key-parity"],
+      "browser_evidence": ["upstream-code:i18n/translations", "planned:GE7:zh-en-browser"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "dashboard.kpis-navigation",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/"],
+      "upstream_sources": ["evalscope/web/src/pages/DashboardPage.tsx"],
+      "capability": "display-action",
+      "contract": "Show evaluation count, performance count, distinct model count and latest-run time; preserve clickable KPI navigation.",
+      "default_or_rule": "Counts combine configured-root evaluation and performance reports.",
+      "responsive_a11y": "KPI links remain named and keyboard operable in the narrow layout.",
+      "api_operations": ["GET /api/v1/reports/list", "GET /api/v1/perf/list"],
+      "target": "apps/web/src/evaluations/routes/dashboard.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:dashboard-kpis"],
+      "browser_evidence": ["upstream-code:pages/DashboardPage.tsx", "planned:GE7:dashboard-kpis"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "dashboard.recent-feed-filters",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/"],
+      "upstream_sources": ["evalscope/web/src/pages/DashboardPage.tsx"],
+      "capability": "list-filter-state",
+      "contract": "Merge evaluation and performance runs, sort by time without pre-truncation, then filter, search, paginate and navigate rows.",
+      "default_or_rule": "All type is default; search spans model, dataset, provider and protocol.",
+      "responsive_a11y": "Desktop rows and narrow cards expose equivalent links, labels and pagination.",
+      "api_operations": ["GET /api/v1/reports/list", "GET /api/v1/perf/list"],
+      "target": "apps/web/src/evaluations/features/dashboard/RecentRuns.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:dashboard-recent-feed"],
+      "browser_evidence": [
+        "upstream-code:pages/DashboardPage.tsx",
+        "planned:GE7:dashboard-filters"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "dashboard.partial-empty-states",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/DashboardPage.tsx",
+        "evalscope/web/src/components/common/EmptyStateSystem.tsx"
+      ],
+      "capability": "state",
+      "contract": "Render loading, welcome, no-data, no-match and partial-data states without hiding the successful source.",
+      "default_or_rule": "Evaluation or performance failure does not discard the other source's feed.",
+      "responsive_a11y": "Status headings and recovery actions are announced and keyboard operable.",
+      "api_operations": ["GET /api/v1/reports/list", "GET /api/v1/perf/list"],
+      "target": "apps/web/src/evaluations/features/dashboard/DashboardState.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:dashboard-states"],
+      "browser_evidence": [
+        "upstream-code:pages/DashboardPage.tsx",
+        "planned:GE7:dashboard-partial"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "tasks.tabs-url-state",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/tasks"],
+      "upstream_sources": ["evalscope/web/src/pages/TasksPage.tsx"],
+      "capability": "navigation-state",
+      "contract": "Expose Evaluation and Performance tabs with typed URL state and direct-refresh restoration.",
+      "default_or_rule": "Evaluation is the default when tab is absent or invalid.",
+      "responsive_a11y": "Tabs implement labelled keyboard navigation on desktop and narrow screens.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/routes/tasks.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE5:task-tabs"],
+      "browser_evidence": ["upstream-code:pages/TasksPage.tsx", "planned:GE5:task-tabs"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "tasks.evaluation-form-fields",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/tasks?tab=evaluation"],
+      "upstream_sources": [
+        "evalscope/web/src/components/eval/EvalConfigForm.tsx",
+        "evalscope/web/src/components/tasks/**",
+        "evalscope/web/src/domain/form/**",
+        "evalscope/web/src/pages/EvalTaskPage.tsx"
+      ],
+      "capability": "form-field-validation",
+      "contract": "Preserve model, endpoint, key, datasets, limit, repeats, work directory, generation, judge and advanced fields with payload parity.",
+      "default_or_rule": "Upstream defaults and first-invalid focus are preserved; secrets never enter URLs or persisted browser state.",
+      "responsive_a11y": "Every control has a label, field error and deterministic focus order.",
+      "api_operations": ["POST /api/v1/eval/invoke"],
+      "target": "apps/web/src/evaluations/features/tasks/EvaluationForm.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE5:evaluation-form-fields"],
+      "browser_evidence": [
+        "upstream-code:components/eval/EvalConfigForm.tsx",
+        "planned:GE5:evaluation-form"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "tasks.benchmark-autocomplete",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/tasks?tab=evaluation"],
+      "upstream_sources": ["evalscope/web/src/components/eval/EvalConfigForm.tsx"],
+      "capability": "field-action",
+      "contract": "Suggest Benchmark names from the pinned text and multimodal lists while allowing valid manual names.",
+      "default_or_rule": "At most eight suggestions; multi-value input; agent and AIGC suggestion expansion is not upstream parity.",
+      "responsive_a11y": "ArrowUp, ArrowDown, Enter and Escape work; outside click closes the named listbox.",
+      "api_operations": ["GET /api/v1/eval/benchmarks"],
+      "target": "apps/web/src/evaluations/features/tasks/BenchmarkAutocomplete.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE5:benchmark-autocomplete"],
+      "browser_evidence": [
+        "upstream-code:components/eval/EvalConfigForm.tsx",
+        "planned:GE5:autocomplete-keyboard"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "tasks.dataset-args-editor",
+      "classification": "security-replacement",
+      "upstream_routes": ["/tasks?tab=evaluation"],
+      "upstream_sources": [
+        "evalscope/web/src/components/eval/EvalConfigForm.tsx",
+        "evalscope/web/src/domain/form/validation.datasetArgs.test.ts"
+      ],
+      "capability": "field-security-validation",
+      "contract": "Keep arbitrary JSON-object editing and raw-input preservation while recursively rejecting path, directory, URL and URI locators.",
+      "default_or_rule": "Reject normalized locator keys plus POSIX, drive, UNC, traversal, file: and URI-like values with dataset_args_locator_forbidden.",
+      "responsive_a11y": "Field-level error preserves and refocuses the original editor contents.",
+      "api_operations": ["POST /api/v1/eval/invoke"],
+      "target": "apps/web/src/evaluations/features/tasks/DatasetArgsEditor.tsx",
+      "upstream_coverage": true,
+      "tests": [
+        "planned:GE3:dataset-args-locator-matrix",
+        "planned:GE5:dataset-args-raw-preservation"
+      ],
+      "browser_evidence": [
+        "upstream-code:domain/form/validation.datasetArgs.test.ts",
+        "planned:GE5:dataset-args-error"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "tasks.performance-form-fields",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/tasks?tab=performance"],
+      "upstream_sources": [
+        "evalscope/web/src/components/perf/PerfConfigForm.tsx",
+        "evalscope/web/src/pages/PerfTaskPage.tsx"
+      ],
+      "capability": "form-field-validation",
+      "contract": "Preserve the complete Performance form, defaults, conditional fields, payload and validation.",
+      "default_or_rule": "Model endpoint defaults remain upstream-equivalent subject to the operator endpoint policy.",
+      "responsive_a11y": "Every conditional field is labelled and first-invalid focus is deterministic.",
+      "api_operations": ["POST /api/v1/perf/invoke"],
+      "target": "apps/web/src/evaluations/features/tasks/PerformanceForm.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE5:performance-form-fields"],
+      "browser_evidence": [
+        "upstream-code:components/perf/PerfConfigForm.tsx",
+        "planned:GE5:performance-form"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "tasks.monitor-lifecycle",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/tasks"],
+      "upstream_sources": [
+        "evalscope/web/src/components/eval/TaskMonitor.tsx",
+        "evalscope/web/src/components/tasks/TaskRunnerPage.tsx"
+      ],
+      "capability": "task-lifecycle",
+      "contract": "Invoke, poll progress, page logs, stop, show terminal result and navigate to reports for evaluation and performance tasks.",
+      "default_or_rule": "Disconnect preserves the last state; duplicate submit is blocked; stop and failure races have one visible terminal outcome.",
+      "responsive_a11y": "Progress, log updates, stop state and errors are announced without moving focus unexpectedly.",
+      "api_operations": [
+        "POST */invoke",
+        "POST */stop",
+        "GET */progress",
+        "GET */log",
+        "GET */report"
+      ],
+      "target": "apps/web/src/evaluations/features/tasks/TaskMonitor.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE5:task-monitor-lifecycle"],
+      "browser_evidence": [
+        "upstream-code:components/eval/TaskMonitor.tsx",
+        "planned:GE5:task-monitor"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "reports.catalogue-filters-sort",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/ReportsPage.tsx",
+        "evalscope/web/src/components/reports/ReportFilters.tsx"
+      ],
+      "capability": "list-filter-sort",
+      "contract": "Preserve 300ms search, model and dataset multi-select, score range, four sort keys, direction, chips and per-item/clear actions.",
+      "default_or_rule": "Page size is 20 and every filter mutation returns to page one.",
+      "responsive_a11y": "Filters and chips remain labelled and keyboard removable in table and card layouts.",
+      "api_operations": ["GET /api/v1/reports/list"],
+      "target": "apps/web/src/evaluations/features/reports/ReportFilters.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:report-filter-sort"],
+      "browser_evidence": [
+        "upstream-code:components/reports/ReportFilters.tsx",
+        "planned:GE6:report-filters"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "reports.catalogue-responsive-list",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports"],
+      "upstream_sources": [
+        "evalscope/web/src/components/reports/ReportsTable.tsx",
+        "evalscope/web/src/components/reports/ReportCard.tsx"
+      ],
+      "capability": "responsive-display",
+      "contract": "Use desktop table and narrow cards as equivalent responsive presentations; do not add a non-upstream view toggle.",
+      "default_or_rule": "Row/card detail navigation and displayed model, dataset, score and time remain equivalent.",
+      "responsive_a11y": "Both presentations expose the same accessible names and actions.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/reports/ReportsCatalogue.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:reports-responsive-list"],
+      "browser_evidence": [
+        "upstream-code:components/reports/ReportsTable.tsx",
+        "planned:GE6:reports-narrow"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "reports.selection-actions",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports"],
+      "upstream_sources": [
+        "evalscope/web/src/components/reports/SelectionTray.tsx",
+        "evalscope/web/src/components/reports/SelectionControls.test.tsx"
+      ],
+      "capability": "selection-action",
+      "contract": "Preserve current-page select-all, cross-filter/sort selection, cap five, clear and contextual HTML/Compare actions.",
+      "default_or_rule": "Exactly one selection enables View HTML; at least two enable Compare; compare consumes the first three.",
+      "responsive_a11y": "Selection count, cap notice and disabled-action reason are announced.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/reports/ReportSelectionTray.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:report-selection"],
+      "browser_evidence": [
+        "upstream-code:components/reports/SelectionTray.tsx",
+        "planned:GE6:report-selection"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "reports.catalogue-states-actions",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/ReportsPage.tsx",
+        "evalscope/web/src/components/common/EmptyStateSystem.tsx"
+      ],
+      "capability": "state-action",
+      "contract": "Preserve loading, retry, no-data, no-match, clear-filters, create-task and browse-benchmark actions.",
+      "default_or_rule": "A refresh error does not silently replace previously visible valid data.",
+      "responsive_a11y": "Recovery action and error summary are named and focusable.",
+      "api_operations": ["GET /api/v1/reports/list"],
+      "target": "apps/web/src/evaluations/features/reports/ReportsState.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:reports-states"],
+      "browser_evidence": [
+        "upstream-code:pages/ReportsPage.tsx",
+        "planned:GE6:reports-empty-error"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "report.header-summary-navigation",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId"],
+      "upstream_sources": [
+        "evalscope/web/src/components/reports/ReportHeader.tsx",
+        "evalscope/web/src/components/reports/ReportSummaryStats.tsx",
+        "evalscope/web/src/pages/ReportDetailPage.tsx"
+      ],
+      "capability": "display-navigation",
+      "contract": "Preserve report identity, average, best, worst, total summary and Overview/Details/Predictions tabs.",
+      "default_or_rule": "Overview is default; dataset and subset navigation update the relevant tab and selection.",
+      "responsive_a11y": "Header actions and tabs remain named and keyboard operable.",
+      "api_operations": ["GET /api/v1/reports/load"],
+      "target": "apps/web/src/evaluations/routes/report-detail.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:report-header-summary"],
+      "browser_evidence": [
+        "upstream-code:pages/ReportDetailPage.tsx",
+        "planned:GE6:report-detail-tabs"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "report.overview-table-radar",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=overview"],
+      "upstream_sources": [
+        "evalscope/web/src/components/reports/OverviewTab.tsx",
+        "evalscope/web/src/components/reports/OverviewTab.test.tsx",
+        "evalscope/web/src/components/reports/metricConsistency.test.tsx"
+      ],
+      "capability": "table-chart-action",
+      "contract": "Preserve sortable dataset score/sample table, dataset navigation, conditional table/radar switch and collapsible Task Config JSON.",
+      "default_or_rule": "Radar requires at least three comparable bounded datasets; heterogeneous or unbounded metrics use table only.",
+      "responsive_a11y": "Chart has an equivalent table and Task Config exposes unknown fields via JSON fallback.",
+      "api_operations": ["GET /api/v1/reports/dataframe"],
+      "target": "apps/web/src/evaluations/features/reports/OverviewTab.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:overview-table-radar"],
+      "browser_evidence": [
+        "upstream-code:components/reports/OverviewTab.tsx",
+        "planned:GE6:overview-radar-condition"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "report.details-analysis-subsets",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=details"],
+      "upstream_sources": [
+        "evalscope/web/src/components/reports/DetailsTab.tsx",
+        "evalscope/web/src/components/reports/DetailsTab.test.tsx",
+        "evalscope/web/src/components/reports/PerfMetricsPanel.tsx",
+        "evalscope/web/src/components/reports/PerfMetricsPanel.test.tsx",
+        "evalscope/web/src/components/reports/DatasetNav.tsx"
+      ],
+      "capability": "display-navigation",
+      "contract": "Preserve overall score, analysis Markdown, sortable subset/metric/score/count table and performance metrics panel.",
+      "default_or_rule": "Clicking a subset switches to Predictions with that subset selected.",
+      "responsive_a11y": "Sortable headers and subset links expose state and destination.",
+      "api_operations": ["GET /api/v1/reports/analysis", "GET /api/v1/reports/dataframe"],
+      "target": "apps/web/src/evaluations/features/reports/DetailsTab.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:details-analysis-subsets"],
+      "browser_evidence": [
+        "upstream-code:components/reports/DetailsTab.tsx",
+        "planned:GE6:details-to-predictions"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "predictions.threshold-status-counts",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=predictions"],
+      "upstream_sources": [
+        "evalscope/web/src/components/reports/PredictionsTab.tsx",
+        "evalscope/web/src/components/reports/PredictionsTab.test.tsx"
+      ],
+      "capability": "filter-field-state",
+      "contract": "Preserve subset selector, score threshold and All/Above/Below views with counts.",
+      "default_or_rule": "Threshold is a view filter only and never rewrites metric pass/fail semantics.",
+      "responsive_a11y": "Threshold label, selected state and counts are announced.",
+      "api_operations": ["GET /api/v1/reports/predictions"],
+      "target": "apps/web/src/evaluations/features/predictions/PredictionFilters.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:prediction-threshold-status"],
+      "browser_evidence": [
+        "upstream-code:components/reports/PredictionsTab.tsx",
+        "planned:GE6:prediction-threshold"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "predictions.index-navigation",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=predictions"],
+      "upstream_sources": ["evalscope/web/src/components/reports/PredictionsTab.tsx"],
+      "capability": "navigation-field",
+      "contract": "Preserve previous/next, sample X/Y, original Index display and direct sample-index jump.",
+      "default_or_rule": "Invalid or filtered-out index keeps the current sample and renders a field error.",
+      "responsive_a11y": "Previous/next and jump controls have labels and keyboard focus.",
+      "api_operations": ["GET /api/v1/reports/predictions"],
+      "target": "apps/web/src/evaluations/features/predictions/PredictionNavigator.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:prediction-index-jump"],
+      "browser_evidence": [
+        "upstream-code:components/reports/PredictionsTab.tsx",
+        "planned:GE6:index-invalid-state"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "predictions.message-id-search-highlight",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=predictions"],
+      "upstream_sources": ["evalscope/web/src/components/reports/PredictionsTab.tsx"],
+      "capability": "search-navigation",
+      "contract": "Search by message-ID prefix, navigate to the matching sample/message and visibly highlight it.",
+      "default_or_rule": "No or ambiguous match produces an accessible error without losing current selection.",
+      "responsive_a11y": "Enter activates search and the highlighted message is programmatically identifiable.",
+      "api_operations": ["GET /api/v1/reports/predictions"],
+      "target": "apps/web/src/evaluations/features/predictions/MessageIdSearch.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:prediction-message-id-search"],
+      "browser_evidence": [
+        "upstream-code:components/reports/PredictionsTab.tsx",
+        "planned:GE6:message-id-highlight"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "sample.chat-presentations-results",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=predictions"],
+      "upstream_sources": [
+        "evalscope/web/src/components/single/ChatView.tsx",
+        "evalscope/web/src/components/single/ChatView.test.tsx",
+        "evalscope/web/src/components/single/chat/EvalResultPanel.tsx",
+        "evalscope/web/src/components/single/chat/EvalResultPanel.test.tsx",
+        "evalscope/web/src/utils/reportParser.ts"
+      ],
+      "capability": "structured-display",
+      "contract": "Preserve legacy Input/Generated fallback, structured Messages and traced timeline plus expected/extracted and normalized/raw scoring.",
+      "default_or_rule": "Generated and Pred remain distinct; Score JSON, Metadata and unknown fields use collapsible JSON fallback.",
+      "responsive_a11y": "Reading order follows conversation order and collapsibles expose state.",
+      "api_operations": ["GET /api/v1/reports/predictions"],
+      "target": "apps/web/src/evaluations/features/sample/ChatView.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:sample-presentations-results"],
+      "browser_evidence": [
+        "upstream-code:components/single/ChatView.tsx",
+        "planned:GE6:sample-presentations"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "sample.messages-reasoning-tools",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=predictions"],
+      "upstream_sources": [
+        "evalscope/web/src/components/single/chat/MessageComponents.tsx",
+        "evalscope/web/src/components/single/chat/ToolCallComponents.tsx",
+        "evalscope/web/src/components/single/chat/chatHelpers.ts",
+        "evalscope/web/src/components/single/chat/roleConfig.ts"
+      ],
+      "capability": "message-action",
+      "contract": "Render system, user, assistant, reasoning and tool messages with copy, token/perf chips, tool arguments, result, error and latency.",
+      "default_or_rule": "Reasoning is collapsible; tool errors do not hide other messages.",
+      "responsive_a11y": "Roles, tool names, collapsed state and copy result have accessible labels/status.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/sample/MessageTimeline.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:messages-reasoning-tools"],
+      "browser_evidence": [
+        "upstream-code:components/single/chat/MessageComponents.tsx",
+        "planned:GE6:tool-message-browser"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "sample.agent-trace-linkage",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=predictions"],
+      "upstream_sources": ["evalscope/web/src/components/single/chat/AgentTraceView.tsx"],
+      "capability": "trace-display",
+      "contract": "Render steps, cross-step tool-result links, environment execution, nudges, loop errors, stop reason and residual tool messages.",
+      "default_or_rule": "A missing linked step degrades locally to JSON/text without dropping the trace.",
+      "responsive_a11y": "Step order, link destination and terminal reason are available without relying on color.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/sample/AgentTraceView.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:agent-trace-linkage"],
+      "browser_evidence": [
+        "upstream-code:components/single/chat/AgentTraceView.tsx",
+        "planned:GE6:agent-trace"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "sample.rich-content-virtualization",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/reports/:reportId?tab=predictions"],
+      "upstream_sources": [
+        "evalscope/web/src/components/common/**",
+        "evalscope/web/src/components/single/chat/MediaBlocks.tsx"
+      ],
+      "capability": "content-display-performance",
+      "contract": "Render Markdown, GFM, KaTeX, highlighted code/copy, image lightbox, audio, video and JSON fallback with bounded virtualization.",
+      "default_or_rule": "Long predictions/messages/traces virtualize; failed media and unknown content remain local visible fallbacks.",
+      "responsive_a11y": "Media alternatives, lightbox close, code copy and virtual rows remain keyboard/screen-reader usable.",
+      "api_operations": ["GET /api/v1/reports/media/file"],
+      "target": "apps/web/src/evaluations/features/content/RichContent.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE6:rich-content", "planned:GE6:large-trace-virtualization"],
+      "browser_evidence": [
+        "upstream-code:components/common/MarkdownRenderer.tsx",
+        "planned:GE6:rich-content-browser"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "compare.model-slots-url",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/compare"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/ComparePage.tsx",
+        "evalscope/web/src/domain/compare/**"
+      ],
+      "capability": "selection-url-state",
+      "contract": "Restore two to three model slots from URL and support report-name add, remove and cancel-add actions.",
+      "default_or_rule": "At least two and at most three slots; invalid URL entries produce an incompatibility state, not extra slots.",
+      "responsive_a11y": "Slot labels, remove buttons and add dialog are keyboard operable.",
+      "api_operations": ["GET /api/v1/reports/load_multi"],
+      "target": "apps/web/src/evaluations/routes/compare.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:compare-slots-url"],
+      "browser_evidence": ["upstream-code:pages/ComparePage.tsx", "planned:GE7:compare-add-remove"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "compare.score-domain",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/compare?tab=score"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/ComparePage.tsx",
+        "evalscope/web/src/domain/compare/**"
+      ],
+      "capability": "table-chart-state",
+      "contract": "Preserve Score and Prediction tabs, average row, dataset rows, radar and chart fallback.",
+      "default_or_rule": "Score is default; non-comparable metrics use the fallback table.",
+      "responsive_a11y": "Chart values have table equivalents and tabs expose selection state.",
+      "api_operations": ["GET /api/v1/reports/load_multi"],
+      "target": "apps/web/src/evaluations/features/compare/ScoreComparison.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:compare-score-domain"],
+      "browser_evidence": ["upstream-code:pages/ComparePage.tsx", "planned:GE7:compare-score"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "compare.dataset-subset-intersection",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/compare"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/ComparePage.tsx",
+        "evalscope/web/src/domain/compare/**"
+      ],
+      "capability": "domain-state",
+      "contract": "Compute the common dataset and subset intersection for selected runs.",
+      "default_or_rule": "No intersection renders a reason and preserves slot selection.",
+      "responsive_a11y": "Incompatibility reason is announced and does not trap focus.",
+      "api_operations": ["GET /api/v1/reports/load_multi"],
+      "target": "apps/web/src/evaluations/domain/compare.ts",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:compare-intersection"],
+      "browser_evidence": [
+        "upstream-code:domain/compare/compareModel.ts",
+        "planned:GE7:compare-no-intersection"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "compare.prediction-filters-presets",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/compare?tab=prediction"],
+      "upstream_sources": ["evalscope/web/src/pages/ComparePage.tsx"],
+      "capability": "filter-state",
+      "contract": "Preserve threshold, per-model Any/Above/Below, All Any/All Above/All Below presets and each model's above rate.",
+      "default_or_rule": "All Any is default and filters apply to aligned samples only.",
+      "responsive_a11y": "Per-model grouping and preset state are programmatically labelled.",
+      "api_operations": ["GET /api/v1/reports/predictions"],
+      "target": "apps/web/src/evaluations/features/compare/PredictionFilters.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:compare-per-model-filters"],
+      "browser_evidence": [
+        "upstream-code:pages/ComparePage.tsx",
+        "planned:GE7:compare-filter-presets"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "compare.aligned-navigation-keyboard",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/compare?tab=prediction"],
+      "upstream_sources": ["evalscope/web/src/pages/ComparePage.tsx"],
+      "capability": "pagination-keyboard",
+      "contract": "Preserve aligned-sample pagination, previous/next, Left/Right navigation and showing X of Y.",
+      "default_or_rule": "Keyboard navigation is ignored while editing a field and cannot move beyond bounds.",
+      "responsive_a11y": "Current position and disabled boundary controls are announced.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/compare/AlignedSampleNavigator.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:compare-keyboard-navigation"],
+      "browser_evidence": ["upstream-code:pages/ComparePage.tsx", "planned:GE7:compare-left-right"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "compare.parallel-samples-errors",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/compare?tab=prediction"],
+      "upstream_sources": ["evalscope/web/src/pages/ComparePage.tsx"],
+      "capability": "parallel-display-state",
+      "contract": "Render one ChatView per model with score and delta; one malformed column cannot hide valid columns.",
+      "default_or_rule": "Column-local errors preserve aligned sample position and the other model results.",
+      "responsive_a11y": "Columns have model headings and a deterministic reading order on narrow screens.",
+      "api_operations": ["GET /api/v1/reports/predictions"],
+      "target": "apps/web/src/evaluations/features/compare/ParallelSamples.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:compare-parallel-errors"],
+      "browser_evidence": [
+        "upstream-code:pages/ComparePage.tsx",
+        "planned:GE7:compare-column-error"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.catalogue-search-sort",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfReportsPage.tsx",
+        "evalscope/web/src/utils/perf.ts"
+      ],
+      "capability": "list-filter-sort",
+      "contract": "Search model, dataset, API type, provider and protocol; sort by time, RPS and latency; display provider and protocol separately.",
+      "default_or_rule": "Time sort is the upstream default and search spans normalized metadata fallbacks.",
+      "responsive_a11y": "Rows/cards and sort state expose equivalent labels.",
+      "api_operations": ["GET /api/v1/perf/list"],
+      "target": "apps/web/src/evaluations/features/performance/PerformanceCatalogue.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-catalogue-search-sort"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfReportsPage.tsx",
+        "planned:GE7:performance-catalogue"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.catalogue-selection-actions",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance"],
+      "upstream_sources": ["evalscope/web/src/pages/PerfReportsPage.tsx"],
+      "capability": "selection-action",
+      "contract": "Preserve selection cap notice and clear; one has_html run enables View HTML, two or more enable Compare, first three are compared.",
+      "default_or_rule": "Actions remain disabled with a visible reason when their cardinality or HTML condition is unmet.",
+      "responsive_a11y": "Selection count and action eligibility are announced.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/performance/PerformanceSelection.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-selection-actions"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfReportsPage.tsx",
+        "planned:GE7:performance-selection"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.catalogue-refresh-states",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance"],
+      "upstream_sources": ["evalscope/web/src/pages/PerfReportsPage.tsx"],
+      "capability": "state-action",
+      "contract": "Preserve refresh, retry, no-data and no-match; schema-invalid refresh keeps existing valid rows visible.",
+      "default_or_rule": "A refresh error marks stale data and never silently clears it.",
+      "responsive_a11y": "Refresh status and retry action are announced.",
+      "api_operations": ["GET /api/v1/perf/list"],
+      "target": "apps/web/src/evaluations/features/performance/PerformanceCatalogueState.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-refresh-stale"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfReportsPage.tsx",
+        "planned:GE7:performance-refresh"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.detail-provider-metadata",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/:reportId"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfReportDetailPage.tsx",
+        "evalscope/web/src/domain/perf/providerResolution.ts",
+        "evalscope/web/src/domain/perf/providerResolution.test.ts"
+      ],
+      "capability": "metadata-domain",
+      "contract": "Resolve provider from metadata, then known host, then Custom; display Provider and Protocol separately.",
+      "default_or_rule": "Explicit metadata wins and unknown hosts never masquerade as a known provider.",
+      "responsive_a11y": "Metadata labels remain distinct in summary and narrow layouts.",
+      "api_operations": ["GET /api/v1/perf/detail"],
+      "target": "apps/web/src/evaluations/domain/performance/provider.ts",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:provider-resolution"],
+      "browser_evidence": [
+        "upstream-code:domain/perf/providerResolution.ts",
+        "planned:GE7:provider-fallback"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.detail-tabs-single-run",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/:reportId"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfReportDetailPage.tsx",
+        "evalscope/web/src/pages/performanceView.test.tsx"
+      ],
+      "capability": "conditional-navigation",
+      "contract": "Preserve Overview, Charts and Runs; single-run reports hide Charts, default to Runs and use run-specific summary/config copy.",
+      "default_or_rule": "Multi-run defaults to Overview; direct invalid chart tab on single-run normalizes to Runs.",
+      "responsive_a11y": "Hidden tabs are absent from keyboard order and selected tab is announced.",
+      "api_operations": ["GET /api/v1/perf/detail"],
+      "target": "apps/web/src/evaluations/routes/performance-detail.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-single-run-tabs"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfReportDetailPage.tsx",
+        "planned:GE7:single-run-browser"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.detail-summary-closed-loop",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/:reportId"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfReportDetailPage.tsx",
+        "evalscope/web/src/components/perf/PerfChartGroup.tsx"
+      ],
+      "capability": "metrics-display",
+      "contract": "Preserve KPI, summary table, best/run config, recommendations and chart groups.",
+      "default_or_rule": "Unlimited request rate displays closed-loop rather than INF.",
+      "responsive_a11y": "KPI and chart data have textual/table equivalents.",
+      "api_operations": ["GET /api/v1/perf/detail", "GET /api/v1/perf/chart"],
+      "target": "apps/web/src/evaluations/features/performance/PerformanceOverview.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-summary-closed-loop"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfReportDetailPage.tsx",
+        "planned:GE7:closed-loop"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.detail-embedding-conditions",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/:reportId"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfReportDetailPage.tsx",
+        "evalscope/web/src/pages/performanceView.test.tsx"
+      ],
+      "capability": "conditional-metrics",
+      "contract": "Embedding and rerank reports hide TTFT, TPOT and token percentiles and omit inapplicable charts.",
+      "default_or_rule": "Inapplicable metrics are absent, not zero-valued placeholders.",
+      "responsive_a11y": "Remaining metrics retain coherent headings and table associations.",
+      "api_operations": ["GET /api/v1/perf/detail", "GET /api/v1/perf/chart"],
+      "target": "apps/web/src/evaluations/domain/performance/view.ts",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-embedding-rerank"],
+      "browser_evidence": [
+        "upstream-code:pages/performanceView.test.tsx",
+        "planned:GE7:embedding-browser"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.runs-workload-percentiles",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/:reportId?tab=runs"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfRunsTab.tsx",
+        "evalscope/web/src/domain/perf/perfWorkload.ts",
+        "evalscope/web/src/domain/perf/perfWorkload.test.ts"
+      ],
+      "capability": "run-selection-display",
+      "contract": "Preserve per-run selector, concurrency/request-count/rate workload, percentile table and charts.",
+      "default_or_rule": "Workload normalization distinguishes closed-loop and rate-driven runs.",
+      "responsive_a11y": "Run selector and percentile table remain labelled and keyboard operable.",
+      "api_operations": ["GET /api/v1/perf/runs", "GET /api/v1/perf/chart"],
+      "target": "apps/web/src/evaluations/features/performance/PerformanceRuns.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-runs-workload"],
+      "browser_evidence": ["upstream-code:pages/PerfRunsTab.tsx", "planned:GE7:performance-runs"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.requests-filter-pagination",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/:reportId?tab=runs"],
+      "upstream_sources": ["evalscope/web/src/pages/PerfRunsTab.tsx"],
+      "capability": "request-list-state",
+      "contract": "Preserve All/Success/Failed filters, total count, 50 rows per page, pagination, charts and request table.",
+      "default_or_rule": "All is default; no database and no percentile data are distinct states.",
+      "responsive_a11y": "Filter state, page position and request status are not conveyed by color alone.",
+      "api_operations": ["GET /api/v1/perf/requests", "GET /api/v1/perf/chart"],
+      "target": "apps/web/src/evaluations/features/performance/PerformanceRequests.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-request-pagination"],
+      "browser_evidence": ["upstream-code:pages/PerfRunsTab.tsx", "planned:GE7:request-filters"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.compare-baseline-url",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/compare"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfComparePage.tsx",
+        "evalscope/web/src/pages/PerfComparePage.test.tsx",
+        "evalscope/web/src/domain/perf/compareModel.ts",
+        "evalscope/web/src/domain/perf/compareModel.test.ts"
+      ],
+      "capability": "selection-url-state",
+      "contract": "Default to oldest baseline and newest candidate; swap baseline/candidate and persist the choice in URL.",
+      "default_or_rule": "Direct refresh restores the same baseline and candidate.",
+      "responsive_a11y": "Baseline/candidate labels and swap action are explicit and keyboard operable.",
+      "api_operations": ["GET /api/v1/perf/detail"],
+      "target": "apps/web/src/evaluations/routes/performance-compare.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-baseline-swap-url"],
+      "browser_evidence": ["upstream-code:pages/PerfComparePage.tsx", "planned:GE7:baseline-swap"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.compare-delta-verdict",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/compare"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfComparePage.tsx",
+        "evalscope/web/src/domain/perf/compareModel.ts"
+      ],
+      "capability": "comparison-domain",
+      "contract": "Show baseline/candidate/sample counts, absolute delta, percent delta and direction-aware improvement/regression/neutral/incomputable verdict.",
+      "default_or_rule": "Metric direction determines verdict; zero or missing denominator produces incomputable, not infinity.",
+      "responsive_a11y": "Verdict includes text and signs, never color alone.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/domain/performance/compare.ts",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-delta-verdict"],
+      "browser_evidence": [
+        "upstream-code:domain/perf/compareModel.ts",
+        "planned:GE7:delta-verdict"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.compare-low-sample",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/compare"],
+      "upstream_sources": ["evalscope/web/src/pages/PerfComparePage.tsx"],
+      "capability": "warning-state",
+      "contract": "Preserve critical, warning and normal sample-confidence states and percentile de-emphasis.",
+      "default_or_rule": "Less than 30 is critical, 30 through 99 warning, and 100 or more normal.",
+      "responsive_a11y": "Warning severity and affected percentile content are announced.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/performance/LowSampleNotice.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-low-sample-thresholds"],
+      "browser_evidence": ["upstream-code:pages/PerfComparePage.tsx", "planned:GE7:low-sample"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.compare-compatibility-config",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/compare"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfComparePage.tsx",
+        "evalscope/web/src/domain/perf/compareModel.ts",
+        "evalscope/web/src/domain/perf/perfWorkload.ts"
+      ],
+      "capability": "partial-error-state",
+      "contract": "Preserve workload mismatch, missing perf data, sparse comparison and symmetric config diff.",
+      "default_or_rule": "An incomputable metric degrades locally while other metrics and charts remain visible.",
+      "responsive_a11y": "Mismatch and config differences are textual, grouped and navigable.",
+      "api_operations": ["GET /api/v1/perf/detail"],
+      "target": "apps/web/src/evaluations/features/performance/ComparisonCompatibility.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-workload-config-diff"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfComparePage.tsx",
+        "planned:GE7:workload-mismatch"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "performance.compare-conditional-charts",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/performance/compare"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/PerfComparePage.tsx",
+        "evalscope/web/src/components/perf/PerfChartGroup.tsx"
+      ],
+      "capability": "conditional-chart",
+      "contract": "Preserve embedding/rerank chart conditions, latency and throughput chart groups and fallback table.",
+      "default_or_rule": "Unavailable chart data uses the table without hiding valid chart groups.",
+      "responsive_a11y": "Every chart group has a heading and table equivalent.",
+      "api_operations": ["GET /api/v1/perf/compare/chart"],
+      "target": "apps/web/src/evaluations/features/performance/PerformanceCompareCharts.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:performance-conditional-charts"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfComparePage.tsx",
+        "planned:GE7:performance-chart-fallback"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "benchmarks.categories-counts",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/benchmarks"],
+      "upstream_sources": ["evalscope/web/src/pages/BenchmarksPage.tsx"],
+      "capability": "tab-filter-state",
+      "contract": "Preserve All, Text, Multimodal, Agent and AIGC tabs with category counts.",
+      "default_or_rule": "All is default and category changes reset pagination to page one.",
+      "responsive_a11y": "Scrollable narrow tab list retains aria-pressed state and keyboard access.",
+      "api_operations": ["GET /api/v1/eval/benchmarks?all=true"],
+      "target": "apps/web/src/evaluations/routes/benchmarks.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:benchmark-five-categories"],
+      "browser_evidence": ["upstream-code:pages/BenchmarksPage.tsx", "planned:GE7:benchmark-tabs"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "benchmarks.search-tag-filters",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/benchmarks"],
+      "upstream_sources": ["evalscope/web/src/pages/BenchmarksPage.tsx"],
+      "capability": "search-filter-action",
+      "contract": "Preserve 300ms search, tag multi-filter, active search/tag chips, per-item removal and clear.",
+      "default_or_rule": "Search spans name, pretty name, localized description and tags; any selected tag may match.",
+      "responsive_a11y": "Filter toolbar, selected tags and clear actions are named and keyboard operable.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/benchmarks/BenchmarkFilters.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:benchmark-search-tags"],
+      "browser_evidence": [
+        "upstream-code:pages/BenchmarksPage.tsx",
+        "planned:GE7:benchmark-filters"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "benchmarks.cards-pagination",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/benchmarks"],
+      "upstream_sources": ["evalscope/web/src/pages/BenchmarksPage.tsx"],
+      "capability": "responsive-list",
+      "contract": "Preserve 24 cards per page, responsive one/two/three-column grid, badge, samples, subsets, few-shot, tags and metrics.",
+      "default_or_rule": "Every tab, search and tag mutation resets page one; page clamps after result shrink.",
+      "responsive_a11y": "Cards expose name and metadata and remain activatable without pointer input.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/benchmarks/BenchmarkCards.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:benchmark-cards-pagination"],
+      "browser_evidence": [
+        "upstream-code:pages/BenchmarksPage.tsx",
+        "planned:GE7:benchmark-narrow-grid"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "benchmarks.detail-markdown-paper",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/benchmarks"],
+      "upstream_sources": ["evalscope/web/src/pages/BenchmarksPage.tsx"],
+      "capability": "modal-content-action",
+      "contract": "Preserve detail modal, complete Chinese/English Markdown, metadata and external Paper link.",
+      "default_or_rule": "Description follows Databench locale; missing language uses the upstream no-description state.",
+      "responsive_a11y": "Modal traps/restores focus, Escape/backdrop closes, Paper link identifies external navigation.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/benchmarks/BenchmarkDetail.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:benchmark-detail-markdown"],
+      "browser_evidence": [
+        "upstream-code:pages/BenchmarksPage.tsx",
+        "planned:GE7:benchmark-detail"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "benchmarks.loading-no-result",
+      "classification": "upstream-parity",
+      "upstream_routes": ["/benchmarks"],
+      "upstream_sources": ["evalscope/web/src/pages/BenchmarksPage.tsx"],
+      "capability": "state",
+      "contract": "Preserve loading and no-result states for the catalogue.",
+      "default_or_rule": "No-result state reflects active search, category and tag filters.",
+      "responsive_a11y": "Loading and empty status are announced without focus loss.",
+      "api_operations": ["GET /api/v1/eval/benchmarks?all=true"],
+      "target": "apps/web/src/evaluations/features/benchmarks/BenchmarkState.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE7:benchmark-states"],
+      "browser_evidence": [
+        "upstream-code:pages/BenchmarksPage.tsx",
+        "planned:GE7:benchmark-no-result"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "viewer.sanitized-document",
+      "classification": "security-replacement",
+      "upstream_routes": ["/viewer"],
+      "upstream_sources": [
+        "evalscope/web/src/pages/ReportViewerPage.tsx",
+        "evalscope/web/src/components/charts/**"
+      ],
+      "capability": "generated-document-state",
+      "contract": "Preserve report/chart loading, error and display while preventing raw active HTML from entering the DOM or top-level window.",
+      "default_or_rule": "Use opaque document ID, sanitizer, local Plotly and a sandbox without allow-same-origin; reject top-level generated-document fetch.",
+      "responsive_a11y": "Viewer has a title, loading/error status and safe same-page/new-tab navigation.",
+      "api_operations": [
+        "GET /generated-documents/{opaque_id}",
+        "GET /generated-assets/plotly-{sha256}.min.js"
+      ],
+      "target": "apps/web/src/evaluations/routes/viewer.tsx",
+      "upstream_coverage": true,
+      "tests": ["planned:GE3:generated-document-security", "planned:GE7:viewer-states"],
+      "browser_evidence": [
+        "upstream-code:pages/ReportViewerPage.tsx",
+        "planned:GE7:sandbox-viewer"
+      ],
+      "status": "planned"
+    },
+    {
+      "parity_id": "extension.benchmark-task-preselection",
+      "classification": "databench-extension",
+      "upstream_routes": [],
+      "upstream_sources": [],
+      "capability": "navigation-preselection",
+      "contract": "Allow a Benchmark detail to open the Databench task page with that Benchmark preselected.",
+      "default_or_rule": "Works for all five catalogue tabs and never contributes to upstream parity coverage.",
+      "responsive_a11y": "Extension action is explicitly named and has a deterministic destination.",
+      "api_operations": [],
+      "target": "apps/web/src/evaluations/features/benchmarks/UseBenchmarkAction.tsx",
+      "upstream_coverage": false,
+      "tests": ["planned:GE7:extension-benchmark-preselection"],
+      "browser_evidence": ["planned:GE7:extension-benchmark-preselection"],
+      "status": "planned"
+    },
+    {
+      "parity_id": "extension.databench-dataset-source",
+      "classification": "databench-extension",
+      "upstream_routes": [],
+      "upstream_sources": [],
+      "capability": "task-source-flow",
+      "contract": "Add Databench Dataset exact-version selection, projection eligibility/fidelity and explicit reference-target choice to the Evaluation form.",
+      "default_or_rule": "Source switching isolates payloads; selected, ground truth or no reference is always an explicit user choice.",
+      "responsive_a11y": "Ref, exact version, task type, target and fidelity status form one labelled field group.",
+      "api_operations": ["Databench generated /v2 client", "POST /api/v1/eval/invoke"],
+      "target": "apps/web/src/evaluations/features/tasks/DatabenchDatasetSource.tsx",
+      "upstream_coverage": false,
+      "tests": ["planned:GE5:extension-databench-dataset-source"],
+      "browser_evidence": ["planned:GE5:dataset-source-flow"],
+      "status": "planned"
+    }
+  ]
+}

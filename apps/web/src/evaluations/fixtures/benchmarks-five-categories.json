@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/eval/benchmarks",
+    "query": { "all": "true" }
+  },
+  "response": {
+    "text": [
+      {
+        "name": "aa_lcr",
+        "pretty_name": "AA-LCR",
+        "tags": ["Knowledge", "Reasoning", "LongContext"],
+        "category": "llm",
+        "subset_list": ["default"],
+        "total_samples": 100,
+        "few_shot_num": 0,
+        "dataset_id": "evalscope/AA-LCR",
+        "paper_url": null,
+        "metrics": ["acc"],
+        "meta": { "category": "llm" },
+        "description": {
+          "en": {
+            "full": "## Overview\nAA-LCR evaluates long-context retrieval and reasoning.",
+            "sections": { "Overview": "AA-LCR evaluates long-context retrieval and reasoning." }
+          },
+          "zh": {
+            "full": "## 概述\nAA-LCR 用于评估长上下文检索与推理。",
+            "sections": { "概述": "AA-LCR 用于评估长上下文检索与推理。" }
+          }
+        }
+      }
+    ],
+    "multimodal": [
+      {
+        "name": "a_okvqa",
+        "pretty_name": "A-OKVQA",
+        "tags": ["Knowledge", "MCQ", "MultiModal"],
+        "category": "vlm",
+        "subset_list": ["default"],
+        "total_samples": 1145,
+        "few_shot_num": 0,
+        "dataset_id": "HuggingFaceM4/A-OKVQA",
+        "paper_url": null,
+        "metrics": ["acc"],
+        "meta": { "category": "vlm" },
+        "description": {
+          "en": {
+            "full": "## Overview\nA-OKVQA evaluates visual question answering with world knowledge.",
+            "sections": {
+              "Overview": "A-OKVQA evaluates visual question answering with world knowledge."
+            }
+          },
+          "zh": {
+            "full": "## 概述\nA-OKVQA 用于评估结合世界知识的视觉问答。",
+            "sections": { "概述": "A-OKVQA 用于评估结合世界知识的视觉问答。" }
+          }
+        }
+      }
+    ],
+    "agent": [
+      {
+        "name": "automation_bench",
+        "pretty_name": "AutomationBench",
+        "tags": ["Agent", "FunctionCalling", "MultiTurn"],
+        "category": "agent",
+        "subset_list": ["sales", "marketing", "operations", "support", "finance", "hr"],
+        "total_samples": 600,
+        "few_shot_num": 0,
+        "dataset_id": "https://github.com/zapier/AutomationBench",
+        "paper_url": "https://arxiv.org/abs/2604.18934",
+        "metrics": ["pass_rate", "partial_credit", "error_rate"],
+        "meta": { "category": "agent" },
+        "description": {
+          "en": {
+            "full": "## Overview\nAutomationBench evaluates stateful business workflows.",
+            "sections": { "Overview": "AutomationBench evaluates stateful business workflows." }
+          },
+          "zh": {
+            "full": "## 概述\nAutomationBench 用于评估有状态的业务工作流。",
+            "sections": { "概述": "AutomationBench 用于评估有状态的业务工作流。" }
+          }
+        }
+      }
+    ],
+    "aigc": [
+      {
+        "name": "evalmuse",
+        "pretty_name": "EvalMuse",
+        "tags": ["TextToImage"],
+        "category": "aigc",
+        "subset_list": ["EvalMuse"],
+        "total_samples": 199,
+        "few_shot_num": 0,
+        "dataset_id": "AI-ModelScope/T2V-Eval-Prompts",
+        "paper_url": null,
+        "metrics": ["FGA_BLIP2Score"],
+        "meta": { "category": "aigc" },
+        "description": {
+          "en": {
+            "full": "## Overview\nEvalMuse evaluates text-to-image quality and alignment.",
+            "sections": { "Overview": "EvalMuse evaluates text-to-image quality and alignment." }
+          },
+          "zh": {
+            "full": "## 概述\nEvalMuse 用于评估文生图质量与语义对齐。",
+            "sections": { "概述": "EvalMuse 用于评估文生图质量与语义对齐。" }
+          }
+        }
+      }
+    ]
+  },
+  "expected_tabs": {
+    "all": 4,
+    "text": 1,
+    "multimodal": 1,
+    "agent": 1,
+    "aigc": 1
+  },
+  "source_meta_sha256": {
+    "aa_lcr": "49e858e5e753fb14a15b112b1eec1fabbced43c08755ff87682f9c0bcc5afd37",
+    "a_okvqa": "9e497a4ac6a7d029f8a947d746481740103aaae443d996b0aa5a105989708abc",
+    "automation_bench": "99dd5abb92924a3b28e25b579b599b0a78992a47775c7bbeece8c9b28f09ec9c",
+    "evalmuse": "af740b7d2e6c365038dcc24d9d1fa4221f24194187bb8cecc161907da8bd7d9f"
+  }
+}
