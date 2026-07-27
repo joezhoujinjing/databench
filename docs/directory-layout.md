@@ -1,7 +1,7 @@
 # 具体目录布局（文件级，权威）
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
-> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M2 已完成；
+> v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
 > 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。
 
 ## `apps/api`
@@ -344,7 +344,7 @@ Web client。完整边界与每个实施切片见 `docs/processing/TECHNICAL_DES
 ```text
 docs/mcp/
 ├─ TECHNICAL-DESIGN.md   已接受的最终技术边界
-├─ PLAN.md               M0-M2 accepted steps 与 gates
+├─ PLAN.md               M0-M3 accepted steps 与 gates
 ├─ STATUS.md             当前真实进度；runtime enabled 状态
 └─ AGENT-PREFLIGHT.md    目标 agent/真实 Excel 能力证据
 ```

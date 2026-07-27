@@ -27,8 +27,9 @@ const MCP_INSTRUCTIONS = [
   'Call contract_get with name canonical-jsonl for canonical input or canonical-draft-import for draft input; upload drafts with format canonical-draft-jsonl-v1, and do not place file bytes in MCP arguments.',
   'Canonical draft supports validate-preview, import-dataset, and materialize-jsonl.',
   'Use data_process_prepare to obtain a one-time PUT URL for validation preview, dataset import, or draft materialization.',
-  'Choose by user intent: import-dataset publishes a Databench dataset; materialize-jsonl returns canonical JSONL without publishing a dataset; validate-preview is optional when mapping is uncertain or a sample would help, not an approval state machine.',
-  'For draft import-dataset or materialize-jsonl, expected_input_digest, when used, must be the preview input_digest and guards the exact re-uploaded bytes. If a response is lost, prepare again and retry the same exact bytes; import returns the same dataset version and materialize returns the same canonical JSONL.',
+  'Choose by user intent: import-dataset publishes a Databench dataset and updates its required ref; materialize-jsonl returns canonical JSONL without publishing a dataset or ref; validate-preview is optional when mapping is uncertain or a sample would help, not an approval state machine.',
+  'Every import-dataset requires a stable lowercase ASCII ref. Use an explicit user-provided ref when valid, otherwise derive a concise ASCII slug from the source filename or data meaning. Pass expected_ref_version null to create a new ref, or the exact known current version to update an existing ref; never overwrite an existing ref without CAS intent.',
+  'For draft import-dataset or materialize-jsonl, expected_input_digest, when used, must be the preview input_digest and guards the exact re-uploaded bytes. If a response is lost, prepare again with the same ref options and retry the same exact bytes; import returns the same dataset version and ref, and materialize returns the same canonical JSONL.',
   'For materialize-jsonl, stream the PUT response to the requested canonical JSONL file.',
   'Use dataset_show with an exact dataset version and dataset_export_canonical_prepare for a one-time canonical JSONL GET URL.',
   'The current workspace is anonymous and grants full access; it is intended only for a trusted internal network.',
@@ -116,7 +117,7 @@ function createMcpServer(
     {
       title: 'Prepare canonical JSONL processing',
       description:
-        'Create a one-time PUT URL. canonical draft supports validate-preview, import-dataset, or materialize-jsonl; optional expected_input_digest guards previewed bytes.',
+        'Create a one-time PUT URL. import-dataset requires a CAS-protected ref; canonical draft also supports validate-preview or materialize-jsonl, and optional expected_input_digest guards previewed bytes.',
       inputSchema: McpDataProcessPrepareToolInputSchema,
       outputSchema: McpDataProcessPreparedToolOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
@@ -146,6 +147,9 @@ function createMcpServer(
                     kind: 'process' as const,
                     format: operation.format,
                     action: operation.action,
+                    ref: operation.ref,
+                    expectedRefVersion: operation.expected_ref_version,
+                    message: operation.message ?? null,
                     ...(operation.expected_input_digest === undefined
                       ? {}
                       : { expectedInputDigest: operation.expected_input_digest }),
@@ -154,6 +158,9 @@ function createMcpServer(
                     kind: 'process' as const,
                     format: operation.format,
                     action: operation.action,
+                    ref: operation.ref,
+                    expectedRefVersion: operation.expected_ref_version,
+                    message: operation.message ?? null,
                   },
         )
         const result = McpDataProcessPreparedSchema.parse({
@@ -164,6 +171,13 @@ function createMcpServer(
           expires_at: prepared.expiresAt,
           format: operation.format,
           action: operation.action,
+          ...(operation.action === 'import-dataset'
+            ? {
+                ref: operation.ref,
+                expected_ref_version: operation.expected_ref_version,
+                message: operation.message ?? null,
+              }
+            : {}),
           response_kind:
             operation.action === 'validate-preview'
               ? 'json-preview'
@@ -176,8 +190,8 @@ function createMcpServer(
               : operation.action === 'materialize-jsonl'
                 ? ['identity_claims']
                 : operation.format === 'canonical-draft-jsonl-v1'
-                  ? ['identity_claims', 'dataset_publish']
-                  : ['dataset_publish'],
+                  ? ['identity_claims', 'dataset_publish', 'ref_update']
+                  : ['dataset_publish', 'ref_update'],
         })
         return toolResult(result)
       })

@@ -69,14 +69,19 @@ preview 不是服务端审批状态机。
    把 Excel/CSV 行映射成临时 `canonical-draft-jsonl-v1`。
 3. 不自行编造 `rec_*`、`cand_*`、`sig_*` 或 `pref_*` IDs。
 4. 根据用户意图选择：
-   - `import-dataset`：登记稳定 IDs 并发布 immutable dataset，不更新 ref；
+   - `import-dataset`：登记稳定 IDs、发布 immutable dataset，并创建或 CAS 移动必填 ref；
    - `validate-preview`：完整校验但不写入，返回计数、样例和 exact-byte digest；
    - `materialize-jsonl`：登记稳定 IDs 并返回 canonical JSONL，不发布 dataset/ref/object。
-5. 如果做过 preview 且继续使用同一份 bytes，把 `input_digest` 作为
+5. 每次 `import-dataset` 都传：
+   - `ref`：稳定 lowercase ASCII 名称，例如 `cable-demo-20260723`；用户提供合法 ref 时优先使用，
+     否则从文件名或数据语义生成简洁 slug，并在结果中告诉用户；
+   - `expected_ref_version`：创建新 ref 传 `null`；更新已有 ref 时传已知的 exact 当前 version；
+   - `message`：可选的导入说明。
+6. 如果做过 preview 且继续使用同一份 bytes，把 `input_digest` 作为
    `expected_input_digest`；内容改变后重新 preview，或按用户当前明确指令继续。
-6. 使用 prepare 返回的一次性绝对 URL 流式 PUT/GET，文件 bytes 不放进 MCP JSON 参数。
-7. 完成后删除 agent-owned 临时 draft；只报告 exact dataset version，或把用户要求的 JSONL 文件
-   交付给用户。
+7. 使用 prepare 返回的一次性绝对 URL 流式 PUT/GET，文件 bytes 不放进 MCP JSON 参数。
+8. 导入成功后确认 `ref_update.status="updated"`，并向用户报告 ref 和 exact dataset version；完成后
+   删除 agent-owned 临时 draft。JSONL-only 只交付用户要求的文件。
 
 JSONL-only 不是完全无写：它不会创建数据集，但会永久登记 Databench 分配的 immutable identity
 claims，保证以后用相同 exact bytes 导入时得到相同 IDs。
@@ -89,7 +94,8 @@ claims，保证以后用相同 exact bytes 导入时得到相同 IDs。
 | token 已用、过期、API 重启或传输超时 | 重新调用 prepare，使用新 URL |
 | `input_digest_mismatch` | 上传 preview 对应的 exact bytes，或重新 preview 当前内容 |
 | validation error | 按返回的 line/path 修复 draft，再重新 prepare/upload |
-| import 响应丢失 | 重新 prepare 并上传相同 exact bytes；结果应是同一 dataset version |
+| import 响应丢失 | 使用相同 ref、expected version、message 重新 prepare，并上传相同 exact bytes；结果应是同一 dataset version/ref |
+| ref conflict | 不盲覆盖；只有已知 exact 当前 version 且确实要更新时才重试，否则换新 ref 或向用户确认 |
 | materialize 响应丢失 | 重新 prepare 并上传相同 exact bytes；结果应是相同 canonical JSONL |
 
 不要尝试恢复、猜测或记录一次性 token。进程重启后旧 token 必然失效；已经成功提交的 dataset 不
@@ -104,8 +110,10 @@ claims，保证以后用相同 exact bytes 导入时得到相同 IDs。
 3. 先 preview 三条样例，修改映射后再导入；
 4. JSONL-only，确认 `dataset_show` 对 prospective version 返回 not found；
 5. 对已导入 dataset 执行 show、canonical export 和 reimport，version 不变；
-6. 重启 API，确认旧一次性 URL 失效，重新 prepare 后恢复；
-7. 检查 API、Web 与现场前置代理日志，不包含 `proc_<64 hex>` 或 `exp_<64 hex>`。
+6. 确认每次成功 import 都返回 updated ref，且 Web 数据集列表立即可见；invalid/digest mismatch
+   不创建 ref；
+7. 重启 API，确认旧一次性 URL 失效，重新 prepare 后恢复；
+8. 检查 API、Web 与现场前置代理日志，不包含 `proc_<64 hex>` 或 `exp_<64 hex>`。
 
 上述验收只授权 ADR 0012 的可信内网离线通道，不表示 Databench 已具备公网 MCP、应用认证或
 多租户能力。

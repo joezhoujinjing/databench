@@ -23,6 +23,7 @@ import {
   type RestoreRefV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
+  V2CatalogRefConflictError,
 } from '@databench/catalog'
 import {
   admitV2TransformWorkingSet,
@@ -265,6 +266,11 @@ export interface V2WorkspaceOperationOptions extends V2OperationContext {}
 export interface V2CanonicalJsonlPreviewOptions {
   readonly previewRecords?: number
   readonly maxResponseBytes: number
+}
+
+export interface V2CanonicalDraftImportOptions {
+  readonly materialize?: V2CanonicalDraftMaterializeOptions
+  readonly ingest: AddRecordsV2Options
 }
 
 export interface V2TransformLimits {
@@ -646,17 +652,17 @@ export class V2Workspace {
 
   async addCanonicalDraftJsonl(
     source: AsyncIterable<Uint8Array>,
-    options: V2CanonicalDraftMaterializeOptions = {},
+    options: V2CanonicalDraftImportOptions,
     context: V2WorkspaceOperationOptions = {},
   ): Promise<IngestResultV2> {
-    const materialized = await this.materializeCanonicalDraftJsonl(source, options, context)
+    const materialized = await this.materializeCanonicalDraftJsonl(
+      source,
+      options.materialize ?? {},
+      context,
+    )
     let result: IngestResultV2
     try {
-      result = await this.addJsonl(
-        materialized.bytes,
-        { ref: null, expected_ref_version: null, message: null },
-        context,
-      )
+      result = await this.addJsonl(materialized.bytes, options.ingest, context)
     } catch (error) {
       try {
         await materialized.dispose()
@@ -2138,7 +2144,7 @@ export class V2Workspace {
       if (options.ref !== null) {
         const namespaceId = await this.#namespace(signal)
         signal?.throwIfAborted()
-        let ref: CatalogRefRowV2
+        let ref: CatalogRefRowV2 | undefined
         try {
           ref = await this.#catalog.compareAndSetRef({
             namespaceId,
@@ -2148,14 +2154,33 @@ export class V2Workspace {
             message: options.message,
           })
         } catch (error) {
-          mapV2CatalogError(error, true)
+          if (
+            error instanceof V2CatalogRefConflictError &&
+            error.currentVersion === dataset.version
+          ) {
+            const replayed = await this.getRef(options.ref, signal === undefined ? {} : { signal })
+            if (replayed?.version === dataset.version && replayed.message === options.message) {
+              refUpdate = {
+                status: 'updated',
+                ref_name: replayed.name,
+                previous_version: options.expected_ref_version,
+                current_version: replayed.version,
+              }
+            } else {
+              mapV2CatalogError(error, true)
+            }
+          } else {
+            mapV2CatalogError(error, true)
+          }
         }
-        assertRefRow(ref, namespaceId, options.ref, dataset.version, 'active')
-        refUpdate = {
-          status: 'updated',
-          ref_name: ref.name,
-          previous_version: options.expected_ref_version,
-          current_version: ref.version,
+        if (ref !== undefined) {
+          assertRefRow(ref, namespaceId, options.ref, dataset.version, 'active')
+          refUpdate = {
+            status: 'updated',
+            ref_name: ref.name,
+            previous_version: options.expected_ref_version,
+            current_version: ref.version,
+          }
         }
       }
       result = IngestResultV2Schema.parse({

@@ -118,6 +118,9 @@ endpoint `http://127.0.0.1:18080` 上完成：
   schema 与 4 个精确 MinIO test objects，并将 agent-owned 临时目录移入废纸篓；没有覆盖用户已有
   JSONL，也没有触碰 public catalog。
 
+以上 `ref_update=not_requested` 是 GM1b3 当时的历史证据。Owner 于 2026-07-27 接受 M3 后，当前
+import contract 改为必填 CAS ref；新的验证记录在 `STATUS.md` 的 GM3，不改写本段旧验收结果。
+
 这些 exact versions 是本次持久 Workspace namespace 内的验收证据。Draft managed IDs 包含
 namespace；全新 test schema 会创建新的 namespace UUID，因此不能把这些值误写成跨 namespace
 fixed vectors。自动测试锁定原始 draft bytes/digests，并在同一 namespace 内断言

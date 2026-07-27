@@ -1,6 +1,7 @@
 # Databench MCP 最小可用技术方案
 
-- **状态：** Accepted——owner 于 2026-07-25 接受六项产品决策并授权从 M0 开始实施
+- **状态：** Accepted——owner 于 2026-07-25 接受六项产品决策并授权从 M0 开始实施；
+  2026-07-27 接受 M3 必填 CAS ref 修订
 - **日期：** 2026-07-25
 - **代码基线：** `main@258bacaf673a0395c8fb3d769bd4bf6f78dcde56`
 - **原则：** 先打通真实 Excel 导入闭环；不预建平台终局；通过稳定边界保留后续扩展性
@@ -43,7 +44,8 @@ tool 名。Draft 是 agent 与 Databench 之间的内部 wire format，不是用
 1. Tool 参数不携带 token、user 或 tenant；认证以后从 transport middleware 加入；
 2. 文件 bytes 不进入 MCP JSON 参数，而是通过一次性 HTTP URL 流式传输；
 3. 所有数据领域操作仍只经过 `V2Workspace + @databench/schema`；
-4. 导入结果返回 immutable exact dataset version，后续操作不依赖 mutable ref。
+4. 导入结果返回 immutable exact dataset version，并创建或 CAS 移动必填 ref；后续 exact 读取仍可
+   直接使用 immutable version。
 
 其余能力按真实使用需求迭代，不作为首期前置建设。
 
@@ -81,15 +83,15 @@ tool 名。Draft 是 agent 与 Databench 之间的内部 wire format，不是用
 - Excel/CSV 可由 agent 映射成通用 canonical draft，再由服务端生成 record/candidate/signal/
   preference IDs；
 - 文件通过一次性 PUT/GET URL 流式传输；
-- 导入失败不发布 dataset；首期 import 不更新 ref；
-- 导入成功返回 exact dataset version；
+- 导入失败不发布 dataset，也不创建或移动 ref；
+- 导入成功返回 exact dataset version，并创建或 CAS 移动必填 ref，使 Web 列表立即可见；
 - 可读取 dataset 摘要并导出 committed canonical JSONL；
 - 内网离线环境无 OpenAI、npm、镜像仓库或公网依赖。
 
 ### 3.2 明确后做
 
 - provider-specific 原始格式 adapter；agent 首期统一先映射到 canonical draft；
-- transform、ref、lineage、audit、record detail、通用 converter 等 MCP parity；
+- transform、独立 ref tool、lineage、audit、record detail、通用 converter 等 MCP parity；
 - MCP Resources；首期只提供兼容性更好的 `contract_get` tool；
 - 多错误聚合；首期 preview 做完整语义校验，import/materialize 再完成 identity/publish 检查，
   parser 保持 fail-fast；
@@ -204,8 +206,10 @@ Initialize instructions 只说明：
    `expected_input_digest`，内容变化则重新 preview 或按当前用户意图继续；
 7. 用户只要 JSONL 时使用 `materialize-jsonl`，不得替换成 `import-dataset`；用户意图不清且不同
    action 会产生不同副作用时才追问；
-8. 完成后删除临时 draft，只向用户报告导入结果或交付 JSONL；
-9. 当前环境为匿名全权限共享 workspace。
+8. 每次 `import-dataset` 都提供稳定 lowercase ASCII `ref` 和 `expected_ref_version`：新 ref 传
+   `null`，更新已有 ref 传 agent 已知的 exact 当前 version；不得盲覆盖；
+9. 完成后删除临时 draft，只向用户报告导入结果或交付 JSONL；
+10. 当前环境为匿名全权限共享 workspace。
 
 首期不同时实现 MCP Resources 和 prompts。
 
@@ -214,7 +218,8 @@ Initialize instructions 只说明：
 本节定义 M1b3 完成时的首期最终 surface。M1 实施期间，`tools/list` 和每个 tool input schema 只暴露
 当前 Step 已实现的 union branches，initialize instructions 也只描述当前可用 action；不得先宣告
 一个必然返回 unsupported 的未来分支。该 surface 在 M1b3 gate 后首次冻结，部署配置在 M2 前始终
-保持 MCP disabled，因此中间提交不构成对外兼容承诺。
+保持 MCP disabled，因此中间提交不构成对外兼容承诺。M3 是 owner 接受的 import 参数窄修订，
+tool 数量与名称不变。
 
 | Tool | 作用 | 副作用 |
 |---|---|---|
@@ -292,8 +297,18 @@ type DataProcessPrepareInput =
       preview_records?: number
     }
   | {
-      format: 'canonical-jsonl' | 'canonical-draft-jsonl-v1'
+      format: 'canonical-jsonl'
       action: 'import-dataset'
+      ref: string
+      expected_ref_version: string | null
+      message?: string | null
+    }
+  | {
+      format: 'canonical-draft-jsonl-v1'
+      action: 'import-dataset'
+      ref: string
+      expected_ref_version: string | null
+      message?: string | null
       expected_input_digest?: string
     }
   | {
@@ -303,7 +318,7 @@ type DataProcessPrepareInput =
     }
 ```
 
-这是 `@databench/schema` 中三个 strict object 的 union，不接受未声明字段。因而 preview 不能携带
+这是 `@databench/schema` 中四个 strict object 的 union，不接受未声明字段。因而 preview 不能携带
 expected digest、canonical input 不能 materialize，非 preview action 也不能携带
 `preview_records`。Digest 使用现有 64 lowercase hex schema。
 
@@ -328,14 +343,20 @@ type DataProcessPrepared =
   | PreparedFileOperation & {
       format: 'canonical-jsonl'
       action: 'import-dataset'
+      ref: string
+      expected_ref_version: string | null
+      message: string | null
       response_kind: 'json-ingest-result'
-      side_effects: readonly ['dataset_publish']
+      side_effects: readonly ['dataset_publish', 'ref_update']
     }
   | PreparedFileOperation & {
       format: 'canonical-draft-jsonl-v1'
       action: 'import-dataset'
+      ref: string
+      expected_ref_version: string | null
+      message: string | null
       response_kind: 'json-ingest-result'
-      side_effects: readonly ['identity_claims', 'dataset_publish']
+      side_effects: readonly ['identity_claims', 'dataset_publish', 'ref_update']
     }
   | PreparedFileOperation & {
       format: 'canonical-draft-jsonl-v1'
@@ -358,15 +379,15 @@ URL 只能从显式可信配置 `DATABENCH_MCP_PUBLIC_BASE_URL` 生成，不从�
 `Host`/`Forwarded` headers 推导。离线环境配置为用户实际访问的 `/api` base，并有真实 Caddy
 前缀测试。
 
-Token registry 只保存少量 metadata：format、action、preview limit、expected digest、expiry 和状
-态，不保存文件 bytes。`preview_records` 是 0-10 的整数、默认 3，只影响返回样例数量，不影响全
-文件校验。允许的组合与 `side_effects` 固定为：
+Token registry 只保存少量 metadata：format、action、preview limit、expected digest、import 的
+ref/CAS/message、expiry 和状态，不保存文件 bytes。`preview_records` 是 0-10 的整数、默认 3，只
+影响返回样例数量，不影响全文件校验。允许的组合与 `side_effects` 固定为：
 
 | format | action | side_effects |
 |---|---|---|
 | canonical / draft | `validate-preview` | `[]` |
-| canonical | `import-dataset` | `["dataset_publish"]` |
-| draft | `import-dataset` | `["identity_claims", "dataset_publish"]` |
+| canonical | `import-dataset` | `["dataset_publish", "ref_update"]` |
+| draft | `import-dataset` | `["identity_claims", "dataset_publish", "ref_update"]` |
 | draft | `materialize-jsonl` | `["identity_claims"]` |
 
 Canonical 输入本身已经是目标 JSONL，因此不接受 `canonical-jsonl + materialize-jsonl`；agent 直接
@@ -405,6 +426,11 @@ dataset 写入前计算并比对 exact bytes digest；不一致使用现有 `val
 code 为 `input_digest_mismatch`，且不产生写入。这个字段用于防止 agent 在 preview 后意外上传了
 另一份内容，不承担“证明人类批准”的职责。
 
+每次 `import-dataset` 必须携带 `ref` 与 `expected_ref_version`。新 ref 使用
+`expected_ref_version=null`；更新已有 ref 时使用 agent 已知的 exact 当前 version。`message` 可选，
+省略时在 prepared result 中物化为 `null`。Ref 继续使用现有 lowercase ASCII schema；本修订不增加
+中文 display name 或名称转换协议。
+
 PUT 行为：
 
 - token 256-bit CSPRNG、短期有效、只允许消费一次；
@@ -414,7 +440,7 @@ PUT 行为：
   namespace 或 identity claims，也不写 dataset、object 或 ref；
 - `import-dataset`：canonical 格式调用现有 `addJsonl()`，draft 调用新增的
   `addCanonicalDraftJsonl()`；Workspace 完成全文件校验后才 publish，成功返回现有
-  `IngestResultV2` 和 exact dataset version；
+  `IngestResultV2` 和 exact dataset version，并在相同发布路径中 CAS 更新 ref；
 - `materialize-jsonl`：完整校验并分配/claim server IDs，但不 publish dataset/ref/object；在
   Workspace 临时目录生成 canonical JSONL，写入时执行 temp-disk admission，并按现有 Engine 语义
   限制 canonical record bytes 不超过 `max_canonical_bytes`；JSONL physical spool 的上界为
@@ -437,8 +463,9 @@ agent 生成 draft
 
 Preview 不保留上传 bytes。若 agent 随后继续处理同一份内容，会重新 PUT 并可携带 expected
 digest。PUT 响应丢失时，agent 重新 prepare 并上传相同 bytes；import 必须得到相同 dataset
-version，materialize 必须得到相同 canonical JSONL。Digest mismatch 不产生写入。首期不尝试
-更新 ref。
+version/ref，materialize 必须得到相同 canonical JSONL。Import 重试必须复用相同 ref、expected
+version 和 message；如果先前请求已经成功且 ref 仍指向同一 version、message 相同，按成功重放。
+其他 ref 变化保持 CAS conflict。Digest mismatch 不产生写入或 ref 更新。
 
 Preview 是完整的语义校验，不是 identity claim 预占或并发承诺；因此 import/materialize 仍可能
 因既有 identity claim 或 preview 后发生的并发写入而失败。为保持 preview 无副作用，首期不新增
@@ -927,7 +954,7 @@ versions。
 → agent 根据用户指令与映射确定性决定直接 import 或先 preview
 → preview 路径展示 499 条计数、字段映射和 3 条样例，并能按反馈修改重试
 → import 路径调用 data_process_prepare(action="import-dataset") 并 PUT
-→ 返回 exact dataset version
+→ 返回 exact dataset version 与已更新 ref
 → dataset_show
 → dataset_export_canonical_prepare
 → GET canonical JSONL
@@ -937,7 +964,7 @@ versions。
 
 人工验收至少覆盖三种对话意图：直接导入不重复确认；先看样例、修改后导入；只生成 JSONL。
 最后一种由 agent 调用 `action="materialize-jsonl"`，保存响应 bytes 并交付文件；没有
-dataset/ref/object 发布。还需证明 invalid import 不发布 dataset、首期完全不尝试 ref update，
+dataset/ref/object 发布。还需证明 invalid import 不发布 dataset 或 ref、成功 import 更新 ref，
 以及断网 Docker network 中无 OpenAI/npm/公网依赖。自动 E2E 与人工 Excel 验收必须使用同一
 draft/canonical golden 对齐；CI 不运行模型，也不把 agent 的语义推断伪装成 deterministic test。
 
@@ -1025,6 +1052,16 @@ MCP 不改变 `/v2` REST contract，因此 OpenAPI 应保持 byte-identical。
 - air-gapped lifecycle；
 - upgrade/rollback 验证现有 API image。
 
+### M3 — Dataset import 必填 CAS ref
+
+- 保持现有四个 tools；canonical/draft `import-dataset` 新增必填 `ref` 与
+  `expected_ref_version`，`message` 可选；
+- prepared result 回显 ref intent，side effects 增加 `ref_update`；
+- canonical/draft companion PUT 都把 ref options 传入 Workspace；invalid input 与 digest mismatch
+  不创建 ref；
+- 相同 target/message 的响应丢失重试按成功处理，其他并发变化保持 CAS conflict；
+- 更新离线 smoke 与 agent 指南，证明导入完成后 ref 可由 Web/Workspace 立即发现。
+
 ## 14. 后续迭代规则
 
 只根据真实使用频率增加能力，建议顺序：
@@ -1032,7 +1069,7 @@ MCP 不改变 `/v2` REST contract，因此 OpenAPI 应保持 byte-identical。
 1. preview 多错误聚合；
 2. dataset records/record detail；
 3. provider-specific raw adapters；
-4. ref/lineage；
+4. 独立 ref tool/lineage；
 5. transform/audit/通用 converter；
 6. MCP Resources；
 7. 认证；

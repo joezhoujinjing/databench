@@ -19,6 +19,8 @@ import { createTestApp } from './test-app.js'
 const VERSION = 'a'.repeat(64)
 const ARTIFACT_DIGEST = 'b'.repeat(64)
 const INPUT_DIGEST = 'c'.repeat(64)
+const DRAFT_IMPORT_REF = 'mcp-draft-import'
+const CANONICAL_IMPORT_REF = 'mcp-canonical-import'
 const encoder = new TextEncoder()
 
 const record: PostTrainingRecordV2 = PostTrainingRecordV2Schema.parse({
@@ -113,10 +115,13 @@ describe('MCP canonical vertical slice', () => {
         'Canonical draft supports validate-preview, import-dataset, and materialize-jsonl',
       )
       expect(client.getInstructions()).toContain(
-        'import-dataset publishes a Databench dataset; materialize-jsonl returns canonical JSONL without publishing a dataset',
+        'import-dataset publishes a Databench dataset and updates its required ref',
       )
       expect(client.getInstructions()).toContain(
-        'import returns the same dataset version and materialize returns the same canonical JSONL',
+        'Every import-dataset requires a stable lowercase ASCII ref',
+      )
+      expect(client.getInstructions()).toContain(
+        'import returns the same dataset version and ref, and materialize returns the same canonical JSONL',
       )
       const tools = await client.listTools()
       expect(tools.tools.map(({ name }) => name)).toEqual([
@@ -140,15 +145,19 @@ describe('MCP canonical vertical slice', () => {
             properties: {
               action: { const: 'import-dataset' },
               format: { const: 'canonical-jsonl' },
+              ref: { type: 'string' },
             },
+            required: ['format', 'action', 'ref', 'expected_ref_version'],
             additionalProperties: false,
           },
           {
             properties: {
               action: { const: 'import-dataset' },
               format: { const: 'canonical-draft-jsonl-v1' },
+              ref: { type: 'string' },
               expected_input_digest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
             },
+            required: ['format', 'action', 'ref', 'expected_ref_version'],
             additionalProperties: false,
           },
           {
@@ -183,6 +192,7 @@ describe('MCP canonical vertical slice', () => {
             properties: {
               action: { const: 'import-dataset' },
               format: { const: 'canonical-jsonl' },
+              ref: { type: 'string' },
               response_kind: { const: 'json-ingest-result' },
             },
           },
@@ -190,9 +200,14 @@ describe('MCP canonical vertical slice', () => {
             properties: {
               action: { const: 'import-dataset' },
               format: { const: 'canonical-draft-jsonl-v1' },
+              ref: { type: 'string' },
               response_kind: { const: 'json-ingest-result' },
               side_effects: {
-                prefixItems: [{ const: 'identity_claims' }, { const: 'dataset_publish' }],
+                prefixItems: [
+                  { const: 'identity_claims' },
+                  { const: 'dataset_publish' },
+                  { const: 'ref_update' },
+                ],
               },
             },
           },
@@ -244,6 +259,8 @@ describe('MCP canonical vertical slice', () => {
         arguments: {
           format: 'canonical-jsonl',
           action: 'import-dataset',
+          ref: CANONICAL_IMPORT_REF,
+          expected_ref_version: null,
           preview_records: 2,
         },
       })
@@ -362,6 +379,9 @@ describe('MCP canonical vertical slice', () => {
           arguments: {
             format: 'canonical-draft-jsonl-v1',
             action: 'import-dataset',
+            ref: DRAFT_IMPORT_REF,
+            expected_ref_version: null,
+            message: 'draft import',
             expected_input_digest: INPUT_DIGEST,
           },
         }),
@@ -369,8 +389,11 @@ describe('MCP canonical vertical slice', () => {
       expect(draftImportPrepared).toMatchObject({
         format: 'canonical-draft-jsonl-v1',
         action: 'import-dataset',
+        ref: DRAFT_IMPORT_REF,
+        expected_ref_version: null,
+        message: 'draft import',
         response_kind: 'json-ingest-result',
-        side_effects: ['identity_claims', 'dataset_publish'],
+        side_effects: ['identity_claims', 'dataset_publish', 'ref_update'],
       })
       const draftImported = await app.fetch(
         new Request(String(draftImportPrepared.put_url), {
@@ -380,14 +403,28 @@ describe('MCP canonical vertical slice', () => {
         }),
       )
       expect(draftImported.status).toBe(200)
-      expect(await draftImported.json()).toMatchObject({ dataset_version: VERSION })
+      expect(await draftImported.json()).toMatchObject({
+        dataset_version: VERSION,
+        ref_update: {
+          status: 'updated',
+          ref_name: DRAFT_IMPORT_REF,
+          previous_version: null,
+          current_version: VERSION,
+        },
+      })
       expect(fake.state.draftImportCalls).toBe(1)
       expect(fake.state.draftImportExpectedDigest).toBe(INPUT_DIGEST)
+      expect(fake.state.draftImportRef).toBe(DRAFT_IMPORT_REF)
 
       const importPrepared = structured(
         await client.callTool({
           name: 'data_process_prepare',
-          arguments: { format: 'canonical-jsonl', action: 'import-dataset' },
+          arguments: {
+            format: 'canonical-jsonl',
+            action: 'import-dataset',
+            ref: CANONICAL_IMPORT_REF,
+            expected_ref_version: null,
+          },
         }),
       )
       const imported = await app.fetch(
@@ -398,8 +435,12 @@ describe('MCP canonical vertical slice', () => {
         }),
       )
       expect(imported.status).toBe(200)
-      expect(await imported.json()).toMatchObject({ dataset_version: VERSION })
+      expect(await imported.json()).toMatchObject({
+        dataset_version: VERSION,
+        ref_update: { status: 'updated', ref_name: CANONICAL_IMPORT_REF },
+      })
       expect(fake.state.importCalls).toBe(1)
+      expect(fake.state.importRef).toBe(CANONICAL_IMPORT_REF)
 
       const shown = await client.callTool({
         name: 'dataset_show',
@@ -890,10 +931,12 @@ interface FakeState {
   describeError?: unknown
   draftImportCalls: number
   draftImportExpectedDigest?: string
+  draftImportRef?: string
   draftPreviewCalls: number
   exportGate?: Promise<void>
   exportIgnoresAbort?: boolean
   importCalls: number
+  importRef?: string
   materializeCalls: number
   materializeDisposeCalls: number
   materializeExpectedDigest?: string
@@ -947,26 +990,54 @@ function fakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } {
         records_truncated: options.previewRecords === 0,
       }
     },
-    async addJsonl(source: AsyncIterable<Uint8Array>) {
+    async addJsonl(
+      source: AsyncIterable<Uint8Array>,
+      options: { ref: string | null; expected_ref_version: string | null; message: string | null },
+    ) {
       await collect(source)
       state.importCalls += 1
+      if (options.ref !== null) state.importRef = options.ref
       return {
         dataset_version: VERSION,
         manifest,
-        ref_update: { status: 'not_requested' as const },
+        ref_update:
+          options.ref === null
+            ? { status: 'not_requested' as const }
+            : {
+                status: 'updated' as const,
+                ref_name: options.ref,
+                previous_version: options.expected_ref_version,
+                current_version: VERSION,
+              },
       }
     },
     async addCanonicalDraftJsonl(
       source: AsyncIterable<Uint8Array>,
-      options: { expectedInputDigest?: string },
+      options: {
+        materialize?: { expectedInputDigest?: string }
+        ingest: {
+          ref: string | null
+          expected_ref_version: string | null
+          message: string | null
+        }
+      },
     ) {
       await collect(source)
       state.draftImportCalls += 1
-      state.draftImportExpectedDigest = options.expectedInputDigest
+      state.draftImportExpectedDigest = options.materialize?.expectedInputDigest
+      if (options.ingest.ref !== null) state.draftImportRef = options.ingest.ref
       return {
         dataset_version: VERSION,
         manifest,
-        ref_update: { status: 'not_requested' as const },
+        ref_update:
+          options.ingest.ref === null
+            ? { status: 'not_requested' as const }
+            : {
+                status: 'updated' as const,
+                ref_name: options.ingest.ref,
+                previous_version: options.ingest.expected_ref_version,
+                current_version: VERSION,
+              },
       }
     },
     async materializeCanonicalDraftJsonl(
@@ -1080,7 +1151,15 @@ async function prepareRaw(
       method: 'tools/call',
       params: {
         name: 'data_process_prepare',
-        arguments: { format: 'canonical-jsonl', action },
+        arguments:
+          action === 'import-dataset'
+            ? {
+                format: 'canonical-jsonl',
+                action,
+                ref: CANONICAL_IMPORT_REF,
+                expected_ref_version: null,
+              }
+            : { format: 'canonical-jsonl', action },
       },
     }),
   )

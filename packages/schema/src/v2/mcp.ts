@@ -5,7 +5,7 @@ import {
   CanonicalDraftRecordV1Schema,
 } from './canonical-draft.js'
 import { DigestHexSchema, Rfc3339UtcSchema } from './common.js'
-import { DatasetViewV2Schema, IngestResultV2Schema } from './contracts.js'
+import { DatasetViewV2Schema, IngestResultV2Schema, RefNameV2Schema } from './contracts.js'
 import { JsonObjectSchema } from './json-value.js'
 import { PostTrainingRecordV2Schema } from './record.js'
 
@@ -106,11 +106,17 @@ const McpPreviewPrepareInputSchema = z.strictObject({
 const McpCanonicalImportPrepareInputSchema = z.strictObject({
   format: z.literal(MCP_CANONICAL_FORMAT),
   action: z.literal('import-dataset'),
+  ref: RefNameV2Schema,
+  expected_ref_version: DigestHexSchema.nullable(),
+  message: z.string().min(1).nullable().optional(),
 })
 
 const McpCanonicalDraftImportPrepareInputSchema = z.strictObject({
   format: z.literal(CANONICAL_DRAFT_FORMAT_V1),
   action: z.literal('import-dataset'),
+  ref: RefNameV2Schema,
+  expected_ref_version: DigestHexSchema.nullable(),
+  message: z.string().min(1).nullable().optional(),
   expected_input_digest: DigestHexSchema.optional(),
 })
 
@@ -140,6 +146,9 @@ export const McpDataProcessPrepareToolInputSchema = z
     action: z.enum(['validate-preview', 'import-dataset', 'materialize-jsonl']),
     preview_records: z.number().int().min(0).max(MCP_MAX_PREVIEW_RECORDS).optional(),
     expected_input_digest: DigestHexSchema.optional(),
+    ref: RefNameV2Schema.optional(),
+    expected_ref_version: DigestHexSchema.nullable().optional(),
+    message: z.string().min(1).nullable().optional(),
   })
   .superRefine((input, context) => {
     if (!McpDataProcessPrepareInputSchema.safeParse(input).success) {
@@ -174,16 +183,26 @@ const McpCanonicalImportPreparedSchema = z.strictObject({
   ...McpPreparedFileOperationShape,
   format: z.literal(MCP_CANONICAL_FORMAT),
   action: z.literal('import-dataset'),
+  ref: RefNameV2Schema,
+  expected_ref_version: DigestHexSchema.nullable(),
+  message: z.string().min(1).nullable(),
   response_kind: z.literal('json-ingest-result'),
-  side_effects: z.array(z.literal('dataset_publish')).length(1),
+  side_effects: z
+    .tuple([z.literal('dataset_publish'), z.literal('ref_update')])
+    .meta({ minItems: 2, maxItems: 2 }),
 })
 
 const McpCanonicalDraftImportPreparedSchema = z.strictObject({
   ...McpPreparedFileOperationShape,
   format: z.literal(CANONICAL_DRAFT_FORMAT_V1),
   action: z.literal('import-dataset'),
+  ref: RefNameV2Schema,
+  expected_ref_version: DigestHexSchema.nullable(),
+  message: z.string().min(1).nullable(),
   response_kind: z.literal('json-ingest-result'),
-  side_effects: z.tuple([z.literal('identity_claims'), z.literal('dataset_publish')]),
+  side_effects: z
+    .tuple([z.literal('identity_claims'), z.literal('dataset_publish'), z.literal('ref_update')])
+    .meta({ minItems: 3, maxItems: 3 }),
 })
 
 const McpCanonicalDraftMaterializePreparedSchema = z.strictObject({
@@ -210,7 +229,10 @@ export const McpDataProcessPreparedToolOutputSchema = z
     format: z.enum([MCP_CANONICAL_FORMAT, CANONICAL_DRAFT_FORMAT_V1]),
     action: z.enum(['validate-preview', 'import-dataset', 'materialize-jsonl']),
     response_kind: z.enum(['json-preview', 'json-ingest-result', 'canonical-jsonl']),
-    side_effects: z.array(z.enum(['dataset_publish', 'identity_claims'])).max(2),
+    side_effects: z.array(z.enum(['dataset_publish', 'identity_claims', 'ref_update'])).max(3),
+    ref: RefNameV2Schema.optional(),
+    expected_ref_version: DigestHexSchema.nullable().optional(),
+    message: z.string().min(1).nullable().optional(),
   })
   .superRefine((input, context) => {
     if (!McpDataProcessPreparedSchema.safeParse(input).success) {

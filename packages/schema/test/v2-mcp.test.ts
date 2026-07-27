@@ -17,6 +17,8 @@ import {
 } from '../src/v2/index.js'
 
 const DIGEST = 'a'.repeat(64)
+const REF = 'mcp-import'
+const REF_INTENT = { ref: REF, expected_ref_version: null } as const
 
 describe('MCP v2 schemas', () => {
   test('keeps the staged contract and process inputs strict', () => {
@@ -61,13 +63,21 @@ describe('MCP v2 schemas', () => {
       McpDataProcessPrepareInputSchema.parse({
         format: 'canonical-draft-jsonl-v1',
         action: 'import-dataset',
+        ...REF_INTENT,
         expected_input_digest: DIGEST,
       }),
     ).toEqual({
       format: 'canonical-draft-jsonl-v1',
       action: 'import-dataset',
+      ...REF_INTENT,
       expected_input_digest: DIGEST,
     })
+    expect(() =>
+      McpDataProcessPrepareInputSchema.parse({
+        format: 'canonical-draft-jsonl-v1',
+        action: 'import-dataset',
+      }),
+    ).toThrow()
     expect(() =>
       McpDataProcessPrepareInputSchema.parse({
         format: 'canonical-jsonl',
@@ -149,13 +159,16 @@ describe('MCP v2 schemas', () => {
         ...base,
         format: 'canonical-draft-jsonl-v1',
         action: 'import-dataset',
+        ...REF_INTENT,
+        message: null,
         response_kind: 'json-ingest-result',
-        side_effects: ['identity_claims', 'dataset_publish'],
+        side_effects: ['identity_claims', 'dataset_publish', 'ref_update'],
       }),
     ).toMatchObject({
       format: 'canonical-draft-jsonl-v1',
       action: 'import-dataset',
-      side_effects: ['identity_claims', 'dataset_publish'],
+      ref: REF,
+      side_effects: ['identity_claims', 'dataset_publish', 'ref_update'],
     })
     expect(() =>
       McpDataProcessPreparedSchema.parse({
@@ -190,15 +203,25 @@ describe('MCP v2 schemas', () => {
           properties: {
             action: { const: 'import-dataset' },
             format: { const: 'canonical-jsonl' },
+            ref: { type: 'string' },
+            expected_ref_version: {
+              anyOf: [{ type: 'string', pattern: '^[0-9a-f]{64}$' }, { type: 'null' }],
+            },
           },
+          required: ['format', 'action', 'ref', 'expected_ref_version'],
           additionalProperties: false,
         },
         {
           properties: {
             action: { const: 'import-dataset' },
             format: { const: 'canonical-draft-jsonl-v1' },
+            ref: { type: 'string' },
+            expected_ref_version: {
+              anyOf: [{ type: 'string', pattern: '^[0-9a-f]{64}$' }, { type: 'null' }],
+            },
             expected_input_digest: { type: 'string', pattern: '^[0-9a-f]{64}$' },
           },
+          required: ['format', 'action', 'ref', 'expected_ref_version'],
           additionalProperties: false,
         },
         {
@@ -234,12 +257,14 @@ describe('MCP v2 schemas', () => {
           properties: {
             action: { const: 'import-dataset' },
             format: { const: 'canonical-jsonl' },
+            ref: { type: 'string' },
             response_kind: { const: 'json-ingest-result' },
             side_effects: {
               type: 'array',
-              minItems: 1,
-              maxItems: 1,
-              items: { type: 'string', const: 'dataset_publish' },
+              prefixItems: [
+                { type: 'string', const: 'dataset_publish' },
+                { type: 'string', const: 'ref_update' },
+              ],
             },
           },
         },
@@ -247,12 +272,14 @@ describe('MCP v2 schemas', () => {
           properties: {
             action: { const: 'import-dataset' },
             format: { const: 'canonical-draft-jsonl-v1' },
+            ref: { type: 'string' },
             response_kind: { const: 'json-ingest-result' },
             side_effects: {
               type: 'array',
               prefixItems: [
                 { type: 'string', const: 'identity_claims' },
                 { type: 'string', const: 'dataset_publish' },
+                { type: 'string', const: 'ref_update' },
               ],
             },
           },
@@ -279,12 +306,13 @@ describe('MCP v2 schemas', () => {
       true,
     )
     expect(validateInput({ format: 'canonical-draft-jsonl-v1', action: 'import-dataset' })).toBe(
-      true,
+      false,
     )
     expect(
       validateInput({
         format: 'canonical-draft-jsonl-v1',
         action: 'import-dataset',
+        ...REF_INTENT,
         expected_input_digest: DIGEST,
       }),
     ).toBe(true)
@@ -318,8 +346,10 @@ describe('MCP v2 schemas', () => {
         ...preparedBase,
         format: 'canonical-draft-jsonl-v1',
         action: 'import-dataset',
+        ...REF_INTENT,
+        message: null,
         response_kind: 'json-ingest-result',
-        side_effects: ['identity_claims', 'dataset_publish', 'dataset_publish'],
+        side_effects: ['identity_claims', 'dataset_publish', 'ref_update', 'ref_update'],
       }),
     ).toBe(false)
     expect(
@@ -327,6 +357,8 @@ describe('MCP v2 schemas', () => {
         ...preparedBase,
         format: 'canonical-jsonl',
         action: 'import-dataset',
+        ...REF_INTENT,
+        message: null,
         response_kind: 'json-ingest-result',
         side_effects: [],
       }),
@@ -336,8 +368,10 @@ describe('MCP v2 schemas', () => {
         ...preparedBase,
         format: 'canonical-draft-jsonl-v1',
         action: 'import-dataset',
+        ...REF_INTENT,
+        message: null,
         response_kind: 'json-ingest-result',
-        side_effects: ['identity_claims', 'dataset_publish'],
+        side_effects: ['identity_claims', 'dataset_publish', 'ref_update'],
       }),
     ).toBe(true)
     expect(

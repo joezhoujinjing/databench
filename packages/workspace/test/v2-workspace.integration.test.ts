@@ -436,6 +436,8 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       capabilityName: 'data_juicer.batch',
       capabilityVersion: '1',
       inputCount: BigInt(input.length),
+      resultRefNamespaceId: null,
+      resultRefName: null,
     })
     const claimed = await catalog.claimNextTransformJob({
       leaseOwner: 'workspace.integration',

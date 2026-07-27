@@ -6,6 +6,9 @@ const gatewayBase = 'http://web/api'
 const publicBase = process.env.DATABENCH_MCP_PUBLIC_BASE_URL
 const fixturePath = process.argv[2]
 const tempRoot = '/var/lib/databench/.databench-v2-temp'
+const directRef = 'mcp-smoke-direct'
+const revisedRef = 'mcp-smoke-revised'
+const canonicalRef = 'mcp-smoke-canonical'
 
 if (publicBase === undefined || fixturePath === undefined) {
   throw new Error('offline MCP smoke configuration is incomplete')
@@ -140,7 +143,13 @@ async function main() {
     const directPrepared = structured(
       await client.callTool({
         name: 'data_process_prepare',
-        arguments: { format: 'canonical-draft-jsonl-v1', action: 'import-dataset' },
+        arguments: {
+          format: 'canonical-draft-jsonl-v1',
+          action: 'import-dataset',
+          ref: directRef,
+          expected_ref_version: null,
+          message: 'offline MCP direct import',
+        },
       }),
     )
     const directResponse = await putDraft(directPrepared, draft)
@@ -148,8 +157,29 @@ async function main() {
     const direct = await directResponse.json()
     assert(/^[0-9a-f]{64}$/.test(direct.dataset_version), 'direct import version is invalid')
     assert(
-      direct.ref_update?.status === 'not_requested',
-      'direct import unexpectedly updated a ref',
+      direct.ref_update?.status === 'updated' && direct.ref_update?.ref_name === directRef,
+      'direct import did not update its required ref',
+    )
+    const directReplayPrepared = structured(
+      await client.callTool({
+        name: 'data_process_prepare',
+        arguments: {
+          format: 'canonical-draft-jsonl-v1',
+          action: 'import-dataset',
+          ref: directRef,
+          expected_ref_version: null,
+          message: 'offline MCP direct import',
+        },
+      }),
+    )
+    const directReplayResponse = await putDraft(directReplayPrepared, draft)
+    await requireOk(directReplayResponse, 'direct draft import response-loss replay')
+    const directReplay = await directReplayResponse.json()
+    assert(
+      directReplay.dataset_version === direct.dataset_version &&
+        directReplay.ref_update?.status === 'updated' &&
+        directReplay.ref_update?.ref_name === directRef,
+      'direct import response-loss replay changed the dataset or ref',
     )
 
     const previewPrepared = structured(
@@ -179,6 +209,9 @@ async function main() {
         arguments: {
           format: 'canonical-draft-jsonl-v1',
           action: 'import-dataset',
+          ref: revisedRef,
+          expected_ref_version: null,
+          message: 'offline MCP revised import',
           expected_input_digest: preview.input_digest,
         },
       }),
@@ -191,8 +224,8 @@ async function main() {
       'revised draft kept the direct version',
     )
     assert(
-      revised.ref_update?.status === 'not_requested',
-      'revised import unexpectedly updated a ref',
+      revised.ref_update?.status === 'updated' && revised.ref_update?.ref_name === revisedRef,
+      'revised import did not update its required ref',
     )
 
     let materializedBytes
@@ -253,7 +286,13 @@ async function main() {
     const canonicalImportPrepared = structured(
       await client.callTool({
         name: 'data_process_prepare',
-        arguments: { format: 'canonical-jsonl', action: 'import-dataset' },
+        arguments: {
+          format: 'canonical-jsonl',
+          action: 'import-dataset',
+          ref: canonicalRef,
+          expected_ref_version: null,
+          message: 'offline MCP canonical reimport',
+        },
       }),
     )
     const canonicalImportResponse = await putDraft(canonicalImportPrepared, exported)
@@ -262,6 +301,11 @@ async function main() {
     assert(
       canonicalImport.dataset_version === direct.dataset_version,
       'canonical reimport changed the dataset version',
+    )
+    assert(
+      canonicalImport.ref_update?.status === 'updated' &&
+        canonicalImport.ref_update?.ref_name === canonicalRef,
+      'canonical reimport did not update its required ref',
     )
 
     const tempBeforeBackpressure = await draftTempEntries()

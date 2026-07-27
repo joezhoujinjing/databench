@@ -12,6 +12,11 @@ const runIntegration = process.env.RUN_MINIO_STORE_TESTS === 'true'
 const FIRST_ID = `rec_${'1'.repeat(64)}`
 const SECOND_ID = `rec_${'2'.repeat(64)}`
 const REF_NAME = `v12-http-${randomUUID()}`
+const MCP_CANONICAL_REF = `mcp-canonical-${randomUUID()}`
+const MCP_CABLE_DIRECT_REF = `mcp-cable-direct-${randomUUID()}`
+const MCP_CABLE_MATERIALIZED_REF = `mcp-cable-jsonl-${randomUUID()}`
+const MCP_CABLE_INVALID_REF = `mcp-cable-invalid-${randomUUID()}`
+const MCP_CABLE_MISMATCH_REF = `mcp-cable-mismatch-${randomUUID()}`
 
 interface CliV2Fixture {
   readonly record_source: string
@@ -366,7 +371,13 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       const importPrepared = structured(
         await client.callTool({
           name: 'data_process_prepare',
-          arguments: { format: 'canonical-jsonl', action: 'import-dataset' },
+          arguments: {
+            format: 'canonical-jsonl',
+            action: 'import-dataset',
+            ref: MCP_CANONICAL_REF,
+            expected_ref_version: null,
+            message: 'MCP canonical import',
+          },
         }),
       )
       const imported = await responseJson<{ dataset_version: string }>(
@@ -379,6 +390,10 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
         ),
       )
       expect(imported.dataset_version).toBe(cliFixture.expected_dataset_version)
+      await expect(workspace.getRef(MCP_CANONICAL_REF)).resolves.toMatchObject({
+        version: imported.dataset_version,
+        message: 'MCP canonical import',
+      })
 
       const shown = await client.callTool({
         name: 'dataset_show',
@@ -402,7 +417,13 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       const reimportPrepared = structured(
         await client.callTool({
           name: 'data_process_prepare',
-          arguments: { format: 'canonical-jsonl', action: 'import-dataset' },
+          arguments: {
+            format: 'canonical-jsonl',
+            action: 'import-dataset',
+            ref: MCP_CANONICAL_REF,
+            expected_ref_version: null,
+            message: 'MCP canonical import',
+          },
         }),
       )
       const reimported = await responseJson<{ dataset_version: string }>(
@@ -545,7 +566,12 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       const invalidPrepared = structured(
         await client.callTool({
           name: 'data_process_prepare',
-          arguments: { format: 'canonical-draft-jsonl-v1', action: 'import-dataset' },
+          arguments: {
+            format: 'canonical-draft-jsonl-v1',
+            action: 'import-dataset',
+            ref: MCP_CABLE_INVALID_REF,
+            expected_ref_version: null,
+          },
         }),
       )
       const invalid = await app.fetch(
@@ -568,6 +594,8 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
           arguments: {
             format: 'canonical-draft-jsonl-v1',
             action: 'import-dataset',
+            ref: MCP_CABLE_MISMATCH_REF,
+            expected_ref_version: null,
             expected_input_digest: '0'.repeat(64),
           },
         }),
@@ -598,12 +626,16 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
           arguments: {
             format: 'canonical-draft-jsonl-v1',
             action: 'import-dataset',
+            ref: MCP_CABLE_DIRECT_REF,
+            expected_ref_version: null,
+            message: 'MCP cable direct import',
             expected_input_digest: expected.base_draft.blake3,
           },
         }),
       )
       expect(directPrepared).toMatchObject({
-        side_effects: ['identity_claims', 'dataset_publish'],
+        ref: MCP_CABLE_DIRECT_REF,
+        side_effects: ['identity_claims', 'dataset_publish', 'ref_update'],
       })
       const directResponse = await app.fetch(
         new Request(String(directPrepared.put_url), {
@@ -620,7 +652,12 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       }>(directResponse)
       expect(direct).toMatchObject({
         manifest: { num_records: 499 },
-        ref_update: { status: 'not_requested' },
+        ref_update: {
+          status: 'updated',
+          ref_name: MCP_CABLE_DIRECT_REF,
+          previous_version: null,
+          current_version: direct.dataset_version,
+        },
       })
 
       const directShown = await client.callTool({
@@ -667,7 +704,13 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       const directReimportPrepared = structured(
         await client.callTool({
           name: 'data_process_prepare',
-          arguments: { format: 'canonical-jsonl', action: 'import-dataset' },
+          arguments: {
+            format: 'canonical-jsonl',
+            action: 'import-dataset',
+            ref: MCP_CABLE_DIRECT_REF,
+            expected_ref_version: direct.dataset_version,
+            message: 'MCP cable direct import',
+          },
         }),
       )
       const directReimport = await responseJson<{ dataset_version: string }>(
@@ -721,6 +764,9 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
           arguments: {
             format: 'canonical-draft-jsonl-v1',
             action: 'import-dataset',
+            ref: MCP_CABLE_DIRECT_REF,
+            expected_ref_version: direct.dataset_version,
+            message: 'MCP cable revised import',
             expected_input_digest: revisedPreview.input_digest,
           },
         }),
@@ -740,7 +786,12 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       }>(revisedResponse)
       expect(revised).toMatchObject({
         manifest: { num_records: 499 },
-        ref_update: { status: 'not_requested' },
+        ref_update: {
+          status: 'updated',
+          ref_name: MCP_CABLE_DIRECT_REF,
+          previous_version: direct.dataset_version,
+          current_version: revised.dataset_version,
+        },
       })
 
       const canonicalPreviewPrepared = structured(
@@ -770,7 +821,13 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       const canonicalImportPrepared = structured(
         await client.callTool({
           name: 'data_process_prepare',
-          arguments: { format: 'canonical-jsonl', action: 'import-dataset' },
+          arguments: {
+            format: 'canonical-jsonl',
+            action: 'import-dataset',
+            ref: MCP_CABLE_MATERIALIZED_REF,
+            expected_ref_version: null,
+            message: 'MCP cable canonical import',
+          },
         }),
       )
       const canonicalImported = await responseJson<{
@@ -787,14 +844,32 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
       )
       expect(canonicalImported).toMatchObject({
         dataset_version: materializedVersion,
-        ref_update: { status: 'not_requested' },
+        ref_update: {
+          status: 'updated',
+          ref_name: MCP_CABLE_MATERIALIZED_REF,
+          previous_version: null,
+          current_version: materializedVersion,
+        },
       })
       expect(
         new Set([direct.dataset_version, revised.dataset_version, materializedVersion]).size,
       ).toBe(3)
 
       const refsAfter = await workspace.listRefs({ cursor: null, limit: 100 })
-      expect(refsAfter).toEqual(refsBefore)
+      const refsBeforeNames = new Set(refsBefore.items.map(({ name }) => name))
+      expect(
+        refsAfter.items
+          .filter(({ name }) => !refsBeforeNames.has(name))
+          .map(({ name, version }) => ({ name, version }))
+          .toSorted((left, right) => left.name.localeCompare(right.name)),
+      ).toEqual(
+        [
+          { name: MCP_CABLE_DIRECT_REF, version: revised.dataset_version },
+          { name: MCP_CABLE_MATERIALIZED_REF, version: materializedVersion },
+        ].toSorted((left, right) => left.name.localeCompare(right.name)),
+      )
+      expect(refsAfter.items.map(({ name }) => name)).not.toContain(MCP_CABLE_INVALID_REF)
+      expect(refsAfter.items.map(({ name }) => name)).not.toContain(MCP_CABLE_MISMATCH_REF)
     } finally {
       await client.close()
     }

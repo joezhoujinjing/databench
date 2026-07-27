@@ -53,6 +53,9 @@ describe('MCP file token registry', () => {
       kind: 'process' as const,
       format: 'canonical-draft-jsonl-v1' as const,
       action: 'import-dataset' as const,
+      ref: 'draft-import',
+      expectedRefVersion: null,
+      message: 'MCP import',
       expectedInputDigest: 'a'.repeat(64),
     }
     const prepared = registry.prepare(metadata)
@@ -64,6 +67,9 @@ describe('MCP file token registry', () => {
       kind: 'process',
       format: 'canonical-draft-jsonl-v1',
       action: 'import-dataset',
+      ref: 'draft-import',
+      expectedRefVersion: null,
+      message: 'MCP import',
       expectedInputDigest: 'a'.repeat(64),
     })
     active.finish()
@@ -104,6 +110,9 @@ function importMetadata() {
     kind: 'process' as const,
     format: 'canonical-jsonl' as const,
     action: 'import-dataset' as const,
+    ref: 'canonical-import',
+    expectedRefVersion: null,
+    message: null,
   }
 }
 

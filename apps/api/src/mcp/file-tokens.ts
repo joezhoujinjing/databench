@@ -12,6 +12,9 @@ export interface CanonicalImportProcessMetadata {
   readonly kind: 'process'
   readonly format: 'canonical-jsonl'
   readonly action: 'import-dataset'
+  readonly ref: string
+  readonly expectedRefVersion: string | null
+  readonly message: string | null
 }
 
 export interface CanonicalDraftMaterializeProcessMetadata {
@@ -25,6 +28,9 @@ export interface CanonicalDraftImportProcessMetadata {
   readonly kind: 'process'
   readonly format: 'canonical-draft-jsonl-v1'
   readonly action: 'import-dataset'
+  readonly ref: string
+  readonly expectedRefVersion: string | null
+  readonly message: string | null
   readonly expectedInputDigest?: string
 }
 

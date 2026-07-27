@@ -63,6 +63,7 @@ export {
   type PostTrainingV2CapabilityOptions,
   type PostTrainingV2RuntimeCapability,
   postTrainingV2Capability,
+  type V2CanonicalDraftImportOptions,
   type V2CanonicalJsonlPreviewOptions,
   type V2JsonlLimits,
   type V2TransformLimits,

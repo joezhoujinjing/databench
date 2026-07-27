@@ -1,7 +1,8 @@
 # ADR 0015 — 内网 Agent 的 MCP 数据接入
 
 - **状态:** Accepted——owner 于 2026-07-25 接受六项产品决策并授权实施；2026-07-27 明确
-  整个不暴露公网的内网可作为首期可信边界，CIDR allowlist 为可选加固
+  整个不暴露公网的内网可作为首期可信边界、CIDR allowlist 为可选加固，并接受 dataset import
+  必须 CAS 更新 ref 的窄修订
 - **日期:** 2026-07-25
 - **决策者:** owner
 - **依赖:** [ADR 0002](0002-http-framework.md)、
@@ -52,7 +53,8 @@ prompts 或 provider-specific raw adapter。后续通过增加 tool 迭代，不
 
 M1 分步实施期间，`tools/list`、tool input schema 与 initialize instructions 只能声明当前 Step 已实现
 的 branches；不得提前宣告 unsupported 能力。完整首期 surface 在 M1b3 gate 后首次冻结，部署配置
-在 M2 前保持 disabled。
+在 M2 前保持 disabled。2026-07-27 的 M3 只修订两个 import branch 的必填 ref/CAS 参数，tool 名称
+与数量不变。
 
 ### 3. Agent 自主编排，不建立人工审批状态机
 
@@ -116,6 +118,19 @@ Owner 明确授权：M2 自身的 scoped security/capacity/offline gate 通过�
 未完成时进入 ADR 0012 的内网离线 production 通道。该授权只覆盖本文定义的匿名可信内网 surface，
 不表示 V16、V17、GV16、GV-final 或公共云 D3 已完成，也不授权公网暴露。
 
+### 8. Dataset import 必须带 CAS ref
+
+Owner 于 2026-07-27 接受 M3 修订：canonical 与 canonical-draft 的每次 `import-dataset` 都必须提供
+合法 `ref` 和 `expected_ref_version`。创建新 ref 时后者为 `null`；更新已有 ref 时必须传 agent 已知
+的 exact 当前 version。`message` 可选。导入成功必须在同一 Workspace 发布路径中完成
+`dataset_publish + ref_update`，使 Web 的 ref-based 数据集列表立即可见；失败或 digest mismatch
+不得创建或移动 ref。
+
+该修订保持现有四个 tools，不增加专门 ref tool，不改变 immutable dataset identity，也不放宽
+现有 ASCII ref 规则。响应丢失后，agent 使用相同 bytes、ref、expected version 和 message 重新
+prepare；若第一次请求已成功且当前 ref 仍指向相同 dataset version、message 相同，服务端按成功
+重放返回，避免把可确认的同请求重试误报为 CAS 冲突。其他并发变化继续返回 conflict，禁止盲覆盖。
+
 ## 非目标
 
 - 公网 MCP、多租户、OIDC、RBAC、per-user quota；
@@ -130,6 +145,7 @@ Owner 明确授权：M2 自身的 scoped security/capacity/offline gate 通过�
 - **+** MCP 复用现有 Workspace/Schema 真源，不引入第二套数据访问层；
 - **+** 文件传输与 MCP JSON 解耦，避免 base64/超大 JSON；
 - **+** Agent 交互可按上下文演进，服务端不承担僵化审批流程；
+- **+** 每次成功导入都建立可发现的 ref，Web 数据集列表无需额外改名或手工移动 ref；
 - **−** 首期任何能访问入口的主体都拥有完整能力，安全边界依赖“不暴露公网”的内网边界与
   operator 配置；CIDR/iptables 只提供可选的额外隔离；
 - **−** 进程重启会使一次性 URL 失效，客户端必须重新 prepare；

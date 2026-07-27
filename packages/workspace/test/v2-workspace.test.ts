@@ -453,7 +453,7 @@ describe('V2Workspace publish orchestration', () => {
     expect(rig.events).toEqual(['prepare', 'commit', 'register', 'discard'])
   })
 
-  test('replays materialized draft claims and publishes without updating a ref', async () => {
+  test('replays materialized draft claims and publishes with a ref update', async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), 'databench-v2-draft-import-'))
     try {
       const tempStore = new V2TempStore({ tempRoot, safetyMarginBytes: 0 })
@@ -470,15 +470,25 @@ describe('V2Workspace publish orchestration', () => {
       rig.events.length = 0
 
       const imported = await rig.workspace.addCanonicalDraftJsonl(byteSource(raw), {
-        expectedInputDigest,
+        materialize: { expectedInputDigest },
+        ingest: {
+          ref: 'draft-import',
+          expected_ref_version: null,
+          message: 'MCP draft import',
+        },
       })
 
       expect(imported).toMatchObject({
         dataset_version: materialized.datasetVersion,
-        ref_update: { status: 'not_requested' },
+        ref_update: {
+          status: 'updated',
+          ref_name: 'draft-import',
+          previous_version: null,
+          current_version: materialized.datasetVersion,
+        },
       })
       expect(rig.catalog.claims).toHaveLength(1)
-      expect(rig.events).toEqual(['claim', 'prepare', 'commit', 'register', 'discard'])
+      expect(rig.events).toEqual(['claim', 'prepare', 'commit', 'register', 'cas', 'discard'])
     } finally {
       await rm(tempRoot, { recursive: true, force: true })
     }
@@ -491,9 +501,9 @@ describe('V2Workspace publish orchestration', () => {
       const rig = createRig({}, undefined, undefined, undefined, tempStore)
       const raw = new TextEncoder().encode(`${JSON.stringify(makeDraftRecord('valid prefix'))}\n{`)
 
-      await expect(rig.workspace.addCanonicalDraftJsonl(byteSource(raw))).rejects.toMatchObject({
-        code: 'bad_request',
-      })
+      await expect(
+        rig.workspace.addCanonicalDraftJsonl(byteSource(raw), { ingest: noRef() }),
+      ).rejects.toMatchObject({ code: 'bad_request' })
 
       expect(rig.catalog.claims).toHaveLength(0)
       expect(rig.events).toEqual(['namespace'])
@@ -691,6 +701,86 @@ describe('V2Workspace publish orchestration', () => {
       'discard',
     ])
     expect(rig.cleanupErrors).toEqual([{ error: cleanup, primaryError: null }])
+  })
+
+  test('treats an exact same-target ref replay as a successful import retry', async () => {
+    const rig = createRig()
+    const record = makeRecord('f', 'idempotent ref replay')
+    const dataset = V2Dataset.fromRecords([record])
+    rig.catalog.refs.set('mcp-replay', refRow('mcp-replay', dataset.version, 'MCP import'))
+    rig.catalog.failures.cas = new V2CatalogRefConflictError({
+      namespaceId: NAMESPACE_ID,
+      refName: 'mcp-replay',
+      expectedVersion: null,
+      currentVersion: dataset.version,
+      newVersion: dataset.version,
+    })
+
+    await expect(
+      rig.workspace.addRecords([record], {
+        ref: 'mcp-replay',
+        expected_ref_version: null,
+        message: 'MCP import',
+      }),
+    ).resolves.toMatchObject({
+      dataset_version: dataset.version,
+      ref_update: {
+        status: 'updated',
+        ref_name: 'mcp-replay',
+        previous_version: null,
+        current_version: dataset.version,
+      },
+    })
+    expect(rig.events).toEqual([
+      'prepare',
+      'commit',
+      'register',
+      'namespace',
+      'cas',
+      'getRef',
+      'discard',
+    ])
+  })
+
+  test('keeps a same-target ref conflict when the stored message differs', async () => {
+    const rig = createRig()
+    const record = makeRecord('e', 'non-matching ref replay')
+    const dataset = V2Dataset.fromRecords([record])
+    rig.catalog.refs.set(
+      'mcp-replay-conflict',
+      refRow('mcp-replay-conflict', dataset.version, 'other'),
+    )
+    rig.catalog.failures.cas = new V2CatalogRefConflictError({
+      namespaceId: NAMESPACE_ID,
+      refName: 'mcp-replay-conflict',
+      expectedVersion: null,
+      currentVersion: dataset.version,
+      newVersion: dataset.version,
+    })
+
+    await expect(
+      rig.workspace.addRecords([record], {
+        ref: 'mcp-replay-conflict',
+        expected_ref_version: null,
+        message: 'MCP import',
+      }),
+    ).rejects.toMatchObject({
+      code: 'ref_conflict',
+      detail: {
+        current_version: dataset.version,
+        expected_version: null,
+        new_version: dataset.version,
+      },
+    })
+    expect(rig.events).toEqual([
+      'prepare',
+      'commit',
+      'register',
+      'namespace',
+      'cas',
+      'getRef',
+      'discard',
+    ])
   })
 
   test('reports a CAS conflict after preserving the newly committed exact dataset', async () => {

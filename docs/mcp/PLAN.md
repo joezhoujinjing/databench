@@ -1,6 +1,7 @@
 # Databench MCP 实施计划
 
-- **状态:** 已接受——owner 于 2026-07-25 授权从 `main` 开始实施
+- **状态:** 已接受——owner 于 2026-07-25 授权从 `main` 开始实施；2026-07-27 接受 M3
+  dataset import 必填 CAS ref 修订
 - **日期:** 2026-07-25
 - **代码基线:** `main@258bacaf673a0395c8fb3d769bd4bf6f78dcde56`
 - **规范依赖:** [ADR 0015](../decisions/0015-internal-agent-mcp-ingest.md)、
@@ -23,7 +24,7 @@ IDs、发布 immutable dataset，以及通过一次性 URL 流式收发文件。
 2. Tool、companion response 与 canonical draft schema 只在 `@databench/schema` 定义。
 3. 文件 bytes 不进入 MCP JSON；process/export 只使用一次性绝对 PUT/GET URL。
 4. Preview 无持久化写入；draft materialize 会写 immutable identity claims，但不发布
-   dataset/ref/object；draft import 成功后才发布 dataset，首期不更新 ref。
+   dataset/ref/object；M3 后 canonical/draft import 成功时必须发布 dataset 并 CAS 更新 ref。
 5. Identity 序列化只走 `@databench/hashing` RFC 8785 v2 具名路径，并锁 fixed vectors。
 6. MCP 默认关闭；M2 前不得在部署配置中启用。
 7. 匿名模式只用于不暴露公网的可信内网；CIDR/iptables 是可选加固，不得把本计划解释成公网授权。
@@ -43,6 +44,8 @@ M1b2 deterministic identity + materialize
 M1b3 draft import + 真实 Excel 闭环
  ↓
 M2 内网离线启用与发布 gate
+ ↓
+M3 dataset import 必填 CAS ref
 ```
 
 | Step | 单次交付 | 主要落点 | Gate |
@@ -53,6 +56,7 @@ M2 内网离线启用与发布 gate
 | M1b2 | draft identity、claims 与 materialize | `hashing`、`schema`、`workspace`、`apps/api` | GM1b2 |
 | M1b3 | draft import 与 Excel 生命周期 | `workspace`、`apps/api`、tests | GM1b3 |
 | M2 | 匿名内网离线启用、runbook 与发布验证 | `apps/api`、`deploy/offline`、docs | GM2 |
+| M3 | canonical/draft import 必填 CAS ref | `schema`、`workspace`、`apps/api`、docs | GM3 |
 
 ## 4. Step 交付与 Gate
 
@@ -140,6 +144,22 @@ M2 内网离线启用与发布 gate
 
 > **GM2:** scoped security/capacity/offline gate 全绿后，按 owner 的范围化例外授权发布到 ADR 0012
 > 内网离线通道；仍不得宣称 V16/V17 或公网 production readiness 完成。
+
+### M3 — Dataset Import 必填 CAS Ref
+
+交付：
+
+- 保持现有四个 tools，不增加独立 ref tool；
+- canonical/draft `import-dataset` 必填 `ref` 与 `expected_ref_version`，`message` 可选；
+- 新 ref 使用 `expected_ref_version=null`；更新已有 ref 必须使用 exact 旧 version；
+- prepared result 回显 ref intent，并准确声明 `ref_update` side effect；
+- draft/canonical companion PUT 通过 Workspace 完成 dataset publish + ref update；
+- invalid input 与 digest mismatch 不创建 ref；同 target/message 的响应丢失重试可确认成功，其他
+  并发变化保持 CAS conflict；
+- 离线 smoke 和 agent 指南使用可重复的稳定 ref，并验证导入后立即可发现。
+
+> **GM3:** schema、Workspace、API 与真实 PostgreSQL + MinIO lifecycle 覆盖新建/更新/重试/失败
+> 不写；离线 smoke、全仓 gates 与独立 review 通过；OpenAPI 保持 byte-identical，V16/V17 状态不变。
 
 ## 5. 每步共同验证
 

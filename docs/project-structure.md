@@ -1,7 +1,7 @@
 # 项目结构与包边界（权威）
 
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
-> v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M2 已完成；通用
+> v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
 > `docs/mcp/`。
 
@@ -159,7 +159,7 @@ packages/<name>/
 
 ## 当前发布边界
 
-产品切换 R0-R5 与 MCP M0-M2 已完成。MCP 和单个 CPU-only Worker 只获授权进入 ADR 0012 的
+产品切换 R0-R5 与 MCP M0-M3 已完成。MCP 和单个 CPU-only Worker 只获授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台
 仍受 D3 owner 决策门约束。

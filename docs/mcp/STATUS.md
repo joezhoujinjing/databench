@@ -4,7 +4,7 @@
 
 <!-- mcp-status
 current_step: complete
-last_completed_step: M2
+last_completed_step: M3
 mcp_runtime_enabled: offline-explicit
 auth_mode: none
 offline_release_authorized: adr0012-scoped
@@ -12,9 +12,9 @@ offline_release_authorized: adr0012-scoped
 
 ## 当前检查点
 
-- **开发分支:** `feat/mcp-excel-import`
-- **代码基线:** `main@258bacaf673a0395c8fb3d769bd4bf6f78dcde56`
-- **当前 Step:** M0-M2 与 GM0-GM2 全部完成
+- **开发分支:** `feat/mcp-required-ref`
+- **代码基线:** `main@c1f22d7`
+- **当前 Step:** M0-M3 与 GM0-GM3 全部完成
 - **MCP runtime:** 通用配置保持 disabled-by-default；ADR 0012 离线包只在 operator 显式提供
   agent 可达的稳定 `/api` public base 后，以 `auth_mode=none` 启用完整 canonical +
   canonical-draft preview/materialize/import surface
@@ -33,6 +33,7 @@ offline_release_authorized: adr0012-scoped
 | M1b2 | Deterministic identity 与 materialize | ✅ | `8cf9aeb` | GM1b2 | draft import 仍不可用 |
 | M1b3 | Draft import 与真实 Excel 闭环 | ✅ | `e82c398` | GM1b3 | staged full surface，部署仍 disabled |
 | M2 | 内网离线启用与 scoped release gate | ✅ | 本次提交 | GM2 | 只授权 ADR 0012，不完成 V16/V17 |
+| M3 | Dataset import 必填 CAS ref | ✅ | 当前分支 | GM3 | 保持四工具；成功导入后 Web 可立即发现 ref |
 
 ## M0 Gate 记录
 
@@ -138,6 +139,9 @@ offline_release_authorized: adr0012-scoped
 
 ## M1b3 Gate 记录
 
+> 以下为 M1b3 当时 `ref=null` 的历史验收事实；owner 后续接受的 M3 会修订当前公开 import
+> contract，不回写或伪造既有 gate 结果。
+
 - `V2Workspace.addCanonicalDraftJsonl()` 只组合现有 materialize → `addJsonl()` 路径；成功、失败与
   dispose 均释放 materialization lease，固定 `ref=null`。materialize 后 import 会重放 claims，并在
   同一 Workspace namespace 内得到相同 canonical IDs 与 dataset version。
@@ -197,6 +201,30 @@ offline_release_authorized: adr0012-scoped
   独立 follow-up review 按 agent UX/MVP 与架构/安全复核后无剩余 P0/P1/P2/P3。
 - 未引入认证、RBAC、skill、审批状态机、服务端 Excel parser、独立 MCP 服务或额外端口；公网仍
   禁止，V16/V17 与公共云 D3 状态不变。
+
+## M3 Gate 记录
+
+- canonical 与 canonical-draft `import-dataset` 都必填 `ref` 和 `expected_ref_version`，可选
+  `message`；新 ref 传 `null`，更新已有 ref 传 exact 旧 version。Prepared result 回显完整 ref
+  intent，side effects 分别固定为 `dataset_publish + ref_update` 与
+  `identity_claims + dataset_publish + ref_update`；四个 tool 名称与数量不变。
+- companion token 保存并在 PUT 时传递 ref/CAS/message；draft import 通过
+  `materialize → addJsonl` 共享发布路径。Invalid draft、digest mismatch 不创建 ref；真实 499 行
+  电缆生命周期覆盖新建 ref、exact-version 移动已有 ref、Web 列表所依赖的 ref 可发现性，以及
+  canonical/draft 导入。
+- 响应丢失后使用相同 bytes/ref/expected version/message 重试时，若 ref 仍指向同一 dataset 且
+  message 相同则返回成功；message 不同或 target 已变化仍返回 `ref_conflict`，不放宽 CAS。
+- Schema 212 tests、Workspace 普通 suite 145 passed / 15 skipped、API 普通 suite 88 passed /
+  3 skipped；真实 PostgreSQL + MinIO 全仓 `RUN_MINIO_STORE_TESTS=true pnpm test` 22/22 tasks 通过，
+  其中 Workspace 150 passed / 10 skipped、API 91/91 passed。首次真实 gate 发现 `main@c1f22d7`
+  的 Worker integration fixture 未传新增的 result-ref nullable 字段；仅补齐两个显式 `null` 后，
+  原失败测试和完整真实依赖 gate 均通过，生产 Worker 逻辑未改。
+- `git diff --check`、`pnpm lint`、`pnpm build`、`pnpm typecheck`、`pnpm test`、
+  `pnpm openapi:check`、`pnpm v2:status:check`、`pnpm offline:check` 与 `pnpm peers check` 全部通过；
+  OpenAPI 保持不变。离线 MCP smoke 已加入必填 ref、新建/更新断言和同请求 response-loss replay。
+- 文档保留 M1b3/M2 当时 `ref_update=not_requested` 的历史验收事实，并以 ADR 0015/0016 的 M3
+  修订明确当前 contract；未增加认证、独立服务、ref tool、中文 display name 或审批状态机，
+  V16/V17 与公共云 D3 状态不变。
 
 ## 状态更新规则
 

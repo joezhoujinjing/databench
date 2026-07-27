@@ -1,6 +1,7 @@
 # ADR 0016 — Canonical Draft Raw Adapter Identity
 
-- **状态:** Accepted——owner 于 2026-07-25 接受 canonical draft、identity 副作用与重放语义
+- **状态:** Accepted——owner 于 2026-07-25 接受 canonical draft、identity 副作用与重放语义；
+  2026-07-27 的 M3 只在 identity/publish 完成后增加必填 CAS ref，不改变本 ADR fixed vectors
 - **日期:** 2026-07-25
 - **决策者:** owner
 - **依赖:** [ADR 0009](0009-canonical-post-training-record-v2.md)、
@@ -153,12 +154,17 @@ Claim 是 immutable 且逐项写入。后续 claim conflict、capacity error、a
 留下没有被 dataset 引用的已成功 claims；不得删除、覆盖或改配给其他语义。Import 只有全文件校验、
 claim plan 与 Workspace publish 全部成功后才返回 dataset；首期不移动 ref。
 
+上述“首期不移动 ref”是 M1b3 的历史边界。ADR 0015 的 M3 修订要求当前 import 在 dataset publish
+成功后继续 CAS 更新必填 ref；ref 名称、expected version 与 message 不进入本 ADR 的 identity
+preimage，因此 canonical IDs、record digests、dataset version 与 fixed vectors保持不变。
+
 ### 7. Preview、materialize 与 import
 
 - preview 使用仅限内存的 synthetic IDs 完成全部 canonical invariants；不访问 namespace/claim，
   不返回 synthetic IDs，不写 PG/object/dataset/ref；
 - materialize 使用 real claims，seal 完整 canonical JSONL 后才开始响应，不发布 dataset/ref/object；
-- import 使用同一 identity planner/allocator，成功后发布 immutable dataset，不更新 ref；
+- import 使用同一 identity planner/allocator，成功后发布 immutable dataset，并按 ADR 0015 M3
+  创建或 CAS 移动必填 ref；
 - materialize 后用相同 exact bytes import 必须全部 claim replay，并得到与已交付 JSONL 相同 IDs；
 - 相同 exact bytes、namespace 与既有 claims 重放必须得到相同 IDs、record digests、canonical output
   与 dataset version；
