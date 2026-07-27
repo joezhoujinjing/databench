@@ -20,6 +20,7 @@ const job = {
   input_count: 10,
   output_count: null,
   output_dataset_version: null,
+  result_ref: null,
   cache_hit: false,
   error: null,
   created_at: '2026-07-25T12:00:00.000Z',
@@ -40,7 +41,10 @@ describe('transform job API client', () => {
     }
     const connection = { base: 'https://api.example.test', fetch: fetcher, token: '' }
 
-    await createBasicCleanJobV2({ ...connection, request: { inputs: [INPUT] } })
+    await createBasicCleanJobV2({
+      ...connection,
+      request: { inputs: [INPUT], result_ref: 'clean-result' },
+    })
     await listTransformJobsV2({ ...connection, cursor: null, limit: 20 })
     await cancelTransformJobV2({ ...connection, jobId: JOB_ID })
     await retryTransformJobV2({ ...connection, jobId: JOB_ID })
@@ -53,7 +57,7 @@ describe('transform job API client', () => {
         `POST /v2/transform-jobs/${JOB_ID}:retry`,
       ],
     )
-    expect(await requests[0]?.json()).toEqual({ inputs: [INPUT] })
+    expect(await requests[0]?.json()).toEqual({ inputs: [INPUT], result_ref: 'clean-result' })
     expect(new URL(requests[1]?.url ?? '').searchParams.get('limit')).toBe('20')
   })
 })

@@ -96,11 +96,20 @@ function transformJobInput(cacheKey: string, inputVersion = fixtureVersion('alph
     capabilityName: 'data_juicer.batch',
     capabilityVersion: '1',
     inputCount: 1n,
+    resultRefNamespaceId: null,
+    resultRefName: null,
   }
 }
 
-async function claimFinalizingJob(cacheKey: string) {
-  await v2Catalog.createOrReadTransformJob(transformJobInput(cacheKey))
+async function claimFinalizingJob(
+  cacheKey: string,
+  resultRef: { readonly namespaceId: string; readonly name: string } | null = null,
+) {
+  await v2Catalog.createOrReadTransformJob({
+    ...transformJobInput(cacheKey),
+    resultRefNamespaceId: resultRef?.namespaceId ?? null,
+    resultRefName: resultRef?.name ?? null,
+  })
   const claimed = await v2Catalog.claimNextTransformJob({
     leaseOwner: 'dispatcher.test',
     leaseDurationMs: 30_000,
@@ -1508,6 +1517,76 @@ describe('V2Catalog transform jobs', () => {
     })
   })
 
+  test('creates a requested result ref at completion and reports a create-only conflict without overwriting', async () => {
+    const input = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
+    const firstOutput = registration('gamma', [withParents(fixtureRevision('output'))])
+    const secondOutput = registration('delta', [withParents(fixtureRevision('outputDelta'))])
+    await v2Catalog.registerCommittedLayout(input)
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const resultRef = { namespaceId, name: 'clean-result' }
+
+    const firstCacheKey = '1'.repeat(64)
+    const firstLease = await claimFinalizingJob(firstCacheKey, resultRef)
+    await expect(v2Catalog.getTransformJob(firstLease.id)).resolves.toMatchObject({
+      resultRef: { ...resultRef, status: 'pending', version: null },
+    })
+    await expect(
+      v2Catalog.completeTransformJob({
+        ...firstOutput,
+        run: {
+          id: `run_${firstCacheKey}`,
+          cacheKey: firstCacheKey,
+          op: 'basic-clean',
+          opVersion: '1',
+          params: {},
+          inputVersions: [input.snapshot.version],
+          outputVersion: firstOutput.snapshot.version,
+        },
+        job: firstLease,
+        outputCount: 1n,
+      }),
+    ).resolves.toMatchObject({
+      status: 'completed',
+      resultRef: {
+        ...resultRef,
+        status: 'updated',
+        version: firstOutput.snapshot.version,
+      },
+    })
+    await expect(v2Catalog.getRef(namespaceId, resultRef.name)).resolves.toMatchObject({
+      version: firstOutput.snapshot.version,
+    })
+
+    const secondCacheKey = '2'.repeat(64)
+    const secondLease = await claimFinalizingJob(secondCacheKey, resultRef)
+    await expect(
+      v2Catalog.completeTransformJob({
+        ...secondOutput,
+        run: {
+          id: `run_${secondCacheKey}`,
+          cacheKey: secondCacheKey,
+          op: 'basic-clean',
+          opVersion: '1',
+          params: {},
+          inputVersions: [input.snapshot.version],
+          outputVersion: secondOutput.snapshot.version,
+        },
+        job: secondLease,
+        outputCount: 1n,
+      }),
+    ).resolves.toMatchObject({
+      status: 'completed',
+      resultRef: {
+        ...resultRef,
+        status: 'conflict',
+        version: firstOutput.snapshot.version,
+      },
+    })
+    await expect(v2Catalog.getRef(namespaceId, resultRef.name)).resolves.toMatchObject({
+      version: firstOutput.snapshot.version,
+    })
+  })
+
   test('rolls back canonical metadata for stale, expired, and non-finalizing completions', async () => {
     const input = registration('alpha', [withParents(fixtureRevision('inputAlpha'))])
     const output = registration('gamma', [withParents(fixtureRevision('output'))])
@@ -1648,6 +1727,26 @@ describe('V2Catalog transform jobs', () => {
       outputCount: 1n,
       cacheHit: true,
       attempt: 0,
+    })
+
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    await expect(
+      v2Catalog.createOrReadTransformJob({
+        ...transformJobInput(cacheKey),
+        resultRefNamespaceId: namespaceId,
+        resultRefName: 'cached-clean-result',
+      }),
+    ).resolves.toMatchObject({
+      status: 'completed',
+      resultRef: {
+        namespaceId,
+        name: 'cached-clean-result',
+        status: 'updated',
+        version: output.snapshot.version,
+      },
+    })
+    await expect(v2Catalog.getRef(namespaceId, 'cached-clean-result')).resolves.toMatchObject({
+      version: output.snapshot.version,
     })
 
     const orphanCacheKey = 'a'.repeat(64)

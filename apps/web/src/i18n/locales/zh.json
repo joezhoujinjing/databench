@@ -163,15 +163,48 @@
         "input": "输入数据集",
         "inputHint": "填写数据集名称或精确版本 ID。首版不开放自定义算子和参数。",
         "inputRequired": "请填写输入数据集。",
+        "resultRef": "结果名称",
+        "resultRefHint": "任务完成后创建此名称，不覆盖已经存在的名称。",
+        "resultRefPlaceholder": "例如 test222-cleaned",
+        "resultRefRequired": "请填写结果名称。",
+        "identityConflict": "这个数据集已经提交过相同的基础清洗，并绑定了另一个结果名称。请在下方最近任务中查看已有结果；同一个清洗任务目前不能再绑定第二个结果名称。",
         "submit": "开始清洗",
         "submitting": "正在提交…",
         "recent": "最近任务",
         "empty": "还没有基础清洗任务。",
         "cacheHit": "复用结果",
-        "attempt": "第 {{count}} 次执行",
+        "attempt": "运行尝试：{{count}} 次",
         "inputCount": "输入 {{count}} 条",
         "outputCount": "保留 {{count}} 条",
         "filteredCount": "过滤 {{count}} 条",
+        "inputVersion": "输入版本 {{version}}",
+        "resultLabel": "结果",
+        "noResultRef": "历史任务未指定结果名称",
+        "unchanged": "结果无变化，复用输入版本",
+        "resultRefConflict": "数据集已经生成，但结果名称当前指向版本 {{version}}，系统没有覆盖。",
+        "resultRefStatus": {
+          "pending": "等待创建",
+          "updated": "名称已创建",
+          "conflict": "名称冲突"
+        },
+        "pipeline": {
+          "title": "固定清洗流程",
+          "description": "每次基础清洗都按以下顺序执行；当前不能修改算子或参数。",
+          "version": "basic-clean-v1",
+          "whitespace": {
+            "title": "空白规范化",
+            "detail": "规范临时判断文本中的空白；不会改写最终记录内容。"
+          },
+          "length": {
+            "title": "长度过滤",
+            "detail": "仅保留规范化后文本长度不少于 40 个字符的记录（min_len = 40）。"
+          },
+          "deduplicate": {
+            "title": "精确去重",
+            "detail": "按完整文本精确去重并区分大小写（lowercase = false）。"
+          },
+          "publication": "算子只决定保留哪些记录；Databench 随后用原始记录发布标准数据集，并创建上方填写的结果名称。"
+        },
         "cancelling": "正在取消…",
         "retry": "重新执行",
         "retrying": "正在重试…",

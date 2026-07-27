@@ -2,11 +2,13 @@
 
 - **Status:** Accepted — owner accepted the original Python/gRPC boundary on
   2026-07-23 and amended it on 2026-07-25 after the v2-only product cutover.
-  The amendment renames the service to **Worker**, makes it a generic Python
+  That amendment renames the service to **Worker**, makes it a generic Python
   capability host, removes the retired v1/artifact-only product design, and
   authorizes one narrow asynchronous v2 Data-Juicer transform that publishes a
-  canonical Dataset through TypeScript.
-- **Date:** 2026-07-23; amended 2026-07-25
+  canonical Dataset through TypeScript. The 2026-07-27 amendment adds optional,
+  create-only result naming without changing Dataset identity or transform-cache
+  identity.
+- **Date:** 2026-07-23; amended 2026-07-25 and 2026-07-27
 - **Deciders:** owner
 - **Amends:** [ADR 0001](0001-rebuild-as-ts-monorepo.md) Python boundary
 - **Depends on:**
@@ -195,12 +197,26 @@ reuses/refactors the existing publication invariants:
 2. catalog layout registration plus `V2Run` registration in one transaction;
 3. deterministic conflict handling for the same cache key;
 4. read-after-register verification;
-5. optional Ref movement remains a separate CAS operation.
+5. optional result Ref adoption is recorded with the completed job.
 
-The first batch-job API does not move a Ref automatically. It returns the
-immutable output Dataset version; users may adopt it with the existing Ref CAS
-surface after review. This removes Ref conflict handling from the first Worker
-slice without weakening publication semantics.
+The batch-job request may include one `result_ref`. It is a product label for the
+output and is deliberately excluded from the transform cache key: content still
+determines the immutable Dataset version, while naming does not trigger another
+Python execution. A deterministic job can bind at most one result name. During
+cache-hit adoption or canonical completion, Catalog handles that name in the same
+transaction using create-only semantics:
+
+- a missing live Ref is created at the exact output version;
+- a live Ref already at that version is an idempotent success;
+- a live Ref at another version, or a deleted Ref with that name, is a conflict
+  and is never overwritten or restored.
+
+The job still completes when naming conflicts because its exact immutable output
+remains valid; its public `result_ref` reports `pending`, `updated` or `conflict`
+and the observed version. Additional aliases or intentional movement of an
+existing Ref remain explicit operations through the standalone Ref CAS surface.
+If cleaning retains every record, the result Ref is still created but points to
+the unchanged input/output version.
 
 ### 8. Use temporary object-store exchange for large inputs and outputs
 

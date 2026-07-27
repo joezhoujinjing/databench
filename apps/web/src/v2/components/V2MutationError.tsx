@@ -3,7 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { ApiError } from '@/api/errors.js'
 import { Alert } from '@/components/ui/alert.js'
 
-export function V2MutationError({ error }: { error: unknown }) {
+export function V2MutationError({
+  error,
+  message,
+}: {
+  error: unknown
+  message?: string | undefined
+}) {
   const { t } = useTranslation()
   const issues = validationIssues(error)
   const alertRef = useRef<HTMLDivElement>(null)
@@ -17,7 +23,7 @@ export function V2MutationError({ error }: { error: unknown }) {
       tabIndex={-1}
     >
       <div className="font-medium">
-        {error instanceof Error ? error.message : t('v2.common.unknownError')}
+        {message ?? (error instanceof Error ? error.message : t('v2.common.unknownError'))}
       </div>
       {issues.length > 0 ? (
         <ul className="mt-2 space-y-1 text-sm">

@@ -1906,9 +1906,18 @@ describe('V2Workspace transform job product facade', () => {
     rig.seed(first)
     rig.seed(second)
 
-    const firstJob = await rig.workspace.createBasicCleanJob({ inputs: [first.version] })
-    const repeated = await rig.workspace.createBasicCleanJob({ inputs: [first.version] })
-    const secondJob = await rig.workspace.createBasicCleanJob({ inputs: [second.version] })
+    const firstJob = await rig.workspace.createBasicCleanJob({
+      inputs: [first.version],
+      result_ref: 'first-cleaned',
+    })
+    const repeated = await rig.workspace.createBasicCleanJob({
+      inputs: [first.version],
+      result_ref: 'first-cleaned',
+    })
+    const secondJob = await rig.workspace.createBasicCleanJob({
+      inputs: [second.version],
+      result_ref: 'second-cleaned',
+    })
 
     expect(repeated).toEqual(firstJob)
     expect(firstJob).toMatchObject({
@@ -1917,6 +1926,7 @@ describe('V2Workspace transform job product facade', () => {
       input_dataset_versions: [first.version],
       status: 'queued',
       input_count: 1,
+      result_ref: { name: 'first-cleaned', status: 'pending', version: null },
     })
     expect(firstJob).not.toHaveProperty('leaseToken')
     expect(firstJob).not.toHaveProperty('inputKey')
@@ -2430,6 +2440,7 @@ class FakeCatalog implements V2WorkspaceCatalog {
         createdAt: existing?.createdAt ?? NOW,
       })
       const prefix = `staging/worker/v1/${input.job.id}/${input.job.attempt}`
+      const job = this.jobs.get(input.job.id)
       return {
         id: input.job.id,
         cacheKey: input.run.cacheKey,
@@ -2440,6 +2451,8 @@ class FakeCatalog implements V2WorkspaceCatalog {
         capabilityName: 'data_juicer.batch',
         capabilityVersion: '1',
         inputCount: this.snapshots.get(input.run.inputVersions[0] as string)?.numRecords ?? 0n,
+        resultRefNamespaceId: job?.resultRefNamespaceId ?? null,
+        resultRefName: job?.resultRefName ?? null,
         status: 'completed',
         attempt: input.job.attempt,
         leaseOwner: null,
@@ -2450,6 +2463,15 @@ class FakeCatalog implements V2WorkspaceCatalog {
         outputKey: `${prefix}/output.jsonl`,
         outputCount: input.outputCount,
         outputVersion: input.run.outputVersion,
+        resultRef:
+          job?.resultRefName && job.resultRefNamespaceId
+            ? {
+                namespaceId: job.resultRefNamespaceId,
+                name: job.resultRefName,
+                status: 'updated',
+                version: input.run.outputVersion,
+              }
+            : null,
         cacheHit: existing !== undefined,
         error: null,
         createdAt: NOW,
@@ -2482,6 +2504,15 @@ class FakeCatalog implements V2WorkspaceCatalog {
         outputCount:
           run === undefined ? null : (this.snapshots.get(run.outputVersion)?.numRecords ?? 0n),
         outputVersion: run?.outputVersion ?? null,
+        resultRef:
+          input.resultRefName === null || input.resultRefNamespaceId === null
+            ? null
+            : {
+                namespaceId: input.resultRefNamespaceId,
+                name: input.resultRefName,
+                status: run ? 'updated' : 'pending',
+                version: run?.outputVersion ?? null,
+              },
         cacheHit: run !== undefined,
         error: null,
         createdAt: NOW,

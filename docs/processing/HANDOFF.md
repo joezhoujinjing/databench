@@ -36,6 +36,7 @@ identities，并通过现有 v2 Store/Catalog 发布正式 Dataset、Run、cache
 | Catalog canonical completion | 已实现；layout + Run + completed job 单事务、DB-clock lease fence |
 | Workspace canonical finalizer | 已实现；exact retained → original revisions → Dataset/Run/lineage |
 | batch transform REST/Web | 已实现；提交、分页读取、轮询、取消、显式重试、结果/血缘入口 |
+| 结果命名与流程可见性 | 已实现；Web 提交必填结果名称，完成时 create-only Ref，并集中展示固定算子顺序/参数 |
 | production Worker 装配 | 已实现；Store config 自动接 staging/projector/finalizer/cleaner |
 | 最终验收 | P7 已完成；repo + Postgres/MinIO/Worker/browser 全通过 |
 
@@ -203,6 +204,10 @@ process:
 
 Data-Juicer 对临时 `text` 的变化不写回；TS 从原 input revisions 重建 output Dataset。
 
+Transform 页面只读展示上述三个固定步骤、技术算子名和固定参数，让用户在提交前和查看任务时都能
+知道“经过了什么”。这不是算子编排器：页面不能增删、排序或修改参数，公共 operation 仍然只有
+`basic-clean@1`。
+
 ## 6. Job 与 Run
 
 必须保持两层：
@@ -224,6 +229,12 @@ run_<transform-cache-key>
 
 同 cache key 只允许一个 job。第一版不自动 retry；cleanup fence 清除后允许用户显式 retry
 同一 job。
+
+提交可携带一个 `result_ref`，Web 将它作为“结果名称”必填。它不进入 cache key，也不改变内容
+寻址的 Dataset 版本；同一个 deterministic job 最多绑定一个结果名称。job 完成或命中已有 Run
+时，Catalog 在同一事务中 create-only 地采用这个名称：名称不存在则创建，已经指向同一输出则
+幂等成功，已指向其他版本或处于删除状态则报告 `conflict` 且不覆盖。即使清洗没有删掉任何记录，
+结果名称仍会创建并指向复用的输入版本。
 
 ## 7. Staging 的准确含义
 

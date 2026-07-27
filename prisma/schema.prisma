@@ -12,8 +12,9 @@ model V2IdentityNamespace {
   scope     String   @unique
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  claims V2IdentityClaim[]
-  refs   V2Ref[]
+  claims                 V2IdentityClaim[]
+  refs                   V2Ref[]
+  resultRefTransformJobs V2TransformJob[]  @relation("V2TransformJobResultRefNamespace")
 
   @@map("identity_namespaces_v2")
 }
@@ -48,8 +49,9 @@ model V2DatasetSnapshot {
   producingRuns           V2Run[]
   consumingRunInputs      V2RunInput[]
   representativeRevisions V2RecordRevisionLocation[]
-  inputTransformJobs      V2TransformJob[]            @relation("V2TransformJobInput")
-  outputTransformJobs     V2TransformJob[]            @relation("V2TransformJobOutput")
+  inputTransformJobs      V2TransformJob[]           @relation("V2TransformJobInput")
+  outputTransformJobs     V2TransformJob[]           @relation("V2TransformJobOutput")
+  resultRefTransformJobs  V2TransformJob[]           @relation("V2TransformJobResultRefVersion")
 
   @@map("dataset_snapshots_v2")
 }
@@ -129,11 +131,11 @@ model V2RecordParentEdge {
 }
 
 model V2Ref {
-  namespaceId String   @map("namespace_id") @db.Uuid
+  namespaceId String    @map("namespace_id") @db.Uuid
   name        String
-  version     String   @db.Char(64)
+  version     String    @db.Char(64)
   message     String?
-  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   namespace V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -145,34 +147,40 @@ model V2Ref {
 }
 
 model V2TransformJob {
-  id                String    @id @db.Char(68)
-  cacheKey          String    @unique @map("cache_key") @db.Char(64)
-  op                String
-  opVersion         String    @map("op_version")
-  params            Json      @map("params_json")
-  inputVersion      String    @map("input_version") @db.Char(64)
-  capabilityName    String    @map("capability_name")
-  capabilityVersion String    @map("capability_version")
-  status            String
-  attempt           Int       @default(0)
-  leaseOwner        String?   @map("lease_owner")
-  leaseToken        Bytes?    @map("lease_token") @db.ByteA
-  leaseExpiresAt    DateTime? @map("lease_expires_at") @db.Timestamptz(6)
-  progress          Json?     @map("progress_json")
-  inputKey          String?   @map("input_key")
-  outputKey         String?   @map("output_key")
-  inputCount        BigInt    @map("input_count")
-  outputCount       BigInt?   @map("output_count")
-  outputVersion     String?   @map("output_version") @db.Char(64)
-  cacheHit          Boolean   @default(false) @map("cache_hit")
-  error             Json?     @map("error_json")
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
-  finishedAt        DateTime? @map("finished_at") @db.Timestamptz(6)
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String    @id @db.Char(68)
+  cacheKey             String    @unique @map("cache_key") @db.Char(64)
+  op                   String
+  opVersion            String    @map("op_version")
+  params               Json      @map("params_json")
+  inputVersion         String    @map("input_version") @db.Char(64)
+  capabilityName       String    @map("capability_name")
+  capabilityVersion    String    @map("capability_version")
+  status               String
+  attempt              Int       @default(0)
+  leaseOwner           String?   @map("lease_owner")
+  leaseToken           Bytes?    @map("lease_token") @db.ByteA
+  leaseExpiresAt       DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  progress             Json?     @map("progress_json")
+  inputKey             String?   @map("input_key")
+  outputKey            String?   @map("output_key")
+  inputCount           BigInt    @map("input_count")
+  outputCount          BigInt?   @map("output_count")
+  outputVersion        String?   @map("output_version") @db.Char(64)
+  resultRefNamespaceId String?   @map("result_ref_namespace_id") @db.Uuid
+  resultRefName        String?   @map("result_ref_name")
+  resultRefStatus      String?   @map("result_ref_status")
+  resultRefVersion     String?   @map("result_ref_version") @db.Char(64)
+  cacheHit             Boolean   @default(false) @map("cache_hit")
+  error                Json?     @map("error_json")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt            DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt           DateTime? @map("finished_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  input  V2DatasetSnapshot  @relation("V2TransformJobInput", fields: [inputVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
-  output V2DatasetSnapshot? @relation("V2TransformJobOutput", fields: [outputVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  input              V2DatasetSnapshot    @relation("V2TransformJobInput", fields: [inputVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  output             V2DatasetSnapshot?   @relation("V2TransformJobOutput", fields: [outputVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  resultRefNamespace V2IdentityNamespace? @relation("V2TransformJobResultRefNamespace", fields: [resultRefNamespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  resultRefDataset   V2DatasetSnapshot?   @relation("V2TransformJobResultRefVersion", fields: [resultRefVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([status, createdAt, id], map: "idx_transform_jobs_v2_queue")
   @@index([leaseExpiresAt], map: "idx_transform_jobs_v2_lease_expiry")

@@ -416,7 +416,7 @@ describe('V2 HTTP API', () => {
       request('/v2/transforms/basic-clean/jobs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ inputs: ['main'] }),
+        body: JSON.stringify({ inputs: ['main'], result_ref: 'main-cleaned' }),
       }),
     )
     expect(rejected.status).toBe(503)
@@ -434,12 +434,20 @@ describe('V2 HTTP API', () => {
       request('/v2/transforms/basic-clean/jobs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ inputs: ['main'] }),
+        body: JSON.stringify({ inputs: ['main'], result_ref: 'main-cleaned' }),
       }),
     )
     expect(created.status).toBe(202)
     const createdBody = await json<Record<string, unknown>>(created)
-    expect(createdBody).toMatchObject({ id: JOB_ID, status: 'queued' })
+    expect(createdBody).toMatchObject({
+      id: JOB_ID,
+      status: 'queued',
+      result_ref: { name: 'main-cleaned', status: 'pending', version: null },
+    })
+    expect(fake.state.transformJobRequest).toEqual({
+      inputs: ['main'],
+      result_ref: 'main-cleaned',
+    })
     expect(createdBody).not.toHaveProperty('lease_token')
     expect(createdBody).not.toHaveProperty('input_key')
 
@@ -777,6 +785,8 @@ interface FakeState {
     finished_at: string | null
   }
   transformJobCreates: number
+  transformJobRequest: unknown
+  transformJobResultRef: string | null
   transformJobRetryFailure: unknown
 }
 
@@ -805,6 +815,8 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
       finished_at: null,
     },
     transformJobCreates: 0,
+    transformJobRequest: undefined,
+    transformJobResultRef: null,
     transformJobRetryFailure: undefined,
   }
   const converter = {
@@ -954,19 +966,26 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
         cache_hit: false,
       }
     },
-    async createBasicCleanJob() {
+    async createBasicCleanJob(requestInput: unknown) {
       state.transformJobCreates += 1
-      return publicTransformJob(state.transformJob)
+      state.transformJobRequest = requestInput
+      state.transformJobResultRef = (requestInput as { result_ref?: string }).result_ref ?? null
+      return publicTransformJob(state.transformJob, state.transformJobResultRef)
     },
     async listTransformJobs(requestInput: unknown) {
       const requestValue = requestInput as { cursor: string | null; limit: number }
       return {
-        items: requestValue.limit > 0 ? [publicTransformJob(state.transformJob)] : [],
+        items:
+          requestValue.limit > 0
+            ? [publicTransformJob(state.transformJob, state.transformJobResultRef)]
+            : [],
         next_cursor: null,
       }
     },
     async getTransformJob(id: string) {
-      return id === JOB_ID ? publicTransformJob(state.transformJob) : null
+      return id === JOB_ID
+        ? publicTransformJob(state.transformJob, state.transformJobResultRef)
+        : null
     },
     async cancelTransformJob(id: string) {
       if (id !== JOB_ID) return null
@@ -975,13 +994,13 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
         status: 'cancelled',
         finished_at: '2026-07-25T12:01:00.000Z',
       }
-      return publicTransformJob(state.transformJob)
+      return publicTransformJob(state.transformJob, state.transformJobResultRef)
     },
     async retryTransformJob(id: string) {
       if (id !== JOB_ID) return null
       if (state.transformJobRetryFailure !== undefined) throw state.transformJobRetryFailure
       state.transformJob = { id: JOB_ID, status: 'queued', finished_at: null }
-      return publicTransformJob(state.transformJob)
+      return publicTransformJob(state.transformJob, state.transformJobResultRef)
     },
     async listRefs(requestInput: unknown) {
       state.refPageRequest = requestInput
@@ -1031,7 +1050,7 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
   return { workspace, state }
 }
 
-function publicTransformJob(state: FakeState['transformJob']) {
+function publicTransformJob(state: FakeState['transformJob'], resultRef: string | null) {
   return {
     id: state.id,
     cache_key: CACHE_KEY,
@@ -1043,6 +1062,8 @@ function publicTransformJob(state: FakeState['transformJob']) {
     input_count: 1,
     output_count: null,
     output_dataset_version: null,
+    result_ref:
+      resultRef === null ? null : { name: resultRef, status: 'pending' as const, version: null },
     cache_hit: false,
     error: null,
     created_at: '2026-07-25T12:00:00.000Z',

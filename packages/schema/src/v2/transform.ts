@@ -95,9 +95,33 @@ export const TransformJobErrorV2Schema = z
 export type TransformJobErrorV2 = z.infer<typeof TransformJobErrorV2Schema>
 
 export const CreateBasicCleanJobRequestV2Schema = z
-  .strictObject({ inputs: z.tuple([RefOrVersionV2Schema]) })
+  .strictObject({
+    inputs: z.tuple([RefOrVersionV2Schema]),
+    result_ref: RefNameV2Schema.optional(),
+  })
   .meta({ id: 'CreateBasicCleanJobRequestV2' })
 export type CreateBasicCleanJobRequestV2 = z.infer<typeof CreateBasicCleanJobRequestV2Schema>
+
+export const TransformJobResultRefStatusV2Schema = z.enum(['pending', 'updated', 'conflict'])
+export type TransformJobResultRefStatusV2 = z.infer<typeof TransformJobResultRefStatusV2Schema>
+
+export const TransformJobResultRefV2Schema = z
+  .strictObject({
+    name: RefNameV2Schema,
+    status: TransformJobResultRefStatusV2Schema,
+    version: DigestHexSchema.nullable(),
+  })
+  .superRefine((resultRef, context) => {
+    if ((resultRef.status === 'pending') !== (resultRef.version === null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['version'],
+        message: 'pending result refs must not identify a version',
+      })
+    }
+  })
+  .meta({ id: 'TransformJobResultRefV2' })
+export type TransformJobResultRefV2 = z.infer<typeof TransformJobResultRefV2Schema>
 
 export const TransformJobV2Schema = z
   .strictObject({
@@ -114,6 +138,7 @@ export const TransformJobV2Schema = z
     input_count: z.number().int().safe().nonnegative(),
     output_count: z.number().int().safe().nonnegative().nullable(),
     output_dataset_version: DigestHexSchema.nullable(),
+    result_ref: TransformJobResultRefV2Schema.nullable(),
     cache_hit: z.boolean(),
     error: TransformJobErrorV2Schema.nullable(),
     created_at: Rfc3339UtcSchema,
@@ -141,6 +166,26 @@ export const TransformJobV2Schema = z
         path: ['output_dataset_version'],
         message: 'only completed jobs identify an output dataset',
       })
+    }
+    if (job.result_ref !== null) {
+      const resultRefCompleted = job.result_ref.status !== 'pending'
+      if ((job.status === 'completed') !== resultRefCompleted) {
+        context.addIssue({
+          code: 'custom',
+          path: ['result_ref', 'status'],
+          message: 'result ref adoption must finish with the transform job',
+        })
+      }
+      if (
+        job.result_ref.status === 'updated' &&
+        job.result_ref.version !== job.output_dataset_version
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['result_ref', 'version'],
+          message: 'updated result ref must point to the output dataset',
+        })
+      }
     }
     if ((job.status === 'failed') !== (job.error !== null)) {
       context.addIssue({

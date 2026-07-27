@@ -32,6 +32,7 @@ import type {
   CatalogTransformJobErrorV2,
   CatalogTransformJobPageV2,
   CatalogTransformJobProgressV2,
+  CatalogTransformJobResultRefStatusV2,
   CatalogTransformJobRowV2,
   CatalogTransformJobStatusV2,
   ClaimTransformJobV2,
@@ -59,6 +60,7 @@ const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
 const JOB_ID = /^job_[0-9a-f]{64}$/
 const SAFE_WORKER_NAME = /^[a-z][a-z0-9._-]{0,127}$/
 const SAFE_WORKER_VERSION = /^[a-z0-9][a-z0-9._-]{0,127}$/
+const SAFE_REF_NAME = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const MAX_JOB_JSON_BYTES = 16 * 1024
 const MAX_JOB_LEASE_MS = 24 * 60 * 60 * 1_000
 
@@ -90,6 +92,11 @@ interface RefSqlRow {
 }
 
 interface RefStateMutationSqlRow {
+  readonly deleted_at: Date | null
+}
+
+interface TransformJobResultRefSqlRow {
+  readonly version: string
   readonly deleted_at: Date | null
 }
 
@@ -128,6 +135,10 @@ interface TransformJobSqlRow {
   readonly input_count: bigint
   readonly output_count: bigint | null
   readonly output_version: string | null
+  readonly result_ref_namespace_id: string | null
+  readonly result_ref_name: string | null
+  readonly result_ref_status: string | null
+  readonly result_ref_version: string | null
   readonly cache_hit: boolean
   readonly error_json: Prisma.JsonValue | null
   readonly created_at: Date
@@ -144,7 +155,8 @@ const TRANSFORM_JOB_COLUMNS = Prisma.sql`
   "id", "cache_key", "op", "op_version", "params_json", "input_version",
   "capability_name", "capability_version", "status", "attempt", "lease_owner",
   "lease_token", "lease_expires_at", "progress_json", "input_key", "output_key",
-  "input_count", "output_count", "output_version", "cache_hit", "error_json",
+  "input_count", "output_count", "output_version", "result_ref_namespace_id",
+  "result_ref_name", "result_ref_status", "result_ref_version", "cache_hit", "error_json",
   "created_at", "started_at", "finished_at", "updated_at"
 `
 
@@ -329,12 +341,23 @@ export class V2Catalog {
 
         await registerLayoutInTransaction(tx, input)
         const runRegistration = await registerRunInTransaction(tx, input.run)
+        const resultRef =
+          row.result_ref_namespace_id !== null && row.result_ref_name !== null
+            ? await adoptTransformJobResultRefInTransaction(
+                tx,
+                row.result_ref_namespace_id,
+                row.result_ref_name,
+                input.run.outputVersion,
+              )
+            : null
         const completed = await tx.$queryRaw<TransformJobSqlRow[]>(Prisma.sql`
           UPDATE "transform_jobs_v2"
           SET
             "status" = 'completed',
             "output_count" = ${input.outputCount},
             "output_version" = ${input.run.outputVersion},
+            "result_ref_status" = ${resultRef?.status ?? null},
+            "result_ref_version" = ${resultRef?.version ?? null},
             "cache_hit" = ${runRegistration === 'existing'},
             "error_json" = NULL,
             "finished_at" = clock_timestamp(),
@@ -420,6 +443,16 @@ export class V2Catalog {
           )
         }
 
+        const initialResultRef =
+          run && input.resultRefNamespaceId !== null && input.resultRefName !== null
+            ? await adoptTransformJobResultRefInTransaction(
+                tx,
+                input.resultRefNamespaceId,
+                input.resultRefName,
+                run.outputVersion,
+              )
+            : null
+
         await tx.v2TransformJob.createMany({
           data: [
             {
@@ -435,6 +468,11 @@ export class V2Catalog {
               inputCount: input.inputCount,
               outputCount: outputSnapshot?.numRecords ?? null,
               outputVersion: run?.outputVersion ?? null,
+              resultRefNamespaceId: input.resultRefNamespaceId,
+              resultRefName: input.resultRefName,
+              resultRefStatus:
+                input.resultRefName === null ? null : (initialResultRef?.status ?? 'pending'),
+              resultRefVersion: initialResultRef?.version ?? null,
               cacheHit: run !== null,
               finishedAt: run ? new Date() : null,
             },
@@ -450,6 +488,43 @@ export class V2Catalog {
         }
         assertTransformJobIdentity(row, input)
 
+        if (
+          row.resultRefName === null &&
+          input.resultRefNamespaceId !== null &&
+          input.resultRefName !== null
+        ) {
+          const adopted =
+            row.status === 'completed' && row.outputVersion !== null
+              ? await adoptTransformJobResultRefInTransaction(
+                  tx,
+                  input.resultRefNamespaceId,
+                  input.resultRefName,
+                  row.outputVersion,
+                )
+              : { status: 'pending' as const, version: null }
+          const attached = await tx.v2TransformJob.updateMany({
+            where: { id: input.id, resultRefName: null },
+            data: {
+              resultRefNamespaceId: input.resultRefNamespaceId,
+              resultRefName: input.resultRefName,
+              resultRefStatus: adopted.status,
+              resultRefVersion: adopted.version,
+            },
+          })
+          if (attached.count !== 1) {
+            throw new V2CatalogConsistencyError(
+              'Transform job result ref attachment lost a concurrent update',
+            )
+          }
+          const attachedRow = await tx.v2TransformJob.findUnique({ where: { id: input.id } })
+          if (!attachedRow) {
+            throw new V2CatalogConsistencyError(
+              'Transform job disappeared after result ref attachment',
+            )
+          }
+          row = attachedRow
+        }
+
         if (row.status === 'completed') {
           if (
             !run ||
@@ -462,10 +537,21 @@ export class V2Catalog {
             )
           }
         } else if (run && row.status === 'queued' && row.attempt === 0) {
+          const adopted =
+            row.resultRefNamespaceId !== null && row.resultRefName !== null
+              ? await adoptTransformJobResultRefInTransaction(
+                  tx,
+                  row.resultRefNamespaceId,
+                  row.resultRefName,
+                  run.outputVersion,
+                )
+              : null
           await tx.$executeRaw`
             UPDATE "transform_jobs_v2"
             SET "status" = 'completed', "output_version" = ${run.outputVersion},
                 "output_count" = ${outputSnapshot?.numRecords ?? null},
+                "result_ref_status" = ${adopted?.status ?? null},
+                "result_ref_version" = ${adopted?.version ?? null},
                 "cache_hit" = true, "finished_at" = clock_timestamp(),
                 "updated_at" = clock_timestamp()
             WHERE "id" = ${input.id} AND "status" = 'queued' AND "attempt" = 0
@@ -1704,6 +1790,10 @@ function prismaRowToTransformJob(row: {
   inputCount: bigint
   outputCount: bigint | null
   outputVersion: string | null
+  resultRefNamespaceId: string | null
+  resultRefName: string | null
+  resultRefStatus: string | null
+  resultRefVersion: string | null
   cacheHit: boolean
   error: Prisma.JsonValue | null
   createdAt: Date
@@ -1712,9 +1802,23 @@ function prismaRowToTransformJob(row: {
   updatedAt: Date
 }): CatalogTransformJobRowV2 {
   const status = parseTransformJobStatus(row.status)
+  const resultRef = parseStoredTransformJobResultRef(
+    row.resultRefNamespaceId,
+    row.resultRefName,
+    row.resultRefStatus,
+    row.resultRefVersion,
+  )
   assertStoredLeaseShape(row.leaseOwner, row.leaseToken, row.leaseExpiresAt)
   if ((status === 'completed') !== (row.outputVersion !== null)) {
     throw new V2CatalogConsistencyError('Stored transform job completion shape is invalid')
+  }
+  if (resultRef !== null) {
+    if ((status === 'completed') !== (resultRef.status !== 'pending')) {
+      throw new V2CatalogConsistencyError('Stored transform job result ref state is invalid')
+    }
+    if (resultRef.status === 'updated' && resultRef.version !== row.outputVersion) {
+      throw new V2CatalogConsistencyError('Stored transform job result ref target is invalid')
+    }
   }
   return {
     id: row.id,
@@ -1736,6 +1840,9 @@ function prismaRowToTransformJob(row: {
     inputCount: row.inputCount,
     outputCount: row.outputCount,
     outputVersion: row.outputVersion,
+    resultRefNamespaceId: resultRef?.namespaceId ?? null,
+    resultRefName: resultRef?.name ?? null,
+    resultRef,
     cacheHit: row.cacheHit,
     error: parseStoredTransformJobError(row.error),
     createdAt: row.createdAt,
@@ -1766,6 +1873,10 @@ function sqlRowToTransformJob(row: TransformJobSqlRow): CatalogTransformJobRowV2
     inputCount: row.input_count,
     outputCount: row.output_count,
     outputVersion: row.output_version,
+    resultRefNamespaceId: row.result_ref_namespace_id,
+    resultRefName: row.result_ref_name,
+    resultRefStatus: row.result_ref_status,
+    resultRefVersion: row.result_ref_version,
     cacheHit: row.cache_hit,
     error: row.error_json,
     createdAt: row.created_at,
@@ -1801,6 +1912,18 @@ function validateCreateTransformJob(input: CreateTransformJobV2): void {
   if (input.inputCount < 0n || input.inputCount > POSTGRES_BIGINT_MAX) {
     throw new V2CatalogInputError('Transform job input count must fit a non-negative bigint')
   }
+  if ((input.resultRefNamespaceId === null) !== (input.resultRefName === null)) {
+    throw new V2CatalogInputError('Transform job result ref namespace and name must be paired')
+  }
+  if (
+    input.resultRefName !== null &&
+    (!SAFE_REF_NAME.test(input.resultRefName) ||
+      EXACT_VERSION.test(input.resultRefName) ||
+      input.resultRefName === '.' ||
+      input.resultRefName === '..')
+  ) {
+    throw new V2CatalogInputError('Transform job result ref name is invalid')
+  }
   validateBoundedJson(input.params, 'Transform job params')
 }
 
@@ -1815,6 +1938,8 @@ function assertTransformJobIdentity(
     capabilityName: string
     capabilityVersion: string
     inputCount: bigint
+    resultRefNamespaceId: string | null
+    resultRefName: string | null
   },
   input: CreateTransformJobV2,
 ): void {
@@ -1827,7 +1952,11 @@ function assertTransformJobIdentity(
     row.inputVersion !== input.inputVersion ||
     row.capabilityName !== input.capabilityName ||
     row.capabilityVersion !== input.capabilityVersion ||
-    row.inputCount !== input.inputCount
+    row.inputCount !== input.inputCount ||
+    (input.resultRefName !== null &&
+      row.resultRefNamespaceId !== null &&
+      (row.resultRefNamespaceId !== input.resultRefNamespaceId ||
+        row.resultRefName !== input.resultRefName))
   ) {
     throw new V2CatalogDeterminismConflictError(input.cacheKey)
   }
@@ -1932,6 +2061,34 @@ function parseTransformJobStatus(value: string): CatalogTransformJobStatusV2 {
   throw new V2CatalogConsistencyError('Stored transform job status is invalid')
 }
 
+function parseStoredTransformJobResultRef(
+  namespaceId: string | null,
+  name: string | null,
+  statusInput: string | null,
+  version: string | null,
+): CatalogTransformJobRowV2['resultRef'] {
+  if (namespaceId === null && name === null && statusInput === null && version === null) return null
+  if (namespaceId === null || name === null || statusInput === null) {
+    throw new V2CatalogConsistencyError('Stored transform job result ref shape is invalid')
+  }
+  if (!SAFE_REF_NAME.test(name) || EXACT_VERSION.test(name) || name === '.' || name === '..') {
+    throw new V2CatalogConsistencyError('Stored transform job result ref name is invalid')
+  }
+  const status = parseTransformJobResultRefStatus(statusInput)
+  if ((status === 'pending') !== (version === null)) {
+    throw new V2CatalogConsistencyError('Stored transform job result ref version is invalid')
+  }
+  if (version !== null && !EXACT_VERSION.test(version)) {
+    throw new V2CatalogConsistencyError('Stored transform job result ref version is invalid')
+  }
+  return { namespaceId, name, status, version }
+}
+
+function parseTransformJobResultRefStatus(value: string): CatalogTransformJobResultRefStatusV2 {
+  if (value === 'pending' || value === 'updated' || value === 'conflict') return value
+  throw new V2CatalogConsistencyError('Stored transform job result ref status is invalid')
+}
+
 function parseStoredTransformJobProgress(
   value: Prisma.JsonValue | null,
 ): CatalogTransformJobProgressV2 | null {
@@ -2027,6 +2184,47 @@ function sqlRowToRef(row: RefSqlRow): CatalogRefRowV2 {
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
   }
+}
+
+async function adoptTransformJobResultRefInTransaction(
+  tx: Prisma.TransactionClient,
+  namespaceId: string,
+  name: string,
+  outputVersion: string,
+): Promise<{ readonly status: 'updated' | 'conflict'; readonly version: string }> {
+  const inserted = await tx.$queryRaw<TransformJobResultRefSqlRow[]>(Prisma.sql`
+    INSERT INTO "refs_v2" (
+      "namespace_id", "name", "version", "message", "updated_at"
+    )
+    VALUES (
+      ${namespaceId}::uuid, ${name}, ${outputVersion}, NULL, clock_timestamp()
+    )
+    ON CONFLICT DO NOTHING
+    RETURNING "version", "deleted_at"
+  `)
+  if (inserted.length === 1 && inserted[0]?.version === outputVersion) {
+    return { status: 'updated', version: outputVersion }
+  }
+  if (inserted.length !== 0) {
+    throw new V2CatalogConsistencyError('Transform job result ref insert returned invalid rows')
+  }
+
+  const existing = await tx.$queryRaw<TransformJobResultRefSqlRow[]>(Prisma.sql`
+    SELECT "version", "deleted_at"
+    FROM "refs_v2"
+    WHERE "namespace_id" = ${namespaceId}::uuid AND "name" = ${name}
+    FOR UPDATE
+  `)
+  const row = existing[0]
+  if (!row || existing.length !== 1) {
+    throw new V2CatalogConsistencyError(
+      'Transform job result ref conflicted but the winning row could not be read',
+    )
+  }
+  if (row.deleted_at === null && row.version === outputVersion) {
+    return { status: 'updated', version: outputVersion }
+  }
+  return { status: 'conflict', version: row.version }
 }
 
 function refStateConflict(

@@ -555,6 +555,7 @@ export interface components {
     }
     CreateBasicCleanJobRequestV2: {
       inputs: string[]
+      result_ref?: string
     }
     DatasetLineageV2: {
       edges: {
@@ -1339,6 +1340,12 @@ export interface components {
       phase: string
       total_units: number | null
     } | null
+    TransformJobResultRefV2: {
+      name: string
+      /** @enum {string} */
+      status: 'pending' | 'updated' | 'conflict'
+      version: string | null
+    } | null
     TransformJobStateConflictDetailV2: {
       job_id: string
       /** @enum {string} */
@@ -1371,6 +1378,7 @@ export interface components {
       output_count: number | null
       output_dataset_version: string | null
       progress: components['schemas']['TransformJobProgressV2']
+      result_ref: components['schemas']['TransformJobResultRefV2']
       started_at: string | null
       /** @enum {string} */
       status: 'queued' | 'leased' | 'running' | 'finalizing' | 'completed' | 'failed' | 'cancelled'

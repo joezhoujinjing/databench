@@ -34,6 +34,8 @@ export type {
   CatalogTransformJobErrorV2,
   CatalogTransformJobPageV2,
   CatalogTransformJobProgressV2,
+  CatalogTransformJobResultRefStatusV2,
+  CatalogTransformJobResultRefV2,
   CatalogTransformJobRowV2,
   CatalogTransformJobStatusV2,
   ClaimTransformJobV2,
