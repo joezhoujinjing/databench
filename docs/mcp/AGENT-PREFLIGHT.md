@@ -16,7 +16,8 @@
 | 访问绝对 URL | ✅ GM2 已验证 | 目标开发 agent 使用显式配置的 `http://192.168.10.171:18081/api` 经 Caddy 完成 499 行三意图 PUT/GET |
 
 GM1a 的本机真实 endpoint 与 GM2 的显式 LAN public base/Caddy 已完成。企业现场仍需按 runbook
-配置获准网段与稳定 DNS/IP；这属于安装参数，不允许退回 Host header、首块网卡或容器名猜测。
+配置稳定 DNS/IP；整个不暴露公网的内网可以作为可信边界，CIDR allowlist 是可选加固。Public base
+不允许退回 Host header、首块网卡或容器名猜测。
 
 本地 HTTP harness 只证明 agent runtime 能创建/删除临时文件并进行流式 request/response；它不
 替代 MCP 协议、token 生命周期、Workspace 操作或 Caddy 前缀的真实联调。
@@ -146,5 +147,5 @@ OpenAI、npm、镜像仓库或其他公网服务。
   companion smoke 通过，同时对 `example.com` 与 npm registry 的请求均失败。运行时不需要 npm、
   OpenAI、镜像仓库或其他公网服务。
 
-企业安装现场仍必须用获准的真实稳定 DNS/IP 替换验收地址，并由防火墙限制到可信 agent 网段；
-当前匿名模式不适合公网。
+企业安装现场仍必须用真实稳定 DNS/IP 替换验收地址，并确保入口不暴露公网。当前匿名模式下任何
+能访问 TCP 80 的主体都有完整权限；CIDR/iptables 可按现场需要追加，不是安装前置条件。

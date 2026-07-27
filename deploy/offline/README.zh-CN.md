@@ -45,8 +45,9 @@ deploy/offline/build-bundle.sh 2.0.0
 目标机前置条件：Ubuntu 22.04 LTS amd64、Docker Engine 24+、Compose plugin 2.20+，以及至少
 20 GiB 可用空间。Docker 的安装和升级不属于本发布包。
 
-将 `.tar.gz` 和 `.sha256` 一起复制到服务器。运行安装器前，必须先由现场网络管理员把宿主机
-TCP 80 限制到获准 agent/用户网段；匿名 MCP 没有第二层认证，不能先启动再配置防火墙。然后执行：
+将 `.tar.gz` 和 `.sha256` 一起复制到服务器。服务器必须位于不暴露公网的可信内网；当前没有
+应用层认证，任何能访问 TCP 80 的主体都有完整权限。企业内网本身已经封闭时，不需要额外配置
+CIDR 或 iptables。首次安装执行：
 
 ```bash
 sha256sum -c databench-offline-1.0.0-linux-amd64.tar.gz.sha256
@@ -68,14 +69,28 @@ MinIO 和 v2 cursor secret，直接写入 `/etc/databench/databench.env`，权�
 非默认端口使用无前导零的十进制。安装器把匿名 MCP 配置单独写入 `/etc/databench/mcp.env`，
 后续升级复用，不会把它混进 secret 文件。
 
-安装后只开放宿主机 TCP 80；安装前设置的现场防火墙必须持续限制允许访问的内网网段。
+`DATABENCH_MCP_PUBLIC_BASE_URL=...` 只在首次创建 `/etc/databench/mcp.env` 时需要提供。文件一旦
+存在，重跑安装和正常升级都不需要再次传入。需要重跑安装时：
+
+```bash
+sudo ./install.sh
+```
+
+正常升级时：
+
+```bash
+sudo ./upgrade.sh
+```
+
+另一个需要提供一次的场景，是从完全不包含 MCP 配置的旧版本首次升级到当前版本。安装后只开放
+宿主机 TCP 80。可以按现场需要再配置 CIDR/iptables 做更细粒度隔离，但这不是安装前置条件。
 
 页面地址使用 `http://<服务器地址>/datasets`、`/ingest`、`/transforms` 等无版本路径；浏览器调用的后端地址统一为同源
 `http://<服务器地址>/api/...`。Caddy 会去掉 `/api` 再转发，因此后端 Hono 路由本身不变，
 页面与 JSON API 也不会再因相同 URL 的浏览器缓存发生冲突。
 
 内网 agent 使用 `http://<服务器地址>/api/mcp`，transport 为 Streamable HTTP，不配置认证。
-任何能访问 TCP 80 的主体都有完整 MCP 能力，因此必须先用现场防火墙限制获准网段。完整流程见
+任何能访问 TCP 80 的主体都有完整 MCP 能力，因此禁止把服务器或 TCP 80 暴露公网。完整流程见
 [内网 Agent 接入指南](MCP-AGENT-GUIDE.zh-CN.md)。
 
 ## 日常运维
@@ -102,7 +117,7 @@ sudo ./upgrade.sh
 ```
 
 上式适用于已经存在 `/etc/databench/mcp.env` 的版本。首次从不含 MCP 配置的旧版升级时，必须
-和首次安装一样显式提供稳定 public base，并且也要先完成防火墙 allowlist：
+和首次安装一样显式提供一次稳定 public base：
 
 ```bash
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./upgrade.sh

@@ -1,6 +1,7 @@
 # ADR 0015 — 内网 Agent 的 MCP 数据接入
 
-- **状态:** Accepted——owner 于 2026-07-25 接受六项产品决策并授权实施
+- **状态:** Accepted——owner 于 2026-07-25 接受六项产品决策并授权实施；2026-07-27 明确
+  整个不暴露公网的内网可作为首期可信边界，CIDR allowlist 为可选加固
 - **日期:** 2026-07-25
 - **决策者:** owner
 - **依赖:** [ADR 0002](0002-http-framework.md)、
@@ -18,9 +19,10 @@ Databench 已经具备 canonical JSONL 的导入、查看与确定性导出，�
 CSV 或其他表格数据。目标 code agent 应能直接读取用户给出的文件、理解 Databench 契约、完成字段
 映射并把数据导入，而不是要求用户先手工转换 JSONL 或编造 `rec_*`、`cand_*` 等 canonical IDs。
 
-首期运行环境是防火墙限定的可信内网。Agent 可能无法访问 OpenAI 或任何公网，但可以访问同一内网
+首期运行环境是不暴露公网的可信内网。Agent 可能无法访问 OpenAI 或任何公网，但可以访问同一内网
 的 Databench。当前系统没有 principal、role、tenant 或 policy 模型；owner 决定先打通匿名全权限
-闭环，后续再按真实需求增加认证。
+闭环，后续再按真实需求增加认证。企业网络已经提供封闭内网边界时，不要求额外配置主机级 CIDR
+allowlist 或 iptables；需要更细粒度隔离时可将其作为可选的纵深防御。
 
 ## 决策
 
@@ -91,6 +93,11 @@ DATABENCH_MCP_PUBLIC_BASE_URL=http://databench.internal/api
 非空 Origin，就必须与 public base origin 或 operator allowlist 精确匹配，否则在 handler 前返回
 403。MCP/file routes 复用 request ID、private/no-store、nosniff、abort 与 typed error normalization。
 
+匿名模式的可信边界可以是整个不暴露公网的内网。主机级 CIDR/iptables 限制不是启用前置条件，
+但任何能访问 Databench TCP 80 的主体都拥有完整 Web、REST 与 MCP 能力；owner 接受这一首期风险。
+公网暴露仍然禁止。Browser `Origin` allowlist 是浏览器协议安全能力，与 CIDR 网络限制无关，继续
+按上述规则执行。
+
 首期不创建假的 user/role/tenant 抽象。未来认证只从 transport middleware 加入，不把 token、user
 或 tenant 放进 tool 参数。
 
@@ -123,6 +130,7 @@ Owner 明确授权：M2 自身的 scoped security/capacity/offline gate 通过�
 - **+** MCP 复用现有 Workspace/Schema 真源，不引入第二套数据访问层；
 - **+** 文件传输与 MCP JSON 解耦，避免 base64/超大 JSON；
 - **+** Agent 交互可按上下文演进，服务端不承担僵化审批流程；
-- **−** 首期任何能访问入口的主体都拥有完整能力，安全边界依赖防火墙与 operator 配置；
+- **−** 首期任何能访问入口的主体都拥有完整能力，安全边界依赖“不暴露公网”的内网边界与
+  operator 配置；CIDR/iptables 只提供可选的额外隔离；
 - **−** 进程重启会使一次性 URL 失效，客户端必须重新 prepare；
 - **−** MCP 与 API 共进程，MCP 负载会共享 API 资源预算；达到真实隔离需求后再拆分。

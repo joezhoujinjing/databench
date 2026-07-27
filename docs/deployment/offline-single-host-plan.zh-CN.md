@@ -5,7 +5,8 @@
 > Owner 于 2026-07-24 接受本文方向与评审修订。本文记录一个与公共云 D3 并列、但不替代
 > D3 的新增部署目标：在**没有公网、没有内部镜像仓库**的环境中，
 > 将 Databench 一键安装到单台 Ubuntu。现有阿里云 ECS、RDS、OSS/CDN 发布链保持
-> 不变；本方案只新增一条并列的离线发布通道。
+> 不变；本方案只新增一条并列的离线发布通道。Owner 于 2026-07-27 进一步明确：整个不暴露
+> 公网的内网可作为可信边界，CIDR/iptables 是可选加固，不是安装前置条件。
 
 ## 1. 结论
 
@@ -34,8 +35,10 @@ GitHub Actions ────▶│ ECS API + RDS + OSS/CDN     │
 ```bash
 tar -xzf databench-offline-<version>-linux-amd64.tar.gz
 cd databench-offline-<version>-linux-amd64
-sudo ./install.sh
+sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./install.sh
 ```
+
+该地址在首次创建 `/etc/databench/mcp.env` 时提供一次；后续重跑安装和正常升级自动复用。
 
 目标机安装期间和运行期间均不执行 `docker pull`、`pnpm install`，也不访问 GitHub、
 npm registry 或其他公网服务。
@@ -442,17 +445,18 @@ PostgreSQL dump 和 MinIO mirror 并验证后再恢复服务。备份必须复�
 
 默认安全边界：
 
-- 宿主机只对获准内网网段开放 `80`；
+- 宿主机只在不暴露公网的可信内网开放 `80`；
 - SSH 只对管理网段开放；
 - API、PG、MinIO 不发布宿主机端口；
 - MinIO Console 默认关闭外部访问；
 - 可以通过服务器 IP 或内部 DNS 访问；HTTPS/内部 CA 留作后续独立增强；
-- 宿主机防火墙和 Docker published ports 一起纳入端口扫描验收；
+- 如启用可选 CIDR/iptables，加固规则和 Docker published ports 一起纳入端口扫描验收；
 - 容器日志设置 `max-size`/`max-file`，防止写满系统盘。
 
-首版明确不实现应用层鉴权，仅允许受控内网网段访问。默认使用 HTTP 80；Caddy 不配置公网
-ACME，不产生任何外网请求。宿主机防火墙必须限制业务网段，验收端口扫描只能看到获准的
-Web 与 SSH 入口。后续增加内部 CA/OIDC 时作为独立安全变更，不改变离线包总体结构。
+首版明确不实现应用层鉴权，仅允许不暴露公网的受控内网访问。默认使用 HTTP 80；Caddy 不配置
+公网 ACME，不产生任何外网请求。企业网络已经提供封闭内网边界时不强制主机级 CIDR/iptables；
+需要把访问进一步限制到特定业务网段时可选配置。后续增加内部 CA/OIDC 时作为独立安全变更，
+不改变离线包总体结构。
 
 ## 12. 可观测性与资源
 
@@ -617,8 +621,9 @@ Owner 已接受：Ubuntu 22.04 amd64、本地 Mac Buildx、完整离线包、`/s
 首发、允许维护停机、保留当前版+上一版+稳定版、首版无应用鉴权、无 Docker bootstrap、无
 Processing Worker，并采用本文的 `/api` 独立代理、必填 secret、停写升级和一致性备份建议。
 
-实现不再等待产品选型；现场安装前只需提供允许访问的内网 CIDR、服务器地址以及异机/NAS
-备份目标。未提供备份目标时可以测试安装，但不得标记为 production-ready。
+实现不再等待产品选型；现场首次安装前只需提供 agent 可达的稳定服务器地址以及异机/NAS 备份
+目标。需要更细粒度网络隔离时再提供可选 CIDR。未提供备份目标时可以测试安装，但不得标记为
+production-ready。
 
 ## 17. 决策记录要求
 

@@ -18,8 +18,8 @@
 1. 离线包不包含 Docker Engine，也不会在目标机安装或升级 Docker。
 2. 安装和运行期间不会执行 `docker pull`、`docker build`、`pnpm install` 或访问公网。
 3. 宿主机只发布 TCP 80。API、PostgreSQL、MinIO 和 MinIO Console不发布宿主机端口。
-4. 当前 Web、REST 和 MCP 都没有应用层鉴权。必须通过现场防火墙把 TCP 80 限制到获准内网
-   网段，禁止暴露公网；任何可访问者都有完整 MCP 能力。
+4. 当前 Web、REST 和 MCP 都没有应用层鉴权。服务器必须位于不暴露公网的可信内网；任何能访问
+   TCP 80 的主体都有完整权限。CIDR/iptables 是可选加固，不是安装前置条件。
 5. 单机部署没有高可用。生产数据必须备份到另一台机器、NAS 或离线介质。
 6. 不要执行 `docker compose down -v`，不要删除 `/srv/databench`，不要手工清理数据库目录。
 7. 应用版本只接受无前导零的三段数字，例如 `1.0.0`；不要使用 `v1.0.0`、`1.0` 或
@@ -50,7 +50,7 @@ databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 |---|---|
 | 发布人员 | 从干净 Git 提交构建离线包，记录版本、Git SHA 和 SHA-256 |
 | 传输人员 | 同时传输归档与 `.sha256`，不改名、不二次压缩 |
-| 现场管理员 | 检查目标机、执行安装、配置防火墙、完成验收 |
+| 现场管理员 | 检查目标机、执行安装、确认不暴露公网、完成验收 |
 | 备份管理员 | 将数据备份、匹配发布包和 `backup.key` 分开保存到异机 |
 
 ## 3. 联网构建机操作
@@ -215,9 +215,9 @@ cat release-manifest.json
 
 ### 6.1 执行安装
 
-在解压目录执行。运行安装器前，必须先由现场网络管理员按 7.4 把 TCP 80 限制到获准 CIDR，并
-分别从获准/未获准网段验证；匿名 MCP 启动后没有第二层认证，不能把防火墙留到安装后。随后必须
-显式提供 agent 可达的稳定 public base，安装器不会从 Host、容器名或 `hostname -I` 猜测：
+在解压目录执行。服务器必须位于不暴露公网的可信内网；匿名 MCP 启动后没有第二层认证，任何能
+访问 TCP 80 的主体都有完整权限。首次安装必须显式提供 agent 可达的稳定 public base，安装器
+不会从 Host、容器名或 `hostname -I` 猜测：
 
 ```bash
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./install.sh
@@ -243,6 +243,15 @@ sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./insta
 
 安装期间出现的密码不会输出到终端或日志。
 
+上述环境变量只用于首次创建 `/etc/databench/mcp.env`。创建成功后，重跑安装直接执行：
+
+```bash
+sudo ./install.sh
+```
+
+正常升级同样不需要再次传入。只有从完全不包含 MCP 配置的旧版本首次升级时，才需要为
+`upgrade.sh` 再提供一次。
+
 ### 6.2 安装成功输出
 
 成功时最后会显示类似：
@@ -257,8 +266,9 @@ Data: /srv/databench
 Version: 1.0.0
 ```
 
-如果脚本中途失败，可以修正原因后重新执行同一个 `sudo ./install.sh`。它会复用已经生成的
-secret，不会静默创建第二套配置。
+如果脚本中途失败，先检查 `/etc/databench/mcp.env` 是否已经创建。已创建时，修正原因后执行
+`sudo ./install.sh`；尚未创建时，重新执行 6.1 中带 `DATABENCH_MCP_PUBLIC_BASE_URL` 的首次安装
+命令。脚本会复用已经生成的 secret，不会静默创建第二套配置。
 
 ## 7. 安装后验收
 
@@ -325,13 +335,18 @@ docker ps --format 'table {{.Names}}\t{{.Ports}}'
 Databench 业务容器只应看到宿主机 `0.0.0.0:80->80/tcp`。PostgreSQL 5432、MinIO 9000/9001
 和 API 8000 不应发布到宿主机。
 
-### 7.4 防火墙
+### 7.4 网络边界与可选防火墙加固
 
-安装器不会猜测现场网段，也不会修改宿主机防火墙。运行 `install.sh` 或首次启用 MCP 的
-`upgrade.sh` 前，必须由现场管理员把 TCP 80 限制到获准 CIDR。
+安装器不会修改宿主机防火墙。只要企业网络已经保证服务器和 TCP 80 不暴露公网，安装前不要求
+再配置 CIDR allowlist 或 iptables。当前无应用认证，因此整个可访问内网都被视为可信边界；所有
+能访问 TCP 80 的主体都有完整 Web、REST 与 MCP 权限。
 
-优先使用企业边界防火墙或云/虚拟化平台安全策略。若使用 Docker 的 `DOCKER-USER` 链，可在
-变更窗口参考以下模板，先替换 `<APPROVED_CIDR>`：
+MCP 对浏览器请求的 `Origin` 校验仍然生效；它是浏览器协议安全能力，不是 CIDR 网络限制，也不
+会为普通无 `Origin` 的 code agent 提供身份认证。
+
+如果现场需要把访问进一步限制到特定 agent/用户网段，可以优先使用企业边界防火墙或云/虚拟化
+平台安全策略。若选择使用 Docker 的 `DOCKER-USER` 链，可在变更窗口参考以下可选模板，先替换
+`<APPROVED_CIDR>`：
 
 ```bash
 sudo iptables -I DOCKER-USER 1 -s <APPROVED_CIDR> -p tcp --dport 80 -j ACCEPT
@@ -339,8 +354,8 @@ sudo iptables -A DOCKER-USER -p tcp --dport 80 -j DROP
 sudo iptables -L DOCKER-USER -n --line-numbers
 ```
 
-规则持久化方式取决于现场网络规范，本发布包不安装 `iptables-persistent`。必须分别从获准和
-未获准客户端扫描验证；不能只看服务器本机结果。
+规则持久化方式取决于现场网络规范，本发布包不安装 `iptables-persistent`。启用可选 allowlist 后，
+应分别从获准和未获准客户端验证；未启用时只需确认不存在公网路由、端口映射或安全组放行。
 
 ## 8. 安装目录、数据和 secret
 
@@ -466,12 +481,19 @@ sha256sum -c databench-offline-1.1.0-linux-amd64.tar.gz.sha256
 ```bash
 tar -xzf databench-offline-1.1.0-linux-amd64.tar.gz
 cd databench-offline-1.1.0-linux-amd64
+sudo ./upgrade.sh
+```
+
+上式适用于已有 `/etc/databench/mcp.env` 的正常升级。首次从不含 MCP 配置的旧版本升级时，才需
+提供一次稳定 public base：
+
+```bash
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./upgrade.sh
 ```
 
-已有 `/etc/databench/mcp.env` 时可以省略该环境变量；传入时必须与已持久化值完全一致。首次从
-不含 MCP 配置的旧版本升级时必须提供，脚本会在停止写入前校验并原子创建独立配置，不修改已有
-secret。回滚到不包含 M2 配置的旧 release 时，该旧 Compose 不会加载 `mcp.env`，MCP 随旧版停用。
+脚本会在停止写入前校验并原子创建独立配置，不修改已有 secret。文件已存在时脚本自动复用；如果
+仍显式传入变量，其值必须与已持久化值完全一致。回滚到不包含 M2 配置的旧 release 时，该旧
+Compose 不会加载 `mcp.env`，MCP 随旧版停用。
 
 升级会：
 
@@ -606,7 +628,7 @@ curl -fsS http://127.0.0.1/api/version
 - [ ] 归档外层 SHA-256 为 `OK`；
 - [ ] 目标机为 Ubuntu 22.04 amd64；
 - [ ] Docker/Compose 版本满足最低要求；
-- [ ] `sudo ./install.sh` 一次成功；
+- [ ] 首次安装使用稳定 public base 执行 `install.sh`，并一次成功；
 - [ ] `databenchctl version` 与发布版本一致；
 - [ ] `databenchctl doctor` 的 database/store 均为 true；
 - [ ] `/api/version` 的 `service_version` 正确；
@@ -614,8 +636,8 @@ curl -fsS http://127.0.0.1/api/version
 - [ ] 目标 agent 经 `/api/mcp` 完成 Excel direct import、preview/修改后 import 和 JSONL-only；
 - [ ] MCP/companion 的 prepare URL、单次消费、重启失效、abort 清理和 exact-byte replay 已通过；
 - [ ] API、Caddy 和现场前置代理日志不包含完整 `proc_*` / `exp_*` token；
-- [ ] Web 能从获准网段访问；
-- [ ] 未获准网段不能访问 TCP 80；
+- [ ] Web 能从可信内网访问；
+- [ ] 服务器和 TCP 80 未暴露公网；如启用了可选 CIDR allowlist，获准/未获准网段验证符合预期；
 - [ ] 5432、8000、9000、9001 未发布到宿主机；
 - [ ] `/etc/databench` 的 `databench.env`、`mcp.env`、`backup.key` 三个文件权限均为 `0600`；
 - [ ] 已创建一份一致性备份并校验；
@@ -623,7 +645,7 @@ curl -fsS http://127.0.0.1/api/version
 - [ ] 已在测试机演练升级失败自动恢复；
 - [ ] 已在测试机演练原机或干净机器恢复；
 - [ ] 宿主机重启后服务和数据恢复；
-- [ ] 已记录服务器地址、版本、Git SHA、备份位置和允许访问 CIDR。
+- [ ] 已记录服务器地址、版本、Git SHA、备份位置；如启用了可选 CIDR allowlist，也已记录其范围。
 
 生产交付记录只有在以上现场项目全部完成后才能签署。Mac 上的 amd64 仿真和 Compose 集成
 测试不能替代真实 Ubuntu 目标机验收。

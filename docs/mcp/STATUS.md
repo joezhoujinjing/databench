@@ -20,6 +20,8 @@ offline_release_authorized: adr0012-scoped
   canonical-draft preview/materialize/import surface
 - **V16/V17:** 状态不变，仍未完成
 - **发布边界:** 已按 owner 范围化授权进入 ADR 0012 匿名可信内网离线通道；未授权公网部署
+- **网络口径:** owner 于 2026-07-27 明确整个不暴露公网的内网可以作为可信边界；主机级 CIDR/
+  iptables 是可选加固，不是安装前置条件
 
 ## Step 状态
 
@@ -187,8 +189,9 @@ offline_release_authorized: adr0012-scoped
   harness 完成 pre-MCP 0.5.0 → M2 0.6.0 首次升级与回滚：升级创建配置、备份、load、migration、
   MCP smoke 均通过；回滚后配置保留但旧 Compose 不读取，MCP 405 → 404，已导入 499 条数据仍可读。
 - no-egress 验收使用 Docker `Internal=true` 网络；API 对 `example.com` 与 npm registry 均不可达，
-  同网 agent 经 Caddy 的完整 MCP/companion lifecycle 仍通过。安装/首次 upgrade 前置防火墙
-  allowlist、匿名全权限警告、三种 agent 意图与 token/digest/replay 恢复规则已写入离线 runbook。
+  同网 agent 经 Caddy 的完整 MCP/companion lifecycle 仍通过。M2 验收时还验证了防火墙 allowlist；
+  owner 于 2026-07-27 将其明确为可选纵深防御，而非安装前置。匿名全权限警告、三种 agent 意图与
+  token/digest/replay 恢复规则已写入离线 runbook。
 - `RUN_MINIO_STORE_TESTS=true pnpm test` 22/22 tasks 通过：Store 82、Workspace 116、API 86 tests
   全绿；全仓 lint/build/typecheck/test、OpenAPI、v2 status、offline、peer 与 diff gates 通过。两路
   独立 follow-up review 按 agent UX/MVP 与架构/安全复核后无剩余 P0/P1/P2/P3。

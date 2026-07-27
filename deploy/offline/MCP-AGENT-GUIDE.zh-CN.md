@@ -7,7 +7,9 @@
 
 - 当前 MCP 没有用户名、密码、token、tenant 或 RBAC；任何能访问 Databench TCP 80 的主体都拥有
   完整 MCP 能力。
-- 只能部署在防火墙限定的可信内网，禁止映射到公网。先完成 allowlist，再把 endpoint 交给 agent。
+- 只能部署在不暴露公网的可信内网，禁止映射到公网。企业内网本身已经封闭时，不需要额外配置
+  CIDR/iptables；需要更细粒度隔离时可将其作为可选加固。
+- 浏览器请求仍受 `Origin` allowlist 校验；它与 CIDR 无关，也不是用户身份认证。
 - MCP 内嵌现有 API，没有第二个服务或端口。PostgreSQL、MinIO 和 API 仍不发布宿主机端口。
 - Caddy access log 默认关闭，runtime error log 会删除 request URI。若现场前置代理或负载均衡
   记录完整 URI，必须先跳过或脱敏 `/api/mcp-files/process/*` 和

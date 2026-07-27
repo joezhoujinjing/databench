@@ -26,7 +26,7 @@ IDs、发布 immutable dataset，以及通过一次性 URL 流式收发文件。
    dataset/ref/object；draft import 成功后才发布 dataset，首期不更新 ref。
 5. Identity 序列化只走 `@databench/hashing` RFC 8785 v2 具名路径，并锁 fixed vectors。
 6. MCP 默认关闭；M2 前不得在部署配置中启用。
-7. 匿名模式只用于防火墙限定的可信内网；不得把本计划解释成公网授权。
+7. 匿名模式只用于不暴露公网的可信内网；CIDR/iptables 是可选加固，不得把本计划解释成公网授权。
 8. 本计划不启动或完成 V16/V17，也不改变公共云 D3 状态。
 
 ## 3. 里程碑

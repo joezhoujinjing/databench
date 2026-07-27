@@ -1,6 +1,7 @@
 # ADR 0012 — Ubuntu 单机离线部署
 
-- **状态:** 已接受——owner 于 2026-07-24 确认
+- **状态:** 已接受——owner 于 2026-07-24 确认；2026-07-27 明确整个不暴露公网的内网可作为
+  可信边界，CIDR/iptables 为可选加固
 - **日期:** 2026-07-24
 - **决策者:** owner
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
@@ -36,8 +37,9 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
    SPA 或外部 API。不再通过
    `Accept` 头复用同一 URL，避免 HTML/JSON 浏览器缓存冲突。离线 API 通过部署环境仅在
    运行时 OpenAPI 文档中声明 `servers: [{url: "/api"}]`，仓库确定性 OpenAPI 和其他发布
-   环境保持不变。API、PG、MinIO 不发布宿主机端口。首版不实现应用鉴权，只允许防火墙
-   限定的受控内网访问。
+   环境保持不变。API、PG、MinIO 不发布宿主机端口。首版不实现应用鉴权，只允许不暴露公网的
+   受控内网访问；企业内网本身已经封闭时不强制配置主机级 CIDR/iptables，需要更细粒度隔离时
+   可将其作为纵深防御。
 5. PostgreSQL、MinIO 与 API workspace 使用 `/srv/databench` 下的持久目录；secret 位于
    `/etc/databench/databench.env`，首次安装由 CSPRNG 生成，升级不得覆盖。
 6. 每个版本交付完整镜像集合、精确平台/digest 锁、release manifest 与双层 SHA-256。

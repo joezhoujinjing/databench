@@ -260,7 +260,7 @@ curl -v http://127.0.0.1/api/health
 docker inspect --format '{{.State.Status}}' databench-offline-api
 ```
 
-- 本机正常、客户端失败：检查现场防火墙、路由和允许 CIDR；
+- 本机正常、客户端失败：检查内网路由；如启用了可选防火墙/CIDR allowlist，再检查对应规则；
 - 本机也失败且 Web running：检查 Caddy 日志和 API 状态；
 - 502：通常是 API 未运行或尚未 healthy；
 - SPA 能打开但 API 请求失败：检查请求 URL 是否为 `/api/v2/*`、
@@ -306,16 +306,20 @@ docker inspect --format '{{json .Mounts}}' databench-offline-api
 
 ### 8.1 安装/升级要求 `DATABENCH_MCP_PUBLIC_BASE_URL`
 
-安装器不能安全猜出 agent 使用哪张网卡、IP 或内部 DNS。先由现场网络管理员确认稳定地址，再
-执行：
+这表示 `/etc/databench/mcp.env` 还不存在。安装器不能安全猜出 agent 使用哪张网卡、IP 或内部
+DNS；确认稳定地址后，为首次安装执行：
 
 ```bash
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./install.sh
 ```
 
-升级命令同理。URL path 必须精确为 `/api`，不能带 credential、query、fragment 或尾随 `/`；
-DNS 使用小写，默认 HTTP(S) 端口必须省略，非默认端口不能有前导零。已有
-`/etc/databench/mcp.env` 时脚本会复用；传入另一个值会 fail closed，不会静默改地址。
+如果这是从不含 MCP 配置的旧版本首次升级，把最后的 `install.sh` 换成 `upgrade.sh`。URL path
+必须精确为 `/api`，不能带 credential、query、fragment 或尾随 `/`；DNS 使用小写，默认 HTTP(S)
+端口必须省略，非默认端口不能有前导零。
+
+成功后该值会持久化到 `/etc/databench/mcp.env`。以后重跑安装或正常升级只执行
+`sudo ./install.sh` 或 `sudo ./upgrade.sh`，脚本会自动复用；不需要重复传变量。若仍传入另一个值，
+脚本会 fail closed，不会静默改地址。
 
 ### 8.2 Agent 连接失败或看不到 tools
 

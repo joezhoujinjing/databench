@@ -4,7 +4,7 @@
 - **日期：** 2026-07-25
 - **代码基线：** `main@258bacaf673a0395c8fb3d769bd4bf6f78dcde56`
 - **原则：** 先打通真实 Excel 导入闭环；不预建平台终局；通过稳定边界保留后续扩展性
-- **首期环境：** 防火墙限定的可信内网，无应用认证，所有可访问者均有完整能力
+- **首期环境：** 不暴露公网的可信内网，无应用认证，所有可访问者均有完整能力；CIDR 为可选加固
 - **相关决策：** ADR 0002、0009、0011、0012、0013、0015、0016
 
 ## 1. 评审后的结论
@@ -791,7 +791,8 @@ DATABENCH_MCP_PUBLIC_BASE_URL=http://databench.internal/api
 - production 启动日志明确警告“匿名全权限，仅限可信内网”；
 - API/MCP container 仍不发布宿主机端口；
 - 只从现有 Caddy `/api/*` 进入；
-- 防火墙限制可信内网访问；
+- 整个不暴露公网的内网可以作为可信边界；不强制配置主机级 CIDR/iptables，现场需要更细粒度
+  隔离时可选配置；
 - 非浏览器 agent 未携带 `Origin` 时允许访问；只要请求携带非空 `Origin`，就必须与 public base 的
   origin 或显式 allowlist 精确匹配，否则在进入 MCP/file handler 前返回 403，而不是仅省略 CORS
   response header；
@@ -1054,7 +1055,7 @@ Owner 已于 2026-07-25 接受以下六个产品决策：
 2. 首期只有四个 tools，不追求 CLI/API parity；preview 是可选能力，agent 根据用户意图自主选择
    直接导入、先 preview 或只生成文件，服务端不实现人工审批状态机；
 3. 首期使用唯一的通用 canonical draft，覆盖 SFT、DPO、RLVR 与现有完整 canonical 结构；
-4. 首期匿名全权限，只用于防火墙限定的可信内网；
+4. 首期匿名全权限，只用于不暴露公网的可信内网；CIDR/iptables 是可选纵深防御，不是安装前置；
 5. “只生成 canonical JSONL”不发布 dataset/ref/object，但会永久登记为 canonical IDs 创建的
    immutable identity claims；
 6. 是否授权 MCP 在 GV16/GV-final 未完成时，通过 M2 自己的 scoped security/capacity/offline gate
