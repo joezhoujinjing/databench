@@ -66,7 +66,7 @@ if [ "$SKIP_SAFETY_BACKUP" = false ]; then
 fi
 
 if [ "$API_ALREADY_STOPPED" = false ]; then
-  compose_for_release "$CURRENT_RELEASE" stop web api
+  stop_application_services "$CURRENT_RELEASE"
 fi
 
 log "restoring PostgreSQL"
@@ -89,8 +89,9 @@ if [ "$KEEP_STOPPED" = true ]; then
 fi
 
 compose_for_release "$TARGET_RELEASE" run --rm migrate
-compose_for_release "$TARGET_RELEASE" up -d api web
-wait_container_healthy databench-offline-api 180 || die "API failed after restore"
+start_application_services "$TARGET_RELEASE" || die "application services failed after restore"
+wait_application_services "$TARGET_RELEASE" ||
+  die "application services did not become healthy after restore"
 run_doctor "$TARGET_RELEASE" >/dev/null || die "doctor failed after restore"
 DATABENCH_RELEASE_DIR="$TARGET_RELEASE" "${TARGET_RELEASE}/smoke.sh"
 activate_release "$TARGET_RELEASE" "$BACKUP_VERSION"

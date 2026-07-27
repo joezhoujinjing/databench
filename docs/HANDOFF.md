@@ -12,6 +12,10 @@
 - MCP Excel/CSV agent 导入 M0-M2 已完成；当前进度见 `docs/mcp/STATUS.md`。通用 runtime 仍
   disabled-by-default；ADR 0012 离线包会在 operator 显式提供稳定、agent 可达的 `/api` public
   base 后，以 `auth_mode=none` 在可信内网启用。该 scoped gate 不授权公网部署，也不改变 V16/V17。
+- ADR 0012 的 2026-07-27 窄修订要求完整离线包包含 CPU-only Python Worker；六镜像构建、
+  Worker → API → Web 生命周期、`basic-clean@1` smoke 和旧五镜像回滚兼容已在
+  `feat/offline-worker` 实现并通过本地 `linux/amd64` Compose gate，仍待真实 Ubuntu 22.04
+  amd64 断网验收。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -27,6 +31,8 @@
    `docs/conventions.md`。
 6. 若处理 MCP/agent 导入，依次读 ADR 0015、ADR 0016、`docs/mcp/TECHNICAL-DESIGN.md`、
    `docs/mcp/PLAN.md` 与 `docs/mcp/STATUS.md`。
+7. 若处理离线发布或 Worker，读 ADR 0010/0012、`docs/processing/TECHNICAL_DESIGN.md` 和
+   `docs/deployment/offline-single-host-plan.zh-CN.md`。
 
 不要用旧 v1 migration inventory 覆盖当前实现。
 
@@ -97,7 +103,7 @@ R4 manifest 在本机 ignored maintenance 目录中。标准操作仍以
 - `git diff --check`
 - 真实 Postgres + MinIO Store/Workspace/API/CLI suites
 - 浏览器 v2-only 全主流程、直接刷新、404、console、窄屏
-- 离线静态检查和实际 lifecycle smoke
+- 离线静态检查和实际 lifecycle smoke；当前 Worker 修订还需重新执行六镜像 gate
 
 R5 已完成并只更新了产品切换状态，没有改变 V16/V17。
 

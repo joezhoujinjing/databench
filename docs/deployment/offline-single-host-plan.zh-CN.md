@@ -6,7 +6,8 @@
 > D3 的新增部署目标：在**没有公网、没有内部镜像仓库**的环境中，
 > 将 Databench 一键安装到单台 Ubuntu。现有阿里云 ECS、RDS、OSS/CDN 发布链保持
 > 不变；本方案只新增一条并列的离线发布通道。Owner 于 2026-07-27 进一步明确：整个不暴露
-> 公网的内网可作为可信边界，CIDR/iptables 是可选加固，不是安装前置条件。
+> 公网的内网可作为可信边界，CIDR/iptables 是可选加固，不是安装前置条件。Owner 同日追加
+> 要求：离线包必须包含 Python Worker，交付完整 `basic-clean@1` 能力。
 
 ## 1. 结论
 
@@ -26,7 +27,7 @@ GitHub Actions ────▶│ ECS API + RDS + OSS/CDN     │
                                    ▼
                     ┌─────────────────────────────┐
                     │ 单台 Ubuntu                  │
-                    │ Web + API + PG + MinIO       │
+                    │ Web + API + Worker + PG/MinIO│
                     └─────────────────────────────┘
 ```
 
@@ -47,14 +48,14 @@ npm registry 或其他公网服务。
 
 ### 2.1 本方案覆盖
 
-- 联网环境构建 API/Web 应用镜像；
+- 联网环境构建 API/Web/Worker 应用镜像；
 - 拉取并锁定 PostgreSQL、MinIO、MinIO Client 等第三方镜像；
 - 将所有镜像和部署资产组装为一个带校验值的离线包；
 - 在干净 Ubuntu 上一键导入、初始化、迁移、启动和冒烟；
 - 首次安装自动生成密码并写入服务器 `.env`；
 - 后续离线升级、失败回滚、备份和恢复；
 - 宿主机重启后的自动恢复和持久化；
-- 只开放 Web 入口，API/PG/MinIO 走容器内部网络。
+- 只开放 Web 入口，API/Worker/PG/MinIO 走容器内部网络。
 
 ### 2.2 本方案不覆盖
 
@@ -62,8 +63,8 @@ npm registry 或其他公网服务。
 - 不实现多机高可用、Postgres 主从或 MinIO 分布式集群；
 - 不把 Docker Engine 混进每个业务版本包；
 - 不把生产密码、证书或用户数据打进镜像/离线包；
-- 不把 MinIO 重新定义为所有生产环境的默认对象存储。
-- 不包含已退役的 Python Processing Worker。
+- 不把 MinIO 重新定义为所有生产环境的默认对象存储；
+- 不把 Worker 扩展到多副本、GPU、任意 Python 执行或其他发布环境。
 - 首版不实现应用层鉴权，只允许受控内网访问，不能暴露到公网。
 
 ## 3. 与当前代码重构的边界
@@ -88,12 +89,14 @@ npm registry 或其他公网服务。
 | 目标宿主机 | Ubuntu 22.04 LTS amd64 | 安装器精确校验 OS/架构 |
 | API 监听 | 容器内 `8000` | 不发布宿主机端口 |
 | API 启动 | `node apps/api/dist/index.js` | 由 production Dockerfile 固定 |
+| Worker | Python 3.11 + Data-Juicer 1.5.3 | CPU-only、单并发、Compose 私网 `worker:50051` |
 | 数据库 | PostgreSQL 17 + Prisma | `prisma migrate deploy`，升级按第 9 节停写 |
 | 对象存储 | `DATABENCH_OBJECT_STORE=s3` + MinIO | on-prem production 例外由 ADR 0012 接受 |
 | 健康检查 | API 内部 `/health` 仅 liveness | 外部 `/api/health`；readiness 使用固定 smoke ref 的 resolve + audit |
 | Web API base | 同源 `/api` | 仅离线 Web 镜像在 Vite 构建时注入，不影响 ECS/OSS 发布 |
 | OpenAPI/业务路径 | API 内部 `/v2/*` + meta paths | 外部统一加 `/api`；Caddy 去前缀后代理，文档 `servers.url=/api` |
-| 临时空间 | `/var/lib/databench/.databench-v2-temp` | `/var/lib/databench` 必须挂载数据盘 |
+| API 临时空间 | `/var/lib/databench/.databench-v2-temp` | `/var/lib/databench` 必须挂载数据盘 |
+| Worker 临时空间 | `/tmp/databench-worker-v1` | 4 GiB tmpfs，无持久化数据 |
 
 如果后续重构改变以上任一项，只调整应用镜像和契约适配层，不改变离线包总体流程。v2
 V16/V17 的状态不阻断本离线通道生成 production 包；这是 owner 对该发布目标的明确例外，
@@ -115,11 +118,12 @@ V16/V17 的状态不阻断本离线通道生成 production 包；这是 owner �
 ┌───────────────────────────────┐
 │ Databench API                 │
 │ Node 22 + Hono + v2 codec     │
-└───────────┬───────────┬───────┘
-            │           │
-            ▼           ▼
-     PostgreSQL 17     MinIO
-     catalog/control   immutable Parquet data
+└──────┬────────────┬────────────┘
+       │            │
+       ▼            ▼
+ Python Worker   PostgreSQL 17 ─── MinIO
+ basic-clean@1   catalog/control   immutable Parquet data
+ private gRPC
 ```
 
 计划中的 Compose 服务：
@@ -128,13 +132,15 @@ V16/V17 的状态不阻断本离线通道生成 production 包；这是 owner �
 |---|---|---:|---|
 | `web` | Caddy + Vite 静态文件 + API 反代 | `80` | 无状态 |
 | `api` | Databench API | 不映射 | `/srv/databench/workspace:/var/lib/databench` |
+| `worker` | CPU-only Python/Data-Juicer Worker | 不映射（gRPC 50051 仅容器网络） | 无；4 GiB tmpfs |
 | `postgres` | catalog/control plane | 不映射 | `/srv/databench/postgres` |
 | `minio` | immutable Parquet data plane | 不映射 | `/srv/databench/minio` |
 | `minio-init` | 首次/幂等创建 bucket | 不映射 | 无，一次性任务 |
 | `migrate` | `prisma migrate deploy` | 不映射 | 无，一次性任务 |
 
 MinIO Console 默认不对业务网段开放；需要管理时使用 SSH 隧道或临时仅绑定
-`127.0.0.1`。Postgres、MinIO 和 API 不能发布到 `0.0.0.0`。
+`127.0.0.1`。Postgres、MinIO、API 和 Worker 不能发布到 `0.0.0.0`。API 通过 Compose DNS
+目标 `worker:50051` 连接 Worker，不固定 Docker 子网，避免从历史五镜像版本升级时发生网段冲突。
 
 ## 5. 离线发布物规范
 
@@ -214,6 +220,7 @@ databench-offline-<app-version>-linux-amd64/
 
 - `databench-api:<app-version>`；
 - `databench-web:<app-version>`，最终层包含 Caddy 和静态 Web；
+- `databench-worker:<app-version>`，固定 Python lock 与 CPU-only Torch；
 - 精确版本/摘要的 PostgreSQL 镜像；
 - 精确版本/摘要的 MinIO 镜像；
 - 精确版本/摘要的 MinIO Client 镜像。
@@ -232,7 +239,7 @@ deploy/offline/build-bundle.sh <version>
 首版固定在当前联网 Apple Silicon Mac 上使用 Docker Buildx 构建 `linux/amd64`。脚本必须：
 
 - 拒绝 dirty worktree，并记录精确 git SHA；
-- 对 API/Web build 和所有第三方镜像 pull 显式指定 `linux/amd64`；
+- 对 API/Web/Worker build 和所有第三方镜像 pull 显式指定 `linux/amd64`；
 - 构建后逐个 inspect 镜像架构与 digest，拒绝 arm64、`latest` 或未锁定引用；
 - 输出外层 SHA-256 与包内 `SHA256SUMS`；
 - 在 Docker 的 amd64 仿真下完成镜像启动 smoke，正式首发再在真实 Ubuntu 22.04 amd64 验收。
@@ -242,7 +249,7 @@ GitHub Actions workflow 作为后续可选入口，不是首版依赖：
 ```text
 workflow_dispatch(version, platform)
   → checkout 精确 commit
-  → build API/Web
+  → build API/Web/Worker
   → pull 第三方镜像
   → 记录 digest/platform
   → docker save
@@ -253,9 +260,10 @@ workflow_dispatch(version, platform)
 无论从本地还是 CI 调用，都必须使用同一个脚本和产物格式；workflow 只生成包，不连接内网
 服务器，也不触发已有 ECS/OSS 发布。
 
-当前实现对五张 `linux/amd64` 镜像的实测结果：`images.tar` 约 412 MB，外层 gzip 约 409 MB；
-考虑发布文本和后续依赖波动，正式包按 **410–430 MB** 估算。该数字不含业务数据、备份、
-Docker 已有缓存和解包期间的临时空间。
+历史五镜像包的 `images.tar` 约 412 MB、外层 gzip 约 409 MiB。当前 CPU-only Worker 单镜像
+约 499 MiB；2026-07-27 六镜像 amd64 测试构建的 `images.tar` 为 925,142,528 bytes（约
+882 MiB），gzip 后为 919,433,062 bytes（约 877 MiB），完整发布物按 **约 0.9 GiB** 传输。
+正式发布仍以完整构建结果为准。该数字不含业务数据、备份、Docker 已有缓存和解包期间的临时空间。
 
 ## 6. 一键安装行为
 
@@ -273,7 +281,8 @@ sudo ./install.sh
 `install.sh` 按以下顺序执行：
 
 1. 确认传输阶段已校验外层 SHA-256，并校验包内 `SHA256SUMS`；
-2. 检查 Ubuntu 版本、CPU 架构、Docker Engine、Compose、磁盘、端口；
+2. 检查 Ubuntu 版本、CPU 架构、Docker Engine、Compose、8 logical CPUs、30 GiB 可见 RAM、
+   40 GiB 系统盘可用空间和端口；
 3. 拒绝含 `build:`、`latest`、缺失本地镜像或允许 pull 的离线配置；
 4. `docker load` 导入全部镜像；
 5. 创建 `/opt/databench-offline`、`/etc/databench`、`/srv/databench`；
@@ -281,9 +290,10 @@ sudo ./install.sh
 7. 启动 PostgreSQL 和 MinIO 并等待健康；
 8. 幂等创建 MinIO bucket；
 9. 执行数据库 migration；
-10. 启动 API 和 Web；
-11. 执行 readiness 和完整生命周期冒烟；
-12. 输出访问地址、配置位置、数据位置和运维命令。
+10. 启动 Worker 并等待标准 gRPC health 为 `SERVING`；
+11. 启动 API 和 Web；
+12. 执行 readiness、固定数据集、MCP 和 `basic-clean@1` 完整生命周期冒烟；
+13. 输出访问地址、配置位置、数据位置和运维命令。
 
 任何一步失败都要输出明确的失败阶段和排障命令；不得删除已有数据，不得静默生成第二套
 密码或覆盖配置。
@@ -362,8 +372,8 @@ PORT=8000
 ## 8. Docker Engine 前置条件
 
 目标 Ubuntu 已安装 Docker，首版不提供 bootstrap 包。安装器只做只读 preflight，最低要求
-Docker Engine 24 和 Docker Compose plugin 2.20；版本过低时明确失败，不在离线安装过程中
-擅自升级宿主机 Docker。
+Docker Engine 24、Docker Compose plugin 2.20、8 logical CPUs、30 GiB 可见 RAM 和 40 GiB
+系统盘可用空间；版本或容量不足时明确失败，不在离线安装过程中擅自升级宿主机 Docker。
 
 ## 9. 升级、回滚和版本保留
 
@@ -378,13 +388,13 @@ sudo ./upgrade.sh
 1. 校验新包与目标平台；
 2. 检查目标版本高于/不同于当前版本；
 3. 校验 `release-manifest.json` 的来源版本范围、Postgres major、migration 与 rollback 属性；
-4. 停止 API 接受写入；
+4. 依次停止 Web/API/Worker，停止 API 接受写入；
 5. 生成同一 generation 的 Postgres + MinIO 一致性备份并验证；
 6. 导入新镜像；
 7. 执行 migration；
 8. 原子切换当前 `release.env`；
-9. 重建 API/Web；
-10. `doctor` 与数据集 lifecycle smoke 通过后记录成功版本；
+9. 先启动 Worker 并确认健康，再重建 API/Web；
+10. `doctor`、数据集、MCP 与 `basic-clean@1` lifecycle smoke 通过后记录成功版本；
 11. 保留当前版、上一版及一个已知稳定版的镜像和发布清单。
 
 MinIO 数据对象是持久化数据，不随应用镜像升级；任何脚本禁止用 `docker compose down -v`。
@@ -395,7 +405,7 @@ MinIO 数据对象是持久化数据，不随应用镜像升级；任何脚本�
 - 备份、镜像导入或 migration 前置检查失败：重新启动 previous release；
 - migration 失败：按 manifest 的 `rollback_mode` 切回旧镜像，必要时恢复升级前 PG 备份；
 - 新版启动、doctor 或 smoke 失败：停止新版、切回 previous release，按 manifest 决定是否
-  恢复备份，然后重新启动旧 API/Web；
+  恢复备份，然后重新启动旧版应用服务；历史五镜像 release 不启动 Worker；
 - 自动恢复也失败：保留备份和两个 release，不删除数据，输出精确人工恢复命令并以非零退出；
 - 只有新版全部验收通过后才取消 trap、更新 current/success marker。
 
@@ -405,7 +415,7 @@ MinIO 数据对象是持久化数据，不随应用镜像升级；任何脚本�
 sudo ./rollback.sh <previous-version>
 ```
 
-- migration 向后兼容：切回旧 `release.env` 并重建 API/Web；
+- migration 向后兼容：切回旧 `release.env` 并重建该版本声明的应用服务；
 - migration 不向后兼容：停止写入，恢复升级前 Postgres 备份，再切旧镜像；
 - 对象 key/layout 发生不可逆变化：必须由对应版本迁移设计提供双读/回填/恢复方案，通用
   发布脚本不能猜测；
@@ -447,7 +457,7 @@ PostgreSQL dump 和 MinIO mirror 并验证后再恢复服务。备份必须复�
 
 - 宿主机只在不暴露公网的可信内网开放 `80`；
 - SSH 只对管理网段开放；
-- API、PG、MinIO 不发布宿主机端口；
+- API、Worker、PG、MinIO 不发布宿主机端口；
 - MinIO Console 默认关闭外部访问；
 - 可以通过服务器 IP 或内部 DNS 访问；HTTPS/内部 CA 留作后续独立增强；
 - 如启用可选 CIDR/iptables，加固规则和 Docker published ports 一起纳入端口扫描验收；
@@ -468,6 +478,7 @@ readiness，至少验证：
 
 - Prisma 能连接 Postgres 且 migration 已应用；
 - MinIO endpoint 可达且 bucket 存在；
+- Worker 标准 gRPC health 为 `SERVING`，且 `basic-clean@1` 可完成并命中 deterministic reuse；
 - API 能完成一次只读业务查询。
 
 `databenchctl doctor` 使用保留 ref `system-offline-smoke-v2`：先执行 `ref show` 验证
@@ -483,7 +494,7 @@ Node/pnpm/jq。P3 再给 `databenchctl` 增加 backup/restore/upgrade/rollback �
 安装后的 G-prod 冒烟还要实际执行一个最小的：
 
 ```text
-ingest → persist → ref/query/audit → export
+ingest → persist → ref/query/audit → export → basic-clean → lineage/reuse
 ```
 
 以同时覆盖 Postgres 和 MinIO。
@@ -526,7 +537,7 @@ deploy/offline/
 ├── databenchctl
 ├── env.example
 ├── minio/app-policy.json
-├── smoke/v2.jsonl
+├── smoke/{v2.jsonl,worker.mjs}
 ├── test/offline-scripts.test.sh
 └── lib/
     ├── common.sh
@@ -559,6 +570,7 @@ deploy/ecs/**
 ### P1：构建与发布物（已完成，真实 release 包待最终干净提交构建）
 
 - 精简 production API/Web 镜像；API 镜像包含 Prisma migration runtime 与构建后的 CLI；
+- CPU-only Worker 镜像、标准 gRPC healthcheck 和六镜像 release lock；
 - 第三方镜像版本锁；
 - `images.lock`、`RELEASE.txt`、release manifest 与双层 checksum；
 - Apple Silicon Mac → `linux/amd64` 本地构建、架构 inspect 与仿真 smoke；
@@ -571,6 +583,7 @@ deploy/ecs/**
 - PG/MinIO 初始化；
 - 固定数据目录 ownership、MinIO app policy 与必填 v2 secret；
 - migration；
+- Worker → API → Web 有序启动及 `basic-clean@1` lifecycle smoke；
 - 最小 `databenchctl status/logs/doctor/restart`，doctor 解析 JSON 健康字段；
 - liveness/readiness/full smoke；
 - 幂等重跑和错误诊断。
@@ -606,8 +619,9 @@ deploy/ecs/**
 - [x] 首次安装脚本自动生成 secret，目标权限 `0600`，终端/日志不输出 secret；
 - [x] 重跑安装和执行升级复用现有 secret；
 - [x] Compose 不含 `build:`、`latest`，所有服务 `pull_policy: never`；
-- [x] Compose 只发布 Web 80，API/PG/MinIO 不发布宿主机端口；
-- [x] 本地 amd64 集成环境的 migration、readiness 和 ingest→query/audit→export 全通过；
+- [x] Compose 只发布 Web 80，API/Worker/PG/MinIO 不发布宿主机端口；
+- [x] 本地 amd64 集成环境的 migration、readiness、ingest→query/audit→export 和
+  `basic-clean@1`→lineage/reuse 全通过；
 - [x] 本地 amd64 集成环境中 Caddy 将外部 `/api/*` 去前缀后代理到 API；`/datasets/<ref>`
   固定返回 SPA HTML，`/api/v2/datasets/<ref>` 固定返回 API JSON，不依赖 `Accept` 分流或禁止缓存；
 - [ ] 宿主机重启后服务与数据恢复；
@@ -618,8 +632,9 @@ deploy/ecs/**
 ## 16. 已接受决策与安装时输入
 
 Owner 已接受：Ubuntu 22.04 amd64、本地 Mac Buildx、完整离线包、`/srv/databench`、小规模
-首发、允许维护停机、保留当前版+上一版+稳定版、首版无应用鉴权、无 Docker bootstrap、无
-Processing Worker，并采用本文的 `/api` 独立代理、必填 secret、停写升级和一致性备份建议。
+首发、允许维护停机、保留当前版+上一版+稳定版、首版无应用鉴权、无 Docker bootstrap，并采用
+本文的 `/api` 独立代理、必填 secret、停写升级和一致性备份建议。2026-07-27 后续修订确认
+Python Worker 必须进入完整离线包，同时保持其他发布环境默认不启用。
 
 实现不再等待产品选型；现场首次安装前只需提供 agent 可达的稳定服务器地址以及异机/NAS 备份
 目标。需要更细粒度网络隔离时再提供可选 CIDR。未提供备份目标时可以测试安装，但不得标记为

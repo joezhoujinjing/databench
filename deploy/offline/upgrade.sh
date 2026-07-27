@@ -54,7 +54,7 @@ recover_previous_release() {
   fi
 
   warn "upgrade failed; restoring release $PREVIOUS_VERSION"
-  compose_for_release "$TARGET_RELEASE" stop web api >/dev/null 2>&1 || true
+  stop_application_services "$TARGET_RELEASE" >/dev/null 2>&1 || true
 
   if [ "$TARGET_ROLLBACK_MODE" = 'restore-backup' ] && [ -n "$BACKUP_GENERATION" ]; then
     if ! DATABENCH_OPERATION_LOCK_HELD=1 "${PREVIOUS_RELEASE}/restore.sh" \
@@ -64,8 +64,8 @@ recover_previous_release() {
     fi
   fi
 
-  if compose_for_release "$PREVIOUS_RELEASE" up -d api web &&
-    wait_container_healthy databench-offline-api 180 &&
+  if start_application_services "$PREVIOUS_RELEASE" &&
+    wait_application_services "$PREVIOUS_RELEASE" &&
     run_doctor "$PREVIOUS_RELEASE" >/dev/null; then
     RECOVERY_SUCCEEDED=true
     warn "previous release $PREVIOUS_VERSION is serving again"
@@ -83,7 +83,7 @@ recover_previous_release() {
 }
 
 log "stopping API writes for upgrade"
-compose_for_release "$PREVIOUS_RELEASE" stop web api
+stop_application_services "$PREVIOUS_RELEASE"
 trap recover_previous_release EXIT
 
 log "creating pre-upgrade backup"
@@ -102,9 +102,9 @@ log "applying target migrations"
 compose_for_release "$TARGET_RELEASE" run --rm migrate
 
 log "starting target release"
-compose_for_release "$TARGET_RELEASE" up -d api web
-wait_container_healthy databench-offline-api 180 || die "target API did not become healthy"
-wait_container_healthy databench-offline-web 120 || die "target Web gateway did not start"
+start_application_services "$TARGET_RELEASE" || die "target application services did not start"
+wait_application_services "$TARGET_RELEASE" ||
+  die "target application services did not become healthy"
 run_doctor "$TARGET_RELEASE" >/dev/null || die "target doctor check failed"
 wait_gateway "$TARGET_RELEASE" 120 || die "target gateway proxy check failed"
 DATABENCH_RELEASE_DIR="$TARGET_RELEASE" "${TARGET_RELEASE}/smoke.sh"

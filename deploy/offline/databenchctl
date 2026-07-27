@@ -16,7 +16,7 @@ Commands:
   status                         Show container status
   logs [service]                 Follow recent logs
   doctor                         Check PostgreSQL and object storage
-  restart                        Restart API and Web, then run doctor
+  restart                        Restart Worker, API and Web, then run doctor
   backup                         Create a consistent backup generation
   restore <generation> --confirm Restore a backup generation
   upgrade <extracted-bundle>     Upgrade using a new offline bundle
@@ -40,9 +40,9 @@ case "$COMMAND" in
     run_doctor "$RELEASE_DIR"
     ;;
   restart)
-    compose_for_release "$RELEASE_DIR" restart api web
-    wait_container_healthy databench-offline-api 180
-    wait_container_healthy databench-offline-web 120
+    stop_application_services "$RELEASE_DIR"
+    start_application_services "$RELEASE_DIR"
+    wait_application_services "$RELEASE_DIR"
     run_doctor "$RELEASE_DIR"
     ;;
   backup)

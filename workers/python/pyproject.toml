@@ -18,6 +18,15 @@ dependencies = [
 
 [project.scripts]
 databench-worker = "databench_worker.grpc_server:main"
+databench-worker-healthcheck = "databench_worker.healthcheck:main"
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [

@@ -111,6 +111,7 @@ load_release_env() {
   DATABENCH_VERSION=''
   DATABENCH_API_IMAGE=''
   DATABENCH_WEB_IMAGE=''
+  DATABENCH_WORKER_IMAGE=''
   DATABENCH_POSTGRES_IMAGE=''
   DATABENCH_MINIO_IMAGE=''
   DATABENCH_MINIO_MC_IMAGE=''
@@ -128,6 +129,7 @@ load_release_env() {
       DATABENCH_VERSION) DATABENCH_VERSION="$value" ;;
       DATABENCH_API_IMAGE) DATABENCH_API_IMAGE="$value" ;;
       DATABENCH_WEB_IMAGE) DATABENCH_WEB_IMAGE="$value" ;;
+      DATABENCH_WORKER_IMAGE) DATABENCH_WORKER_IMAGE="$value" ;;
       DATABENCH_POSTGRES_IMAGE) DATABENCH_POSTGRES_IMAGE="$value" ;;
       DATABENCH_MINIO_IMAGE) DATABENCH_MINIO_IMAGE="$value" ;;
       DATABENCH_MINIO_MC_IMAGE) DATABENCH_MINIO_MC_IMAGE="$value" ;;
@@ -145,18 +147,40 @@ load_release_env() {
     export "$key=$value"
   done
 
+  if [ -n "$DATABENCH_WORKER_IMAGE" ]; then
+    case "$DATABENCH_WORKER_IMAGE" in
+      *latest*) die "release.env must not contain latest: DATABENCH_WORKER_IMAGE" ;;
+    esac
+    export DATABENCH_WORKER_IMAGE
+  else
+    unset DATABENCH_WORKER_IMAGE
+  fi
+
   validate_app_version "$DATABENCH_VERSION"
 }
 
 validate_images_lock() {
   local file="$1"
   local verify_loaded="${2:-false}"
-  local line image digest platform source count=0 actual_digest actual_arch
+  local expected_count="${3:-}"
+  local line image digest platform source count=0 actual_digest actual_arch seen='|'
+
+  if [ -z "$expected_count" ]; then
+    if [ -n "${DATABENCH_WORKER_IMAGE:-}" ]; then
+      expected_count=6
+    else
+      expected_count=5
+    fi
+  fi
 
   while IFS='|' read -r image digest platform source; do
     [ -z "$image" ] && continue
     case "$image" in \#*) continue ;; esac
     [[ "$image" =~ ^[A-Za-z0-9._/@:+-]+$ ]] || die "invalid image in images.lock"
+    case "$seen" in
+      *"|${image}|"*) die "duplicate image in images.lock: $image" ;;
+    esac
+    seen="${seen}${image}|"
     [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "invalid digest in images.lock: $image"
     [ "$platform" = 'linux/amd64' ] || die "unsupported platform in images.lock: $platform"
     [ -n "$source" ] || die "missing source in images.lock: $image"
@@ -170,7 +194,21 @@ validate_images_lock() {
     fi
   done < "$file"
 
-  [ "$count" -eq 5 ] || die "images.lock must contain exactly five images"
+  [ "$count" -eq "$expected_count" ] ||
+    die "images.lock must contain exactly $expected_count images"
+}
+
+release_has_worker() {
+  local release_dir="$1"
+  grep -Eq '^DATABENCH_WORKER_IMAGE=[A-Za-z0-9._/@:+-]+$' "${release_dir}/release.env"
+}
+
+stop_application_services() {
+  local release_dir="$1"
+  compose_for_release "$release_dir" stop web api
+  if release_has_worker "$release_dir"; then
+    compose_for_release "$release_dir" stop worker
+  fi
 }
 
 compose_for_release() {
@@ -182,7 +220,7 @@ compose_for_release() {
     # Shell variables have higher interpolation precedence than --env-file.
     # Release-management scripts load both current and target manifests, so
     # never let a previously exported image set select the wrong release.
-    unset DATABENCH_VERSION DATABENCH_API_IMAGE DATABENCH_WEB_IMAGE
+    unset DATABENCH_VERSION DATABENCH_API_IMAGE DATABENCH_WEB_IMAGE DATABENCH_WORKER_IMAGE
     unset DATABENCH_POSTGRES_IMAGE DATABENCH_MINIO_IMAGE DATABENCH_MINIO_MC_IMAGE
     docker compose \
       --project-name databench-offline \

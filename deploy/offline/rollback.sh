@@ -63,19 +63,19 @@ recover_current_release() {
     exit "$status"
   fi
   warn "rollback failed; restoring release $CURRENT_VERSION"
-  compose_for_release "$TARGET_RELEASE" stop web api >/dev/null 2>&1 || true
+  stop_application_services "$TARGET_RELEASE" >/dev/null 2>&1 || true
   if [ "$DATA_WAS_RESTORED" = true ] && [ -n "$SAFETY_GENERATION" ]; then
     DATABENCH_OPERATION_LOCK_HELD=1 "${CURRENT_RELEASE}/restore.sh" \
       "${DATABENCH_DATA_ROOT}/backups/${SAFETY_GENERATION}" --confirm \
       --skip-safety-backup --api-already-stopped --keep-stopped ||
       warn "failed to restore the pre-rollback safety backup"
   fi
-  compose_for_release "$CURRENT_RELEASE" up -d api web || true
-  wait_container_healthy databench-offline-api 180 || true
+  start_application_services "$CURRENT_RELEASE" || true
+  wait_application_services "$CURRENT_RELEASE" || true
   exit "$status"
 }
 
-compose_for_release "$CURRENT_RELEASE" stop web api
+stop_application_services "$CURRENT_RELEASE"
 trap recover_current_release EXIT
 
 log "creating pre-rollback safety backup"
@@ -91,9 +91,9 @@ if [ "$CURRENT_ROLLBACK_MODE" = 'restore-backup' ]; then
     --skip-safety-backup --api-already-stopped --keep-stopped
 fi
 
-compose_for_release "$TARGET_RELEASE" up -d api web
-wait_container_healthy databench-offline-api 180 || die "target API did not become healthy"
-wait_container_healthy databench-offline-web 120 || die "target Web gateway did not start"
+start_application_services "$TARGET_RELEASE" || die "target application services did not start"
+wait_application_services "$TARGET_RELEASE" ||
+  die "target application services did not become healthy"
 run_doctor "$TARGET_RELEASE" >/dev/null || die "target doctor failed"
 DATABENCH_RELEASE_DIR="$TARGET_RELEASE" "${TARGET_RELEASE}/smoke.sh"
 

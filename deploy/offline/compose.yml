@@ -84,6 +84,31 @@ services:
     command: ["/app/node_modules/.bin/prisma", "migrate", "deploy"]
     restart: "no"
 
+  worker:
+    <<: *service-defaults
+    image: ${DATABENCH_WORKER_IMAGE:?missing DATABENCH_WORKER_IMAGE}
+    container_name: databench-offline-worker
+    restart: unless-stopped
+    environment:
+      DATABENCH_WORKER_BIND: "0.0.0.0:50051"
+      DATABENCH_WORKER_TEMP_ROOT: "/tmp/databench-worker-v1"
+    depends_on:
+      minio:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:size=4g,mode=1777
+    read_only: true
+    mem_limit: 16g
+    cpus: 6.0
+    pids_limit: 512
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/databench-worker-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   api:
     <<: *service-defaults
     image: ${DATABENCH_API_IMAGE:?missing DATABENCH_API_IMAGE}
@@ -94,6 +119,8 @@ services:
       - /etc/databench/mcp.env
     environment:
       DATABENCH_OPENAPI_SERVER_URL: "/api"
+      DATABENCH_WORKER_ENABLED: "true"
+      DATABENCH_WORKER_TARGET: "worker:50051"
       NODE_ENV: production
       PORT: "8000"
     depends_on:
@@ -103,6 +130,8 @@ services:
         condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
+      worker:
+        condition: service_healthy
     volumes:
       - /srv/databench/workspace:/var/lib/databench
     tmpfs:

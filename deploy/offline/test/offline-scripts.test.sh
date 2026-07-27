@@ -18,6 +18,7 @@ done < <(find "$SCRIPT_DIR" -type f \( -name '*.sh' -o -name databenchctl \) | L
 node --check "${SCRIPT_DIR}/smoke/gateway.mjs"
 node --check "${SCRIPT_DIR}/smoke/mcp.mjs"
 node --check "${SCRIPT_DIR}/smoke/upstream-failure.mjs"
+node --check "${SCRIPT_DIR}/smoke/worker.mjs"
 
 if rg -n 'docker compose down -v|image:.*latest|build:' \
   "${SCRIPT_DIR}/compose.yml" "${SCRIPT_DIR}"/*.sh "${SCRIPT_DIR}/databenchctl"; then
@@ -48,6 +49,30 @@ grep -Fq 'body?.status === "ok"' "${SCRIPT_DIR}/lib/health.sh" ||
   fail 'gateway readiness does not validate the health payload'
 grep -Fq 'DATABENCH_OPENAPI_SERVER_URL: "/api"' "${SCRIPT_DIR}/compose.yml" ||
   fail 'offline API does not advertise the external /api OpenAPI server URL'
+grep -Fq 'DATABENCH_WORKER_ENABLED: "true"' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline API does not explicitly enable the Worker runtime'
+grep -Fq 'DATABENCH_WORKER_TARGET: "worker:50051"' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline API does not use the private Compose Worker target'
+grep -Fq 'image: ${DATABENCH_WORKER_IMAGE:?missing DATABENCH_WORKER_IMAGE}' \
+  "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the Worker image'
+if rg -n 'ipv4_address:|subnet:' "${SCRIPT_DIR}/compose.yml"; then
+  fail 'offline Worker must use Compose DNS so upgrades do not depend on a fixed subnet'
+fi
+grep -Fq '/app/.venv/bin/databench-worker-healthcheck' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline Worker does not use its gRPC healthcheck'
+grep -Fq '/tmp:size=4g,mode=1777' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline Worker does not have bounded ephemeral job storage'
+if sed -n '/^  worker:/,/^  api:/p' "${SCRIPT_DIR}/compose.yml" | grep -Eq '^[[:space:]]+ports:'; then
+  fail 'offline Worker publishes a host port'
+fi
+grep -Fq 'workers/python/Dockerfile' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not build the Worker image'
+grep -Fq 'torch.version.cuda is None' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not reject a CUDA-enabled Worker image'
+grep -Fq 'name.startswith("nvidia-")' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not reject NVIDIA Worker packages'
+grep -Fq 'saving six images' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not save the six-image release set'
 [ "$(grep -Ec '^[[:space:]]*log([[:space:]]|$)' "${SCRIPT_DIR}/Caddyfile")" -eq 1 ] ||
   fail 'Caddy must configure exactly one redacted runtime logger and no access logger'
 grep -Fq 'format filter' "${SCRIPT_DIR}/Caddyfile" ||
@@ -62,8 +87,8 @@ grep -Fq "document.servers[0]?.url !== '/api'" "${SCRIPT_DIR}/smoke/gateway.mjs"
   fail 'offline smoke does not verify the external OpenAPI server URL'
 grep -Fq '/api/mcp' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
   fail 'offline gateway smoke does not cover the MCP route'
-grep -Fq 'logs web api' "${SCRIPT_DIR}/smoke.sh" ||
-  fail 'offline smoke does not check API/Caddy logs for bearer token leakage'
+grep -Fq 'logs web api worker' "${SCRIPT_DIR}/smoke.sh" ||
+  fail 'offline smoke does not check API/Caddy/Worker logs for bearer token leakage'
 grep -Fq 'upstream-failure.mjs' "${SCRIPT_DIR}/smoke.sh" ||
   fail 'offline smoke does not probe Caddy logging while the API is unavailable'
 smoke_stopped_flag_line="$(grep -nF 'API_STOPPED=true' "${SCRIPT_DIR}/smoke.sh" | cut -d: -f1)"
@@ -72,6 +97,14 @@ smoke_stop_line="$(grep -nF 'compose_for_release "$SCRIPT_DIR" stop api' "${SCRI
   fail 'offline smoke must arm API recovery before attempting to stop the API'
 grep -Fq 'mcp-smoke.mjs' "${SCRIPT_DIR}/smoke.sh" ||
   fail 'offline lifecycle smoke does not run the MCP SDK client'
+grep -Fq 'worker-smoke.mjs' "${SCRIPT_DIR}/smoke.sh" ||
+  fail 'offline lifecycle smoke does not run the canonical Worker client'
+grep -Fq '/v2/transforms/basic-clean/jobs' "${SCRIPT_DIR}/smoke/worker.mjs" ||
+  fail 'offline Worker smoke does not submit basic-clean'
+grep -Fq 'system-offline-smoke-clean-v2' "${SCRIPT_DIR}/smoke/worker.mjs" ||
+  fail 'offline Worker smoke does not verify create-only result naming'
+grep -Fq 'X-Amz-Signature' "${SCRIPT_DIR}/smoke.sh" ||
+  fail 'offline smoke does not reject signed URL leakage in logs'
 grep -Fq 'canonical-draft-jsonl-v1' "${SCRIPT_DIR}/smoke/mcp.mjs" ||
   fail 'offline MCP smoke does not cover canonical draft processing'
 grep -Fq "'active file limit did not return 429'" "${SCRIPT_DIR}/smoke/mcp.mjs" ||
@@ -140,6 +173,7 @@ cat > "${TEMP_DIR}/release/release.env" <<'EOF'
 DATABENCH_VERSION=1.2.3
 DATABENCH_API_IMAGE=databench-api:1.2.3
 DATABENCH_WEB_IMAGE=databench-web:1.2.3
+DATABENCH_WORKER_IMAGE=databench-worker:1.2.3
 DATABENCH_POSTGRES_IMAGE=databench-offline/postgres:1111111111111111
 DATABENCH_MINIO_IMAGE=databench-offline/minio:2222222222222222
 DATABENCH_MINIO_MC_IMAGE=databench-offline/minio-mc:3333333333333333
@@ -149,9 +183,10 @@ cat > "${TEMP_DIR}/release/images.lock" <<'EOF'
 # databench offline images lock v1
 databench-api:1.2.3|sha256:1111111111111111111111111111111111111111111111111111111111111111|linux/amd64|git:1111111111111111111111111111111111111111
 databench-web:1.2.3|sha256:2222222222222222222222222222222222222222222222222222222222222222|linux/amd64|git:1111111111111111111111111111111111111111
-databench-offline/postgres:1111111111111111|sha256:3333333333333333333333333333333333333333333333333333333333333333|linux/amd64|postgres:17.6-alpine
-databench-offline/minio:2222222222222222|sha256:4444444444444444444444444444444444444444444444444444444444444444|linux/amd64|minio/minio:RELEASE.2025-09-07T16-13-09Z
-databench-offline/minio-mc:3333333333333333|sha256:5555555555555555555555555555555555555555555555555555555555555555|linux/amd64|minio/mc:RELEASE.2025-08-13T08-35-41Z
+databench-worker:1.2.3|sha256:3333333333333333333333333333333333333333333333333333333333333333|linux/amd64|git:1111111111111111111111111111111111111111
+databench-offline/postgres:1111111111111111|sha256:4444444444444444444444444444444444444444444444444444444444444444|linux/amd64|postgres:17.6-alpine
+databench-offline/minio:2222222222222222|sha256:5555555555555555555555555555555555555555555555555555555555555555|linux/amd64|minio/minio:RELEASE.2025-09-07T16-13-09Z
+databench-offline/minio-mc:3333333333333333|sha256:6666666666666666666666666666666666666666666666666666666666666666|linux/amd64|minio/mc:RELEASE.2025-08-13T08-35-41Z
 EOF
 
 if command -v sha256sum >/dev/null 2>&1; then
@@ -172,6 +207,21 @@ grep -Fq 'DATABENCH_MCP_AUTH_MODE=none' "${SCRIPT_DIR}/mcp.env.example" ||
   fail 'offline MCP example does not declare anonymous mode'
 grep -Fq 'DATABENCH_MIN_WORKSPACE_FREE_GB' "${SCRIPT_DIR}/lib/preflight.sh" ||
   fail 'offline preflight does not check the Databench data filesystem'
+grep -Fq 'DATABENCH_MIN_CPUS:-8' "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline preflight does not enforce the Worker CPU floor'
+grep -Fq 'DATABENCH_MIN_MEMORY_GB:-30' "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline preflight does not enforce the Worker memory floor'
+grep -Fq 'DATABENCH_MIN_FREE_GB:-40' "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline preflight does not enforce the installation disk floor'
+for lifecycle_script in install.sh upgrade.sh rollback.sh backup.sh restore.sh databenchctl; do
+  grep -Eq 'start_application_services|stop_application_services' \
+    "${SCRIPT_DIR}/${lifecycle_script}" ||
+    fail "${lifecycle_script} bypasses the version-aware Worker application lifecycle"
+done
+for health_script in install.sh upgrade.sh rollback.sh restore.sh; do
+  grep -Fq 'wait_application_services' "${SCRIPT_DIR}/${health_script}" ||
+    fail "${health_script} does not wait for the selected release application health"
+done
 (
   # shellcheck source=../lib/common.sh
   source "${SCRIPT_DIR}/lib/common.sh"
@@ -237,7 +287,7 @@ printf 'services:\n  api:\n    image: example\n' > "${TEMP_DIR}/release-without-
 
 rollback_current_mcp_line="$(grep -nF 'validate_release_mcp_config_if_required "$CURRENT_RELEASE"' "${SCRIPT_DIR}/rollback.sh" | cut -d: -f1)"
 rollback_target_mcp_line="$(grep -nF 'validate_release_mcp_config_if_required "$TARGET_RELEASE"' "${SCRIPT_DIR}/rollback.sh" | cut -d: -f1)"
-rollback_stop_line="$(grep -nF 'compose_for_release "$CURRENT_RELEASE" stop web api' "${SCRIPT_DIR}/rollback.sh" | cut -d: -f1)"
+rollback_stop_line="$(grep -nF 'stop_application_services "$CURRENT_RELEASE"' "${SCRIPT_DIR}/rollback.sh" | cut -d: -f1)"
 [ "$rollback_current_mcp_line" -lt "$rollback_stop_line" ] &&
   [ "$rollback_target_mcp_line" -lt "$rollback_stop_line" ] ||
   fail 'rollback must validate current and target MCP configuration before stopping services'
@@ -258,6 +308,39 @@ printf '%s\n' \
   validate_release_contract "${TEMP_DIR}/release"
   [ "$MANIFEST_APP_VERSION" = '1.2.3' ]
   [ "$MANIFEST_ROLLBACK_MODE" = 'image-only' ]
+)
+
+mkdir -p "${TEMP_DIR}/legacy-release"
+cat > "${TEMP_DIR}/legacy-release/release.env" <<'EOF'
+DATABENCH_VERSION=1.0.0
+DATABENCH_API_IMAGE=databench-api:1.0.0
+DATABENCH_WEB_IMAGE=databench-web:1.0.0
+DATABENCH_POSTGRES_IMAGE=databench-offline/postgres:1111111111111111
+DATABENCH_MINIO_IMAGE=databench-offline/minio:2222222222222222
+DATABENCH_MINIO_MC_IMAGE=databench-offline/minio-mc:3333333333333333
+EOF
+cat > "${TEMP_DIR}/legacy-release/images.lock" <<'EOF'
+# databench offline images lock v1
+databench-api:1.0.0|sha256:1111111111111111111111111111111111111111111111111111111111111111|linux/amd64|git:1111111111111111111111111111111111111111
+databench-web:1.0.0|sha256:2222222222222222222222222222222222222222222222222222222222222222|linux/amd64|git:1111111111111111111111111111111111111111
+databench-offline/postgres:1111111111111111|sha256:3333333333333333333333333333333333333333333333333333333333333333|linux/amd64|postgres:17.6-alpine
+databench-offline/minio:2222222222222222|sha256:4444444444444444444444444444444444444444444444444444444444444444|linux/amd64|minio/minio:RELEASE.2025-09-07T16-13-09Z
+databench-offline/minio-mc:3333333333333333|sha256:5555555555555555555555555555555555555555555555555555555555555555|linux/amd64|minio/mc:RELEASE.2025-08-13T08-35-41Z
+EOF
+if command -v sha256sum >/dev/null 2>&1; then
+  LEGACY_LOCK_SHA="$(sha256sum "${TEMP_DIR}/legacy-release/images.lock" | awk '{print $1}')"
+else
+  LEGACY_LOCK_SHA="$(shasum -a 256 "${TEMP_DIR}/legacy-release/images.lock" | awk '{print $1}')"
+fi
+printf '%s\n' \
+  "{\"schema_version\":1,\"app_version\":\"1.0.0\",\"git_sha\":\"1111111111111111111111111111111111111111\",\"platform\":\"linux/amd64\",\"min_upgrade_from\":\"0.1.0\",\"postgres_major\":17,\"database_migration\":\"expand-only\",\"rollback_mode\":\"image-only\",\"object_migration\":\"none\",\"images_lock_sha256\":\"${LEGACY_LOCK_SHA}\"}" \
+  > "${TEMP_DIR}/legacy-release/release-manifest.json"
+(
+  source "${SCRIPT_DIR}/lib/common.sh"
+  source "${SCRIPT_DIR}/lib/manifest.sh"
+  validate_release_contract "${TEMP_DIR}/legacy-release"
+  [ -z "${DATABENCH_WORKER_IMAGE:-}" ]
+  ! release_has_worker "${TEMP_DIR}/legacy-release"
 )
 
 cp "${TEMP_DIR}/release/release-manifest.json" "${TEMP_DIR}/bad-manifest.json"
@@ -311,11 +394,14 @@ EOF
     export DATABENCH_CONFIG_FILE="${TEMP_DIR}/databench.env"
     export DATABENCH_API_IMAGE='wrong-api:ambient-variable-must-not-win'
     export DATABENCH_WEB_IMAGE='wrong-web:ambient-variable-must-not-win'
+    export DATABENCH_WORKER_IMAGE='wrong-worker:ambient-variable-must-not-win'
     rendered="$(compose_for_release "${TEMP_DIR}/release" config)"
     grep -q 'image: databench-api:1.2.3' <<< "$rendered" ||
       fail 'ambient variables overrode the selected API release'
     grep -q 'image: databench-web:1.2.3' <<< "$rendered" ||
       fail 'ambient variables overrode the selected Web release'
+    grep -q 'image: databench-worker:1.2.3' <<< "$rendered" ||
+      fail 'ambient variables overrode the selected Worker release'
     ! grep -q 'ambient-variable-must-not-win' <<< "$rendered" ||
       fail 'ambient release variables leaked into Compose interpolation'
   )

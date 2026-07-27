@@ -36,7 +36,8 @@ load_release_manifest() {
 
 validate_release_contract() {
   local release_dir="$1"
-  local lock_sha
+  local lock_sha image
+  local -a images
   load_release_env "${release_dir}/release.env"
   load_release_manifest "${release_dir}/release-manifest.json"
   [ "$DATABENCH_VERSION" = "$MANIFEST_APP_VERSION" ] ||
@@ -44,4 +45,20 @@ validate_release_contract() {
   lock_sha="$(sha256_file "${release_dir}/images.lock")"
   [ "$lock_sha" = "$MANIFEST_IMAGES_LOCK_SHA256" ] || die "images.lock checksum mismatch"
   validate_images_lock "${release_dir}/images.lock" false
+  images=(
+    "$DATABENCH_API_IMAGE"
+    "$DATABENCH_WEB_IMAGE"
+    "$DATABENCH_POSTGRES_IMAGE"
+    "$DATABENCH_MINIO_IMAGE"
+    "$DATABENCH_MINIO_MC_IMAGE"
+  )
+  if [ -n "${DATABENCH_WORKER_IMAGE:-}" ]; then
+    images+=("$DATABENCH_WORKER_IMAGE")
+  fi
+  for image in "${images[@]}"; do
+    awk -F '|' -v expected="$image" '
+      $1 == expected { matches += 1 }
+      END { exit matches == 1 ? 0 : 1 }
+    ' "${release_dir}/images.lock" || die "release image is not locked exactly once: $image"
+  done
 }

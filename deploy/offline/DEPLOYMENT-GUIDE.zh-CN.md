@@ -17,7 +17,8 @@
 
 1. 离线包不包含 Docker Engine，也不会在目标机安装或升级 Docker。
 2. 安装和运行期间不会执行 `docker pull`、`docker build`、`pnpm install` 或访问公网。
-3. 宿主机只发布 TCP 80。API、PostgreSQL、MinIO 和 MinIO Console不发布宿主机端口。
+3. 宿主机只发布 TCP 80。API、Worker gRPC 50051、PostgreSQL、MinIO 和 MinIO Console
+   不发布宿主机端口。
 4. 当前 Web、REST 和 MCP 都没有应用层鉴权。服务器必须位于不暴露公网的可信内网；任何能访问
    TCP 80 的主体都有完整权限。CIDR/iptables 是可选加固，不是安装前置条件。
 5. 单机部署没有高可用。生产数据必须备份到另一台机器、NAS 或离线介质。
@@ -34,14 +35,18 @@ databench-offline-1.0.0-linux-amd64.tar.gz
 databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 ```
 
-目标 Ubuntu 只接收并使用这两个文件。`.tar.gz` 包含五张 `linux/amd64` 镜像、Compose、安装
-脚本、运维脚本、固定 smoke fixtures 和本文档。
+目标 Ubuntu 只接收并使用这两个文件。`.tar.gz` 包含六张 `linux/amd64` 镜像（API、Web、
+CPU-only Worker、PostgreSQL、MinIO、MinIO Client）、Compose、安装脚本、运维脚本、固定
+smoke fixtures 和本文档。
 
-当前实测：
+历史五镜像包实测：
 
 - `images.tar`：约 412 MB；
 - 最终 `.tar.gz`：约 409.4 MiB；
-- 为依赖波动预留后，传输按 410–430 MB 估算；
+- 当前 CPU-only Worker 单镜像约 499 MiB；
+- 2026-07-27 六镜像 amd64 测试构建：`images.tar` 925,142,528 bytes（约 882 MiB），gzip 后
+  919,433,062 bytes（约 877 MiB），传输按约 0.9 GiB 估算；
+- 正式交付必须记录当次完整归档的实际大小和 SHA-256；
 - 业务数据和备份不包含在该体积中。
 
 建议职责：
@@ -62,7 +67,7 @@ databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 - Docker Buildx 可用；
 - Docker 支持 `docker image save --platform`，建议 Docker 28 或更新版本；
 - Git 工作树干净；
-- 建议至少预留 10 GiB 可用空间给镜像层、构建缓存和归档。
+- 建议至少预留 25 GiB 可用空间给 Worker 依赖、镜像层、构建缓存和归档。
 
 检查命令：
 
@@ -94,10 +99,10 @@ output/offline/databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 
 脚本会自动执行以下操作：
 
-1. 固定 `linux/amd64` 构建 API 和 Web；
+1. 固定 `linux/amd64` 构建 API、Web 和 CPU-only Python Worker；
 2. 拉取精确版本的 PostgreSQL 17、MinIO 和 MinIO Client；
-3. 检查五张镜像的 OS、架构和内容 ID；
-4. 在 amd64 仿真下执行镜像 executable smoke；
+3. 检查六张镜像的 OS、架构和内容 ID；
+4. 在 amd64 仿真下执行镜像 executable smoke，并确认 Worker 的 Torch 不包含 CUDA/NVIDIA 包；
 5. 生成 `images.lock`、`release-manifest.json` 和 `RELEASE.txt`；
 6. 生成包内 `SHA256SUMS`；
 7. 生成外层归档和 `.sha256`。
@@ -146,7 +151,9 @@ deploy/offline/build-bundle.sh 2.0.0
 - `uname -m` 为 `x86_64`；
 - Docker Engine 24.0.0 或更新版本；
 - Docker Compose plugin 2.20.0 或更新版本；
-- 根文件系统至少 20 GiB 可用空间；
+- 至少 8 logical CPUs；
+- `/proc/meminfo` 至少显示 30 GiB RAM；
+- 根文件系统至少 40 GiB 可用空间；
 - TCP 80 未被其他容器发布；
 - 已确定 agent 可达的稳定内网 IP 或 DNS，用于 `http(s)://<host>/api`；
 - 管理员具备 `sudo` 权限。
@@ -159,6 +166,8 @@ deploy/offline/build-bundle.sh 2.0.0
 ```bash
 cat /etc/os-release
 uname -m
+getconf _NPROCESSORS_ONLN
+awk '/^MemTotal:/ {printf "%.1f GiB\n", $2/1024/1024}' /proc/meminfo
 docker version --format 'server={{.Server.Version}}'
 docker compose version --short
 docker info >/dev/null && echo 'docker daemon: OK'
@@ -172,6 +181,8 @@ docker ps --filter publish=80 --format 'table {{.Names}}\t{{.Ports}}'
 - `x86_64`；
 - Docker server 不低于 24；
 - Compose 不低于 2.20；
+- logical CPUs 不低于 8，RAM 不低于 30 GiB；
+- 根文件系统可用空间不低于 40 GiB；
 - 端口检查没有其他容器占用 80。
 
 安装脚本会重复这些检查，不满足时直接退出，不会修改数据。
@@ -233,13 +244,14 @@ sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./insta
 3. 创建安装、配置和数据目录；
 4. 自动生成数据库、MinIO、应用访问和 v2 cursor secret，并把显式 MCP public base 写入独立的
    `/etc/databench/mcp.env`；
-5. 导入五张离线镜像；
+5. 导入六张离线镜像；
 6. 启动 PostgreSQL 和 MinIO；
 7. 创建 MinIO bucket、应用用户和 bucket-scoped policy；
 8. 执行 `prisma migrate deploy`；
-9. 启动 API 和 Web；
-10. 执行 doctor、Caddy proxy、MCP SDK/companion 和固定数据集生命周期 smoke；
-11. 安装 `/usr/local/bin/databenchctl`。
+9. 启动 Worker，等待标准 gRPC health 为 `SERVING`；
+10. 启动 API 和 Web；
+11. 执行 doctor、Caddy proxy、MCP SDK/companion、固定数据集和 `basic-clean@1` 生命周期 smoke；
+12. 安装 `/usr/local/bin/databenchctl`。
 
 安装期间出现的密码不会输出到终端或日志。
 
@@ -278,6 +290,7 @@ Version: 1.0.0
 sudo databenchctl version
 sudo databenchctl status
 sudo databenchctl doctor
+docker inspect --format '{{.State.Health.Status}}' databench-offline-worker
 ```
 
 doctor 成功的精确输出为：
@@ -285,6 +298,9 @@ doctor 成功的精确输出为：
 ```json
 {"database":{"ok":true},"store":{"ok":true}}
 ```
+
+Worker inspect 必须输出 `healthy`。安装 smoke 还会提交一次 `basic-clean@1`，验证结果 Dataset、
+lineage 和重复提交的 deterministic reuse；因此安装成功不仅表示 gRPC 端口打开，也表示完整处理链可用。
 
 ### 7.2 HTTP 检查
 
@@ -332,8 +348,9 @@ sudo ss -lntp
 docker ps --format 'table {{.Names}}\t{{.Ports}}'
 ```
 
-Databench 业务容器只应看到宿主机 `0.0.0.0:80->80/tcp`。PostgreSQL 5432、MinIO 9000/9001
-和 API 8000 不应发布到宿主机。
+Databench 业务容器只应看到宿主机 `0.0.0.0:80->80/tcp`。Worker 50051、PostgreSQL 5432、
+MinIO 9000/9001 和 API 8000 不应发布到宿主机。API 使用 Compose DNS `worker:50051`，不固定
+Docker 子网，因此从历史五镜像版本升级时不需要重建已有网络。
 
 ### 7.4 网络边界与可选防火墙加固
 
@@ -394,6 +411,7 @@ sudo databenchctl status
 sudo databenchctl doctor
 sudo databenchctl logs
 sudo databenchctl logs api
+sudo databenchctl logs worker
 sudo databenchctl logs web
 sudo databenchctl logs postgres
 sudo databenchctl logs minio
@@ -407,7 +425,8 @@ sudo databenchctl logs minio
 sudo databenchctl restart
 ```
 
-该命令重启 API 和 Web，等待健康后运行 doctor。它不会删除或重建数据。
+该命令按 Web/API → Worker 停止，再按 Worker → API → Web 启动，等待健康后运行 doctor。
+它不会删除或重建数据。
 
 需要检查 Docker 自启动策略：
 
@@ -415,7 +434,8 @@ sudo databenchctl restart
 sudo systemctl is-enabled docker
 sudo systemctl is-active docker
 docker inspect --format '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' \
-  databench-offline-postgres databench-offline-minio databench-offline-api databench-offline-web
+  databench-offline-postgres databench-offline-minio databench-offline-worker \
+  databench-offline-api databench-offline-web
 ```
 
 ## 10. 备份
@@ -426,8 +446,9 @@ docker inspect --format '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' \
 sudo databenchctl backup
 ```
 
-备份会暂停 Web/API 写入，依次生成 PostgreSQL custom dump、MinIO bucket mirror、migration
-列表、版本清单、校验文件和加密的配置 escrow，然后重新启动服务并运行 doctor。
+备份会暂停 Web/API 写入并停止 Worker，依次生成 PostgreSQL custom dump、MinIO bucket mirror、
+migration 列表、版本清单、校验文件和加密的配置 escrow，然后按 Worker → API → Web 重新启动
+服务并运行 doctor。Worker 无持久化状态，因此不进入备份内容。
 
 成功时输出 generation 路径，例如：
 
@@ -498,12 +519,12 @@ Compose 不会加载 `mcp.env`，MCP 随旧版停用。
 升级会：
 
 1. 验证新包、版本范围、PostgreSQL major 和 rollback contract；
-2. 停止 Web/API；
+2. 依次停止 Web/API/Worker；
 3. 创建并校验升级前一致性备份；
-4. 导入新镜像；
+4. 导入新版本完整镜像集合（当前为六张）；
 5. 执行 migration；
-6. 启动目标版本；
-7. 执行 doctor、gateway 和数据集生命周期 smoke；
+6. 按 Worker → API → Web 启动目标版本；
+7. 执行 doctor、gateway、MCP、数据集和 `basic-clean@1` 生命周期 smoke；
 8. 全部成功后才原子切换 `current`。
 
 成功后检查：
@@ -518,12 +539,14 @@ curl -fsS http://127.0.0.1/api/version
 实际容器镜像与版本必须一致：
 
 ```bash
-docker inspect --format '{{.Config.Image}}' databench-offline-api databench-offline-web
+docker inspect --format '{{.Config.Image}}' \
+  databench-offline-worker databench-offline-api databench-offline-web
 ```
 
 ### 11.3 升级失败
 
-从停止 API 起，升级脚本安装了失败恢复 trap。备份、镜像、migration、启动、doctor 或 smoke
+从停止应用服务起，升级脚本安装了失败恢复 trap。备份、镜像、migration、Worker/API/Web
+启动、doctor 或 smoke
 任一步失败，脚本会停止目标版本并重新启动 previous release。命令仍会非零退出，便于监控
 发现升级失败。
 
@@ -628,9 +651,11 @@ curl -fsS http://127.0.0.1/api/version
 - [ ] 归档外层 SHA-256 为 `OK`；
 - [ ] 目标机为 Ubuntu 22.04 amd64；
 - [ ] Docker/Compose 版本满足最低要求；
+- [ ] CPU、RAM、系统盘可用空间分别满足 8 logical CPUs、30 GiB、40 GiB 的最低要求；
 - [ ] 首次安装使用稳定 public base 执行 `install.sh`，并一次成功；
 - [ ] `databenchctl version` 与发布版本一致；
 - [ ] `databenchctl doctor` 的 database/store 均为 true；
+- [ ] Worker 为 `healthy`，安装 smoke 已完成 `basic-clean@1`、lineage 和 deterministic reuse；
 - [ ] `/api/version` 的 `service_version` 正确；
 - [ ] `/etc/databench/mcp.env` 为 `root:root 0600`，public base 是实际 agent 可达的 `/api`；
 - [ ] 目标 agent 经 `/api/mcp` 完成 Excel direct import、preview/修改后 import 和 JSONL-only；
@@ -638,13 +663,13 @@ curl -fsS http://127.0.0.1/api/version
 - [ ] API、Caddy 和现场前置代理日志不包含完整 `proc_*` / `exp_*` token；
 - [ ] Web 能从可信内网访问；
 - [ ] 服务器和 TCP 80 未暴露公网；如启用了可选 CIDR allowlist，获准/未获准网段验证符合预期；
-- [ ] 5432、8000、9000、9001 未发布到宿主机；
+- [ ] 50051、5432、8000、9000、9001 未发布到宿主机；
 - [ ] `/etc/databench` 的 `databench.env`、`mcp.env`、`backup.key` 三个文件权限均为 `0600`；
 - [ ] 已创建一份一致性备份并校验；
 - [ ] backup generation、匹配发布包和 `backup.key` 已异机保存；
 - [ ] 已在测试机演练升级失败自动恢复；
 - [ ] 已在测试机演练原机或干净机器恢复；
-- [ ] 宿主机重启后服务和数据恢复；
+- [ ] 宿主机重启后 Worker、API、Web、PostgreSQL、MinIO 服务和数据恢复；
 - [ ] 已记录服务器地址、版本、Git SHA、备份位置；如启用了可选 CIDR allowlist，也已记录其范围。
 
 生产交付记录只有在以上现场项目全部完成后才能签署。Mac 上的 amd64 仿真和 Compose 集成

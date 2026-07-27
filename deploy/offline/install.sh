@@ -50,10 +50,9 @@ compose_for_release "$RELEASE_DIR" run --rm minio-init
 log "applying Prisma migrations"
 compose_for_release "$RELEASE_DIR" run --rm migrate
 
-log "starting API and Web"
-compose_for_release "$RELEASE_DIR" up -d api web
-wait_container_healthy databench-offline-api 180 || die "API did not become healthy"
-wait_container_healthy databench-offline-web 120 || die "Web gateway did not start"
+log "starting Worker, API and Web"
+start_application_services "$RELEASE_DIR" || die "application services did not start"
+wait_application_services "$RELEASE_DIR" || die "application services did not become healthy"
 wait_gateway "$RELEASE_DIR" 120 || die "Caddy did not proxy API health"
 DATABENCH_RELEASE_DIR="$RELEASE_DIR" "${RELEASE_DIR}/smoke.sh"
 run_doctor "$RELEASE_DIR" >/dev/null || die "backend doctor check failed"

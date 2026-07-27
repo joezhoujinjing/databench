@@ -6,7 +6,7 @@
   [ADR 0010 — Long-running Python Worker over internal gRPC](../decisions/0010-python-processing-service-grpc.md)
 - **实现基线：** v2-only 当前代码；V0-V15 与产品切换 R0-R5 已完成，V16/V17 状态不变
 - **首个目标：** 固定 `basic-clean@1` 从现有 Dataset 生成新的 canonical Dataset
-- **部署范围：** 本机和可信私有网络；不自动进入 ADR 0012 离线发布包
+- **部署范围：** 本机和可信私有网络；ADR 0012 后续窄修订已将单 Worker 纳入 Ubuntu 离线包
 
 ## 1. 目标
 
@@ -41,7 +41,7 @@ Worker 是通用的长期 Python 服务。Data-Juicer 是首个 capability，不
 - Redis/RabbitMQ/工作流引擎、独立 dispatcher 服务；
 - 自动重试和 attempt/event 历史表；
 - 提高当前 100k records / 512 MiB canonical bytes 限制；
-- 将 Worker 加入 ADR 0012 离线包。
+- 自动把 Worker 加入 ADR 0012 之外的其他发布环境。
 
 ## 3. 最新代码基线与必要改动
 
@@ -879,7 +879,7 @@ SIGTERM/SIGINT：
 | 变量 | 默认 | 含义 |
 |---|---:|---|
 | `DATABENCH_WORKER_ENABLED` | `false` | 显式启用 Worker runtime |
-| `DATABENCH_WORKER_TARGET` | `127.0.0.1:50051` | internal gRPC target |
+| `DATABENCH_WORKER_TARGET` | `127.0.0.1:50051` | internal gRPC target；离线 Compose 固定 `worker:50051` |
 | `DATABENCH_WORKER_JOB_DEADLINE_MS` | `900000` | 15 分钟 |
 | `DATABENCH_WORKER_LEASE_MS` | `30000` | DB lease |
 | `DATABENCH_WORKER_HEARTBEAT_MS` | `10000` | Worker heartbeat |
@@ -892,7 +892,7 @@ SIGTERM/SIGINT：
 - lease > 2 × heartbeat；
 - terminal EOF < lease；
 - signed URL TTL > job deadline + terminal/finalize buffer；
-- target 不能是公网地址，除非后续安全 ADR 明确授权；
+- target 只接受 loopback、私网 IP 或 ADR 0012 离线 Compose 的精确服务名 `worker`；
 - Worker disabled 时不创建 client/dispatcher/timer。
 
 ### 15.2 Python
@@ -1136,7 +1136,7 @@ Gate：Schema、Workspace、API、Web tests 和全仓 gate 通过；Worker disab
 - real Postgres/MinIO/Worker 100k；
 - restart/cancel/cache/determinism；
 - browser lifecycle；
-- ADR 0012 offline gate 不在本 Step，除非另行修订。
+- P7 当时不包含 ADR 0012 offline gate；该 gate 由后续 ADR 0012 窄修订独立执行。
 
 实际结果：原生 ARM64 Python 3.11.15、uv 0.11.1；Worker 16/16 tests、真实 Postgres + MinIO +
 gRPC 7/7。Data-Juicer 10k 为 6.583 秒，100k 为 34.674 秒，100k repeat 为 32.807 秒且 SHA-256

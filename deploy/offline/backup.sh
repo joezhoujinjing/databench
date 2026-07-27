@@ -38,7 +38,7 @@ cleanup() {
     rm -rf "$TEMP_DIR"
   fi
   if [ "$RESTART_API" = true ]; then
-    compose_for_release "$RELEASE_DIR" up -d api web >/dev/null || true
+    start_application_services "$RELEASE_DIR" >/dev/null || true
   fi
   exit "$status"
 }
@@ -49,7 +49,7 @@ install -d -m 0700 "$TEMP_DIR" "${TEMP_DIR}/minio"
 
 if [ "$API_ALREADY_STOPPED" = false ]; then
   log "stopping API writes for a consistent backup"
-  compose_for_release "$RELEASE_DIR" stop web api
+  stop_application_services "$RELEASE_DIR"
   RESTART_API=true
 fi
 
@@ -107,8 +107,9 @@ mv "$TEMP_DIR" "$FINAL_DIR"
 write_state_value last-backup-generation "$GENERATION"
 
 if [ "$RESTART_API" = true ]; then
-  compose_for_release "$RELEASE_DIR" up -d api web >/dev/null
-  wait_container_healthy databench-offline-api 180 || die "API failed to restart after backup"
+  start_application_services "$RELEASE_DIR" >/dev/null
+  wait_application_services "$RELEASE_DIR" ||
+    die "application services failed to restart after backup"
   run_doctor "$RELEASE_DIR" >/dev/null || die "doctor failed after backup"
   RESTART_API=false
 fi

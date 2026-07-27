@@ -319,7 +319,7 @@ workers/python/
 ├─ Dockerfile
 ├─ src/
 │  ├─ databench_worker/
-│  │  ├─ grpc_server.py · registry.py · runner.py
+│  │  ├─ grpc_server.py · healthcheck.py · registry.py · runner.py
 │  │  ├─ data_juicer_child.py
 │  │  ├─ runtime/artifacts.py · subprocess.py
 │  │  └─ adapters/data_juicer.py
@@ -351,7 +351,7 @@ docs/mcp/
 
 ```text
 deploy/offline/
-├─ compose.yml                    API 加载独立 /etc/databench/mcp.env
+├─ compose.yml                    API 加载 MCP 配置；私网 Worker → API → Web 生命周期
 ├─ mcp.env.example                匿名可信内网 MCP 配置示例
 ├─ MCP-AGENT-GUIDE.zh-CN.md       agent endpoint、三种意图与恢复规则
 ├─ README.zh-CN.md
@@ -360,9 +360,10 @@ deploy/offline/
 ├─ install.sh · upgrade.sh        显式创建或复用 MCP 配置
 ├─ rollback.sh                    停服务前校验 current/target 所需 MCP 配置
 ├─ lib/config.sh                  public base 校验与原子配置
-├─ lib/preflight.sh               根盘与 Databench 数据盘容量检查
+├─ lib/preflight.sh               CPU/RAM、根盘与 Databench 数据盘容量检查
 └─ smoke/
    ├─ mcp.mjs                     官方 SDK + companion lifecycle smoke
+   ├─ worker.mjs                  basic-clean Dataset/lineage/deterministic reuse smoke
    ├─ upstream-failure.mjs        Caddy 502 runtime-log 脱敏 probe
    └─ mcp-draft.jsonl             最小 canonical draft fixture
 ```

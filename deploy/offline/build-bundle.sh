@@ -59,6 +59,7 @@ GIT_SHA="$(git rev-parse HEAD)"
 IMAGE_VERSION="${VERSION//+/-}"
 API_IMAGE="databench-api:${IMAGE_VERSION}"
 WEB_IMAGE="databench-web:${IMAGE_VERSION}"
+WORKER_IMAGE="databench-worker:${IMAGE_VERSION}"
 BUNDLE_NAME="databench-offline-${VERSION}-linux-amd64"
 BUNDLE_DIR="${OUTPUT_ROOT}/${BUNDLE_NAME}"
 ARCHIVE="${OUTPUT_ROOT}/${BUNDLE_NAME}.tar.gz"
@@ -93,6 +94,16 @@ docker buildx build \
   --tag "$WEB_IMAGE" \
   .
 
+log "building $WORKER_IMAGE for $PLATFORM"
+docker buildx build \
+  --platform "$PLATFORM" \
+  --load \
+  --label "org.opencontainers.image.revision=${GIT_SHA}" \
+  --label "org.opencontainers.image.version=${VERSION}" \
+  --file workers/python/Dockerfile \
+  --tag "$WORKER_IMAGE" \
+  workers/python
+
 pull_and_retag() {
   local role="$1"
   local source_image="$2"
@@ -118,13 +129,23 @@ inspect_image() {
   [ "$actual" = "$PLATFORM" ] || die "$image has platform $actual, expected $PLATFORM"
 }
 
-for image in "$API_IMAGE" "$WEB_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"; do
+for image in "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"; do
   inspect_image "$image"
 done
 
 log "running amd64 image executable smoke"
 docker run --rm --platform "$PLATFORM" "$API_IMAGE" databench help --compact >/dev/null
 docker run --rm --platform "$PLATFORM" "$WEB_IMAGE" caddy validate --config /etc/caddy/Caddyfile
+docker run --rm --platform "$PLATFORM" "$WORKER_IMAGE" --help >/dev/null
+docker run --rm --platform "$PLATFORM" \
+  --entrypoint /app/.venv/bin/python "$WORKER_IMAGE" -c '
+import importlib.metadata as metadata
+import torch
+
+installed = {distribution.metadata["Name"].lower() for distribution in metadata.distributions()}
+assert torch.version.cuda is None and not torch.cuda.is_available()
+assert not any(name == "triton" or name.startswith("nvidia-") for name in installed)
+' >/dev/null
 docker run --rm --platform "$PLATFORM" "$POSTGRES_IMAGE" postgres --version >/dev/null
 docker run --rm --platform "$PLATFORM" "$MINIO_IMAGE" minio --version >/dev/null
 docker run --rm --platform "$PLATFORM" "$MINIO_MC_IMAGE" --version >/dev/null
@@ -158,6 +179,7 @@ cat > "${BUNDLE_DIR}/release.env" <<EOF
 DATABENCH_VERSION=${VERSION}
 DATABENCH_API_IMAGE=${API_IMAGE}
 DATABENCH_WEB_IMAGE=${WEB_IMAGE}
+DATABENCH_WORKER_IMAGE=${WORKER_IMAGE}
 DATABENCH_POSTGRES_IMAGE=${POSTGRES_IMAGE}
 DATABENCH_MINIO_IMAGE=${MINIO_IMAGE}
 DATABENCH_MINIO_MC_IMAGE=${MINIO_MC_IMAGE}
@@ -175,6 +197,7 @@ write_lock_line() {
   printf '# databench offline images lock v1\n'
   write_lock_line "$API_IMAGE" "git:${GIT_SHA}"
   write_lock_line "$WEB_IMAGE" "git:${GIT_SHA}"
+  write_lock_line "$WORKER_IMAGE" "git:${GIT_SHA}"
   write_lock_line "$POSTGRES_IMAGE" "$POSTGRES_SOURCE_IMAGE"
   write_lock_line "$MINIO_IMAGE" "$MINIO_SOURCE_IMAGE"
   write_lock_line "$MINIO_MC_IMAGE" "$MINIO_MC_SOURCE_IMAGE"
@@ -196,9 +219,10 @@ docker_version=$(docker version --format '{{.Client.Version}}')
 buildx_version=$(docker buildx version | awk '{print $2}')
 EOF
 
-log "saving five images"
+log "saving six images"
 docker save --platform "$PLATFORM" --output "${BUNDLE_DIR}/images.tar" \
-  "$API_IMAGE" "$WEB_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"
+  "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" \
+  "$MINIO_MC_IMAGE"
 
 (
   cd "$BUNDLE_DIR"

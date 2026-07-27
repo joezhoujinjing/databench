@@ -7,7 +7,9 @@
   authorizes one narrow asynchronous v2 Data-Juicer transform that publishes a
   canonical Dataset through TypeScript. The 2026-07-27 amendment adds optional,
   create-only result naming without changing Dataset identity or transform-cache
-  identity.
+  identity. A later 2026-07-27 ADR 0012 amendment explicitly includes this Worker
+  in the Ubuntu single-host offline release; other deployments remain disabled by
+  default.
 - **Date:** 2026-07-23; amended 2026-07-25 and 2026-07-27
 - **Deciders:** owner
 - **Amends:** [ADR 0001](0001-rebuild-as-ts-monorepo.md) Python boundary
@@ -271,16 +273,17 @@ runtime composition owned by the real API entrypoint:
 `createApp()`, OpenAPI generation and tests remain side-effect free: they do not
 start timers, connect to Worker or launch a dispatcher.
 
-### 11. Keep the first deployment local/private and optional
+### 11. Keep deployment local/private and explicitly scoped
 
 Worker is disabled unless explicitly configured. Local native development binds
 gRPC to loopback; containers expose it only on a private network. The initial
 implementation does not make this capability Internet-facing, multi-tenant or
 multi-replica.
 
-ADR 0012's existing offline release does not automatically gain Worker. Adding
-the Worker image and lifecycle to that release requires a separate narrow ADR
-0012 amendment and offline bundle verification.
+ADR 0012 originally did not automatically gain Worker. Its later narrow amendment
+now explicitly adds the Worker image and lifecycle to the trusted-intranet Ubuntu
+offline release and requires a new bundle/lifecycle gate. This does not enable
+Worker in ECS, public-cloud or arbitrary deployments.
 
 ### 12. Pin the Python runtime and dependencies
 
@@ -305,7 +308,7 @@ pool routing.
 - multiple Worker replicas or distributed compute;
 - automatic retries;
 - general-purpose arbitrary Python execution;
-- adding Worker to the ADR 0012 offline bundle;
+- automatically enabling Worker outside the explicitly amended ADR 0012 offline bundle;
 - raising the current 100k / 512 MiB canonical Dataset limits.
 
 ## Alternatives rejected

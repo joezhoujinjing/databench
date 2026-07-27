@@ -19,6 +19,24 @@ wait_container_healthy() {
   return 1
 }
 
+start_application_services() {
+  local release_dir="$1"
+  if release_has_worker "$release_dir"; then
+    compose_for_release "$release_dir" up -d worker
+    wait_container_healthy databench-offline-worker 240 || return 1
+  fi
+  compose_for_release "$release_dir" up -d api web
+}
+
+wait_application_services() {
+  local release_dir="$1"
+  if release_has_worker "$release_dir"; then
+    wait_container_healthy databench-offline-worker 240 || return 1
+  fi
+  wait_container_healthy databench-offline-api 180 || return 1
+  wait_container_healthy databench-offline-web 120 || return 1
+}
+
 doctor_report() {
   local release_dir="$1"
   compose_for_release "$release_dir" run --rm --no-deps \

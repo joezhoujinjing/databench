@@ -77,7 +77,18 @@ sudo systemctl start docker
 如果当前用户执行 `docker info` 权限不足，安装仍应使用 `sudo ./install.sh`。不要为了方便把
 Docker socket 改成全局可写。
 
-### 2.5 磁盘不足
+### 2.5 CPU 或内存不足
+
+```bash
+getconf _NPROCESSORS_ONLN
+awk '/^MemTotal:/ {printf "%.1f GiB\n", $2/1024/1024}' /proc/meminfo
+```
+
+完整 Worker 离线部署最低要求 8 logical CPUs 和 30 GiB 可见 RAM。不要通过改脚本或环境变量
+绕过后继续作为生产安装；资源不足会让 Data-Juicer 作业、API 和存储服务争抢资源。应调整目标机
+规格后重跑安装。
+
+### 2.6 磁盘不足
 
 ```bash
 df -h /
@@ -88,7 +99,7 @@ sudo du -xh /srv/databench --max-depth=2 | sort -h
 先转移旧离线归档或非 Databench 文件。不要直接删除 `/var/lib/docker`、PostgreSQL 或 MinIO
 目录。清理 Docker 镜像前先确认它们没有被当前、previous 或 stable release 使用。
 
-### 2.6 TCP 80 已占用
+### 2.7 TCP 80 已占用
 
 ```bash
 sudo ss -lntp '( sport = :80 )'
@@ -234,6 +245,36 @@ API 使用 bucket-scoped app key，不使用 MinIO root key。不要把 root sec
 
 ## 7. API 或 Web 问题
 
+### 7.0 Worker unhealthy 或 `basic-clean` 失败
+
+```bash
+docker inspect --format '{{json .State.Health}}' databench-offline-worker
+docker logs --tail 300 databench-offline-worker
+docker exec databench-offline-worker /app/.venv/bin/databench-worker-healthcheck
+docker inspect --format '{{json .NetworkSettings.Networks}}' databench-offline-worker
+docker inspect --format '{{json .NetworkSettings.Networks}}' databench-offline-api
+```
+
+- healthcheck 失败：先看 Worker 日志是否为依赖加载失败、只读文件系统或 `/tmp` 空间不足；
+- Worker healthy 但 API 启动失败：确认两者都连接 `databench-offline` 网络，API 目标由发布包固定为
+  Compose DNS `worker:50051`；不要手工固定容器 IP 或发布宿主机 50051；
+- 作业返回 `artifact_transfer_failed`：同时检查 API、Worker 和 MinIO 日志，确认容器私网与 MinIO
+  exact-key 签名 URL 可达；日志或工单中不得粘贴完整签名 URL；
+- `/tmp` 达到 4 GiB：等待当前作业结束并确认 Worker 自动清理。不要扩大 tmpfs 掩盖超过当前
+  512 MiB canonical artifact 上限的异常输入。
+
+Worker 镜像固定 CPU-only Torch；以下命令不应输出 CUDA/NVIDIA package：
+
+```bash
+docker exec databench-offline-worker /app/.venv/bin/python -c \
+  'import torch; print(torch.__version__, torch.version.cuda)'
+docker exec -e UV_CACHE_DIR=/tmp/uv-cache databench-offline-worker \
+  /usr/local/bin/uv pip list --python /app/.venv/bin/python | \
+  grep -Ei 'nvidia|cuda|triton' || true
+```
+
+预期 `torch.version.cuda` 为 `None`，第二条无输出。
+
 ### 7.1 API unhealthy
 
 ```bash
@@ -375,7 +416,7 @@ Caddy access log在离线配置中默认关闭，runtime error log 会删除 req
 
 ### 9.1 备份失败后服务状态
 
-备份脚本在普通调用失败时会尝试重新启动 Web/API。立即检查：
+备份脚本在普通调用失败时会尝试按 Worker → API → Web 重新启动应用服务。立即检查：
 
 ```bash
 sudo databenchctl status
@@ -509,6 +550,7 @@ sudo databenchctl rollback <previous-version> --backup <generation>
 sudo systemctl status docker --no-pager
 docker ps -a --format 'table {{.Names}}\t{{.Status}}'
 sudo databenchctl status
+docker inspect --format '{{.State.Health.Status}}' databench-offline-worker
 ```
 
 先启动 Docker：

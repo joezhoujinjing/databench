@@ -55,6 +55,12 @@ describe('api support', () => {
       enabled: true,
       target: '10.20.30.40:50051',
     })
+    expect(loadConfig({ ...base, DATABENCH_WORKER_TARGET: 'worker:50051' }).worker).toMatchObject({
+      enabled: true,
+      target: 'worker:50051',
+    })
+    expect(() => loadConfig({ ...base, DATABENCH_WORKER_TARGET: 'worker:50052' })).toThrow()
+    expect(() => loadConfig({ ...base, DATABENCH_WORKER_TARGET: 'worker.example:50051' })).toThrow()
     expect(() => loadConfig({ ...base, DATABENCH_WORKER_TARGET: '8.8.8.8:50051' })).toThrow()
     expect(() => loadConfig({ ...base, DATABENCH_WORKER_LEASE_MS: '20000' })).toThrow()
     expect(() => loadConfig({ ...base, DATABENCH_WORKER_SIGNED_URL_TTL_MS: '910000' })).toThrow()

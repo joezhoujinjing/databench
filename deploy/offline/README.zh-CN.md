@@ -30,9 +30,9 @@ databench-offline-1.0.0-linux-amd64.tar.gz
 databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 ```
 
-脚本固定构建 `linux/amd64`，拉取精确版本的 PostgreSQL 17、MinIO 和 MinIO Client，检查每个
-镜像的平台和内容 ID，并写入 `images.lock`。如果数据库迁移不再向后兼容，构建时必须显式
-改变两个配套属性：
+脚本固定构建 `linux/amd64` 的 API、Web 和 CPU-only Python Worker，拉取精确版本的
+PostgreSQL 17、MinIO 和 MinIO Client，检查六张镜像的平台和内容 ID，并写入 `images.lock`。
+如果数据库迁移不再向后兼容，构建时必须显式改变两个配套属性：
 
 ```bash
 DATABASE_MIGRATION=restore-on-rollback \
@@ -42,8 +42,8 @@ deploy/offline/build-bundle.sh 2.0.0
 
 ## 首次安装
 
-目标机前置条件：Ubuntu 22.04 LTS amd64、Docker Engine 24+、Compose plugin 2.20+，以及至少
-20 GiB 可用空间。Docker 的安装和升级不属于本发布包。
+目标机前置条件：Ubuntu 22.04 LTS amd64、Docker Engine 24+、Compose plugin 2.20+、至少
+8 logical CPUs、30 GiB 可见 RAM 和 40 GiB 系统盘可用空间。Docker 的安装和升级不属于本发布包。
 
 将 `.tar.gz` 和 `.sha256` 一起复制到服务器。服务器必须位于不暴露公网的可信内网；当前没有
 应用层认证，任何能访问 TCP 80 的主体都有完整权限。企业内网本身已经封闭时，不需要额外配置
@@ -60,9 +60,11 @@ sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./insta
 MinIO 和 v2 cursor secret，直接写入 `/etc/databench/databench.env`，权限为 `0600`；重跑或
 升级不会覆盖它们。备份 escrow key 会单独写入 `/etc/databench/backup.key`，同样为 `0600`。
 
-当前五张 amd64 镜像实测 `images.tar` 约 412 MB，最终 `.tar.gz` 预计约 410–430 MB。业务数据、
-备份和 Docker 已有缓存不包含在这个数字中；传输和落盘建议至少预留 2 GB 临时空间，服务器
-整体仍按安装器要求保留至少 20 GiB 可用空间。
+历史五镜像包的 `.tar.gz` 约 409 MiB。当前 CPU-only Worker 单镜像实测约 499 MiB；2026-07-27
+六镜像 amd64 测试构建的 `images.tar` 为 925,142,528 bytes（约 882 MiB），gzip 后为
+919,433,062 bytes（约 877 MiB），因此完整发布包按 **约 0.9 GiB** 传输。正式交付仍以当次
+`ls -lh` 和 `.sha256` 为准。业务数据、备份和 Docker 已有缓存不包含在包体积中；服务器仍须
+满足安装器的 40 GiB 系统盘可用空间检查。
 
 `DATABENCH_MCP_PUBLIC_BASE_URL` 必须是目标 agent 实际能访问的稳定地址，path 精确为 `/api`，
 不能使用容器名、自动猜测的首个网卡地址或尾随 `/`；DNS 使用小写，默认 HTTP(S) 端口必须省略，
@@ -123,8 +125,10 @@ sudo ./upgrade.sh
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./upgrade.sh
 ```
 
-升级会停止 API、创建一致性备份、导入镜像、迁移数据库，再运行 doctor 和固定数据集生命周期
-冒烟。任一步失败会自动恢复 previous release。普通向后兼容迁移可以直接回滚应用镜像：
+升级会依次停止 Web/API/Worker、创建一致性备份、导入镜像、迁移数据库，再按
+Worker → API → Web 启动并运行 doctor、固定数据集、MCP 和 `basic-clean@1` 生命周期冒烟。
+任一步失败会自动恢复 previous release；回滚到旧五镜像版本时 Worker 会保持停止。普通向后
+兼容迁移可以直接回滚应用镜像：
 
 ```bash
 sudo databenchctl rollback 1.0.0

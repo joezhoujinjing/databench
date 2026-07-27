@@ -14,5 +14,7 @@ RUN uv sync --frozen --no-dev
 
 USER 65532:65532
 EXPOSE 50051
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 \
+  CMD ["/app/.venv/bin/databench-worker-healthcheck"]
 ENTRYPOINT ["/app/.venv/bin/databench-worker"]
 CMD ["--listen", "0.0.0.0:50051"]

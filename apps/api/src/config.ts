@@ -66,7 +66,7 @@ const EnvSchema = z
       context.addIssue({
         code: 'custom',
         path: ['DATABENCH_WORKER_TARGET'],
-        message: 'Worker target must be a loopback or private-network IP address',
+        message: 'Worker target must be localhost, the offline worker service, or a private IP',
       })
     }
   })
@@ -141,6 +141,7 @@ function isPrivateWorkerTarget(value: string): boolean {
   const host = (match[1] ?? match[2] ?? '').toLowerCase()
   const port = Number(match[3])
   if (!Number.isInteger(port) || port < 1 || port > 65_535) return false
+  if (host === 'worker') return port === 50_051
   if (host === 'localhost' || host === '::1') return true
   if (isIP(host) === 6) return host.startsWith('fc') || host.startsWith('fd')
   if (isIP(host) !== 4) return false

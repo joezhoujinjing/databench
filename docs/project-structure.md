@@ -70,6 +70,10 @@ publication、layout+Run+job 原子完成、读回验证与成功后的 exact st
 REST/Web 产品面、生产 runtime 显式启用接线和最终验证。
 进度与后续施工边界以 `docs/processing/` 为真源。
 
+ADR 0012 的后续窄修订将一个 CPU-only Worker 纳入 Ubuntu 单机离线包。它只通过 Compose 私网
+`worker:50051` 被 API 调用，不发布宿主机端口、不持有长期存储凭据、不增加持久化目录；其他发布
+环境仍保持 disabled-by-default。
+
 ## 依赖方向
 
 只能向下依赖，不得成环：
@@ -147,12 +151,15 @@ packages/<name>/
 - 托管对象存储：Aliyun OSS；本地及离线单机使用 S3-compatible MinIO adapter。
 - 离线 MCP：`/etc/databench/mcp.env` 独立保存匿名模式、agent 可达 `/api` public base 与可选
   origins；旧 release 不读取该文件。
+- 离线 Worker：作为第六张镜像随 bundle 交付，使用 4 GiB tmpfs；备份仍只覆盖 PostgreSQL、
+  MinIO、release/config escrow。
 - OpenAPI：API Zod route → `openapi/openapi.json` →
   `apps/web/src/api/generated/schema.ts`。
 - Node 版本：`.nvmrc`，当前 Node 22 LTS。
 
 ## 当前发布边界
 
-产品切换 R0-R5 与 MCP M0-M2 已完成。MCP 只获授权进入 ADR 0012 的匿名可信内网离线通道；
-通用部署保持默认关闭，公网部署未授权。V16/V17 的 recovery/security/capacity 状态不因产品切换
-或 MCP scoped gate 自动完成；公共云 API 托管平台仍受 D3 owner 决策门约束。
+产品切换 R0-R5 与 MCP M0-M2 已完成。MCP 和单个 CPU-only Worker 只获授权进入 ADR 0012 的
+匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
+recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台
+仍受 D3 owner 决策门约束。

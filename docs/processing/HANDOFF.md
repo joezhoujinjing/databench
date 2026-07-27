@@ -378,7 +378,7 @@ canonical 算法保持单一实现。Worker 未配置或缺少 `data_juicer.batc
 - 不开放 YAML/operator composer/字段选择；
 - 不加 LLM、多租户、Redis、自动 retry；
 - 不把 500k benchmark 当当前 Dataset E2E；
-- 不隐式加入 ADR 0012 offline bundle；
+- 不隐式加入 ADR 0012 之外的发布环境；Ubuntu 离线 bundle 已由 ADR 0012 后续窄修订显式纳入；
 - 不修改旧只读仓库 `~/Desktop/databench/`；
 - 不把桌面实验目录当依赖。
 

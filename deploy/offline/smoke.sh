@@ -34,6 +34,11 @@ compose_for_release "$SCRIPT_DIR" run --rm --no-deps \
   --volume "${SCRIPT_DIR}/smoke/mcp.mjs:/app/mcp-smoke.mjs:ro" \
   --entrypoint node api /app/mcp-smoke.mjs /opt/databench/smoke/mcp-draft.jsonl
 
+log "running canonical basic-clean lifecycle smoke through the offline Worker"
+compose_for_release "$SCRIPT_DIR" run --rm --no-deps \
+  --volume "${SCRIPT_DIR}/smoke/worker.mjs:/app/worker-smoke.mjs:ro" \
+  --entrypoint node api /app/worker-smoke.mjs
+
 API_STOPPED=false
 restart_api_after_probe() {
   local status=$?
@@ -62,10 +67,17 @@ trap - EXIT
 
 PROCESS_LOG_SENTINEL="proc_$(printf 'f%.0s' {1..64})"
 EXPORT_LOG_SENTINEL="exp_$(printf 'e%.0s' {1..64})"
-MCP_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs web api 2>&1)"
+MCP_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs web api worker 2>&1)"
 case "$MCP_SERVICE_LOGS" in
   *"$PROCESS_LOG_SENTINEL"*|*"$EXPORT_LOG_SENTINEL"*)
     die "API or Caddy logs exposed an MCP bearer token path"
+    ;;
+esac
+
+WORKER_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs api worker 2>&1)"
+case "$WORKER_SERVICE_LOGS" in
+  *X-Amz-Signature*|*X-Amz-Credential*|*X-Amz-Security-Token*)
+    die "API or Worker logs exposed an object-store signed URL"
     ;;
 esac
 log "lifecycle smoke passed"
