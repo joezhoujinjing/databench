@@ -709,6 +709,8 @@ export class V2Workspace {
       params,
     })
     const cacheKey = hashV2TransformCache(cacheIdentity)
+    const resultRefNamespaceId =
+      request.result_ref === undefined ? null : await this.#namespace(context.signal)
     let row: CatalogTransformJobRowV2
     try {
       row = await waitWithAbort(
@@ -722,6 +724,8 @@ export class V2Workspace {
           capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
           capabilityVersion: '1',
           inputCount: BigInt(inputCount),
+          resultRefNamespaceId,
+          resultRefName: request.result_ref ?? null,
         }),
         context.signal,
       )

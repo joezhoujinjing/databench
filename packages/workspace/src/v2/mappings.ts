@@ -158,6 +158,14 @@ export function transformJobFromCatalog(row: CatalogTransformJobRowV2): Transfor
     output_count:
       row.outputCount === null ? null : storedBigIntToSafeNumber(row.outputCount, 'output_count'),
     output_dataset_version: row.outputVersion,
+    result_ref:
+      row.resultRef == null
+        ? null
+        : {
+            name: row.resultRef.name,
+            status: row.resultRef.status,
+            version: row.resultRef.version,
+          },
     cache_hit: row.cacheHit,
     error:
       row.error === null

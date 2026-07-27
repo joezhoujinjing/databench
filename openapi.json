@@ -379,6 +379,10 @@
             "maxItems": 1,
             "minItems": 1,
             "type": "array"
+          },
+          "result_ref": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
+            "type": "string"
           }
         },
         "required": [
@@ -3698,6 +3702,35 @@
         ],
         "type": "object"
       },
+      "TransformJobResultRefV2": {
+        "additionalProperties": false,
+        "nullable": true,
+        "properties": {
+          "name": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "updated",
+              "conflict"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "nullable": true,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
       "TransformJobStateConflictDetailV2": {
         "additionalProperties": false,
         "properties": {
@@ -3838,6 +3871,9 @@
           "progress": {
             "$ref": "#/components/schemas/TransformJobProgressV2"
           },
+          "result_ref": {
+            "$ref": "#/components/schemas/TransformJobResultRefV2"
+          },
           "started_at": {
             "nullable": true,
             "type": "string"
@@ -3866,6 +3902,7 @@
           "input_count",
           "output_count",
           "output_dataset_version",
+          "result_ref",
           "cache_hit",
           "error",
           "created_at",

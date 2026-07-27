@@ -133,6 +133,7 @@ describe('P2 transform job contracts', () => {
     input_count: 1,
     output_count: null,
     output_dataset_version: null,
+    result_ref: null,
     cache_hit: false,
     error: null,
     created_at: '2026-07-25T12:00:00.000Z',
@@ -156,6 +157,28 @@ describe('P2 transform job contracts', () => {
         finished_at: '2026-07-25T12:01:00.000Z',
       }).success,
     ).toBe(true)
+    expect(
+      TransformJobV2Schema.safeParse({
+        ...queued,
+        result_ref: { name: 'clean-result', status: 'pending', version: null },
+      }).success,
+    ).toBe(true)
+    expect(
+      TransformJobV2Schema.safeParse({
+        ...queued,
+        status: 'completed',
+        output_count: 1,
+        output_dataset_version: OUTPUT,
+        result_ref: { name: 'clean-result', status: 'updated', version: OUTPUT },
+        finished_at: '2026-07-25T12:01:00.000Z',
+      }).success,
+    ).toBe(true)
+    expect(
+      TransformJobV2Schema.safeParse({
+        ...queued,
+        result_ref: { name: 'clean-result', status: 'updated', version: OUTPUT },
+      }).success,
+    ).toBe(false)
     expect(
       TransformJobV2Schema.safeParse({
         ...queued,

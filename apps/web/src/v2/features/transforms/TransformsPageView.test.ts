@@ -41,6 +41,7 @@ describe('V2 transform form helpers', () => {
       input_count: 10,
       output_count: null,
       output_dataset_version: null,
+      result_ref: null,
       cache_hit: false,
       error: null,
       created_at: '2026-07-25T12:00:00.000Z',

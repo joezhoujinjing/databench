@@ -208,8 +208,12 @@ export function useV2CreateBasicCleanJob() {
   const { base, connectionScope, token } = useBackend()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: string) =>
-      createBasicCleanJobV2({ base, request: { inputs: [input] }, token }),
+    mutationFn: ({ input, resultRef }: { input: string; resultRef: string }) =>
+      createBasicCleanJobV2({
+        base,
+        request: { inputs: [input], result_ref: resultRef },
+        token,
+      }),
     onSuccess: async (job) => {
       queryClient.setQueryData(v2QueryKeys.transformJob(connectionScope, base, job.id), job)
       await queryClient.invalidateQueries({

@@ -163,6 +163,10 @@
         "input": "Input dataset",
         "inputHint": "Enter a dataset name or exact version. Custom operators and parameters are not exposed yet.",
         "inputRequired": "Enter an input dataset.",
+        "resultRef": "Result name",
+        "resultRefHint": "Created when the job completes; an existing name is never overwritten.",
+        "resultRefPlaceholder": "For example, test222-cleaned",
+        "resultRefRequired": "Enter a result name.",
         "submit": "Start cleaning",
         "submitting": "Submitting…",
         "recent": "Recent jobs",
@@ -172,6 +176,34 @@
         "inputCount": "{{count}} input",
         "outputCount": "{{count}} retained",
         "filteredCount": "{{count}} filtered",
+        "inputVersion": "Input version {{version}}",
+        "resultLabel": "Result",
+        "noResultRef": "Historical job without a result name",
+        "unchanged": "No data change; input version reused",
+        "resultRefConflict": "The dataset was produced, but the result name currently points to {{version}} and was not overwritten.",
+        "resultRefStatus": {
+          "pending": "Waiting to create",
+          "updated": "Name created",
+          "conflict": "Name conflict"
+        },
+        "pipeline": {
+          "title": "Fixed cleaning pipeline",
+          "description": "Every basic-clean job runs these operators in order; operators and parameters are fixed.",
+          "version": "basic-clean-v1",
+          "whitespace": {
+            "title": "Normalize whitespace",
+            "detail": "Normalizes whitespace in temporary decision text without rewriting the published record."
+          },
+          "length": {
+            "title": "Filter by length",
+            "detail": "Retains text with at least 40 characters after normalization (min_len = 40)."
+          },
+          "deduplicate": {
+            "title": "Exact deduplication",
+            "detail": "Removes exact full-text duplicates with case preserved (lowercase = false)."
+          },
+          "publication": "Operators select retained records only. Databench then publishes the original records as a canonical dataset and creates the result name entered above."
+        },
         "cancelling": "Cancelling…",
         "retry": "Run again",
         "retrying": "Retrying…",

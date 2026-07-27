@@ -106,6 +106,7 @@ function BasicCleanJobs() {
   const cancel = useV2CancelTransformJob()
   const retry = useV2RetryTransformJob()
   const [input, setInput] = useState('')
+  const [resultRef, setResultRef] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
 
   function submit(event: FormEvent) {
@@ -115,8 +116,13 @@ function BasicCleanJobs() {
       setFormError(t('v2.transforms.jobs.inputRequired'))
       return
     }
+    const normalizedResultRef = resultRef.trim()
+    if (normalizedResultRef === '') {
+      setFormError(t('v2.transforms.jobs.resultRefRequired'))
+      return
+    }
     setFormError(null)
-    create.mutate(value)
+    create.mutate({ input: value, resultRef: normalizedResultRef })
   }
 
   return (
@@ -126,13 +132,27 @@ function BasicCleanJobs() {
         <SurfaceDescription>{t('v2.transforms.jobs.description')}</SurfaceDescription>
       </SurfaceHeader>
       <SurfaceBody>
-        <form className="grid items-end gap-3 md:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submit}>
+        <form
+          className="grid items-end gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+          onSubmit={submit}
+        >
           <Field hint={t('v2.transforms.jobs.inputHint')} label={t('v2.transforms.jobs.input')}>
             <TextInput
               aria-label={t('v2.transforms.jobs.input')}
               onChange={(event) => setInput(event.currentTarget.value)}
               placeholder={t('v2.transforms.inputPlaceholder')}
               value={input}
+            />
+          </Field>
+          <Field
+            hint={t('v2.transforms.jobs.resultRefHint')}
+            label={t('v2.transforms.jobs.resultRef')}
+          >
+            <TextInput
+              aria-label={t('v2.transforms.jobs.resultRef')}
+              onChange={(event) => setResultRef(event.currentTarget.value)}
+              placeholder={t('v2.transforms.jobs.resultRefPlaceholder')}
+              value={resultRef}
             />
           </Field>
           <Button disabled={create.isPending} type="submit">
@@ -150,6 +170,7 @@ function BasicCleanJobs() {
           </div>
         ) : null}
       </SurfaceBody>
+      <BasicCleanPipeline />
       <div className="border-border border-t">
         <div className="flex items-center justify-between gap-3 px-5 py-3">
           <h3 className="font-medium text-sm">{t('v2.transforms.jobs.recent')}</h3>
@@ -207,6 +228,12 @@ function TransformJobRow({
   const canRetry = job.status === 'failed' || job.status === 'cancelled'
   const filtered = job.output_count === null ? null : job.input_count - job.output_count
   const progress = transformJobProgressPercent(job)
+  const inputVersion = job.input_dataset_versions[0] ?? ''
+  const unchanged = job.status === 'completed' && job.output_dataset_version === inputVersion
+  const resultTarget =
+    job.result_ref?.status === 'updated'
+      ? job.result_ref.name
+      : (job.output_dataset_version ?? null)
   return (
     <article className="grid gap-4 border-border border-t px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
       <div className="min-w-0 space-y-3">
@@ -233,7 +260,33 @@ function TransformJobRow({
           {filtered === null ? null : (
             <span>{t('v2.transforms.jobs.filteredCount', { count: formatInteger(filtered) })}</span>
           )}
+          <span title={inputVersion}>
+            {t('v2.transforms.jobs.inputVersion', {
+              version: ellipsizeMiddle(inputVersion, 8),
+            })}
+          </span>
         </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {job.result_ref === null ? (
+            <span className="text-dim-foreground">{t('v2.transforms.jobs.noResultRef')}</span>
+          ) : (
+            <>
+              <span className="text-muted-foreground">{t('v2.transforms.jobs.resultLabel')}</span>
+              <code>{job.result_ref.name}</code>
+              <Badge tone={job.result_ref.status === 'conflict' ? 'orange' : 'muted'}>
+                {t(`v2.transforms.jobs.resultRefStatus.${job.result_ref.status}`)}
+              </Badge>
+            </>
+          )}
+          {unchanged ? <Badge tone="violet">{t('v2.transforms.jobs.unchanged')}</Badge> : null}
+        </div>
+        {job.result_ref?.status === 'conflict' ? (
+          <p className="text-danger text-sm">
+            {t('v2.transforms.jobs.resultRefConflict', {
+              version: ellipsizeMiddle(job.result_ref.version ?? '', 8),
+            })}
+          </p>
+        ) : null}
         {job.progress === null ? null : (
           <div className="max-w-xl">
             <div className="mb-1 flex justify-between text-dim-foreground text-xs">
@@ -263,15 +316,15 @@ function TransformJobRow({
             {retrying ? t('v2.transforms.jobs.retrying') : t('v2.transforms.jobs.retry')}
           </Button>
         ) : null}
-        {job.output_dataset_version ? (
+        {resultTarget ? (
           <>
             <Button asChild size="sm">
-              <Link params={{ ref: job.output_dataset_version }} to="/datasets/$ref">
+              <Link params={{ ref: resultTarget }} to="/datasets/$ref">
                 {t('v2.transforms.jobs.openDataset')}
               </Link>
             </Button>
             <Button asChild size="sm" variant="outline">
-              <Link params={{ ref: job.output_dataset_version }} to="/lineage/$ref">
+              <Link params={{ ref: resultTarget }} to="/lineage/$ref">
                 {t('v2.transforms.jobs.openLineage')}
               </Link>
             </Button>
@@ -279,6 +332,60 @@ function TransformJobRow({
         ) : null}
       </div>
     </article>
+  )
+}
+
+function BasicCleanPipeline() {
+  const { t } = useTranslation()
+  const steps = [
+    {
+      operator: 'whitespace_normalization_mapper',
+      title: t('v2.transforms.jobs.pipeline.whitespace.title'),
+      detail: t('v2.transforms.jobs.pipeline.whitespace.detail'),
+    },
+    {
+      operator: 'text_length_filter',
+      title: t('v2.transforms.jobs.pipeline.length.title'),
+      detail: t('v2.transforms.jobs.pipeline.length.detail'),
+    },
+    {
+      operator: 'document_deduplicator',
+      title: t('v2.transforms.jobs.pipeline.deduplicate.title'),
+      detail: t('v2.transforms.jobs.pipeline.deduplicate.detail'),
+    },
+  ]
+  return (
+    <section className="border-border border-t bg-surface-soft/40 px-5 py-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-medium text-sm">{t('v2.transforms.jobs.pipeline.title')}</h3>
+          <p className="mt-1 text-muted-foreground text-xs leading-5">
+            {t('v2.transforms.jobs.pipeline.description')}
+          </p>
+        </div>
+        <Badge>{t('v2.transforms.jobs.pipeline.version')}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        {steps.map((step, index) => (
+          <div
+            className="rounded-[6px] border border-border bg-background/70 p-4"
+            key={step.operator}
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-dim-foreground text-xs">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <span className="font-medium text-sm">{step.title}</span>
+            </div>
+            <code className="mt-2 block break-all text-primary text-xs">{step.operator}</code>
+            <p className="mt-2 text-muted-foreground text-xs leading-5">{step.detail}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-dim-foreground text-xs leading-5">
+        {t('v2.transforms.jobs.pipeline.publication')}
+      </p>
+    </section>
   )
 }
 

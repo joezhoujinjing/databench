@@ -185,6 +185,15 @@ export interface CatalogTransformJobErrorV2 {
   readonly retryable: boolean
 }
 
+export type CatalogTransformJobResultRefStatusV2 = 'pending' | 'updated' | 'conflict'
+
+export interface CatalogTransformJobResultRefV2 {
+  readonly namespaceId: string
+  readonly name: string
+  readonly status: CatalogTransformJobResultRefStatusV2
+  readonly version: string | null
+}
+
 export interface CreateTransformJobV2 {
   readonly id: string
   readonly cacheKey: string
@@ -195,6 +204,8 @@ export interface CreateTransformJobV2 {
   readonly capabilityName: string
   readonly capabilityVersion: string
   readonly inputCount: bigint
+  readonly resultRefNamespaceId: string | null
+  readonly resultRefName: string | null
 }
 
 export interface CatalogTransformJobRowV2 extends CreateTransformJobV2 {
@@ -208,6 +219,7 @@ export interface CatalogTransformJobRowV2 extends CreateTransformJobV2 {
   readonly outputKey: string | null
   readonly outputCount: bigint | null
   readonly outputVersion: string | null
+  readonly resultRef: CatalogTransformJobResultRefV2 | null
   readonly cacheHit: boolean
   readonly error: CatalogTransformJobErrorV2 | null
   readonly createdAt: Date

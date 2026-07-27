@@ -493,6 +493,9 @@ progress_json          bounded summary only
 input_key/output_key   exact staging keys, never signed URLs
 input_count/output_count
 output_version         nullable; completed must be non-null
+result_ref_namespace_id/name   nullable pair; one requested result name per deterministic job
+result_ref_status       nullable; pending/updated/conflict
+result_ref_version      nullable; observed target after adoption
 error_json             stable code + safe summary
 created_at/started_at/finished_at/updated_at
 ```
@@ -548,13 +551,20 @@ stateDiagram-v2
 3. 检查 Dataset/layout 已登记且 manifest 可验证；
 4. 规范化 params；
 5. 计算 cache key/job ID；
-6. 如果 `V2Run` 已存在，幂等创建/返回 completed cache-hit job；
-7. 如果相同 cache key job 已存在，返回现有 job；
-8. 否则插入 queued job。
+6. 校验可选 `result_ref`，但不把它加入 cache key；
+7. 如果 `V2Run` 已存在，幂等创建/返回 completed cache-hit job，并立即尝试 create-only 结果 Ref；
+8. 如果相同 cache key job 已存在，返回现有 job；没有绑定名称的旧 job 可原子绑定首次提交的
+   `result_ref`，已经绑定其他名称则不改变；
+9. 否则插入 queued job，并把结果名称状态记为 `pending`。
 
 同一个 cache key 不并行创建多个 Python 执行。重新提交 create 返回原 job；失败/取消后只能
 通过显式 retry 将同一 job 条件式放回 queued。retry 必须确认 cleanup fence 已清除、旧 staging
 exact keys 已处理，并保留同一个 job/cache key；系统不自动 retry。
+
+每个 deterministic job 最多绑定一个结果名称。结果名称不是业务输入，不改变 Dataset identity、
+Run identity 或 Worker 执行。completed cache hit 与正常 finalization 使用同一个 Catalog helper：
+名称不存在则创建，已指向同一 output 则幂等 `updated`，已指向其他版本或已删除则 `conflict`，
+绝不覆盖、移动或恢复已有 Ref。结果命名冲突不把成功的 job 改成 failed。
 
 ### 9.4 Claim 与 lease
 
@@ -664,7 +674,7 @@ sequenceDiagram
   participant OS as OSS/MinIO
   participant PY as Worker
 
-  UI->>API: POST /v2/transforms/basic-clean/jobs
+  UI->>API: POST /v2/transforms/basic-clean/jobs (input + result_ref)
   API->>WS: createTransformJob
   WS->>DB: resolve exact input + upsert queued job
   API-->>UI: 202 job resource
@@ -682,7 +692,7 @@ sequenceDiagram
   WS->>WS: verify strict retained subset
   WS->>WS: reload exact input + build V2Dataset
   WS->>OS: prepare + conditional canonical commit
-  WS->>DB: register layout + Run + completed job
+  WS->>DB: register layout + Run + create-only result Ref + completed job
   WS->>OS: delete exact staging keys
   UI->>API: GET job
   API-->>UI: completed + output Dataset version
@@ -707,7 +717,7 @@ Workspace 在 finalizing 状态：
 6. 只在 finalization 期间取得 transform semaphore，不在 60 秒 Worker 执行期间持有内存
    Dataset lease 或 semaphore；
 7. canonical Store prepare/commit；
-8. Catalog 单事务登记 layout、Run、lineage inputs 和 completed job；
+8. Catalog 单事务登记 layout、Run、lineage inputs、create-only 结果 Ref 和 completed job；
 9. 读取 Run/manifest 验证；
 10. best-effort exact staging cleanup。
 
@@ -716,8 +726,9 @@ Workspace 在 finalizing 状态：
 ```text
 register layout if needed
 register deterministic V2Run
+adopt the optional result Ref with create-only semantics
 verify job is current finalizing attempt/token
-set job completed + output_version + counts
+set job completed + output_version + counts + result_ref status
 clear lease
 ```
 
@@ -747,14 +758,16 @@ POST /v2/transform-jobs/{jobId}:cancel
 POST /v2/transform-jobs/{jobId}:retry
 ```
 
-创建请求严格为：
+创建请求为：
 
 ```json
-{"inputs":["dataset-ref-or-version"]}
+{"inputs":["dataset-ref-or-version"],"result_ref":"cleaned-dataset-name"}
 ```
 
-只允许一个输入，没有 `params`、Ref update 或 YAML。创建总是返回 `202` 和 job resource；如果
-相同 cache key 已完成，resource 可立即是 `completed + cache_hit=true`。
+只允许一个输入，没有 `params` 或 YAML。`result_ref` 对 REST 兼容旧客户端为可选，对 Web 提交
+为必填；它只请求 create-only 结果命名，不是已有 Ref 的 update/move。创建总是返回 `202` 和 job
+resource；如果相同 cache key 已完成，resource 可立即是 `completed + cache_hit=true`，并完成
+结果 Ref adoption。
 
 读取 job 不要求 Worker 在线。Worker 未配置或缺少 capability 时，创建返回稳定的 dependency/
 capability unavailable error；路由仍存在于确定性 OpenAPI。
@@ -772,6 +785,7 @@ attempt
 progress{phase, completed_units, total_units?}
 input_count/output_count
 output_dataset_version?
+result_ref?{name, status, version?}
 cache_hit
 error?
 created_at/started_at/finished_at
@@ -790,14 +804,17 @@ created_at/started_at/finished_at
 第一版页面只有：
 
 - 选择一个输入 Dataset；
-- 显示固定“基础清洗”；
+- 输入一个必填的“结果名称”；
+- 集中显示固定“基础清洗”的三个步骤、算子顺序、技术名和固定参数；
 - 提交；
 - 轮询状态、取消；
 - 失败/取消后的显式重试；
 - 完成后链接 output Dataset 和 lineage；
 - 显示 input/output/filtered counts。
 
-不显示 Worker、gRPC、Data-Juicer YAML 或算子编排器。高级技术信息可只显示 operation/version。
+固定流程是只读说明，不提供增删、排序或改参数。不显示 Worker、gRPC、Data-Juicer YAML 或算子
+编排器。任务完成后同时显示结果名称及其 `pending/updated/conflict` 状态；当 input/output version
+相同时明确说明“结果无变化，复用输入版本”。高级技术信息可显示 operation/version 和固定算子名。
 
 ### 13.4 CLI
 
@@ -1104,7 +1121,7 @@ finalizer，完整生成可读 Dataset、Run 和 lineage。全仓 lint/build/typ
 ### P6 — 产品面（已完成）
 
 - `/v2` routes、OpenAPI、generated client；
-- Transform 页最小提交/进度/取消/结果；
+- Transform 页最小提交/进度/取消/结果、结果命名和固定算子流程展示；
 - CLI job commands 延后，不扩大本切片；
 - 无 composer、无自定义配置。
 
@@ -1142,6 +1159,8 @@ pnpm test:worker:product-e2e
 - Python 不访问 PG、canonical keys、identity、Run、Ref 或 lineage；
 - Data-Juicer operation 无公共参数、无编排、无 YAML；
 - job 创建锁定 exact input version 和 cache key；
+- `result_ref` 不进入 cache key；完成或 cache hit 时 create-only adoption，同版本幂等，冲突不覆盖；
+- Web 必填结果名称，并在同一区域只读展示固定算子顺序、技术名、参数和无变化复用提示；
 - staging 只作为临时交换，不成为公共结果；
 - completed 必须有可读 canonical Dataset、Run 和 exact lineage；
 - output records 与 input revisions 完全一致，只做 selection；
