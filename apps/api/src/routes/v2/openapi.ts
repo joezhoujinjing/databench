@@ -4,6 +4,7 @@ import {
   ErrorResponse422V2Schema,
   ErrorResponse500V2Schema,
   ErrorResponse503V2Schema,
+  EvaluationRunStateConflictErrorResponseV2Schema,
   ForbiddenErrorResponseV2Schema,
   IngestConflictErrorResponseV2Schema,
   InternalErrorResponseV2Schema,
@@ -145,6 +146,44 @@ export const V2_TRANSFORM_JOB_ACTION_ERROR_RESPONSES = {
     TransformJobStateConflictErrorResponseV2Schema,
     'Transform job state conflict',
   ),
+} as const
+
+export const V2_EVALUATION_RUN_CREATE_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed evaluation run request'),
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Exact Dataset was not found'),
+  409: jsonResponseV2(
+    EvaluationRunStateConflictErrorResponseV2Schema,
+    'Provider task create request conflicts with its existing run',
+  ),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Evaluation request is too large'),
+  422: jsonResponseV2(ErrorResponse422V2Schema, 'Invalid evaluation plan or fidelity approval'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_EVALUATION_RUN_LIST_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid evaluation run page request'),
+  ...internalResponse,
+  ...dependencyFailureResponse,
+} as const
+
+export const V2_EVALUATION_RUN_SHOW_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Evaluation run was not found'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid evaluation run identifier'),
+  ...internalResponse,
+  ...dependencyFailureResponse,
+} as const
+
+export const V2_EVALUATION_RUN_ACTION_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed evaluation transition request'),
+  ...V2_EVALUATION_RUN_SHOW_ERROR_RESPONSES,
+  409: jsonResponseV2(
+    EvaluationRunStateConflictErrorResponseV2Schema,
+    'Evaluation run state or replay body conflicts',
+  ),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Evaluation transition is too large'),
 } as const
 
 export const V2_REF_LIST_ERROR_RESPONSES = {

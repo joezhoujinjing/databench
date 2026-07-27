@@ -20,7 +20,9 @@
 - ADR 0017 EvalScope 原生 UI 集成已接受并开始实施。E0 已固定 upstream commit、183 个 Web source
   文件、60 个能力、default-deny API 路由、五类 Benchmark fixture 和 Plotly 证据；E1 已完成
   `evalscope-general-qa@1.0.0` 三种 reference profile、确定性 JSONL、eligibility/fidelity 与真实 exact
-  Dataset export。当前仍没有 `/evaluations/*` 产品路由或 EvalScope runtime，下一步是 E2 run 控制面。
+  Dataset export；E2 已完成 `evaluation_runs_v2`、canonical create digest、exact Dataset binding、状态机和
+  `/v2/evaluation-runs*` REST。当前仍没有 `/evaluations/*` 产品路由或 EvalScope runtime，下一步是 E3
+  backend-only service、安全 gateway 与任务正确性边界。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 

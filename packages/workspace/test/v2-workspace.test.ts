@@ -6,6 +6,10 @@ import { join } from 'node:path'
 import type { Writable } from 'node:stream'
 import {
   type DeleteRefResultV2 as CatalogDeleteRefResultV2,
+  type CatalogEvaluationRunCursorV2,
+  type CatalogEvaluationRunListFilterV2,
+  type CatalogEvaluationRunPageV2,
+  type CatalogEvaluationRunRowV2,
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
   type CatalogIdentityClaimRowV2,
@@ -22,11 +26,13 @@ import {
   type ClearCompletedTransformJobStagingV2,
   type CompareAndSetRefV2,
   type CompleteTransformJobV2,
+  type CreateEvaluationRunV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
   type RestoreRefV2,
+  type TransitionEvaluationRunV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
   V2CatalogRefConflictError,
@@ -2412,6 +2418,188 @@ interface FakeFailures {
   audit?: unknown
 }
 
+describe('V2Workspace evaluation runs', () => {
+  test('re-inspects the exact Dataset, stores the normalized plan, and replays create by provider task', async () => {
+    const rig = createRig()
+    const dataset = makeDataset('e', 'Evaluate this prompt exactly.')
+    rig.seed(dataset)
+    const inspected = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    const request = {
+      provider: 'evalscope' as const,
+      provider_task_id: 'task-evaluation-1',
+      dataset_version: dataset.version,
+      source_ref: 'main',
+      converter: 'evalscope-general-qa' as const,
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: inspected.fidelity_digest,
+      model_name: 'Qwen/Qwen3-8B',
+      evalscope_commit: 'a'.repeat(40),
+    }
+
+    const first = await rig.workspace.createEvaluationRun(request)
+    const replay = await rig.workspace.createEvaluationRun(request)
+
+    expect(replay.id).toBe(first.id)
+    expect(first).toMatchObject({
+      status: 'prepared',
+      dataset_version: dataset.version,
+      source_ref: 'main',
+      converter: 'evalscope-general-qa',
+      converter_version: '1.0.0',
+      converter_options: { target_source: 'none' },
+      fidelity_digest: inspected.fidelity_digest,
+      benchmark: 'general_qa',
+      archive_status: 'not_requested',
+    })
+    expect(rig.catalog.createOrReadEvaluationRun).toHaveBeenCalledTimes(2)
+    expect(rig.catalog.getRef).not.toHaveBeenCalled()
+  })
+
+  test('rejects create digest mismatch without depending on the current Ref target', async () => {
+    const rig = createRig()
+    const dataset = makeDataset('d', 'Exact version survives a Ref move.')
+    rig.seed(dataset)
+    rig.catalog.refs.set('main', refRow('main', 'f'.repeat(64), null))
+    const inspected = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    const base = {
+      provider: 'evalscope' as const,
+      provider_task_id: 'task-ref-independent',
+      dataset_version: dataset.version,
+      source_ref: 'main',
+      converter: 'evalscope-general-qa' as const,
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: inspected.fidelity_digest,
+      model_name: 'model-a',
+      evalscope_commit: null,
+    }
+    await expect(rig.workspace.createEvaluationRun(base)).resolves.toMatchObject({
+      dataset_version: dataset.version,
+      source_ref: 'main',
+    })
+    await expect(
+      rig.workspace.createEvaluationRun({ ...base, model_name: 'model-b' }),
+    ).rejects.toMatchObject({
+      code: 'evaluation_run_state_conflict',
+      detail: { reason: 'create_request_mismatch', requested_status: null },
+    })
+  })
+
+  test('enforces the transition matrix and idempotent terminal replay body', async () => {
+    const rig = createRig()
+    const dataset = makeDataset('c', 'Run lifecycle prompt.')
+    rig.seed(dataset)
+    const inspected = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    const prepared = await rig.workspace.createEvaluationRun({
+      provider: 'evalscope',
+      provider_task_id: 'task-lifecycle',
+      dataset_version: dataset.version,
+      source_ref: null,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: inspected.fidelity_digest,
+      model_name: null,
+      evalscope_commit: null,
+    })
+    await expect(rig.workspace.startEvaluationRun(prepared.id, {})).resolves.toMatchObject({
+      status: 'running',
+    })
+    await expect(rig.workspace.startEvaluationRun(prepared.id, {})).resolves.toMatchObject({
+      status: 'running',
+    })
+    const completion = {
+      metrics: [
+        {
+          dataset: 'general_qa',
+          subset: 'databench',
+          metric: 'accuracy',
+          score: 1,
+          sample_count: 1,
+          categories: [],
+        },
+      ],
+      provider_report_ids: ['report-1'],
+    }
+    await expect(
+      rig.workspace.completeEvaluationRun(prepared.id, completion),
+    ).resolves.toMatchObject({ status: 'completed', ...completion })
+    await expect(
+      rig.workspace.completeEvaluationRun(prepared.id, completion),
+    ).resolves.toMatchObject({ status: 'completed' })
+    await expect(
+      rig.workspace.completeEvaluationRun(prepared.id, {
+        ...completion,
+        provider_report_ids: ['report-2'],
+      }),
+    ).rejects.toMatchObject({
+      code: 'evaluation_run_state_conflict',
+      detail: { reason: 'terminal_body_mismatch', status: 'completed' },
+    })
+    await expect(
+      rig.workspace.failEvaluationRun(prepared.id, {
+        error: { phase: 'provider', code: 'late_failure', message: 'late failure' },
+      }),
+    ).rejects.toMatchObject({
+      code: 'evaluation_run_state_conflict',
+      detail: { reason: 'invalid_transition', status: 'completed' },
+    })
+  })
+
+  test('uses a filter-bound opaque cursor for evaluation run pages', async () => {
+    const rig = createRig()
+    const dataset = makeDataset('b', 'Paged run prompt.')
+    rig.seed(dataset)
+    const inspected = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    for (const providerTaskId of ['task-page-1', 'task-page-2', 'task-page-3']) {
+      await rig.workspace.createEvaluationRun({
+        provider: 'evalscope',
+        provider_task_id: providerTaskId,
+        dataset_version: dataset.version,
+        source_ref: null,
+        converter: 'evalscope-general-qa',
+        converter_options: { target_source: 'none' },
+        accepted_fidelity_digest: inspected.fidelity_digest,
+        model_name: null,
+        evalscope_commit: null,
+      })
+    }
+    const first = await rig.workspace.listEvaluationRuns({
+      dataset_version: dataset.version,
+      status: 'prepared',
+      cursor: null,
+      limit: 2,
+    })
+    expect(first.items).toHaveLength(2)
+    expect(first.next_cursor).not.toBeNull()
+    const second = await rig.workspace.listEvaluationRuns({
+      dataset_version: dataset.version,
+      status: 'prepared',
+      cursor: first.next_cursor,
+      limit: 2,
+    })
+    expect(second.items).toHaveLength(1)
+    await expect(
+      rig.workspace.listEvaluationRuns({
+        dataset_version: dataset.version,
+        status: 'running',
+        cursor: first.next_cursor,
+        limit: 2,
+      }),
+    ).rejects.toMatchObject({ code: 'validation_error' })
+  })
+})
+
 class FakeStore implements V2Store {
   readonly readDatasetLimits: Readonly<V2DatasetLimits>
   readonly committed = new Map<string, V2Dataset>()
@@ -2537,6 +2725,7 @@ class FakeCatalog implements V2WorkspaceCatalog {
   readonly refs = new Map<string, CatalogRefRowV2>()
   readonly runs = new Map<string, CatalogRunRowV2>()
   readonly jobs = new Map<string, CatalogTransformJobRowV2>()
+  readonly evaluationRuns = new Map<string, CatalogEvaluationRunRowV2>()
   readonly claims = new Map<string, CatalogIdentityClaimRowV2>()
   readonly listPages = new Map<string | null, CatalogRefPageV2>()
   readonly deletedListPages = new Map<string | null, CatalogRefPageV2>()
@@ -2765,6 +2954,103 @@ class FakeCatalog implements V2WorkspaceCatalog {
       }
       this.jobs.set(id, queued)
       return queued
+    },
+  )
+
+  readonly createOrReadEvaluationRun = vi.fn(
+    async (input: CreateEvaluationRunV2): Promise<CatalogEvaluationRunRowV2> => {
+      const existing = [...this.evaluationRuns.values()].find(
+        (row) =>
+          row.namespaceId === input.namespaceId &&
+          row.provider === input.provider &&
+          row.providerTaskId === input.providerTaskId,
+      )
+      if (existing) return existing
+      const serial = String(this.evaluationRuns.size + 1).padStart(12, '0')
+      const row: CatalogEvaluationRunRowV2 = {
+        ...input,
+        id: `22222222-2222-4222-8222-${serial}`,
+        providerReportIds: null,
+        status: 'prepared',
+        metrics: null,
+        error: null,
+        archiveStatus: 'not_requested',
+        archiveAttempt: 0,
+        resultArtifactKey: null,
+        resultArtifactDigest: null,
+        resultArtifactSizeBytes: null,
+        archiveError: null,
+        createdAt: NOW,
+        startedAt: null,
+        finishedAt: null,
+        updatedAt: NOW,
+      }
+      this.evaluationRuns.set(row.id, row)
+      return row
+    },
+  )
+
+  readonly getEvaluationRun = vi.fn(
+    async (namespaceId: string, id: string): Promise<CatalogEvaluationRunRowV2 | null> => {
+      const row = this.evaluationRuns.get(id)
+      return row?.namespaceId === namespaceId ? row : null
+    },
+  )
+
+  readonly listEvaluationRuns = vi.fn(
+    async (
+      namespaceId: string,
+      filter: CatalogEvaluationRunListFilterV2,
+      before: CatalogEvaluationRunCursorV2 | null,
+      limit: number,
+    ): Promise<CatalogEvaluationRunPageV2> => {
+      const rows = [...this.evaluationRuns.values()]
+        .filter(
+          (row) =>
+            row.namespaceId === namespaceId &&
+            (filter.datasetVersion === null || row.datasetVersion === filter.datasetVersion) &&
+            (filter.status === null || row.status === filter.status) &&
+            (before === null ||
+              row.createdAt < before.createdAt ||
+              (row.createdAt.getTime() === before.createdAt.getTime() && row.id < before.id)),
+        )
+        .sort((left, right) =>
+          left.createdAt.getTime() === right.createdAt.getTime()
+            ? right.id.localeCompare(left.id)
+            : right.createdAt.getTime() - left.createdAt.getTime(),
+        )
+      const visible = rows.slice(0, limit)
+      const last = rows.length > limit ? visible.at(-1) : undefined
+      return {
+        rows: visible,
+        nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null,
+      }
+    },
+  )
+
+  readonly transitionEvaluationRun = vi.fn(
+    async (input: TransitionEvaluationRunV2): Promise<CatalogEvaluationRunRowV2 | null> => {
+      const row = this.evaluationRuns.get(input.id)
+      if (!row || row.namespaceId !== input.namespaceId) return null
+      const allowed =
+        (input.status === 'running' && row.status === 'prepared') ||
+        (input.status === 'completed' && row.status === 'running') ||
+        ((input.status === 'failed' || input.status === 'cancelled') &&
+          (row.status === 'prepared' || row.status === 'running'))
+      if (!allowed) return row
+      const next: CatalogEvaluationRunRowV2 = {
+        ...row,
+        status: input.status,
+        providerReportIds:
+          input.status === 'completed' ? input.providerReportIds : row.providerReportIds,
+        metrics: input.status === 'completed' ? input.metrics : row.metrics,
+        error: input.status === 'failed' || input.status === 'cancelled' ? input.error : row.error,
+        startedAt: input.status === 'running' ? NOW : row.startedAt,
+        finishedAt: input.status === 'running' ? null : NOW,
+        updatedAt: NOW,
+      }
+      this.evaluationRuns.set(next.id, next)
+      return next
     },
   )
 

@@ -681,6 +681,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
   }
 
   async function clearV2Catalog(): Promise<void> {
+    await prisma.v2EvaluationRun.deleteMany()
     await prisma.v2RecordParentEdge.deleteMany()
     await prisma.v2RecordRevisionLocation.deleteMany()
     await prisma.v2TransformJob.deleteMany()

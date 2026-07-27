@@ -1,6 +1,10 @@
 import { parse as parsePath, resolve as resolvePath } from 'node:path'
 import {
   type DeleteRefResultV2 as CatalogDeleteRefResultV2,
+  type CatalogEvaluationRunCursorV2,
+  type CatalogEvaluationRunListFilterV2,
+  type CatalogEvaluationRunPageV2,
+  type CatalogEvaluationRunRowV2,
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
   type CatalogLayoutRowV2,
@@ -16,11 +20,13 @@ import {
   type ClearCompletedTransformJobStagingV2,
   type CompareAndSetRefV2,
   type CompleteTransformJobV2,
+  type CreateEvaluationRunV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
   type RestoreRefV2,
+  type TransitionEvaluationRunV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
   V2CatalogRefConflictError,
@@ -34,7 +40,9 @@ import {
 import {
   canonicalJsonV2,
   createArtifactHasher,
+  hashV2EvaluationRunCreate,
   hashV2TransformCache,
+  V2_EVALUATION_RUN_CREATE_PROFILE,
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
 } from '@databench/hashing'
@@ -57,8 +65,12 @@ import {
   type AuditResultV2,
   AuditResultV2Schema,
   assertExportFidelityAcceptedV2,
+  type CancelEvaluationRunRequestV2,
+  CancelEvaluationRunRequestV2Schema,
   type CanonicalDraftRecordV1,
   CapacityExceededError,
+  type CompleteEvaluationRunRequestV2,
+  CompleteEvaluationRunRequestV2Schema,
   type ConverterAnalysisV2,
   type ConverterDescriptorV2,
   ConverterDescriptorV2Schema,
@@ -66,6 +78,8 @@ import {
   ConverterNameV2Schema,
   type CreateBasicCleanJobRequestV2,
   CreateBasicCleanJobRequestV2Schema,
+  type CreateEvaluationRunRequestV2,
+  CreateEvaluationRunRequestV2Schema,
   type CursorPageRequestV2,
   CursorPageRequestV2Schema,
   canonicalPreviewRecordFromDraftV1,
@@ -91,9 +105,18 @@ import {
   DigestHexV2Schema,
   datasetLayoutIdentityV2FromManifest,
   deriveRecordEligibilityV2,
+  EvaluationRunIdV2Schema,
+  type EvaluationRunPageRequestV2,
+  EvaluationRunPageRequestV2Schema,
+  type EvaluationRunPageV2,
+  EvaluationRunPageV2Schema,
+  EvaluationRunStateConflictErrorV2,
+  type EvaluationRunV2,
   type ExportPlanV2,
   type ExportRequestV2,
   ExportRequestV2Schema,
+  type FailEvaluationRunRequestV2,
+  FailEvaluationRunRequestV2Schema,
   type IngestResultV2,
   IngestResultV2Schema,
   type InspectExportRequestV2,
@@ -139,6 +162,7 @@ import {
   RunTransformRequestV2Schema,
   type RunTransformResultV2,
   RunTransformResultV2Schema,
+  StartEvaluationRunRequestV2Schema,
   TransformCacheIdentityV1Schema,
   type TransformDescriptorV2,
   TransformDescriptorV2Schema,
@@ -153,6 +177,7 @@ import {
   V2_LINEAGE_MAX_NODES,
   V2_RECORD_JSON_LAYOUT_VERSION,
   V2_TRANSFORM_MAX_INPUTS,
+  ValidationError,
 } from '@databench/schema'
 import {
   createV2ObjectStore,
@@ -195,6 +220,7 @@ import {
   type V2CanonicalDraftMaterializeOptions,
 } from './canonical-draft-materializer.js'
 import { V2CursorCodec } from './cursor.js'
+import { evaluationBenchmarkFromPlanV2, evaluationRunFromCatalogV2 } from './evaluation.js'
 import { V2WorkspaceIdentityAllocator } from './identity-allocator.js'
 import {
   deletedRefMetadataFromCatalog,
@@ -259,6 +285,17 @@ export interface V2WorkspaceCatalog {
     limit: number,
   ): Promise<CatalogRefPageV2>
   restoreRef(input: RestoreRefV2): Promise<CatalogRestoreRefResultV2>
+  createOrReadEvaluationRun(input: CreateEvaluationRunV2): Promise<CatalogEvaluationRunRowV2>
+  getEvaluationRun(namespaceId: string, id: string): Promise<CatalogEvaluationRunRowV2 | null>
+  listEvaluationRuns(
+    namespaceId: string,
+    filter: CatalogEvaluationRunListFilterV2,
+    before: CatalogEvaluationRunCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogEvaluationRunPageV2>
+  transitionEvaluationRun(
+    input: TransitionEvaluationRunV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null>
 }
 
 export interface V2WorkspaceOperationOptions extends V2OperationContext {}
@@ -864,6 +901,278 @@ export class V2Workspace {
       })
     }
     return transformJobFromCatalog(row)
+  }
+
+  async createEvaluationRun(
+    requestInput: CreateEvaluationRunRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunV2> {
+    context.signal?.throwIfAborted()
+    const request = CreateEvaluationRunRequestV2Schema.parse(requestInput)
+    const descriptor = this.getConverter(request.converter)
+    if (descriptor === null || !descriptor.task_views.includes('evaluation-qa')) {
+      throw new ValidationError('Converter does not support EvalScope evaluation tasks', {
+        issues: [
+          {
+            path: '/converter',
+            line: null,
+            code: 'evaluation_converter_required',
+            message: 'Converter must support the evaluation-qa task view',
+          },
+        ],
+      })
+    }
+    const plan = await this.inspectExport(
+      request.dataset_version,
+      { converter: request.converter, options: request.converter_options },
+      context,
+    )
+    assertExportFidelityAcceptedV2(plan, request.accepted_fidelity_digest)
+    const benchmark = evaluationBenchmarkFromPlanV2(plan)
+    const namespaceId = await this.#namespace(context.signal)
+    const createRequestDigest = hashV2EvaluationRunCreate({
+      evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
+      provider: request.provider,
+      provider_task_id: request.provider_task_id,
+      dataset_version: request.dataset_version,
+      source_ref: request.source_ref,
+      converter: request.converter,
+      converter_version: plan.converter_version,
+      normalized_options: plan.normalized_options,
+      fidelity_digest: plan.fidelity_digest,
+      benchmark,
+      model_name: request.model_name,
+      evalscope_commit: request.evalscope_commit,
+    })
+    let row: CatalogEvaluationRunRowV2
+    try {
+      row = await waitWithAbort(
+        this.#catalog.createOrReadEvaluationRun({
+          namespaceId,
+          provider: request.provider,
+          providerTaskId: request.provider_task_id,
+          createRequestDigest,
+          datasetVersion: request.dataset_version,
+          sourceRef: request.source_ref,
+          converter: request.converter,
+          converterVersion: plan.converter_version,
+          converterOptions: plan.normalized_options,
+          fidelityDigest: plan.fidelity_digest,
+          benchmark,
+          modelName: request.model_name,
+          evalscopeCommit: request.evalscope_commit,
+        }),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row.namespaceId !== namespaceId) {
+      throw new IntegrityError('Catalog returned an evaluation run from another namespace', {
+        reason: 'evaluation_namespace_mismatch',
+        dataset_version: request.dataset_version,
+      })
+    }
+    if (row.createRequestDigest !== createRequestDigest) {
+      throw new EvaluationRunStateConflictErrorV2({
+        reason: 'create_request_mismatch',
+        run_id: row.id,
+        status: row.status,
+        requested_status: null,
+      })
+    }
+    return evaluationRunFromCatalogV2(row)
+  }
+
+  async getEvaluationRun(
+    idInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunV2 | null> {
+    context.signal?.throwIfAborted()
+    const id = EvaluationRunIdV2Schema.parse(idInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogEvaluationRunRowV2 | null
+    try {
+      row = await waitWithAbort(this.#catalog.getEvaluationRun(namespaceId, id), context.signal)
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    return row === null ? null : evaluationRunFromCatalogV2(row)
+  }
+
+  async listEvaluationRuns(
+    requestInput: EvaluationRunPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunPageV2> {
+    context.signal?.throwIfAborted()
+    const request = EvaluationRunPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const datasetVersion = request.dataset_version ?? null
+    const status = request.status ?? null
+    const cursorState =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeEvaluationRun(request.cursor, namespaceId, datasetVersion, status)
+    const before =
+      cursorState === null
+        ? null
+        : { createdAt: new Date(cursorState.created_at), id: cursorState.id }
+    let page: CatalogEvaluationRunPageV2
+    try {
+      page = await waitWithAbort(
+        this.#catalog.listEvaluationRuns(
+          namespaceId,
+          { datasetVersion, status },
+          before,
+          request.limit,
+        ),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (page.rows.length > request.limit) {
+      throw new IntegrityError('Catalog returned too many evaluation runs', {
+        reason: 'evaluation_run_page_overflow',
+      })
+    }
+    return EvaluationRunPageV2Schema.parse({
+      items: page.rows.map(evaluationRunFromCatalogV2),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeEvaluationRun(namespaceId, {
+              created_at: page.nextCursor.createdAt.toISOString(),
+              id: page.nextCursor.id,
+              dataset_version: datasetVersion,
+              status,
+            }),
+    })
+  }
+
+  async startEvaluationRun(
+    idInput: string,
+    requestInput: unknown,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunV2> {
+    context.signal?.throwIfAborted()
+    StartEvaluationRunRequestV2Schema.parse(requestInput)
+    return await this.#transitionEvaluationRun(
+      {
+        namespaceId: await this.#namespace(context.signal),
+        id: EvaluationRunIdV2Schema.parse(idInput),
+        status: 'running',
+      },
+      context,
+    )
+  }
+
+  async completeEvaluationRun(
+    idInput: string,
+    requestInput: CompleteEvaluationRunRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunV2> {
+    context.signal?.throwIfAborted()
+    const id = EvaluationRunIdV2Schema.parse(idInput)
+    const request = CompleteEvaluationRunRequestV2Schema.parse(requestInput)
+    return await this.#transitionEvaluationRun(
+      {
+        namespaceId: await this.#namespace(context.signal),
+        id,
+        status: 'completed',
+        metrics: request.metrics.map((metric) => ({
+          dataset: metric.dataset,
+          subset: metric.subset,
+          metric: metric.metric,
+          score: metric.score,
+          sampleCount: metric.sample_count,
+          categories: metric.categories,
+        })),
+        providerReportIds: request.provider_report_ids,
+      },
+      context,
+    )
+  }
+
+  async failEvaluationRun(
+    idInput: string,
+    requestInput: FailEvaluationRunRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunV2> {
+    context.signal?.throwIfAborted()
+    const id = EvaluationRunIdV2Schema.parse(idInput)
+    const request = FailEvaluationRunRequestV2Schema.parse(requestInput)
+    return await this.#transitionEvaluationRun(
+      {
+        namespaceId: await this.#namespace(context.signal),
+        id,
+        status: 'failed',
+        error: request.error,
+      },
+      context,
+    )
+  }
+
+  async cancelEvaluationRun(
+    idInput: string,
+    requestInput: CancelEvaluationRunRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunV2> {
+    context.signal?.throwIfAborted()
+    const id = EvaluationRunIdV2Schema.parse(idInput)
+    const request = CancelEvaluationRunRequestV2Schema.parse(requestInput)
+    return await this.#transitionEvaluationRun(
+      {
+        namespaceId: await this.#namespace(context.signal),
+        id,
+        status: 'cancelled',
+        error: request.error,
+      },
+      context,
+    )
+  }
+
+  async #transitionEvaluationRun(
+    input: TransitionEvaluationRunV2,
+    context: V2WorkspaceOperationOptions,
+  ): Promise<EvaluationRunV2> {
+    let row: CatalogEvaluationRunRowV2 | null
+    try {
+      row = await waitWithAbort(this.#catalog.transitionEvaluationRun(input), context.signal)
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row === null) {
+      throw new NotFoundError(`Evaluation run was not found: ${input.id}`, { run_id: input.id })
+    }
+    if (row.namespaceId !== input.namespaceId) {
+      throw new IntegrityError('Catalog returned an evaluation run from another namespace', {
+        reason: 'evaluation_namespace_mismatch',
+        dataset_version: row.datasetVersion,
+      })
+    }
+    const run = evaluationRunFromCatalogV2(row)
+    if (run.status !== input.status) {
+      throw new EvaluationRunStateConflictErrorV2({
+        reason: 'invalid_transition',
+        run_id: run.id,
+        status: run.status,
+        requested_status: input.status,
+      })
+    }
+    if (!evaluationTransitionBodyMatches(run, input)) {
+      throw new EvaluationRunStateConflictErrorV2({
+        reason: 'terminal_body_mismatch',
+        run_id: run.id,
+        status: run.status,
+        requested_status: input.status,
+      })
+    }
+    return run
   }
 
   listConverters(): readonly Readonly<ConverterDescriptorV2>[] {
@@ -2364,6 +2673,29 @@ function cacheKey(identity: Readonly<DatasetLayoutIdentityV2>): V2DatasetCacheKe
     layout_version: identity.layout_version,
     artifact_digest: identity.artifact_digest,
   }
+}
+
+function evaluationTransitionBodyMatches(
+  run: EvaluationRunV2,
+  input: TransitionEvaluationRunV2,
+): boolean {
+  if (input.status === 'running') return true
+  if (input.status === 'completed') {
+    return (
+      canonicalJsonV2(run.metrics) ===
+        canonicalJsonV2(
+          input.metrics.map((metric) => ({
+            dataset: metric.dataset,
+            subset: metric.subset,
+            metric: metric.metric,
+            score: metric.score,
+            sample_count: metric.sampleCount,
+            categories: metric.categories,
+          })),
+        ) && canonicalJsonV2(run.provider_report_ids) === canonicalJsonV2(input.providerReportIds)
+    )
+  }
+  return canonicalJsonV2(run.error) === canonicalJsonV2(input.error)
 }
 
 function requireExactDatasetVersion(input: string): string {

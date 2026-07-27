@@ -15,6 +15,7 @@ model V2IdentityNamespace {
   claims                 V2IdentityClaim[]
   refs                   V2Ref[]
   resultRefTransformJobs V2TransformJob[]  @relation("V2TransformJobResultRefNamespace")
+  evaluationRuns         V2EvaluationRun[]
 
   @@map("identity_namespaces_v2")
 }
@@ -52,6 +53,7 @@ model V2DatasetSnapshot {
   inputTransformJobs      V2TransformJob[]           @relation("V2TransformJobInput")
   outputTransformJobs     V2TransformJob[]           @relation("V2TransformJobOutput")
   resultRefTransformJobs  V2TransformJob[]           @relation("V2TransformJobResultRefVersion")
+  evaluationRuns          V2EvaluationRun[]
 
   @@map("dataset_snapshots_v2")
 }
@@ -185,4 +187,43 @@ model V2TransformJob {
   @@index([status, createdAt, id], map: "idx_transform_jobs_v2_queue")
   @@index([leaseExpiresAt], map: "idx_transform_jobs_v2_lease_expiry")
   @@map("transform_jobs_v2")
+}
+
+model V2EvaluationRun {
+  id                      String    @id @db.Uuid
+  namespaceId             String    @map("namespace_id") @db.Uuid
+  provider                String
+  providerTaskId          String    @map("provider_task_id")
+  createRequestDigest     String    @map("create_request_digest") @db.Char(64)
+  providerReportIds       Json?     @map("provider_report_ids_json")
+  datasetVersion          String    @map("dataset_version") @db.Char(64)
+  sourceRef               String?   @map("source_ref")
+  converter               String
+  converterVersion        String    @map("converter_version")
+  converterOptions        Json      @map("converter_options_json")
+  fidelityDigest          String    @map("fidelity_digest") @db.Char(64)
+  benchmark               String
+  modelName               String?   @map("model_name")
+  evalscopeCommit         String?   @map("evalscope_commit")
+  status                  String
+  metrics                 Json?     @map("metrics_json")
+  error                   Json?     @map("error_json")
+  archiveStatus           String    @default("not_requested") @map("archive_status")
+  archiveAttempt          Int       @default(0) @map("archive_attempt")
+  resultArtifactKey       String?   @map("result_artifact_key")
+  resultArtifactDigest    String?   @map("result_artifact_digest") @db.Char(64)
+  resultArtifactSizeBytes BigInt?   @map("result_artifact_size_bytes")
+  archiveError            Json?     @map("archive_error_json")
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt               DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt              DateTime? @map("finished_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  namespace V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dataset   V2DatasetSnapshot   @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([namespaceId, provider, providerTaskId], map: "uq_evaluation_runs_v2_provider_task")
+  @@index([namespaceId, datasetVersion, createdAt, id], map: "idx_evaluation_runs_v2_dataset")
+  @@index([namespaceId, status, createdAt, id], map: "idx_evaluation_runs_v2_status")
+  @@map("evaluation_runs_v2")
 }

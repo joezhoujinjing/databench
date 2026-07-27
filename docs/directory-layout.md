@@ -3,7 +3,7 @@
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
 > 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope 已完成 E0
-> 来源/能力基线和 E1 Dataset projection，没有产品路由或 runtime。
+> 来源/能力基线、E1 Dataset projection 和 E2 run 控制面，没有 Web 产品路由或 EvalScope runtime。
 
 ## `apps/api`
 
@@ -37,6 +37,7 @@ apps/api/
 │  │     ├─ refs.ts             list/show/move 与 lineage
 │  │     ├─ registries.ts       converters/transforms
 │  │     ├─ transform-jobs.ts    fixed basic-clean submit/list/show/cancel/retry
+│  │     ├─ evaluations.ts       exact Dataset evaluation run create/list/show/transition
 │  │     ├─ openapi.ts          route schema helpers
 │  │     └─ transport.ts        streaming/error transport helpers
 │  └─ v2/
@@ -167,6 +168,7 @@ src/
    ├─ record/content/candidate/preference/signal/tool schemas
    ├─ revision/provenance/manifest/identity schemas
    ├─ transform/converter/projection contracts
+   ├─ evaluation.ts             E2 run、metric、error、pagination 与 transition wire contract
    ├─ mcp.ts                    MCP tool/result contracts
    ├─ reader/raw-json/json-value verification
    ├─ contracts.type-test.ts
@@ -253,7 +255,7 @@ src/
    └─ index.ts
 ```
 
-只依赖 Prisma/Postgres。v2 snapshots、layouts、identity claims、runs、record
+只依赖 Prisma/Postgres。v2 snapshots、layouts、identity claims、transform runs、evaluation runs、record
 lineage 与 refs 的数据模型在根 `prisma/schema.prisma`。
 
 ## `packages/workspace`
@@ -266,7 +268,7 @@ src/
 │  ├─ staging.ts · data-juicer.ts · canonical-finalizer.ts · workspace-access.ts
 │  └─ generated/
 └─ v2/
-   ├─ workspace.ts · batch-transform.ts
+   ├─ workspace.ts · batch-transform.ts · evaluation.ts
    ├─ identity-allocator.ts
    ├─ canonical-draft-identity.ts
    ├─ canonical-draft-materializer.ts
@@ -278,7 +280,7 @@ src/
 
 这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
 deterministic identity/materialize/import、persist、transform、CAS ref、record/dataset lineage、
-audit、converter inspect/export 与取消语义。
+audit、converter inspect/export、evaluation run exact binding/状态机与取消语义。
 
 ## Tooling 与根目录
 
@@ -304,7 +306,9 @@ prisma/
    ├─ 0005_retire_v1_catalog/
    ├─ 0006_recoverable_ref_trash/
    ├─ 0007_transform_jobs_v2/
-   └─ 0008_worker_staging_v1/
+   ├─ 0008_worker_staging_v1/
+   ├─ 0009_transform_job_result_ref/
+   └─ 0010_evaluation_runs_v2/
 ```
 
 EvalScope E0 另有：
@@ -319,11 +323,13 @@ scripts/
 └─ check-evalscope-parity.mjs
 
 docs/evalscope/evidence/E0-BASELINE.md
+docs/evalscope/evidence/E1-PROJECTION.md
+docs/evalscope/evidence/E2-RUN-CONTROL.md
 THIRD_PARTY_NOTICES.md
 ```
 
-`deploy/evalscope/` 当前没有 Dockerfile、patch 或可执行服务；它们属于 E3。E1 只扩展既有 converter
-registry/OpenAPI/export 链，不在该目录放 runtime。`upstream-manifest.json` 是
+`deploy/evalscope/` 当前没有 Dockerfile、patch 或可执行服务；它们属于 E3。E1/E2 只扩展既有
+converter/export 与 Workspace/REST/OpenAPI 链，不在该目录放 runtime。`upstream-manifest.json` 是
 文件来源真源，`ui-capability-manifest.json` 是业务能力验收真源；前者的 `adapted` 不能替代后者的 green。
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是

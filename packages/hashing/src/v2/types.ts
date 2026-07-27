@@ -131,6 +131,23 @@ export interface TransformCacheIdentityV1 {
   readonly params: CanonicalJsonObject
 }
 
+export const V2_EVALUATION_RUN_CREATE_PROFILE = 'evaluation-run-create-v1' as const
+
+export interface EvaluationRunCreateIdentityV1 {
+  readonly evaluation_run_create_profile: typeof V2_EVALUATION_RUN_CREATE_PROFILE
+  readonly provider: 'evalscope'
+  readonly provider_task_id: string
+  readonly dataset_version: string
+  readonly source_ref: string | null
+  readonly converter: V2ConverterName
+  readonly converter_version: string
+  readonly normalized_options: CanonicalJsonObject
+  readonly fidelity_digest: string
+  readonly benchmark: string
+  readonly model_name: string | null
+  readonly evalscope_commit: string | null
+}
+
 export type V2ConverterName =
   | 'canonical-jsonl'
   | 'evalscope-general-qa'

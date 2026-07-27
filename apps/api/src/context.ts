@@ -7,11 +7,15 @@ export type ApiV2Workspace = Pick<
   | 'addJsonl'
   | 'audit'
   | 'cancelTransformJob'
+  | 'cancelEvaluationRun'
+  | 'completeEvaluationRun'
+  | 'createEvaluationRun'
   | 'createBasicCleanJob'
   | 'deleteRef'
   | 'describeDataset'
   | 'export'
   | 'getConverter'
+  | 'getEvaluationRun'
   | 'getDeletedRef'
   | 'getRecordPage'
   | 'getRecordView'
@@ -21,6 +25,7 @@ export type ApiV2Workspace = Pick<
   | 'lineage'
   | 'listConverters'
   | 'listDeletedRefs'
+  | 'listEvaluationRuns'
   | 'listRefs'
   | 'listTransforms'
   | 'listTransformJobs'
@@ -31,7 +36,9 @@ export type ApiV2Workspace = Pick<
   | 'putRef'
   | 'runTransform'
   | 'restoreRef'
+  | 'failEvaluationRun'
   | 'retryTransformJob'
+  | 'startEvaluationRun'
 >
 
 export interface ApiVariables {

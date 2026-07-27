@@ -4,6 +4,7 @@ import { canonicalJsonV2, compareJcsUtf16 } from './canonical-json.js'
 import type {
   CandidateSeedV1,
   DatasetIdentityEnvelopeV2,
+  EvaluationRunCreateIdentityV1,
   EventSeedV1,
   ExportFidelityIdentityV1,
   IdentityClaimHashInputV1,
@@ -30,6 +31,7 @@ const DOMAIN = {
   identityClaim: 'databench.identity-claim-key.databench-v2-jcs-1.v1\0',
   identityRequest: 'databench.identity-request.databench-v2-jcs-1.v1\0',
   exportFidelity: 'databench.export-fidelity.databench-export-fidelity-1\0',
+  evaluationRunCreate: 'databench.evaluation-run-create.evaluation-run-create-v1\0',
 } as const
 
 export function deriveV2RecordId(seed: RecordSeedV1): V2RecordId {
@@ -148,6 +150,25 @@ export function hashV2ExportFidelity<const Identity extends ExportFidelityIdenti
     output_count: identity.output_count,
     config_hints: identity.config_hints,
     fidelity: normalizeExportFidelity(identity.fidelity),
+  })
+}
+
+export function hashV2EvaluationRunCreate<const Identity extends EvaluationRunCreateIdentityV1>(
+  identity: NoExtraKeys<EvaluationRunCreateIdentityV1, Identity>,
+): string {
+  return hashDomain(DOMAIN.evaluationRunCreate, {
+    evaluation_run_create_profile: identity.evaluation_run_create_profile,
+    provider: identity.provider,
+    provider_task_id: identity.provider_task_id,
+    dataset_version: identity.dataset_version,
+    source_ref: identity.source_ref,
+    converter: identity.converter,
+    converter_version: identity.converter_version,
+    normalized_options: identity.normalized_options,
+    fidelity_digest: identity.fidelity_digest,
+    benchmark: identity.benchmark,
+    model_name: identity.model_name,
+    evalscope_commit: identity.evalscope_commit,
   })
 }
 

@@ -3,8 +3,8 @@
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
-> `docs/mcp/`。EvalScope ADR 0017 已接受，E0 来源/能力基线和 E1 Dataset projection 已完成；尚未增加
-> runtime 或产品路由。
+> `docs/mcp/`。EvalScope ADR 0017 已接受，E0 来源/能力基线、E1 Dataset projection 和 E2 run 控制面已
+> 完成；尚未增加 EvalScope runtime 或 Web 产品路由。
 
 ## 顶层目录
 
@@ -114,8 +114,9 @@ deploy/evalscope 在 E3 前只含不可执行的 upstream/API/asset locks
 
 EvalScope E0 在 `apps/web/src/evaluations/` 只放置来源、能力 manifest 和 pinned fixtures，不注册路由、
 不发网络请求。E1 在既有 `schema → io → workspace → API/CLI/generated Web client` 边界增加
-`evalscope-general-qa` converter，没有建立第二条数据访问路径。后续 UI 对 Databench `/v2/*` 仍只用
-generated client；隔离的 EvalScope Zod client 只能访问
+`evalscope-general-qa` converter；E2 沿相同边界增加 exact Dataset-bound evaluation run 控制面和 generated
+client，没有建立第二条数据访问路径。后续 UI 对 Databench `/v2/*` 仍只用 generated client；隔离的
+EvalScope Zod client 只能访问
 `deploy/evalscope/api-routes.json` 明确允许的方法与精确路径，不能成为通用反向代理。
 
 MCP runtime 内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
@@ -171,8 +172,9 @@ packages/<name>/
 
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3 与 EvalScope E0 baseline 已完成。EvalScope runtime 和产品面尚未实现、仍
-disabled-by-default。MCP 和单个 CPU-only Worker 只获授权进入 ADR 0012 的
+产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E2 已完成。EvalScope runtime 和 Web 产品面尚未实现、仍
+disabled-by-default；E2 的 Databench REST 控制面不启动或代理 EvalScope。MCP 和单个 CPU-only Worker只获
+授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台
 仍受 D3 owner 决策门约束。
