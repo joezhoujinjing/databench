@@ -3,24 +3,26 @@
 > 每个 E Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- evalscope-status
-current_step: E4
-last_completed_step: E3
+current_step: E5
+last_completed_step: E4
 runtime_enabled: false
-ui_routes_enabled: false
+ui_routes_enabled: true
 upstream_commit: b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
 e3_implementation: complete
 e3_gate: passed
+e4_implementation: complete
+e4_gate: passed
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/evalscope-integration-design`
-- **当前 Step:** E4 Evaluation UI foundation；尚未开始实现
+- **当前 Step:** E5 Tasks 与 Databench Dataset 闭环；尚未开始实现
 - **已完成:** E0 决策/来源/能力基线；E1 `evalscope-general-qa@1.0.0` projection；E2 Evaluation Run
-  控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环
-- **产品状态:** backend-only image 与 same-origin gateway 已实现但 disabled-by-default；没有
-  `/evaluations/*` 路由
-- **GE7:** `pnpm evalscope:parity:check:green` 按设计保持失败；60 个 capability 均为 `planned`
+  控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环；E4 Databench Evaluation UI foundation
+- **产品状态:** backend-only image 与 same-origin gateway 仍 disabled-by-default；`/evaluations/*` 原生
+  lazy routes 已开放，但 E5-E7 业务控件尚未迁移，不计为完整复刻
+- **GE7:** `pnpm evalscope:parity:check:green` 按设计保持失败；60 个 capability 中 5 个 green、55 个 planned
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
 
 ## Step 状态
@@ -31,8 +33,8 @@ e3_gate: passed
 | E1 | `evalscope-general-qa` projection | ✅ | GE1 | 三种 profile fixed bytes；真实 exact Dataset export |
 | E2 | Evaluation run 控制面 | ✅ | GE2 | exact Dataset binding、canonical create digest、REST 状态机 |
 | E3 | backend-only EvalScope 与安全 gateway | ✅ | GE3 | prebuilt image `network=none`、真实 eval/stop/report |
-| E4 | Evaluation UI foundation | ⬜ 当前 | GE4 | 下一步；routes/client/tokens/i18n/primitives |
-| E5 | Tasks 与 Databench Dataset 闭环 | ⬜ | GE5 | |
+| E4 | Evaluation UI foundation | ✅ | GE4 | routes/client/tokens/i18n/primitives；11 个 lazy entries |
+| E5 | Tasks 与 Databench Dataset 闭环 | ⬜ 当前 | GE5 | 下一步 |
 | E6 | Reports、Details 与 Predictions | ⬜ | GE6 | |
 | E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ⬜ | GE7 | 完整 UI 复刻唯一 gate |
 | E8 | 结果归档与 retention | ⬜ | GE8 | |
@@ -171,3 +173,23 @@ Owner 于 2026-07-28 确认 GE3/GE9 的 offline release boundary 是 digest-pinn
 可以联网获取锁定输入，不要求 `docker build --network=none`，仓库不提交 wheelhouse/apt mirror；目标机
 断网 install/start/eval/report/upgrade/rollback 要求不变并在 E9 验收。基于该明确决策，GE3 已通过，可以
 进入 E4。
+
+## E4 交付与 Gate 记录
+
+- 全部 `/evaluations/*` route 使用 Databench TanStack Router lazy boundary、主导航和 Evaluation 二级导航；
+- 浏览器 EvalScope adapter 固定 `/evalscope-api/api/v1`，32 条 allowlist operation 均有 exact
+  method/path/query/body/response Zod contract，public config 严格无路径；
+- report/performance locator 使用 canonical UTF-8 base64url route key，拒绝绝对路径、遍历、URI、控制字符和
+  non-canonical key；route/search params、404、loading、error 和 unavailable 均有稳定边界；
+- `.evaluation-surface` 独占 `--es-*` tokens；Tabs/Table/Field/Breadcrumb 与既有 Databench primitives 完成映射；
+- 锁定 upstream 的 322 项中英文业务词典按 Evaluation route lazy 注册，locale key drift test 通过；
+- capability manifest 的 shell/foundation 五项为 green，E5-E7 的 55 项保持 planned；空 route 明确提示
+  业务能力尚未迁移，不以占位页冒充 parity；
+- Web 28 files / 88 tests；生产构建 11 个 Evaluation lazy entries，initial JS 844,927 bytes，低于
+  950,000-byte budget，Dataset initial graph 不静态包含 Evaluation client/layout/route/full dictionary；
+- 浏览器覆盖 ready desktop、390px narrow、disabled gateway、全部 direct refresh、nested 404、中英文切换，
+  以及 `/evaluations/performance/compare?embedding=0` reload；ready 路径零 console errors/warnings。
+
+完整证据见 [E4-UI-FOUNDATION.md](evidence/E4-UI-FOUNDATION.md)。全仓 lint/build/typecheck/test/openapi/
+v2-status/peers/offline/parity 和 `git diff --check` 均通过；`evalscope:parity:check:green` 按设计继续拒绝
+55 个 planned capability。E4 没有改变 runtime disabled-by-default、V16/V17 或公共云 D3。

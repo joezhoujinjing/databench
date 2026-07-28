@@ -3,8 +3,9 @@
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
-> `docs/mcp/`。EvalScope ADR 0017 已接受，E0 来源/能力基线、E1 Dataset projection 和 E2 run 控制面已
-> 完成；E3 backend-only runtime 与 disabled-by-default gateway 已实现，仍没有 Web 产品路由。
+> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E4 已完成：backend-only runtime 与 disabled-by-default
+> gateway 已实现，Databench Web 已增加 Evaluation 原生路由、API adapter、视觉与国际化底座；E5-E7
+> 业务页面能力仍未迁移完成。
 
 ## 顶层目录
 
@@ -42,7 +43,7 @@ databench-ts/
 不是第二套产品。Web 路由和 CLI 主命令不带版本：
 
 ```text
-Web: /datasets /ingest /transforms
+Web: /datasets /ingest /transforms /evaluations/*
 CLI: databench dataset|converter|transform|ref|lineage ...
 REST: /v2/...
 ```
@@ -112,12 +113,13 @@ deploy/evalscope backend-only Python service（不进入 TS package DAG）
 - `apps/api`、`apps/cli → workspace, schema`
 - `apps/web` 不 import 后端包
 
-EvalScope E0 在 `apps/web/src/evaluations/` 只放置来源、能力 manifest 和 pinned fixtures，不注册路由、
-不发网络请求。E1 在既有 `schema → io → workspace → API/CLI/generated Web client` 边界增加
+EvalScope E0 在 `apps/web/src/evaluations/` 建立来源、能力 manifest 和 pinned fixtures。E1 在既有
+`schema → io → workspace → API/CLI/generated Web client` 边界增加
 `evalscope-general-qa` converter；E2 沿相同边界增加 exact Dataset-bound evaluation run 控制面和 generated
 client。E3 增加独立 Python provider service 与 `apps/api` same-origin exact gateway；Dataset 数据仍由
-EvalScope 通过 Databench REST exact inspect/export 获取，API 不直连下层包。后续 UI 对 Databench `/v2/*`
-仍只用 generated client；隔离的 EvalScope Zod client 只能访问
+EvalScope 通过 Databench REST exact inspect/export 获取，API 不直连下层包。E4 在唯一 Databench SPA 中
+增加 lazy `/evaluations/*` route tree、Evaluation shell、scoped tokens/i18n/primitives 和隔离的 exact Zod
+client。UI 对 Databench `/v2/*` 仍只用 generated client；EvalScope client 只能访问
 `deploy/evalscope/api-routes.json` 明确允许的方法与精确路径，不能成为通用反向代理。
 
 MCP runtime 内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
@@ -173,8 +175,8 @@ packages/<name>/
 
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E2 已完成。EvalScope runtime 和 Web 产品面尚未实现、仍
-disabled-by-default；E2 的 Databench REST 控制面不启动或代理 EvalScope。MCP 和单个 CPU-only Worker只获
+产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E4 已完成。EvalScope runtime 仍 disabled-by-default；Web 已有
+Evaluation 原生路由和服务边界，但 E5-E7 业务能力仍为 planned，不得宣称完整 UI 复刻。MCP 和单个 CPU-only Worker只获
 授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台

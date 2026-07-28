@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/check-evaluation-bundle.mjs",
+    "bundle:check": "node scripts/check-evaluation-bundle.mjs",
     "dev": "vite dev --host 0.0.0.0",
     "gen:client": "node scripts/generate-client.mjs",
     "gen:client:check": "node scripts/generate-client.mjs --check",

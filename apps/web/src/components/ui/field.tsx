@@ -5,16 +5,24 @@ export function Field({
   children,
   className,
   hint,
+  htmlFor,
   label,
 }: {
   children: ReactNode
   className?: string
   hint?: ReactNode
+  htmlFor?: string
   label: ReactNode
 }) {
   return (
     <div className={cn('grid gap-2 text-sm', className)}>
-      <span className="text-muted-foreground">{label}</span>
+      {htmlFor === undefined ? (
+        <span className="text-muted-foreground">{label}</span>
+      ) : (
+        <label className="text-muted-foreground" htmlFor={htmlFor}>
+          {label}
+        </label>
+      )}
       {children}
       {hint ? <span className="text-dim-foreground text-xs leading-5">{hint}</span> : null}
     </div>

@@ -3,7 +3,8 @@
     "primary": "Primary navigation",
     "datasets": "Datasets",
     "ingest": "Ingest",
-    "transforms": "Transforms"
+    "transforms": "Transforms",
+    "evaluations": "Evaluations"
   },
   "common": {
     "loading": "Loading…",

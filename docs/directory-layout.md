@@ -2,9 +2,9 @@
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
-> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope 已完成 E0
-> 来源/能力基线、E1 Dataset projection 和 E2 run 控制面；E3 backend-only runtime 与 gateway 已实现，
-> 仍没有 Web 产品路由。
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E4 已
+> 完成：backend-only runtime 与 gateway 已实现，Web 已增加 Evaluation 路由和迁移底座；E5-E7 业务页面
+> 能力仍未迁移完成。
 
 ## `apps/api`
 
@@ -99,7 +99,7 @@ apps/web/
 │  ├─ main.tsx
 │  ├─ router.tsx                无版本产品 route tree
 │  ├─ routes/
-│  │  ├─ __root.tsx             单一产品 shell；三项主导航
+│  │  ├─ __root.tsx             单一产品 shell；四项主导航
 │  │  ├─ index.tsx
 │  │  └─ not-found.tsx
 │  ├─ api/
@@ -112,7 +112,14 @@ apps/web/
 │  │  ├─ shell/                 导航、连接设置、语言切换
 │  │  ├─ common/                状态、JSON、复制
 │  │  └─ ui/                    基础 UI primitives
-│  ├─ evaluations/              ADR 0017；E0 仅含不可执行的 provenance/parity 基线
+│  ├─ evaluations/              ADR 0017；E4 Evaluation UI foundation
+│  │  ├─ api/                   exact-operation Zod client、schemas、typed errors
+│  │  ├─ components/            capability boundary、breadcrumb 与 primitive mapping
+│  │  ├─ domain/                canonical report/performance route key codec
+│  │  ├─ i18n/                  lazy evaluations namespace 与完整中英文词典
+│  │  ├─ layouts/               Evaluation shell 和二级导航
+│  │  ├─ routes/                typed lazy routes、search contracts 与 route states
+│  │  ├─ styles/                .evaluation-surface scoped --es-* tokens
 │  │  ├─ UPSTREAM.md
 │  │  ├─ upstream-manifest.json
 │  │  ├─ ui-capability-manifest.json
@@ -127,6 +134,7 @@ apps/web/
 │  ├─ lib/
 │  └─ styles.css
 ├─ scripts/generate-client.mjs
+├─ scripts/check-evaluation-bundle.mjs
 ├─ vite.config.ts
 ├─ package.json
 └─ tsconfig.json
@@ -143,11 +151,21 @@ apps/web/
 /transforms
 /lineage/:ref
 /export/:ref
+/evaluations
+/evaluations/tasks
+/evaluations/reports
+/evaluations/reports/:reportKey
+/evaluations/compare
+/evaluations/performance
+/evaluations/performance/:performanceKey
+/evaluations/performance/compare
+/evaluations/benchmarks
+/evaluations/viewer
 ```
 
 `/recipe`、`/vocabularies`、`/v2/...` 等旧产品页面不在 route tree。Web 只通过生成的
-OpenAPI 类型和 REST client 访问后端。E0 manifest 不注册 `/evaluations/*`；这些路由只能随 E4-E7 对应
-gate 分步加入。
+OpenAPI 类型和 REST client 访问 Databench 后端。Evaluation provider API 只通过 E4 隔离的 exact Zod client
+访问 same-origin gateway；当前路由只证明迁移底座，E5-E7 业务能力仍按 gate 分步加入。
 
 ## `packages/hashing`
 

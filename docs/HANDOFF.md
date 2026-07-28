@@ -23,9 +23,11 @@
   Dataset export；E2 已完成 `evaluation_runs_v2`、canonical create digest、exact Dataset binding、状态机和
   `/v2/evaluation-runs*` REST。E3 已实现 pinned backend-only image、same-origin exact gateway、Databench
   Dataset source preparation、task/reconcile/model-egress/active-content 安全边界，并通过真实 BLEU/ROUGE
-  evaluation 与 stop callback 闭环；当前仍没有 `/evaluations/*` 产品路由。Owner 于 2026-07-28 明确
+  evaluation 与 stop callback 闭环；E4 已增加完整 `/evaluations/*` lazy route tree、Databench 主/次导航、
+  exact Zod client、无路径 public config、opaque route key、scoped tokens、完整中英文词典和可访问基础组件。
+  这些路由当前只声明迁移底座就绪，E5-E7 业务控件仍未完成。Owner 于 2026-07-28 明确
   offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
-  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E3 已关闭，下一步是 E4。
+  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E4 已关闭，下一步是 E5。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -59,6 +61,16 @@ Web
   /transforms
   /lineage/:ref
   /export/:ref
+  /evaluations
+  /evaluations/tasks
+  /evaluations/reports
+  /evaluations/reports/:reportKey
+  /evaluations/compare
+  /evaluations/performance
+  /evaluations/performance/:performanceKey
+  /evaluations/performance/compare
+  /evaluations/benchmarks
+  /evaluations/viewer
 
 CLI
   databench dataset ingest|show|records|audit|export

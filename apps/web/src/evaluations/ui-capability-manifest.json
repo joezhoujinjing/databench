@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
-  "phase": "E0-baseline",
+  "phase": "E4-foundation",
   "capability_schema": {
     "status_values": ["planned", "green"],
     "classifications": [
@@ -25,9 +25,9 @@
       "api_operations": [],
       "target": null,
       "upstream_coverage": false,
-      "tests": ["planned:GE4:shell-singleton"],
-      "browser_evidence": ["planned:GE4:no-second-shell"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/foundation-static.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E4-UI-FOUNDATION.md#browser"],
+      "status": "green"
     },
     {
       "parity_id": "shell.brand-nav-theme-locale",
@@ -47,9 +47,9 @@
       "api_operations": [],
       "target": null,
       "upstream_coverage": false,
-      "tests": ["planned:GE4:brand-shell-exclusion"],
-      "browser_evidence": ["planned:GE7:databench-brand-review"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/foundation-static.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E4-UI-FOUNDATION.md#browser"],
+      "status": "green"
     },
     {
       "parity_id": "shell.configured-source-refresh",
@@ -106,9 +106,15 @@
       "api_operations": ["all §8.1 exact allowed operations"],
       "target": "apps/web/src/evaluations/api/schemas.ts",
       "upstream_coverage": true,
-      "tests": ["planned:GE4:api-fixture-parity"],
-      "browser_evidence": ["upstream-code:api/schemas", "planned:GE7:schema-mismatch"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/api/client.test.ts",
+        "test-file:apps/web/src/evaluations/api/routes.test.ts"
+      ],
+      "browser_evidence": [
+        "upstream-code:api/schemas",
+        "browser-file:docs/evalscope/evidence/E4-UI-FOUNDATION.md#browser"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "foundation.responsive-a11y-primitives",
@@ -125,12 +131,15 @@
       "api_operations": [],
       "target": "apps/web/src/components/ui",
       "upstream_coverage": true,
-      "tests": ["planned:GE4:primitive-a11y", "planned:GE7:all-routes-responsive-a11y"],
+      "tests": [
+        "test-file:apps/web/src/components/ui/tabs.test.tsx",
+        "test-file:apps/web/src/evaluations/foundation-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:components/a11yResponsive.test.tsx",
-        "planned:GE7:keyboard-focus-narrow"
+        "browser-file:docs/evalscope/evidence/E4-UI-FOUNDATION.md#browser"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "foundation.metric-native-format",
@@ -182,9 +191,12 @@
       "api_operations": [],
       "target": "apps/web/src/i18n/locales/zh.json",
       "upstream_coverage": true,
-      "tests": ["planned:GE4:locale-key-parity"],
-      "browser_evidence": ["upstream-code:i18n/translations", "planned:GE7:zh-en-browser"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/i18n/i18n.test.ts"],
+      "browser_evidence": [
+        "upstream-code:i18n/translations",
+        "browser-file:docs/evalscope/evidence/E4-UI-FOUNDATION.md#browser"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "dashboard.kpis-navigation",

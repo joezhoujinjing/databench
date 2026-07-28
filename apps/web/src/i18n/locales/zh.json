@@ -3,7 +3,8 @@
     "primary": "主导航",
     "datasets": "数据集",
     "ingest": "导入",
-    "transforms": "转换"
+    "transforms": "转换",
+    "evaluations": "测评"
   },
   "common": {
     "loading": "加载中…",

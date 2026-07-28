@@ -1,0 +1,81 @@
+import type { Dict } from './translations.js'
+
+export const foundationEn: Dict = {
+  eyebrow: 'Evaluation control plane',
+  workspace: 'Evaluations',
+  workspaceDescription:
+    'Run model evaluations and performance tests, then inspect and compare their results.',
+  navigation: 'Evaluation navigation',
+  managedService: 'Managed EvalScope service',
+  loading: 'Loading the evaluation workspace',
+  retry: 'Retry',
+  routeErrorEyebrow: 'Route error',
+  routeError: 'This evaluation page could not be loaded',
+  unknownError: 'Unknown evaluation route error',
+  notFound: 'Evaluation page not found',
+  notFoundDescription: 'This address is not part of the evaluation workspace.',
+  serviceUnavailable: 'Evaluation service unavailable',
+  serviceUnavailableDescription:
+    'Databench is available, but its managed EvalScope service is disabled or cannot be reached.',
+  serviceInvalid: 'Evaluation service response rejected',
+  serviceInvalidDescription:
+    'The service returned a response that does not match the pinned integration contract.',
+  capabilityUnavailable: 'Required EvalScope capabilities are unavailable:',
+  foundationPhase: 'Foundation ready',
+  notMigrated: 'Business capability not migrated yet',
+  notMigratedDescription:
+    'This route is available for direct refresh and integration testing. Its business controls will be migrated in the next accepted UI steps and are not counted as complete here.',
+  foundationOnly:
+    'E4 proves the Databench shell, router, service boundary, API contract, localization and accessibility primitives only.',
+  nextStep: 'E5–E7 deliver the functional page parity',
+  pages: {
+    dashboard: 'Evaluation dashboard',
+    tasks: 'Evaluation tasks',
+    reports: 'Evaluation reports',
+    reportDetail: 'Report detail',
+    compare: 'Evaluation comparison',
+    performance: 'Performance reports',
+    performanceDetail: 'Performance report detail',
+    performanceCompare: 'Performance comparison',
+    benchmarks: 'Benchmark catalogue',
+    viewer: 'Safe report viewer',
+  },
+}
+
+export const foundationZh: Dict = {
+  eyebrow: '测评控制面',
+  workspace: '测评',
+  workspaceDescription: '运行模型测评与性能压测，并查看、分析和比较测评结果。',
+  navigation: '测评导航',
+  managedService: '受管 EvalScope 服务',
+  loading: '正在加载测评工作区',
+  retry: '重试',
+  routeErrorEyebrow: '路由错误',
+  routeError: '无法加载这个测评页面',
+  unknownError: '未知的测评路由错误',
+  notFound: '测评页面不存在',
+  notFoundDescription: '这个地址不属于测评工作区。',
+  serviceUnavailable: '测评服务不可用',
+  serviceUnavailableDescription: 'Databench 当前可用，但受管 EvalScope 服务未启用或无法连接。',
+  serviceInvalid: '测评服务响应已被拒绝',
+  serviceInvalidDescription: '服务返回的数据不符合当前锁定的集成契约。',
+  capabilityUnavailable: '缺少必需的 EvalScope 能力：',
+  foundationPhase: '底座已就绪',
+  notMigrated: '业务能力尚未迁移',
+  notMigratedDescription:
+    '这个路由已支持直接刷新和集成测试。业务控件会在后续已接受的 UI 步骤中迁入，本步骤不会把它计为已完成。',
+  foundationOnly: 'E4 只验证 Databench 应用壳、路由、服务边界、API 契约、国际化和无障碍基础组件。',
+  nextStep: 'E5–E7 交付页面功能等价',
+  pages: {
+    dashboard: '测评看板',
+    tasks: '测评任务',
+    reports: '测评报告',
+    reportDetail: '报告详情',
+    compare: '测评对比',
+    performance: '性能报告',
+    performanceDetail: '性能报告详情',
+    performanceCompare: '性能对比',
+    benchmarks: '基准目录',
+    viewer: '安全报告查看器',
+  },
+}
