@@ -37,6 +37,10 @@
   当前 Web gate，并明确
   offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
   `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E7 已关闭，下一步是 E8 结果归档。
+- ADR 0018 ms-swift 集成已于 2026-07-28 接受，采用完整原生 Gradio iframe 的最小桥接方案：首期只建设
+  Studio Session、exact Dataset export、GPU/Session workspace 与 LoRA Model Artifact import，不先建设
+  Training Run/Attempt 或接管原生 callback。实施从 EvalScope E7 complete commit `25931d6` 建立独立
+  `feat/swift-studio-integration` 分支；当前处于 S0，runtime 与 `/training` 均未实现、保持 disabled。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -56,6 +60,8 @@
    `docs/deployment/offline-single-host-plan.zh-CN.md`。
 8. 若处理 EvalScope，依次读 ADR 0017、`docs/evalscope/TECHNICAL-DESIGN.md`、
    `docs/evalscope/PLAN.md`、`docs/evalscope/STATUS.md` 和 E0 evidence。
+9. 若处理 ms-swift，依次读 ADR 0018、`docs/swift/TECHNICAL-DESIGN.md`、
+   `docs/swift/PLAN.md` 与 `docs/swift/STATUS.md`。不要把后续 Training control plane 提前塞入 S0-S4。
 
 不要用旧 v1 migration inventory 覆盖当前实现。
 

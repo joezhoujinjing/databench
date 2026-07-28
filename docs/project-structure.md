@@ -6,6 +6,8 @@
 > `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E7 已完成：backend-only runtime、disabled-by-default
 > gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports、逐样本、Dashboard、
 > 比较、Performance、Benchmark 和安全 Viewer 已实现；锁定 React 基线的完整 UI 功能迁移 gate 已关闭。
+> ms-swift ADR 0018 已接受，当前只完成设计并进入 S0；完整原生 Gradio、`/training`、GPU runtime、
+> Studio Session 与 Model Artifact 均尚未实现。
 
 ## 顶层目录
 
@@ -39,7 +41,8 @@ databench-ts/
 ├─ THIRD_PARTY_NOTICES.md
 └─ docs/
    ├─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
-   └─ evalscope/         已接受的设计、E0 evidence、实施计划与状态
+   ├─ evalscope/         已接受的设计、E0 evidence、实施计划与状态
+   └─ swift/             已接受的原生 Gradio 集成方案、实施计划与状态；S0 current
 ```
 
 `v2` 仍出现在 REST 路径、数据库表、对象 key、类型和测试名中。它是稳定协议/持久化命名，
@@ -181,7 +184,8 @@ packages/<name>/
 
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E7 已完成。EvalScope runtime 仍 disabled-by-default；Web 已
+产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E7 已完成。Swift ADR 0018 已接受但 S0-S6 均未完成，runtime
+与 UI route 保持 disabled。EvalScope runtime 仍 disabled-by-default；Web 已
 完成锁定 EvalScope React 基线的完整业务功能迁移，结果归档与最终离线集成仍分别属于 E8/E9。MCP 和单个
 CPU-only Worker只获
 授权进入 ADR 0012 的

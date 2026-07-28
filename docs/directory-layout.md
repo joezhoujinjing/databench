@@ -5,6 +5,8 @@
 > 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E7 已
 > 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports、Predictions、
 > Dashboard、Compare、Performance、Benchmarks 与安全 Viewer 已实现，完整 UI 功能迁移 gate 已关闭。
+> ms-swift ADR 0018 已接受并新增 `docs/swift/`，但当前只处于 S0；本文件不把计划中的
+> `workers/swift-studio`、`deploy/swift-studio` 或 `/training` 写成已实现目录。
 
 ## `apps/api`
 
@@ -455,3 +457,15 @@ deploy/offline/
 MCP runtime 与真实 Excel fixture 已按上文实际落点登记。离线配置只在 operator 显式提供稳定、agent
 可达的 `http(s)://host[:port]/api` 后启用；不从 Host、网卡或容器名推断，也不引入独立服务、认证
 平台或审批状态机。
+
+## ms-swift 设计文档（ADR 0018）
+
+```text
+docs/swift/
+├─ TECHNICAL-DESIGN.md   完整原生 Gradio、四桥、Session/Artifact 与演进边界
+├─ PLAN.md               S0-S4 主计划，S5/S6 后续扩展
+└─ STATUS.md             当前真实状态；S0 current，runtime/UI disabled
+```
+
+计划中的 Web/API/Provider/deploy/DB 文件只有在对应 Step 实现并过 gate 后，才能加入本文的当前文件级
+布局。
