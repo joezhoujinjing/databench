@@ -40,7 +40,7 @@ const requiredLazyModules = [
   'src/evaluations/routes/viewer.tsx',
 ]
 for (const moduleName of requiredLazyModules) {
-  if (manifest[moduleName]?.isDynamicEntry !== true) {
+  if (!isLazyRouteEntry(moduleName)) {
     fail(`Evaluation route is not a dynamic entry: ${moduleName}`)
   }
 }
@@ -72,6 +72,17 @@ function collectStaticImports(rootKey) {
     for (const dependency of manifest[key]?.imports ?? []) pending.push(dependency)
   }
   return visited
+}
+
+function isLazyRouteEntry(moduleName) {
+  if (manifest[moduleName]?.isDynamicEntry === true) return true
+  const expectedName = path.basename(moduleName, path.extname(moduleName))
+  const rootDynamicImports = new Set(manifest[entryKey]?.dynamicImports ?? [])
+  const namedEntries = Object.entries(manifest).filter(
+    ([key, value]) =>
+      rootDynamicImports.has(key) && value.isDynamicEntry === true && value.name === expectedName,
+  )
+  return namedEntries.length === 1
 }
 
 function fail(message) {

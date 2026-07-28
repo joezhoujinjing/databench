@@ -65,3 +65,4 @@ export const taskStatusResponseSchema = z.object({
 
 export type EvalScopePublicConfig = z.infer<typeof evalScopePublicConfigSchema>
 export type GeneratedDocumentDescriptor = z.infer<typeof generatedDocumentDescriptorSchema>
+export type DataFrameResponse = z.infer<typeof dataFrameResponseSchema>

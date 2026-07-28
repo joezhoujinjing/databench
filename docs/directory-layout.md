@@ -2,9 +2,9 @@
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
-> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E4 已
-> 完成：backend-only runtime 与 gateway 已实现，Web 已增加 Evaluation 路由和迁移底座；E5-E7 业务页面
-> 能力仍未迁移完成。
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E6 已
+> 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports 与 Predictions
+> 已实现；E7 业务页面能力仍未迁移完成。
 
 ## `apps/api`
 
@@ -112,10 +112,11 @@ apps/web/
 │  │  ├─ shell/                 导航、连接设置、语言切换
 │  │  ├─ common/                状态、JSON、复制
 │  │  └─ ui/                    基础 UI primitives
-│  ├─ evaluations/              ADR 0017；E4 Evaluation UI foundation
-│  │  ├─ api/                   exact-operation Zod client、schemas、typed errors
-│  │  ├─ components/            capability boundary、breadcrumb 与 primitive mapping
-│  │  ├─ domain/                canonical report/performance route key codec
+│  ├─ evaluations/              ADR 0017；E4-E6 Evaluation UI
+│  │  ├─ api/                   exact-operation Zod client、report schemas、typed errors
+│  │  ├─ components/            capability boundary、breadcrumb、source refresh、安全 document frame
+│  │  ├─ domain/                route key、report、metric、task state 与 AgentTrace 纯逻辑
+│  │  ├─ features/              Tasks、Reports、Predictions、sample 与 rich-content UI
 │  │  ├─ i18n/                  lazy evaluations namespace 与完整中英文词典
 │  │  ├─ layouts/               Evaluation shell 和二级导航
 │  │  ├─ routes/                typed lazy routes、search contracts 与 route states
@@ -165,7 +166,7 @@ apps/web/
 
 `/recipe`、`/vocabularies`、`/v2/...` 等旧产品页面不在 route tree。Web 只通过生成的
 OpenAPI 类型和 REST client 访问 Databench 后端。Evaluation provider API 只通过 E4 隔离的 exact Zod client
-访问 same-origin gateway；当前路由只证明迁移底座，E5-E7 业务能力仍按 gate 分步加入。
+访问 same-origin gateway；Tasks、Reports 与 Predictions 已完成，E7 其余业务能力仍按 gate 分步加入。
 
 ## `packages/hashing`
 

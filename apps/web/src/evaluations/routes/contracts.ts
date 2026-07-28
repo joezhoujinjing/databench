@@ -35,6 +35,12 @@ export const evaluationReportsSearchSchema = z.object({
   pageSize,
 })
 
+export const evaluationReportDetailSearchSchema = z.object({
+  tab: z.enum(['overview', 'details', 'predictions']).default('overview'),
+  dataset: z.string().trim().min(1).max(512).optional(),
+  subset: z.string().trim().min(1).max(512).optional(),
+})
+
 export const evaluationCompareSearchSchema = z.object({
   reports: routeKeyList,
 })

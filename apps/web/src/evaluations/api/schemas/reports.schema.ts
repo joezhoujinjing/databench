@@ -17,7 +17,7 @@ export const metricDataSchema = z.object({
   name: z.string(),
   num: z.number(),
   score: z.number(),
-  categories: z.array(categoryDataSchema),
+  categories: z.array(categoryDataSchema).default([]),
 })
 
 export const percentileStatsSchema = z.object({
@@ -58,8 +58,8 @@ export const reportDataSchema = z.object({
   dataset_name: z.string(),
   model_name: z.string(),
   score: z.number(),
-  analysis: z.string(),
-  metrics: z.array(metricDataSchema),
+  analysis: z.string().default(''),
+  metrics: z.array(metricDataSchema).default([]),
   perf_metrics: perfMetricsSchema.nullable().optional(),
 })
 
@@ -100,18 +100,20 @@ export const samplePerfMetricsSchema = z.object({
   output_tokens: z.number(),
 })
 
-export const contentBlockSchema = z.object({
-  type: z.enum(['text', 'reasoning', 'image', 'audio', 'video', 'data']),
-  text: z.string().optional(),
-  reasoning: z.string().optional(),
-  reasoning_tokens: z.number().optional(),
-  image: z.string().optional(),
-  audio: z.string().optional(),
-  video: z.string().optional(),
-  format: z.string().optional(),
-  detail: z.string().optional(),
-  data: z.record(z.string(), z.unknown()).optional(),
-})
+export const contentBlockSchema = z
+  .object({
+    type: z.string().min(1).max(64),
+    text: z.string().optional(),
+    reasoning: z.string().optional(),
+    reasoning_tokens: z.number().optional(),
+    image: z.string().optional(),
+    audio: z.string().optional(),
+    video: z.string().optional(),
+    format: z.string().optional(),
+    detail: z.string().optional(),
+    data: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough()
 
 export const toolCallSchema = z.object({
   id: z.string(),
@@ -136,17 +138,7 @@ export const chatMessageSchema = z.object({
   error: toolMessageErrorSchema.nullable().optional(),
 })
 
-export const agentTraceEventTypeSchema = z.enum([
-  'model_generate',
-  'tool_call',
-  'tool_result',
-  'env_exec',
-  'error',
-  'nudge',
-  'submit',
-  'run_start',
-  'run_end',
-])
+export const agentTraceEventTypeSchema = z.string().min(1).max(64)
 
 export const agentTraceEventSchema = z.object({
   step: z.number(),
@@ -172,22 +164,36 @@ export const agentTraceSchema = z.object({
   events: z.array(agentTraceEventSchema),
 })
 
-export const predictionRowSchema = z.object({
-  Index: z.string(),
-  Input: z.string(),
-  Metadata: z.unknown(),
-  Generated: z.string(),
-  Gold: z.string(),
-  Pred: z.string(),
-  Score: z.record(z.string(), z.unknown()),
-  NScore: z.number(),
-  PerfMetrics: samplePerfMetricsSchema.nullable().optional(),
-  Messages: z.array(chatMessageSchema).nullable().optional(),
-  AgentTrace: agentTraceSchema.nullable().optional(),
-})
+export const predictionRowSchema = z
+  .object({
+    Index: z.string(),
+    Input: z.string().default(''),
+    Metadata: z.unknown().default({}),
+    Generated: z.string().default(''),
+    Gold: z.string().default(''),
+    Pred: z.string().default(''),
+    Score: z.record(z.string(), z.unknown()).default({}),
+    NScore: z.number(),
+    PerfMetrics: samplePerfMetricsSchema.nullable().optional(),
+    Messages: z.array(chatMessageSchema).nullable().optional(),
+    AgentTrace: agentTraceSchema.nullable().optional(),
+  })
+  .passthrough()
 
 export const predictionsResponseSchema = z.object({
   predictions: z.array(predictionRowSchema),
 })
 
 export const analysisResponseSchema = z.object({ analysis: z.string() })
+
+export type AgentTrace = z.infer<typeof agentTraceSchema>
+export type AgentTraceEvent = z.infer<typeof agentTraceEventSchema>
+export type ChatMessage = z.infer<typeof chatMessageSchema>
+export type ContentBlock = z.infer<typeof contentBlockSchema>
+export type ListReportsResponse = z.infer<typeof listReportsResponseSchema>
+export type LoadReportResponse = z.infer<typeof loadReportResponseSchema>
+export type PerfMetrics = z.infer<typeof perfMetricsSchema>
+export type PredictionRow = z.infer<typeof predictionRowSchema>
+export type ReportData = z.infer<typeof reportDataSchema>
+export type ReportSummary = z.infer<typeof reportSummarySchema>
+export type ToolCall = z.infer<typeof toolCallSchema>

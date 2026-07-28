@@ -9,6 +9,7 @@ import {
   evaluationCompareSearchSchema,
   evaluationPerformanceCompareSearchSchema,
   evaluationPerformanceSearchSchema,
+  evaluationReportDetailSearchSchema,
   evaluationReportsSearchSchema,
   evaluationTasksSearchSchema,
   evaluationViewerSearchSchema,
@@ -139,6 +140,7 @@ const evaluationReportDetailRoute = createRoute({
     parse: (params) => parseReportRouteParams(params, 'reportKey'),
     stringify: (params) => stringifyReportRouteParams(params, 'reportKey'),
   },
+  validateSearch: evaluationReportDetailSearchSchema,
   component: lazyRouteComponent(
     () => import('./evaluations/routes/report-detail.js'),
     'EvaluationReportDetailRoute',

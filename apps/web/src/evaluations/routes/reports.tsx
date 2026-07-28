@@ -1,5 +1,5 @@
-import { EvaluationFoundationPage } from './FoundationPage.js'
+import { ReportsPage } from '../features/reports/ReportsPage.js'
 
 export function EvaluationReportsRoute() {
-  return <EvaluationFoundationPage name="reports" />
+  return <ReportsPage />
 }

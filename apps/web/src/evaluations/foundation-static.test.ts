@@ -46,6 +46,22 @@ describe('Evaluation UI foundation static boundaries', () => {
     expect(router.match(/lazyRouteComponent\(/gu)).toHaveLength(11)
   })
 
+  test('uses the path-free configured-source refresh control on reports', async () => {
+    const refresh = await readFile(
+      path.join(evaluationsRoot, 'components/ConfiguredSourceRefresh.tsx'),
+      'utf8',
+    )
+    const reports = await readFile(
+      path.join(evaluationsRoot, 'features/reports/ReportsPage.tsx'),
+      'utf8',
+    )
+
+    expect(reports).toContain('<ConfiguredSourceRefresh')
+    expect(refresh).toContain('onRefresh')
+    expect(refresh).not.toMatch(/root[_A-Z-]?path/iu)
+    expect(refresh).not.toContain('type="text"')
+  })
+
   test('opens generated reports only in the product viewer sandbox', async () => {
     const safeLink = await readFile(
       path.join(evaluationsRoot, 'components/SafeReportLink.tsx'),
@@ -56,11 +72,17 @@ describe('Evaluation UI foundation static boundaries', () => {
       'utf8',
     )
     const viewer = await readFile(path.join(evaluationsRoot, 'routes/viewer.tsx'), 'utf8')
+    const generatedFrame = await readFile(
+      path.join(evaluationsRoot, 'components/SafeGeneratedDocumentFrame.tsx'),
+      'utf8',
+    )
 
     expect(taskRunner).toContain('/evaluations/viewer?')
     expect(safeLink).toContain('noopener noreferrer')
     expect(viewer).toContain('sandbox="allow-scripts"')
     expect(viewer).not.toContain('allow-same-origin')
+    expect(generatedFrame).toContain('sandbox="allow-scripts"')
+    expect(generatedFrame).not.toContain('allow-same-origin')
   })
 })
 

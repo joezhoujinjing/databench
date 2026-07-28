@@ -268,7 +268,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/DataTable.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/RichContent.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -278,7 +278,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/DataTableFallback.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/RichContent.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -288,7 +288,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/EmptyState.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportsState.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -298,7 +298,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/EmptyStateSystem.test.tsx",
+      "target_path": "apps/web/src/evaluations/foundation-static.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -308,7 +308,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/EmptyStateSystem.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportsState.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": [
         "dashboard.partial-empty-states",
@@ -322,7 +322,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/ErrorBoundary.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/RichContent.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -332,7 +332,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/ImageLightbox.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/RichContent.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -342,7 +342,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/JsonViewer.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/RichContent.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -352,7 +352,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/LazyCodeBlock.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/LazyCodeBlock.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -362,7 +362,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/LoadingSpinner.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportsState.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -372,7 +372,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/LogViewer.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/VirtualList.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -382,7 +382,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/MarkdownRenderer.test.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/RichContent.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -392,7 +392,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/MarkdownRenderer.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/RichContent.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -402,7 +402,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/VirtualList.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/VirtualList.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -412,7 +412,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/virtualWindow.test.ts",
+      "target_path": "apps/web/src/evaluations/foundation-static.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -422,7 +422,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/common/virtualWindow.ts",
+      "target_path": "apps/web/src/evaluations/features/content/VirtualList.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -509,7 +509,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/DatasetNav.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportHeader.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["report.details-analysis-subsets"]
     },
@@ -519,7 +519,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/DetailsTab.test.tsx",
+      "target_path": "apps/web/src/evaluations/domain/reports.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["report.details-analysis-subsets"]
     },
@@ -529,7 +529,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/DetailsTab.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/DetailsTab.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["report.details-analysis-subsets"]
     },
@@ -539,7 +539,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/metricConsistency.test.tsx",
+      "target_path": "apps/web/src/evaluations/domain/metric.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["report.overview-table-radar"]
     },
@@ -549,7 +549,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/OverviewTab.test.tsx",
+      "target_path": "apps/web/src/evaluations/domain/metric.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["report.overview-table-radar"]
     },
@@ -559,7 +559,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/OverviewTab.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/OverviewTab.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["report.overview-table-radar"]
     },
@@ -569,7 +569,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/PerfMetricsPanel.test.tsx",
+      "target_path": "apps/web/src/evaluations/domain/reports.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["report.details-analysis-subsets"]
     },
@@ -579,7 +579,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/PerfMetricsPanel.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/PerfMetricsPanel.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["report.details-analysis-subsets"]
     },
@@ -589,7 +589,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/PredictionsTab.test.tsx",
+      "target_path": "apps/web/src/evaluations/domain/reports.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["predictions.threshold-status-counts"]
     },
@@ -599,7 +599,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/PredictionsTab.tsx",
+      "target_path": "apps/web/src/evaluations/features/predictions/PredictionsTab.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": [
         "predictions.index-navigation",
@@ -613,7 +613,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/ReportCard.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportsCatalogue.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["reports.catalogue-responsive-list"]
     },
@@ -623,7 +623,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/ReportFilters.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportFilters.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["reports.catalogue-filters-sort"]
     },
@@ -633,7 +633,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/ReportHeader.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportHeader.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["report.header-summary-navigation", "shell.safe-report-new-tab"]
     },
@@ -643,7 +643,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/ReportsTable.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportsCatalogue.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["reports.catalogue-responsive-list"]
     },
@@ -653,7 +653,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/ReportSummaryStats.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportHeader.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["report.header-summary-navigation"]
     },
@@ -663,7 +663,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/SelectionControls.test.tsx",
+      "target_path": "apps/web/src/evaluations/domain/reports.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["reports.selection-actions"]
     },
@@ -673,7 +673,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/reports/SelectionTray.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportSelectionTray.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["reports.selection-actions"]
     },
@@ -683,7 +683,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/chat/AgentTraceView.tsx",
+      "target_path": "apps/web/src/evaluations/features/sample/AgentTraceView.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.agent-trace-linkage"]
     },
@@ -693,7 +693,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/chat/chatHelpers.ts",
+      "target_path": "apps/web/src/evaluations/domain/agent-trace.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.messages-reasoning-tools"]
     },
@@ -703,7 +703,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/chat/EvalResultPanel.test.tsx",
+      "target_path": "apps/web/src/evaluations/api/schemas/reports.schema.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["sample.chat-presentations-results"]
     },
@@ -713,7 +713,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/chat/EvalResultPanel.tsx",
+      "target_path": "apps/web/src/evaluations/features/sample/ChatView.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.chat-presentations-results"]
     },
@@ -723,7 +723,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/chat/MediaBlocks.tsx",
+      "target_path": "apps/web/src/evaluations/features/content/RichContent.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.rich-content-virtualization"]
     },
@@ -733,7 +733,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/chat/MessageComponents.tsx",
+      "target_path": "apps/web/src/evaluations/features/sample/MessageTimeline.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.messages-reasoning-tools"]
     },
@@ -743,7 +743,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/chat/roleConfig.ts",
+      "target_path": "apps/web/src/evaluations/features/sample/MessageTimeline.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.messages-reasoning-tools"]
     },
@@ -753,7 +753,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/chat/ToolCallComponents.tsx",
+      "target_path": "apps/web/src/evaluations/features/sample/MessageTimeline.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.messages-reasoning-tools"]
     },
@@ -763,7 +763,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/ChatView.test.tsx",
+      "target_path": "apps/web/src/evaluations/api/schemas/reports.schema.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["sample.chat-presentations-results"]
     },
@@ -773,7 +773,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/single/ChatView.tsx",
+      "target_path": "apps/web/src/evaluations/features/sample/ChatView.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.chat-presentations-results"]
     },
@@ -973,7 +973,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/ui/PathBar.tsx",
+      "target_path": "apps/web/src/evaluations/components/ConfiguredSourceRefresh.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.responsive-a11y-primitives", "shell.configured-source-refresh"]
     },
@@ -1073,7 +1073,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/contexts/ReportsContext.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportsPage.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["shell.configured-source-refresh"]
     },
@@ -1171,7 +1171,7 @@
       "kind": "production",
       "status": "migrated",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/domain/metric/MetricDisplaySpec.ts",
+      "target_path": "apps/web/src/evaluations/domain/metric.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.metric-native-format"]
     },
@@ -1181,7 +1181,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/domain/metric/metricFormat.test.ts",
+      "target_path": "apps/web/src/evaluations/domain/metric.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["foundation.metric-native-format"]
     },
@@ -1191,7 +1191,7 @@
       "kind": "production",
       "status": "migrated",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/domain/metric/metricFormat.ts",
+      "target_path": "apps/web/src/evaluations/domain/metric.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.metric-native-format"]
     },
@@ -1201,7 +1201,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/domain/metric/registry.test.ts",
+      "target_path": "apps/web/src/evaluations/domain/metric.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["foundation.metric-native-format"]
     },
@@ -1211,7 +1211,7 @@
       "kind": "production",
       "status": "migrated",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/domain/metric/registry.ts",
+      "target_path": "apps/web/src/evaluations/domain/metric.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.metric-native-format"]
     },
@@ -1578,7 +1578,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/layouts/MainLayout.tsx",
+      "target_path": "apps/web/src/evaluations/components/ConfiguredSourceRefresh.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["shell.configured-source-refresh"]
     },
@@ -1756,7 +1756,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/pages/ReportDetailPage.tsx",
+      "target_path": "apps/web/src/evaluations/routes/report-detail.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["report.header-summary-navigation"]
     },
@@ -1766,7 +1766,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/pages/ReportsPage.tsx",
+      "target_path": "apps/web/src/evaluations/features/reports/ReportsPage.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["reports.catalogue-filters-sort", "reports.catalogue-states-actions"]
     },
@@ -1886,7 +1886,7 @@
       "kind": "production",
       "status": "migrated",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/utils/formatUtils.ts",
+      "target_path": "apps/web/src/evaluations/domain/metric.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.metric-native-format"]
     },
@@ -1906,7 +1906,7 @@
       "kind": "production",
       "status": "migrated",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/utils/reportParser.ts",
+      "target_path": "apps/web/src/evaluations/domain/reports.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["sample.chat-presentations-results"]
     }

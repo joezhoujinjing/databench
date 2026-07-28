@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   evaluationPerformanceCompareSearchSchema,
+  evaluationReportDetailSearchSchema,
   evaluationTasksSearchSchema,
   evaluationViewerSearchSchema,
   parseReportRouteParams,
@@ -41,6 +42,18 @@ describe('Evaluation route contracts', () => {
     expect(evaluationPerformanceCompareSearchSchema.parse({ embedding: 0 })).toEqual({
       embedding: 0,
     })
+  })
+
+  test('keeps report detail tab and dataset selection refreshable', () => {
+    expect(evaluationReportDetailSearchSchema.parse({})).toEqual({ tab: 'overview' })
+    expect(
+      evaluationReportDetailSearchSchema.parse({
+        dataset: 'gsm8k',
+        subset: 'main',
+        tab: 'predictions',
+      }),
+    ).toEqual({ dataset: 'gsm8k', subset: 'main', tab: 'predictions' })
+    expect(() => evaluationReportDetailSearchSchema.parse({ tab: 'unknown' })).toThrow()
   })
 
   test('parses route keys to relative locators and stringifies canonically', () => {

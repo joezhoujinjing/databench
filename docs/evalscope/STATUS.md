@@ -3,8 +3,8 @@
 > 每个 E Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- evalscope-status
-current_step: E6
-last_completed_step: E5
+current_step: E7
+last_completed_step: E6
 runtime_enabled: false
 ui_routes_enabled: true
 upstream_commit: b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
@@ -14,18 +14,20 @@ e4_implementation: complete
 e4_gate: passed
 e5_implementation: complete
 e5_gate: passed
+e6_implementation: complete
+e6_gate: passed
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/evalscope-integration-design`
-- **当前 Step:** E6 Reports、Details 与 Predictions；尚未开始实现
+- **当前 Step:** E7 Dashboard、Compare、Performance、Benchmarks 与 Viewer
 - **已完成:** E0 决策/来源/能力基线；E1 `evalscope-general-qa@1.0.0` projection；E2 Evaluation Run
   控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环；E4 Databench Evaluation UI foundation；
-  E5 Tasks、Databench Dataset、task monitor 与安全报告入口
+  E5 Tasks、Databench Dataset、task monitor 与安全报告入口；E6 Reports、Details、Predictions 与逐样本内容展示
 - **产品状态:** backend-only image 与 same-origin gateway 仍 disabled-by-default；`/evaluations/*` 原生
-  lazy routes 已开放，Tasks 已可用；E6/E7 业务页面尚未迁移，不计为完整复刻
-- **GE7:** `pnpm evalscope:parity:check:green` 按设计保持失败；60 个 capability 中 14 个 green、46 个 planned
+  lazy routes 已开放，Tasks、Reports、Details 与 Predictions 已可用；E7 尚未完成，不计为完整复刻
+- **GE7:** `pnpm evalscope:parity:check:green` 按设计保持失败；60 个 capability 中 30 个 green、30 个 planned
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
 
 ## Step 状态
@@ -38,8 +40,8 @@ e5_gate: passed
 | E3 | backend-only EvalScope 与安全 gateway | ✅ | GE3 | prebuilt image `network=none`、真实 eval/stop/report |
 | E4 | Evaluation UI foundation | ✅ | GE4 | routes/client/tokens/i18n/primitives；11 个 lazy entries |
 | E5 | Tasks 与 Databench Dataset 闭环 | ✅ | GE5 | eval/perf、monitor、exact Dataset、safe viewer |
-| E6 | Reports、Details 与 Predictions | ⬜ 当前 | GE6 | 下一步 |
-| E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ⬜ | GE7 | 完整 UI 复刻唯一 gate |
+| E6 | Reports、Details 与 Predictions | ✅ | GE6 | catalogue、overview/details、逐样本与富内容 |
+| E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ⬜ 当前 | GE7 | 完整 UI 复刻唯一 gate |
 | E8 | 结果归档与 retention | ⬜ | GE8 | |
 | E9 | 安全、容量、离线与最终集成 gate | ⬜ | GE9 | |
 
@@ -230,3 +232,31 @@ v2-status/peers/offline/parity 和 `git diff --check` 均通过；`evalscope:par
 
 E5 将 9 个 target capability 置为 green；连同 E4 和两个 brand-shell exclusion，目前为 14 green / 46
 planned。E6/E7、runtime disabled-by-default、V16/V17 与公共云 D3 均未改变。
+
+## E6 交付与 Gate 记录
+
+- Reports catalogue 已实现 300ms URL 搜索、筛选、排序、分页、桌面表格/窄 Web 卡片、最多五项选择和
+  configured source refresh；refresh 会清除派生筛选与选择并重新读取 provider generation；
+- Report detail 已实现 Overview、Details、Predictions，tab/dataset/subset 均由 typed URL state 驱动并支持
+  direct refresh；metric 使用原生 scale/precision/direction，只有同质、有界数据才展示 radar；
+- Predictions 已实现 Index 跳转、message ID 前缀搜索和高亮、得分预设筛选、上一条/下一条导航，以及
+  legacy、structured chat 与 AgentTrace 三种样本形态；
+- 富内容支持 Markdown/GFM/KaTeX、按语言加载的代码高亮和复制、媒体、JSON fallback；generated document
+  继续只通过 Databench opaque viewer 打开，iframe 精确保持 `sandbox="allow-scripts"`；
+- provider schema 采用边界严格、局部宽容的 partial parsing：已知字段维持契约，未知字段和局部异常只降级
+  对应区域，不拖垮整份报告；
+- 桌面浏览器复用真实 GSM8K 报告验收 catalogue、refresh、三个详情 tab、URL reload、Index/message ID、
+  score filters、复制反馈与安全 iframe；页面 console 0 error / 0 warning。手机版竖屏按 owner 决策不属于
+  当前 Web gate；完整证据见 [E6-REPORTS-PREDICTIONS.md](evidence/E6-REPORTS-PREDICTIONS.md)。
+
+Gate 通过：
+
+- Web 35 files / 118 tests；全仓 22/22 typecheck tasks 与 22/22 test tasks；
+- `pnpm lint`、`pnpm openapi:check`（11/11）、`pnpm v2:status:check`、`pnpm peers check`、
+  `pnpm evalscope:parity:check`、`pnpm evalscope:parity:test`（7/7）、`pnpm offline:check` 与
+  `git diff --check`；
+- Web production build 保持 11 个 Evaluation lazy route entries，initial JS 850,774 bytes，低于
+  950,000-byte budget；Reports detail 的富内容依赖不进入 initial graph。
+
+E6 将 16 个 target capability 置为 green；连同 E4/E5 和两个 brand-shell exclusion，目前为 30 green /
+30 planned。E7 仍是完整 UI 复刻的唯一 gate；runtime disabled-by-default、V16/V17 与公共云 D3 均未改变。

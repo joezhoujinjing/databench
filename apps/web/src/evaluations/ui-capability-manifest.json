@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
-  "phase": "E5-tasks-dataset",
+  "phase": "E6-reports-predictions",
   "capability_schema": {
     "status_values": ["planned", "green"],
     "classifications": [
@@ -67,9 +67,9 @@
       "api_operations": ["GET /api/v1/reports/list", "GET /api/v1/perf/list"],
       "target": "apps/web/src/evaluations/components/ConfiguredSourceRefresh.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:configured-source-refresh"],
-      "browser_evidence": ["upstream-code:components/ui/PathBar.tsx", "planned:GE7:refresh-reset"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/foundation-static.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "shell.safe-report-new-tab",
@@ -157,9 +157,9 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/domain/metric.ts",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:metric-registry", "planned:GE7:metric-chart-fallback"],
-      "browser_evidence": ["upstream-code:domain/metric", "planned:GE7:metric-native-format"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/metric.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "foundation.polling-query-abort",
@@ -400,12 +400,9 @@
       "api_operations": ["GET /api/v1/reports/list"],
       "target": "apps/web/src/evaluations/features/reports/ReportFilters.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:report-filter-sort"],
-      "browser_evidence": [
-        "upstream-code:components/reports/ReportFilters.tsx",
-        "planned:GE6:report-filters"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/reports.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "reports.catalogue-responsive-list",
@@ -422,12 +419,9 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/reports/ReportsCatalogue.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:reports-responsive-list"],
-      "browser_evidence": [
-        "upstream-code:components/reports/ReportsTable.tsx",
-        "planned:GE6:reports-narrow"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/foundation-static.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "reports.selection-actions",
@@ -444,12 +438,9 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/reports/ReportSelectionTray.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:report-selection"],
-      "browser_evidence": [
-        "upstream-code:components/reports/SelectionTray.tsx",
-        "planned:GE6:report-selection"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/reports.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "reports.catalogue-states-actions",
@@ -466,12 +457,9 @@
       "api_operations": ["GET /api/v1/reports/list"],
       "target": "apps/web/src/evaluations/features/reports/ReportsState.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:reports-states"],
-      "browser_evidence": [
-        "upstream-code:pages/ReportsPage.tsx",
-        "planned:GE6:reports-empty-error"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/foundation-static.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "report.header-summary-navigation",
@@ -489,12 +477,12 @@
       "api_operations": ["GET /api/v1/reports/load"],
       "target": "apps/web/src/evaluations/routes/report-detail.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:report-header-summary"],
-      "browser_evidence": [
-        "upstream-code:pages/ReportDetailPage.tsx",
-        "planned:GE6:report-detail-tabs"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/reports.test.ts",
+        "test-file:apps/web/src/evaluations/routes/contracts.test.ts"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "report.overview-table-radar",
@@ -512,12 +500,12 @@
       "api_operations": ["GET /api/v1/reports/dataframe"],
       "target": "apps/web/src/evaluations/features/reports/OverviewTab.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:overview-table-radar"],
-      "browser_evidence": [
-        "upstream-code:components/reports/OverviewTab.tsx",
-        "planned:GE6:overview-radar-condition"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/metric.test.ts",
+        "test-file:apps/web/src/evaluations/domain/reports.test.ts"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "report.details-analysis-subsets",
@@ -537,12 +525,12 @@
       "api_operations": ["GET /api/v1/reports/analysis", "GET /api/v1/reports/dataframe"],
       "target": "apps/web/src/evaluations/features/reports/DetailsTab.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:details-analysis-subsets"],
-      "browser_evidence": [
-        "upstream-code:components/reports/DetailsTab.tsx",
-        "planned:GE6:details-to-predictions"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/reports.test.ts",
+        "test-file:apps/web/src/evaluations/features/content/RichContent.test.ts"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "predictions.threshold-status-counts",
@@ -559,12 +547,9 @@
       "api_operations": ["GET /api/v1/reports/predictions"],
       "target": "apps/web/src/evaluations/features/predictions/PredictionFilters.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:prediction-threshold-status"],
-      "browser_evidence": [
-        "upstream-code:components/reports/PredictionsTab.tsx",
-        "planned:GE6:prediction-threshold"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/reports.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "predictions.index-navigation",
@@ -578,12 +563,9 @@
       "api_operations": ["GET /api/v1/reports/predictions"],
       "target": "apps/web/src/evaluations/features/predictions/PredictionNavigator.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:prediction-index-jump"],
-      "browser_evidence": [
-        "upstream-code:components/reports/PredictionsTab.tsx",
-        "planned:GE6:index-invalid-state"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/reports.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "predictions.message-id-search-highlight",
@@ -597,12 +579,9 @@
       "api_operations": ["GET /api/v1/reports/predictions"],
       "target": "apps/web/src/evaluations/features/predictions/MessageIdSearch.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:prediction-message-id-search"],
-      "browser_evidence": [
-        "upstream-code:components/reports/PredictionsTab.tsx",
-        "planned:GE6:message-id-highlight"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/reports.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "sample.chat-presentations-results",
@@ -622,12 +601,12 @@
       "api_operations": ["GET /api/v1/reports/predictions"],
       "target": "apps/web/src/evaluations/features/sample/ChatView.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:sample-presentations-results"],
-      "browser_evidence": [
-        "upstream-code:components/single/ChatView.tsx",
-        "planned:GE6:sample-presentations"
+      "tests": [
+        "test-file:apps/web/src/evaluations/api/schemas/reports.schema.test.ts",
+        "test-file:apps/web/src/evaluations/domain/reports.test.ts"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "sample.messages-reasoning-tools",
@@ -646,12 +625,12 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/sample/MessageTimeline.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:messages-reasoning-tools"],
-      "browser_evidence": [
-        "upstream-code:components/single/chat/MessageComponents.tsx",
-        "planned:GE6:tool-message-browser"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/agent-trace.test.ts",
+        "test-file:apps/web/src/evaluations/features/content/RichContent.test.ts"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "sample.agent-trace-linkage",
@@ -665,12 +644,9 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/sample/AgentTraceView.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:agent-trace-linkage"],
-      "browser_evidence": [
-        "upstream-code:components/single/chat/AgentTraceView.tsx",
-        "planned:GE6:agent-trace"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/agent-trace.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "sample.rich-content-virtualization",
@@ -687,12 +663,12 @@
       "api_operations": ["GET /api/v1/reports/media/file"],
       "target": "apps/web/src/evaluations/features/content/RichContent.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE6:rich-content", "planned:GE6:large-trace-virtualization"],
-      "browser_evidence": [
-        "upstream-code:components/common/MarkdownRenderer.tsx",
-        "planned:GE6:rich-content-browser"
+      "tests": [
+        "test-file:apps/web/src/evaluations/features/content/RichContent.test.ts",
+        "test-file:apps/web/src/evaluations/foundation-static.test.ts"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md"],
+      "status": "green"
     },
     {
       "parity_id": "compare.model-slots-url",

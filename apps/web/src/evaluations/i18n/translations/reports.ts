@@ -2,14 +2,24 @@ import type { Dict } from './types.js'
 
 export const en: Dict = {
   title: 'Reports',
+  description:
+    'Filter, inspect and compare evaluation reports from the configured EvalScope result source.',
+  configuredSource: 'Configured source',
+  sourceUnavailable: 'Source unavailable',
+  sourceUnavailableDescription: 'The operator has not configured an EvalScope report source.',
+  activeFilters: 'Active report filters',
+  scoreRangeInvalid: 'Minimum score must not be greater than maximum score.',
   pathLabel: 'Output Directory',
   scan: 'Scan',
   scanning: 'Scanning...',
   filters: {
     search: 'Search reports...',
+    searchLabel: 'Search',
     model: 'Model',
     dataset: 'Dataset',
     sortBy: 'Sort By',
+    scoreMin: 'Min score',
+    scoreMax: 'Max score',
     time: 'Time',
     score: 'Score',
   },
@@ -37,14 +47,23 @@ export const en: Dict = {
 
 export const zh: Dict = {
   title: '报告',
+  description: '筛选、查看和对比已配置 EvalScope 结果源中的测评报告。',
+  configuredSource: '已配置结果源',
+  sourceUnavailable: '结果源不可用',
+  sourceUnavailableDescription: '管理员尚未配置 EvalScope 报告结果源。',
+  activeFilters: '当前报告筛选条件',
+  scoreRangeInvalid: '最低分数不能大于最高分数。',
   pathLabel: '输出目录',
   scan: '扫描',
   scanning: '扫描中...',
   filters: {
     search: '搜索报告...',
+    searchLabel: '搜索',
     model: '模型',
     dataset: '数据集',
     sortBy: '排序',
+    scoreMin: '最低分',
+    scoreMax: '最高分',
     time: '时间',
     score: '分数',
   },

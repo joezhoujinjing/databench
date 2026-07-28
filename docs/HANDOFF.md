@@ -29,10 +29,12 @@
   `workers/python` 同级；`deploy/evalscope` 只保留镜像、upstream patch/vendor 和 gateway 部署资产。
   E5 已完成 Evaluation/Performance 表单、Benchmark autocomplete、Databench exact Dataset source、
   progress/log/stop/reload task monitor 与安全报告入口，并通过真实 Dataset/native/performance/cancel/
-  provider-interrupt/same-ID gate；当前 14 个 capability green、46 个 planned，E6/E7 仍未完成，不得宣称
-  完整 UI 复刻。Owner 于 2026-07-28 明确手机版竖屏不属于当前 Web gate，并明确
+  provider-interrupt/same-ID gate；E6 已完成 Reports catalogue、Overview/Details/Predictions、逐样本导航、
+  legacy/structured/AgentTrace 展示、富内容渲染与 configured source refresh。当前 30 个 capability green、
+  30 个 planned；E7 仍是完整 UI 复刻的唯一 gate，不得提前宣称完成。Owner 于 2026-07-28 明确手机版竖屏
+  不属于当前 Web gate，并明确
   offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
-  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E5 已关闭，下一步是 E6。
+  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E6 已关闭，下一步是 E7。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
