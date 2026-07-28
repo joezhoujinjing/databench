@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Expand, Minimize2, RefreshCw } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBackend } from '@/api/backend.js'
 import { ApiError } from '@/api/errors.js'
@@ -9,6 +9,8 @@ import { Alert } from '@/components/ui/alert.js'
 import { StatusDot } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
 import { getSwiftStudioRuntime, SwiftStudioRuntimeContractError } from '../api/client.js'
+import type { SwiftStudioSessionV2 } from '../api/sessions.js'
+import { StudioSessionControl } from '../components/StudioSessionControl.js'
 import {
   isSwiftStudioFrameBooted,
   resolveSwiftStudioFrameLocation,
@@ -19,6 +21,11 @@ import {
 export function TrainingRoute() {
   const { t } = useTranslation()
   const { base, connectionScope, token } = useBackend()
+  const [readySession, setReadySession] = useState<SwiftStudioSessionV2 | null>(null)
+  const onReadySessionChange = useCallback(
+    (session: SwiftStudioSessionV2 | null) => setReadySession(session),
+    [],
+  )
   const frameLocation = resolveSwiftStudioFrameLocation(
     base,
     typeof window === 'undefined' ? 'http://databench.invalid' : window.location.origin,
@@ -37,11 +44,12 @@ export function TrainingRoute() {
   const readyRuntime =
     runtimeQuery.isSuccess && runtimeQuery.data.ready ? runtimeQuery.data : undefined
   const runtimeReady = readyRuntime !== undefined
-  const renderFrame = shouldRenderSwiftStudioFrame({
-    frameLocation,
-    querySucceeded: runtimeQuery.isSuccess,
-    runtimeReady,
-  })
+  const renderFrame =
+    shouldRenderSwiftStudioFrame({
+      frameLocation,
+      querySucceeded: runtimeQuery.isSuccess,
+      runtimeReady,
+    }) && readySession !== null
 
   return (
     <section className="space-y-5">
@@ -73,6 +81,7 @@ export function TrainingRoute() {
       {runtimeQuery.isSuccess && !runtimeQuery.data.ready ? (
         <StartingState retry={() => void runtimeQuery.refetch()} />
       ) : null}
+      {runtimeReady ? <StudioSessionControl onReadySessionChange={onReadySessionChange} /> : null}
       {runtimeReady && !frameLocation.supported ? (
         <Alert className="border-danger/35 bg-danger/10 text-danger">
           <strong className="block">
@@ -93,6 +102,12 @@ export function TrainingRoute() {
           runtimeLabel={`ms-swift ${readyRuntime.ms_swift_version} · Gradio ${readyRuntime.gradio_version} · Torch ${readyRuntime.torch_version}`}
           source={frameLocation.source}
         />
+      ) : null}
+      {runtimeReady && frameLocation.supported && readySession === null ? (
+        <Alert className="border-border bg-surface-soft text-sm">
+          <strong className="block">{t('training.sessionRequiredTitle')}</strong>
+          <span className="mt-1 block text-muted-foreground">{t('training.sessionRequired')}</span>
+        </Alert>
       ) : null}
     </section>
   )

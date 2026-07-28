@@ -17,6 +17,7 @@ import {
   RefStateConflictDetailV2Schema,
   ResourceLimitDetailV2Schema,
   ServiceUnavailableDetailV2Schema,
+  SwiftStudioSessionStateConflictDetailV2Schema,
   TransformJobStateConflictDetailV2Schema,
   UnsupportedProfileDetailV2Schema,
   ValidationErrorDetailV2Schema,
@@ -46,6 +47,7 @@ type ErrorCode =
   | 'ref_conflict'
   | 'ref_state_conflict'
   | 'service_unavailable'
+  | 'swift_studio_session_state_conflict'
   | 'too_many_requests'
   | 'transform_job_state_conflict'
   | 'unauthorized'
@@ -287,6 +289,12 @@ function normalizeV2Error(
         code: 'evaluation_run_state_conflict',
         message,
         detail: EvaluationRunStateConflictDetailV2Schema.parse(detail),
+      }
+    case 'swift_studio_session_state_conflict':
+      return {
+        code: 'swift_studio_session_state_conflict',
+        message,
+        detail: SwiftStudioSessionStateConflictDetailV2Schema.parse(detail),
       }
     case 'unsupported_profile':
       return {

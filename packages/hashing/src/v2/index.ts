@@ -16,6 +16,7 @@ export {
   hashV2IdentityClaimKey,
   hashV2IdentityRequest,
   hashV2Record,
+  hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
 } from './domains.js'
 export {
@@ -35,6 +36,7 @@ export {
   type IdentityRequestHashInputV1,
   type RecordSeedV1,
   type SourceRootSeedV1,
+  type SwiftStudioSessionCreateIdentityV1,
   type TransformCacheIdentityV1,
   V2_EVALUATION_RUN_CREATE_PROFILE,
   V2_EXPORT_FIDELITY_PROFILE,
@@ -42,6 +44,7 @@ export {
   V2_IDENTITY_PROFILE,
   V2_IDENTITY_REQUEST_PROFILE,
   V2_RECORD_SCHEMA_VERSION,
+  V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
   type V2CandidateId,
   type V2ConverterName,
   type V2CreationProfile,

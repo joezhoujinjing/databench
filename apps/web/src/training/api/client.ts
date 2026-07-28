@@ -4,7 +4,7 @@ import { type FetchLike, requestJson } from '@/api/client.js'
 export const SWIFT_STUDIO_PATH = '/swift-studio/' as const
 export const SWIFT_STUDIO_RUNTIME_PATH = '/swift-studio-runtime/runtime' as const
 export const SWIFT_STUDIO_CAPABILITY_MANIFEST_SHA256 =
-  'd5d103922d96cf861bb1f4eddd8d2d2681b2c0670946aff3bee1dad6d97037ca' as const
+  '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4' as const
 
 const runtimeShape = {
   ready: z.boolean(),

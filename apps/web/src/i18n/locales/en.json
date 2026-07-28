@@ -77,7 +77,36 @@
     "fullscreenFailed": "The browser did not allow the Studio to enter or exit fullscreen.",
     "loadingStudio": "Loading the native Gradio Studio…",
     "frameError": "The native Studio page could not be loaded. Reload it or check the Gateway, root path, and Provider status.",
-    "frameTitle": "Native ms-swift Gradio Studio"
+    "frameTitle": "Native ms-swift Gradio Studio",
+    "sessionTitle": "Training data session",
+    "sessionDescription": "Select a Databench Dataset first. The system locks its exact version, reviews the ms-swift conversion, and prepares the current Studio input and output directories.",
+    "refreshSession": "Refresh session",
+    "dataset": "Dataset",
+    "datasetHint": "Select a Dataset name; its current exact version will be locked when the session is created.",
+    "exactVersion": "Exact version",
+    "chooseDataset": "Choose a Dataset",
+    "inspectDataset": "Review conversion",
+    "inspecting": "Reviewing…",
+    "outputRows": "{{count}} training rows",
+    "confirmFidelity": "I reviewed and accept the semantic changes in this ms-swift conversion.",
+    "emptyDataset": "The conversion is empty, so a Swift Studio session cannot be created.",
+    "openSession": "Open Studio session",
+    "preparingSession": "Preparing session…",
+    "lastSessionFailed": "The previous session failed to prepare",
+    "sessionUnavailable": "The Provider could not prepare this session.",
+    "closeSession": "Close session",
+    "closingSession": "Closing…",
+    "preparingNotice": "The exact Dataset is being written safely to the Provider. Studio will open automatically when it is ready.",
+    "closingNotice": "The Provider is closing the current session and performing exact cleanup.",
+    "sessionRequiredTitle": "Prepare training data first",
+    "sessionRequired": "Choose a Dataset, review its conversion, and open a ready session before the complete native Gradio Studio is loaded.",
+    "sessionStatus": {
+      "preparing": "Session preparing",
+      "ready": "Session ready",
+      "closing": "Session closing",
+      "closed": "Session closed",
+      "failed": "Session failed"
+    }
   },
   "v2": {
     "gate": {

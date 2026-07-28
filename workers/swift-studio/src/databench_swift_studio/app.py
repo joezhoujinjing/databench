@@ -1,9 +1,10 @@
-"""Read-only Provider API for the native Swift Studio process."""
+"""Bounded internal Provider API for the native Swift Studio process."""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import importlib.metadata
 import json
 import urllib.error
@@ -14,8 +15,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import (
     CAPABILITY_MANIFEST_SHA256,
@@ -25,6 +28,12 @@ from .config import (
     SWIFT_STUDIO_ROOT_PATH,
     TOP_LEVEL_SURFACES,
     RuntimeConfig,
+)
+from .errors import ProviderError
+from .sessions import (
+    CreateSessionRequest,
+    SessionActionRequest,
+    SessionStore,
 )
 
 
@@ -62,6 +71,81 @@ CAPABILITY_IDS_BY_SURFACE = {
     'llm_eval': 'surface.eval',
     'llm_sample': 'surface.sample',
 }
+
+
+async def _strict_json_body(request: Request, maximum_bytes: int) -> dict[str, Any]:
+    content_type = request.headers.get('content-type', '').split(';', 1)[0].strip().lower()
+    if content_type != 'application/json':
+        raise ProviderError(
+            'content_type_required',
+            'Content-Type must be application/json',
+            415,
+        )
+    content_length = request.headers.get('content-length')
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError as exc:
+            raise ProviderError(
+                'request_size_invalid',
+                'Content-Length is invalid',
+                400,
+            ) from exc
+        if declared < 0 or declared > maximum_bytes:
+            raise ProviderError(
+                'request_too_large',
+                'Request exceeds the configured byte bound',
+                413,
+            )
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > maximum_bytes:
+            raise ProviderError(
+                'request_too_large',
+                'Request exceeds the configured byte bound',
+                413,
+            )
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProviderError(
+            'invalid_json',
+            'Request body must be valid UTF-8 JSON',
+            400,
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ProviderError(
+            'invalid_json',
+            'Request body must be a JSON object',
+            400,
+        )
+    return payload
+
+
+def _reject_query(request: Request) -> None:
+    if request.url.query:
+        raise ProviderError(
+            'query_rejected',
+            'This endpoint does not accept query parameters',
+            400,
+        )
+
+
+def _authorize_session_control(request: Request, config: RuntimeConfig) -> None:
+    credential = config.databench_service_credential
+    if credential is None:
+        return
+    expected = f'Bearer {credential}'.encode('utf-8')
+    provided = request.headers.get('authorization', '').encode('utf-8')
+    if not hmac.compare_digest(expected, provided):
+        raise ProviderError(
+            'provider_auth_required',
+            'Swift Studio Provider authentication is required',
+            401,
+        )
+
+
 CAPABILITY_KEYS = {
     'id',
     'kind',
@@ -430,17 +514,20 @@ def create_app(
     config: RuntimeConfig | None = None,
     *,
     probe: Probe | None = None,
+    session_store: SessionStore | None = None,
 ) -> FastAPI:
     runtime = RuntimeConfig.from_env() if config is None else config
     runtime.prepare()
     capability_manifest = _load_capability_manifest(runtime.capability_manifest_path)
     readiness_probe = probe or (lambda: _probe_gradio(runtime, capability_manifest))
+    sessions = session_store or SessionStore(runtime)
     app = FastAPI(
         title='Databench Swift Studio Provider',
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
+    app.state.session_store = sessions
 
     @app.middleware('http')
     async def private_response(request, call_next):
@@ -449,6 +536,46 @@ def create_app(
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'no-referrer'
         return response
+
+    @app.exception_handler(ProviderError)
+    async def provider_error(_: Request, error: ProviderError):
+        return JSONResponse(error.to_body(), status_code=error.status)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_: Request, __: RequestValidationError):
+        error = ProviderError(
+            'request_path_invalid',
+            'Request path does not match the Provider contract',
+            422,
+        )
+        return JSONResponse(error.to_body(), status_code=error.status)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(_: Request, error: StarletteHTTPException):
+        if error.status_code == 404:
+            provider = ProviderError('not_found', 'Endpoint not found', 404)
+        elif error.status_code == 405:
+            provider = ProviderError(
+                'method_not_allowed',
+                'Method is not allowed for this endpoint',
+                405,
+            )
+        else:
+            provider = ProviderError(
+                'http_error',
+                'Provider request failed',
+                error.status_code,
+            )
+        return JSONResponse(provider.to_body(), status_code=provider.status)
+
+    @app.exception_handler(Exception)
+    async def internal_error(_: Request, __: Exception):
+        error = ProviderError(
+            'internal_error',
+            'Internal Swift Studio Provider error',
+            500,
+        )
+        return JSONResponse(error.to_body(), status_code=error.status)
 
     @app.get('/health')
     async def health():
@@ -473,5 +600,52 @@ def create_app(
             'ready': result.ready,
             **_runtime_payload(runtime, capability_manifest, result.ready),
         }
+
+    @app.post('/sessions')
+    async def create_session(request: Request):
+        _authorize_session_control(request, runtime)
+        _reject_query(request)
+        payload = await _strict_json_body(request, runtime.session_request_max_bytes)
+        parsed = CreateSessionRequest.parse(payload, runtime)
+        response, replayed = await asyncio.to_thread(sessions.create, parsed)
+        return JSONResponse(response, status_code=200 if replayed else 201)
+
+    @app.get('/sessions/current')
+    async def current_session(request: Request):
+        _authorize_session_control(request, runtime)
+        _reject_query(request)
+        return await asyncio.to_thread(sessions.current)
+
+    @app.get('/sessions/current/context')
+    async def current_session_context(request: Request):
+        _authorize_session_control(request, runtime)
+        _reject_query(request)
+        return await asyncio.to_thread(sessions.current_context)
+
+    @app.post('/sessions/{provider_session_id}:close')
+    async def close_session(provider_session_id: str, request: Request):
+        _authorize_session_control(request, runtime)
+        _reject_query(request)
+        payload = await _strict_json_body(request, runtime.session_request_max_bytes)
+        parsed = SessionActionRequest.parse(payload)
+        response, replayed = await asyncio.to_thread(
+            sessions.close,
+            provider_session_id,
+            parsed,
+        )
+        return JSONResponse(response, status_code=200 if replayed else 202)
+
+    @app.post('/sessions/{provider_session_id}:cleanup')
+    async def cleanup_session(provider_session_id: str, request: Request):
+        _authorize_session_control(request, runtime)
+        _reject_query(request)
+        payload = await _strict_json_body(request, runtime.session_request_max_bytes)
+        parsed = SessionActionRequest.parse(payload)
+        response, replayed = await asyncio.to_thread(
+            sessions.cleanup,
+            provider_session_id,
+            parsed,
+        )
+        return JSONResponse(response, status_code=200 if replayed else 202)
 
     return app

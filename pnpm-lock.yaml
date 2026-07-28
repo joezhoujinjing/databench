@@ -317,6 +317,9 @@ importers:
       '@grpc/grpc-js':
         specifier: 1.14.4
         version: 1.14.4
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
     devDependencies:
       '@aws-sdk/client-s3':
         specifier: ^3.1079.0

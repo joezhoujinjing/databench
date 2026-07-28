@@ -38,6 +38,7 @@ export {
   DEFAULT_V2_CURSOR_TTL_MS,
   V2CursorCodec,
   type V2CursorCodecOptions,
+  type V2SwiftStudioSessionCursorState,
 } from './cursor.js'
 export { evaluationBenchmarkFromPlanV2, evaluationRunFromCatalogV2 } from './evaluation.js'
 export {
@@ -54,6 +55,17 @@ export {
   registrationFromCommittedDataset,
 } from './mappings.js'
 export {
+  SWIFT_STUDIO_PATH_V2,
+  swiftStudioProviderSessionIdForDigestV2,
+  swiftStudioSessionFromCatalogV2,
+} from './swift-studio.js'
+export {
+  HttpSwiftStudioProvider,
+  type HttpSwiftStudioProviderOptions,
+  type SwiftStudioProviderSessionV2,
+  type SwiftStudioProviderV2,
+} from './swift-studio-provider.js'
+export {
   DEFAULT_V2_TRANSFORM_CONCURRENCY,
   DEFAULT_V2_TRANSFORM_MAX_PENDING,
   V2TransformSemaphore,
@@ -67,6 +79,8 @@ export {
   type V2CanonicalDraftImportOptions,
   type V2CanonicalJsonlPreviewOptions,
   type V2JsonlLimits,
+  type V2SwiftStudioWorkspaceOpenOptions,
+  type V2SwiftStudioWorkspaceOptions,
   type V2TransformLimits,
   V2Workspace,
   type V2WorkspaceCatalog,
@@ -74,5 +88,6 @@ export {
   type V2WorkspaceOperationOptions,
   type V2WorkspaceOptions,
   type V2WorkspaceRuntimeLimits,
+  type V2WorkspaceSwiftStudioCatalog,
   v2WorkspaceTempRoot,
 } from './workspace.js'

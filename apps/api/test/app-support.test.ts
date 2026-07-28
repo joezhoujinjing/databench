@@ -126,12 +126,14 @@ describe('api support', () => {
       loadConfig({
         ...base,
         DATABENCH_SWIFT_STUDIO_ENABLED: 'true',
+        DATABENCH_SWIFT_STUDIO_DATABENCH_BASE_URL: 'http://api:8000',
         DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL: 'http://swift-studio:7860',
         DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL: 'http://swift-studio:7861',
         DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST: manifest,
       }).swiftStudio,
     ).toMatchObject({
       enabled: true,
+      databenchBaseUrl: 'http://api:8000',
       internalBaseUrl: 'http://swift-studio:7860',
       providerBaseUrl: 'http://swift-studio:7861',
       routeManifestPath: manifest,
@@ -140,6 +142,7 @@ describe('api support', () => {
       loadConfig({
         ...base,
         DATABENCH_SWIFT_STUDIO_ENABLED: 'true',
+        DATABENCH_SWIFT_STUDIO_DATABENCH_BASE_URL: 'http://api:8000',
         DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL: 'http://swift-studio:7860',
         DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL: 'http://public.example:7861',
         DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST: manifest,

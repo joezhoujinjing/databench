@@ -5,6 +5,8 @@ import {
   EvaluationRunStatusV2Schema,
   parseRawJsonV2,
   RefNameV2Schema,
+  SwiftStudioSessionIdV2Schema,
+  SwiftStudioSessionStatusV2Schema,
   TransformJobIdV2Schema,
   V2_CURSOR_MAX_CHARS,
   V2_LINEAGE_CURSOR_MAX_CHARS,
@@ -72,6 +74,20 @@ export interface V2EvaluationRunCursorState {
 interface EvaluationRunCursorPayloadV2 extends V2EvaluationRunCursorState {
   readonly v: typeof CURSOR_VERSION
   readonly kind: 'evaluation_runs'
+  readonly scope: string
+  readonly expires_at: number
+}
+
+export interface V2SwiftStudioSessionCursorState {
+  readonly created_at: string
+  readonly id: string
+  readonly dataset_version: string | null
+  readonly status: string | null
+}
+
+interface SwiftStudioSessionCursorPayloadV2 extends V2SwiftStudioSessionCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'swift_studio_sessions'
   readonly scope: string
   readonly expires_at: number
 }
@@ -225,6 +241,60 @@ export class V2CursorCodec {
     }
   }
 
+  encodeSwiftStudioSession(namespace: string, stateInput: V2SwiftStudioSessionCursorState): string {
+    const state = validateSwiftStudioSessionState(stateInput)
+    const payload: SwiftStudioSessionCursorPayloadV2 = {
+      v: CURSOR_VERSION,
+      kind: 'swift_studio_sessions',
+      scope: this.#scope(namespace, 'swift_studio_sessions'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    }
+    const bytes = encoder.encode(canonicalJsonV2(payload))
+    return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
+  }
+
+  decodeSwiftStudioSession(
+    cursor: string,
+    namespace: string,
+    datasetVersion: string | null,
+    status: string | null,
+  ): Readonly<V2SwiftStudioSessionCursorState> {
+    try {
+      if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
+        throw new Error('cursor text size is invalid')
+      }
+      const parts = cursor.split('.')
+      if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('malformed cursor')
+      const bytes = decodeBase64Url(parts[0])
+      if (bytes.byteLength === 0 || bytes.byteLength > CURSOR_MAX_BYTES) {
+        throw new Error('cursor payload size is invalid')
+      }
+      const signature = decodeBase64Url(parts[1])
+      const expected = this.#sign(bytes)
+      if (signature.byteLength !== expected.byteLength || !timingSafeEqual(signature, expected)) {
+        throw new Error('cursor signature is invalid')
+      }
+      const value = parseRawJsonV2(bytes, { maxBytes: CURSOR_MAX_BYTES, maxDepth: 4 })
+      if (
+        !isSwiftStudioSessionCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'swift_studio_sessions') ||
+        value.dataset_version !== datasetVersion ||
+        value.status !== status ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateSwiftStudioSessionState(value)
+    } catch {
+      throw new ValidationError('Invalid or expired V2 Swift Studio Session cursor', {
+        issues: [
+          { path: '/cursor', line: null, code: 'invalid_cursor', message: 'Invalid cursor' },
+        ],
+      })
+    }
+  }
+
   #decodeRef(cursor: string, namespace: string, kind: RefCursorKindV2): string {
     try {
       if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
@@ -337,7 +407,12 @@ export class V2CursorCodec {
 
   #scope(
     namespace: string,
-    kind: RefCursorKindV2 | 'lineage' | 'transform_jobs' | 'evaluation_runs',
+    kind:
+      | RefCursorKindV2
+      | 'lineage'
+      | 'transform_jobs'
+      | 'evaluation_runs'
+      | 'swift_studio_sessions',
   ): string {
     return createHmac('sha256', this.#key)
       .update(canonicalJsonV2({ kind: `databench-v2-${kind}-cursor-scope`, namespace }))
@@ -424,6 +499,26 @@ function isEvaluationRunCursorPayload(value: unknown): value is EvaluationRunCur
   )
 }
 
+function isSwiftStudioSessionCursorPayload(
+  value: unknown,
+): value is SwiftStudioSessionCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 8 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'swift_studio_sessions' &&
+    typeof record.scope === 'string' &&
+    typeof record.created_at === 'string' &&
+    typeof record.id === 'string' &&
+    (record.dataset_version === null || typeof record.dataset_version === 'string') &&
+    (record.status === null || typeof record.status === 'string') &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
 function validateTransformJobState(
   input: V2TransformJobCursorState,
 ): Readonly<V2TransformJobCursorState> {
@@ -457,6 +552,31 @@ function validateEvaluationRunState(
   return Object.freeze({
     created_at: timestamp.toISOString(),
     id: EvaluationRunIdV2Schema.parse(input.id),
+    dataset_version: datasetVersion,
+    status,
+  })
+}
+
+function validateSwiftStudioSessionState(
+  input: V2SwiftStudioSessionCursorState,
+): Readonly<V2SwiftStudioSessionCursorState> {
+  const timestamp = new Date(input.created_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.created_at) {
+    throw new TypeError('V2 Swift Studio Session cursor timestamp is invalid')
+  }
+  const datasetVersion =
+    input.dataset_version === null
+      ? null
+      : DIGEST_HEX.test(input.dataset_version)
+        ? input.dataset_version
+        : null
+  if (input.dataset_version !== null && datasetVersion === null) {
+    throw new TypeError('V2 Swift Studio Session cursor Dataset filter is invalid')
+  }
+  const status = input.status === null ? null : SwiftStudioSessionStatusV2Schema.parse(input.status)
+  return Object.freeze({
+    created_at: timestamp.toISOString(),
+    id: SwiftStudioSessionIdV2Schema.parse(input.id),
     dataset_version: datasetVersion,
     status,
   })

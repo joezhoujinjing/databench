@@ -14,6 +14,12 @@ import {
   type CatalogRunPageV2,
   type CatalogRunRowV2,
   type CatalogSnapshotRowV2,
+  type CatalogSwiftStudioSessionCreateResultV2,
+  type CatalogSwiftStudioSessionCursorV2,
+  type CatalogSwiftStudioSessionFailureV2,
+  type CatalogSwiftStudioSessionListFilterV2,
+  type CatalogSwiftStudioSessionPageV2,
+  type CatalogSwiftStudioSessionRowV2,
   type CatalogTransformJobCursorV2,
   type CatalogTransformJobPageV2,
   type CatalogTransformJobRowV2,
@@ -21,15 +27,18 @@ import {
   type CompareAndSetRefV2,
   type CompleteTransformJobV2,
   type CreateEvaluationRunV2,
+  type CreateSwiftStudioSessionV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
   type RestoreRefV2,
   type TransitionEvaluationRunV2,
+  type TransitionSwiftStudioSessionV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
   V2CatalogRefConflictError,
+  V2CatalogSwiftStudioSessionConflictError,
 } from '@databench/catalog'
 import {
   admitV2TransformWorkingSet,
@@ -41,10 +50,12 @@ import {
   canonicalJsonV2,
   createArtifactHasher,
   hashV2EvaluationRunCreate,
+  hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
   V2_EVALUATION_RUN_CREATE_PROFILE,
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
+  V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '@databench/hashing'
 import {
   createDefaultV2ConverterRegistry,
@@ -80,6 +91,8 @@ import {
   CreateBasicCleanJobRequestV2Schema,
   type CreateEvaluationRunRequestV2,
   CreateEvaluationRunRequestV2Schema,
+  type CreateSwiftStudioSessionRequestV2,
+  CreateSwiftStudioSessionRequestV2Schema,
   type CursorPageRequestV2,
   CursorPageRequestV2Schema,
   canonicalPreviewRecordFromDraftV1,
@@ -162,7 +175,15 @@ import {
   RunTransformRequestV2Schema,
   type RunTransformResultV2,
   RunTransformResultV2Schema,
+  ServiceUnavailableError,
   StartEvaluationRunRequestV2Schema,
+  SwiftStudioSessionIdV2Schema,
+  type SwiftStudioSessionPageRequestV2,
+  SwiftStudioSessionPageRequestV2Schema,
+  type SwiftStudioSessionPageV2,
+  SwiftStudioSessionPageV2Schema,
+  SwiftStudioSessionStateConflictErrorV2,
+  type SwiftStudioSessionV2,
   TransformCacheIdentityV1Schema,
   type TransformDescriptorV2,
   TransformDescriptorV2Schema,
@@ -232,6 +253,19 @@ import {
   transformJobFromCatalog,
 } from './mappings.js'
 import {
+  swiftStudioProviderSessionIdForDigestV2,
+  swiftStudioSessionFromCatalogV2,
+} from './swift-studio.js'
+import {
+  type ClosedSwiftStudioProviderSessionV2,
+  HttpSwiftStudioProvider,
+  type HttpSwiftStudioProviderOptions,
+  SwiftStudioProviderConflictError,
+  type SwiftStudioProviderExpectedExportV2,
+  type SwiftStudioProviderSessionV2,
+  type SwiftStudioProviderV2,
+} from './swift-studio-provider.js'
+import {
   DEFAULT_V2_TRANSFORM_CONCURRENCY,
   DEFAULT_V2_TRANSFORM_MAX_PENDING,
   V2TransformSemaphore,
@@ -244,6 +278,8 @@ const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n
 const claimedWorkspaceCaches = new WeakSet<V2DatasetCache>()
 const V2_WORKSPACE_TEMP_DIRECTORY = '.databench-v2-temp'
 const NO_ASYNC_OPTIONS_FAILURE = Symbol('no async V2 ingest options failure')
+const SWIFT_STUDIO_RECONCILE_TIMEOUT_MS = 10_000
+const DEFAULT_SWIFT_STUDIO_ABANDON_GRACE_MS = 310_000
 
 export interface V2WorkspaceCatalog {
   getOrCreateNamespace(scope: 'default'): Promise<string>
@@ -298,6 +334,44 @@ export interface V2WorkspaceCatalog {
   ): Promise<CatalogEvaluationRunRowV2 | null>
 }
 
+export interface V2WorkspaceSwiftStudioCatalog {
+  createOrReadSwiftStudioSession(
+    input: CreateSwiftStudioSessionV2,
+  ): Promise<CatalogSwiftStudioSessionCreateResultV2>
+  getSwiftStudioSession(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogSwiftStudioSessionRowV2 | null>
+  abandonSwiftStudioSessionPreparation(
+    namespaceId: string,
+    id: string,
+    preparationOwnerToken: string,
+  ): Promise<boolean>
+  renewSwiftStudioSessionPreparation(
+    namespaceId: string,
+    id: string,
+    preparationOwnerToken: string,
+  ): Promise<boolean>
+  claimSwiftStudioSessionPreparation(
+    namespaceId: string,
+    id: string,
+    observedPreparationOwnerToken: string,
+    preparationAbandonGraceMs: number,
+  ): Promise<{
+    readonly row: CatalogSwiftStudioSessionRowV2 | null
+    readonly claimed: boolean
+  }>
+  listSwiftStudioSessions(
+    namespaceId: string,
+    filter: CatalogSwiftStudioSessionListFilterV2,
+    before: CatalogSwiftStudioSessionCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogSwiftStudioSessionPageV2>
+  transitionSwiftStudioSession(
+    input: TransitionSwiftStudioSessionV2,
+  ): Promise<CatalogSwiftStudioSessionRowV2 | null>
+}
+
 export interface V2WorkspaceOperationOptions extends V2OperationContext {}
 
 export interface V2CanonicalJsonlPreviewOptions {
@@ -344,6 +418,33 @@ export interface V2WorkspaceOptions {
   readonly transformLimits?: Partial<V2TransformLimits>
   readonly jsonlLimits?: Partial<V2JsonlLimits>
   readonly onCleanupError?: (error: unknown, primaryError: unknown | null) => void
+  readonly swiftStudio?: V2SwiftStudioWorkspaceOptions
+}
+
+export interface V2SwiftStudioWorkspaceOptions {
+  readonly catalog: V2WorkspaceSwiftStudioCatalog
+  readonly provider: SwiftStudioProviderV2
+  readonly datasetExportBaseUrl: string
+  readonly upstreamCommit: string
+  readonly imageDigest: string
+  readonly runtimeCapabilityDigest: string
+  readonly preparationAbandonGraceMs?: number
+}
+
+type ResolvedV2SwiftStudioWorkspaceOptions = Omit<
+  V2SwiftStudioWorkspaceOptions,
+  'preparationAbandonGraceMs'
+> & {
+  readonly preparationAbandonGraceMs: number
+}
+
+export interface V2SwiftStudioWorkspaceOpenOptions
+  extends Omit<HttpSwiftStudioProviderOptions, 'baseUrl'> {
+  readonly providerBaseUrl: string
+  readonly datasetExportBaseUrl: string
+  readonly upstreamCommit: string
+  readonly imageDigest: string
+  readonly runtimeCapabilityDigest: string
 }
 
 export interface V2WorkspaceOpenOptions {
@@ -354,6 +455,7 @@ export interface V2WorkspaceOpenOptions {
   readonly datasetLimits?: V2DatasetLimits
   readonly transformLimits?: Partial<V2TransformLimits>
   readonly jsonlLimits?: Partial<V2JsonlLimits>
+  readonly swiftStudio?: V2SwiftStudioWorkspaceOpenOptions
 }
 
 interface ResolvedLayoutV2 {
@@ -392,6 +494,7 @@ export class V2Workspace {
   readonly #runtimeCapability: Readonly<PostTrainingV2RuntimeCapability>
   readonly #transformSemaphore: V2TransformSemaphore
   readonly #onCleanupError: ((error: unknown, primaryError: unknown | null) => void) | undefined
+  readonly #swiftStudio: Readonly<ResolvedV2SwiftStudioWorkspaceOptions> | null
   #namespacePromise: Promise<string> | undefined
   #closeOwnedResources: (() => Promise<void>) | undefined
   #closePromise: Promise<void> | undefined
@@ -421,6 +524,31 @@ export class V2Workspace {
           ? {}
           : { transformLimits: options.transformLimits }),
         ...(options.jsonlLimits === undefined ? {} : { jsonlLimits: options.jsonlLimits }),
+        ...(options.swiftStudio === undefined
+          ? {}
+          : {
+              swiftStudio: {
+                catalog,
+                provider: new HttpSwiftStudioProvider({
+                  baseUrl: options.swiftStudio.providerBaseUrl,
+                  ...(options.swiftStudio.credential === undefined
+                    ? {}
+                    : { credential: options.swiftStudio.credential }),
+                  ...(options.swiftStudio.fetch === undefined
+                    ? {}
+                    : { fetch: options.swiftStudio.fetch }),
+                  ...(options.swiftStudio.timeoutMs === undefined
+                    ? {}
+                    : { timeoutMs: options.swiftStudio.timeoutMs }),
+                }),
+                datasetExportBaseUrl: options.swiftStudio.datasetExportBaseUrl,
+                upstreamCommit: options.swiftStudio.upstreamCommit,
+                imageDigest: options.swiftStudio.imageDigest,
+                runtimeCapabilityDigest: options.swiftStudio.runtimeCapabilityDigest,
+                preparationAbandonGraceMs:
+                  (options.swiftStudio.timeoutMs ?? 300_000) + SWIFT_STUDIO_RECONCILE_TIMEOUT_MS,
+              },
+            }),
       })
       workspace.#closeOwnedResources = async () => {
         await catalog.close()
@@ -483,6 +611,10 @@ export class V2Workspace {
     claimedWorkspaceCaches.add(cache)
     this.#cache = cache
     this.#onCleanupError = options.onCleanupError
+    this.#swiftStudio =
+      options.swiftStudio === undefined
+        ? null
+        : snapshotSwiftStudioWorkspaceOptions(options.swiftStudio)
     this.#runtimeCapability = postTrainingV2Capability({
       datasetLimits: this.#datasetLimits,
       jsonlLimits: this.#jsonlLimits,
@@ -1173,6 +1305,789 @@ export class V2Workspace {
       })
     }
     return run
+  }
+
+  async createSwiftStudioSession(
+    requestInput: CreateSwiftStudioSessionRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<SwiftStudioSessionV2> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudio()
+    const request = CreateSwiftStudioSessionRequestV2Schema.parse(requestInput)
+    if (request.display_ref !== null) {
+      const displayRef = await this.getRef(request.display_ref, context)
+      if (displayRef === null) {
+        throw new NotFoundError('Swift Studio display Ref was not found', {
+          ref_name: request.display_ref,
+        })
+      }
+      if (displayRef.version !== request.dataset_version) {
+        throw new ValidationError('Swift Studio display Ref does not identify the exact Dataset', {
+          issues: [
+            {
+              path: '/display_ref',
+              line: null,
+              code: 'display_ref_version_mismatch',
+              message: 'display_ref must currently resolve to dataset_version',
+            },
+          ],
+        })
+      }
+    }
+    const plan = await this.inspectExport(
+      request.dataset_version,
+      { converter: request.converter, options: request.options },
+      context,
+    )
+    assertExportFidelityAcceptedV2(plan, request.accepted_fidelity_digest)
+    if (plan.converter !== 'ms-swift' || plan.converter_version !== '1.0.0') {
+      throw new IntegrityError('Swift Studio converter registration has drifted', {
+        reason: 'swift_studio_converter_drift',
+      })
+    }
+    if (plan.output_count === 0) {
+      throw new ValidationError('Swift Studio Dataset export is empty', {
+        issues: [
+          {
+            path: '/dataset_version',
+            line: null,
+            code: 'swift_studio_empty_export',
+            message: 'The exact Dataset has no ms-swift training rows',
+          },
+        ],
+      })
+    }
+    const expected = await this.#measureSwiftStudioExport(
+      request.dataset_version,
+      plan.output_count,
+      plan.fidelity_digest,
+      context,
+    )
+    const namespaceId = await this.#namespace(context.signal)
+    const createDigest = hashV2SwiftStudioSessionCreate({
+      swift_studio_session_create_profile: V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
+      namespace: namespaceId,
+      dataset_version: request.dataset_version,
+      converter: 'ms-swift',
+      converter_version: '1.0.0',
+      normalized_options: plan.normalized_options,
+      fidelity_digest: plan.fidelity_digest,
+      output_count: plan.output_count,
+      provider: 'swift-studio',
+      upstream_commit: runtime.upstreamCommit,
+      image_digest: runtime.imageDigest,
+      runtime_capability_digest: runtime.runtimeCapabilityDigest,
+    })
+    const providerSessionId = swiftStudioProviderSessionIdForDigestV2(createDigest)
+    let admission: CatalogSwiftStudioSessionCreateResultV2 | undefined
+    for (let attempt = 0; attempt < 2 && admission === undefined; attempt += 1) {
+      try {
+        admission = await runtime.catalog.createOrReadSwiftStudioSession({
+          namespaceId,
+          createDigest,
+          datasetVersion: request.dataset_version,
+          displayRef: request.display_ref,
+          converter: 'ms-swift',
+          converterVersion: '1.0.0',
+          normalizedOptions: plan.normalized_options,
+          fidelityDigest: plan.fidelity_digest,
+          exportOutputCount: BigInt(plan.output_count),
+          provider: 'swift-studio',
+          providerSessionId,
+          upstreamCommit: runtime.upstreamCommit,
+          imageDigest: runtime.imageDigest,
+          runtimeCapabilityDigest: runtime.runtimeCapabilityDigest,
+        })
+      } catch (error) {
+        if (
+          attempt === 0 &&
+          error instanceof V2CatalogSwiftStudioSessionConflictError &&
+          error.reason === 'active_session_exists' &&
+          error.status === 'preparing'
+        ) {
+          const active = await runtime.catalog.getSwiftStudioSession(namespaceId, error.sessionId)
+          if (active !== null) {
+            this.#assertSwiftStudioNamespace(active, namespaceId)
+            const reconciled = await this.#reconcilePreparingSwiftStudioSession(active)
+            if (reconciled.status !== 'preparing') continue
+          }
+        }
+        throw mapSwiftStudioCatalogError(error)
+      }
+    }
+    if (admission === undefined) {
+      throw new IntegrityError('Swift Studio Session admission did not return a result', {
+        reason: 'swift_studio_session_admission_missing',
+      })
+    }
+    let { row } = admission
+    this.#assertSwiftStudioNamespace(row, namespaceId)
+    if (row.createDigest !== createDigest) {
+      throw new SwiftStudioSessionStateConflictErrorV2({
+        reason: 'create_request_mismatch',
+        session_id: row.id,
+        status: row.status,
+        requested_status: null,
+      })
+    }
+    if (row.status === 'preparing' && !admission.created) {
+      row = await this.#reconcilePreparingSwiftStudioSession(row)
+    }
+    if (row.status !== 'preparing' || !admission.created) {
+      return swiftStudioSessionFromCatalogV2(row)
+    }
+
+    try {
+      context.signal?.throwIfAborted()
+    } catch (error) {
+      await this.#failSwiftStudioSession(row, error, {
+        phase: 'provider',
+        code: 'prepare_aborted',
+        message: 'Studio Session preparation was cancelled before Provider admission',
+      })
+      throw error
+    }
+
+    const renewed = await runtime.catalog.renewSwiftStudioSessionPreparation(
+      row.namespaceId,
+      row.id,
+      row.preparationOwnerToken,
+    )
+    if (!renewed) {
+      const existing = await runtime.catalog.getSwiftStudioSession(row.namespaceId, row.id)
+      if (existing === null) {
+        throw new IntegrityError('Swift Studio Session disappeared during preparation', {
+          reason: 'swift_studio_session_disappeared',
+          session_id: row.id,
+        })
+      }
+      this.#assertSwiftStudioNamespace(existing, namespaceId)
+      return swiftStudioSessionFromCatalogV2(existing)
+    }
+    try {
+      context.signal?.throwIfAborted()
+    } catch (error) {
+      await this.#failSwiftStudioSession(row, error, {
+        phase: 'provider',
+        code: 'prepare_aborted',
+        message: 'Studio Session preparation was cancelled before Provider admission',
+      })
+      throw error
+    }
+
+    let prepared: Readonly<SwiftStudioProviderSessionV2>
+    try {
+      prepared = await runtime.provider.createSession(
+        {
+          requestId: createDigest,
+          datasetVersion: request.dataset_version,
+          displayLabel: request.display_ref ?? request.dataset_version,
+          exportUrl: swiftStudioExportUrl(runtime.datasetExportBaseUrl, request.dataset_version),
+          acceptedFidelityDigest: request.accepted_fidelity_digest,
+          expected,
+        },
+        operationContext(context.signal),
+      )
+    } catch (error) {
+      const current = await this.#reconcileSwiftStudioProviderSession(runtime.provider, error)
+      if (current?.providerSessionId === providerSessionId) {
+        prepared = current
+      } else {
+        await this.#abandonSwiftStudioSessionPreparation(row, error)
+        const providerHasAnotherSession =
+          error instanceof SwiftStudioProviderConflictError ||
+          (current !== null && current !== undefined)
+        if (providerHasAnotherSession) {
+          throw new SwiftStudioSessionStateConflictErrorV2({
+            reason: 'active_session_exists',
+            session_id: row.id,
+            status: row.status,
+            requested_status: null,
+          })
+        }
+        throw error
+      }
+    }
+    if (
+      prepared.providerSessionId !== providerSessionId ||
+      prepared.datasetVersion !== request.dataset_version ||
+      prepared.converter !== 'ms-swift' ||
+      prepared.converterVersion !== '1.0.0' ||
+      prepared.exportDigest !== expected.digest ||
+      prepared.exportSizeBytes !== expected.sizeBytes ||
+      prepared.outputCount !== expected.lineCount
+    ) {
+      const integrityError = new IntegrityError('Swift Studio Provider prepared another export', {
+        reason: 'swift_studio_provider_export_mismatch',
+        session_id: row.id,
+      })
+      if (prepared.providerSessionId === providerSessionId) {
+        const closed = await this.#closeSwiftStudioProviderAfterPreparationFailure(
+          runtime.provider,
+          providerSessionId,
+          createDigest,
+          integrityError,
+        )
+        if (!closed) {
+          await this.#abandonSwiftStudioSessionPreparation(row, integrityError)
+          throw integrityError
+        }
+      } else {
+        await this.#abandonSwiftStudioSessionPreparation(row, integrityError)
+        throw integrityError
+      }
+      await this.#failSwiftStudioSession(row, integrityError, {
+        phase: 'provider',
+        code: 'export_mismatch',
+        message: 'Provider export verification failed',
+      })
+      throw integrityError
+    }
+    const ready = await this.#transitionSwiftStudioSessionReady(
+      row,
+      expected.digest,
+      expected.sizeBytes,
+    )
+    return swiftStudioSessionFromCatalogV2(ready)
+  }
+
+  async getSwiftStudioSession(
+    idInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<SwiftStudioSessionV2 | null> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudio()
+    const id = SwiftStudioSessionIdV2Schema.parse(idInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogSwiftStudioSessionRowV2 | null
+    try {
+      row = await waitWithAbort(
+        runtime.catalog.getSwiftStudioSession(namespaceId, id),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      throw mapSwiftStudioCatalogError(error)
+    }
+    if (row === null) return null
+    this.#assertSwiftStudioNamespace(row, namespaceId)
+    if (row.status === 'preparing') {
+      row = await this.#reconcilePreparingSwiftStudioSession(row)
+    }
+    return swiftStudioSessionFromCatalogV2(row)
+  }
+
+  async listSwiftStudioSessions(
+    requestInput: SwiftStudioSessionPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<SwiftStudioSessionPageV2> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudio()
+    const request = SwiftStudioSessionPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const datasetVersion = request.dataset_version ?? null
+    const status = request.status ?? null
+    const cursorState =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeSwiftStudioSession(request.cursor, namespaceId, datasetVersion, status)
+    const before =
+      cursorState === null
+        ? null
+        : { createdAt: new Date(cursorState.created_at), id: cursorState.id }
+    let page: CatalogSwiftStudioSessionPageV2
+    try {
+      page = await waitWithAbort(
+        runtime.catalog.listSwiftStudioSessions(
+          namespaceId,
+          { datasetVersion, status },
+          before,
+          request.limit,
+        ),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      throw mapSwiftStudioCatalogError(error)
+    }
+    if (page.rows.length > request.limit) {
+      throw new IntegrityError('Catalog returned too many Swift Studio Sessions', {
+        reason: 'swift_studio_session_page_overflow',
+      })
+    }
+    for (const row of page.rows) this.#assertSwiftStudioNamespace(row, namespaceId)
+    const rows =
+      status === null
+        ? await Promise.all(
+            page.rows.map((row) =>
+              row.status === 'preparing'
+                ? this.#reconcilePreparingSwiftStudioSession(row)
+                : Promise.resolve(row),
+            ),
+          )
+        : page.rows
+    return SwiftStudioSessionPageV2Schema.parse({
+      items: rows.map(swiftStudioSessionFromCatalogV2),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeSwiftStudioSession(namespaceId, {
+              created_at: page.nextCursor.createdAt.toISOString(),
+              id: page.nextCursor.id,
+              dataset_version: datasetVersion,
+              status,
+            }),
+    })
+  }
+
+  async closeSwiftStudioSession(
+    idInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<SwiftStudioSessionV2> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudio()
+    const id = SwiftStudioSessionIdV2Schema.parse(idInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const row = await this.getSwiftStudioSession(id, context)
+    if (row === null) {
+      throw new NotFoundError(`Swift Studio Session was not found: ${id}`, { session_id: id })
+    }
+    if (row.status === 'closed') return row
+    if (row.status !== 'ready' && row.status !== 'closing') {
+      throw new SwiftStudioSessionStateConflictErrorV2({
+        reason: 'invalid_transition',
+        session_id: row.id,
+        status: row.status,
+        requested_status: 'closing',
+      })
+    }
+    const providerSessionId = swiftStudioProviderSessionIdForDigestV2(row.create_digest)
+    let closedProvider: Readonly<ClosedSwiftStudioProviderSessionV2>
+    try {
+      closedProvider = await runtime.provider.closeSession(
+        providerSessionId,
+        row.create_digest,
+        operationContext(context.signal),
+      )
+    } catch (error) {
+      if (
+        error instanceof SwiftStudioProviderConflictError &&
+        error.providerCode === 'session_has_active_tasks'
+      ) {
+        throw new SwiftStudioSessionStateConflictErrorV2({
+          reason: 'provider_session_busy',
+          session_id: row.id,
+          status: row.status,
+          requested_status: 'closing',
+        })
+      }
+      if (error instanceof SwiftStudioProviderConflictError) {
+        throw new ServiceUnavailableError(
+          'Swift Studio Provider close state conflicted',
+          {
+            dependency: 'swift_studio_provider',
+            provider_code: error.providerCode,
+          },
+          { cause: error },
+        )
+      }
+      throw error
+    }
+    if (closedProvider.providerSessionId !== providerSessionId) {
+      throw new IntegrityError('Swift Studio Provider closed another Session', {
+        reason: 'swift_studio_provider_close_mismatch',
+        session_id: row.id,
+      })
+    }
+    const closed = await this.#convergeClosedSwiftStudioSession(namespaceId, id)
+    return swiftStudioSessionFromCatalogV2(closed)
+  }
+
+  async #measureSwiftStudioExport(
+    datasetVersion: string,
+    expectedOutputCount: number,
+    acceptedFidelityDigest: string,
+    context: V2WorkspaceOperationOptions,
+  ): Promise<{
+    readonly digestAlgorithm: 'blake3'
+    readonly digest: string
+    readonly sizeBytes: number
+    readonly lineCount: number
+  }> {
+    const exported = await this.export(
+      datasetVersion,
+      {
+        converter: 'ms-swift',
+        options: {},
+        accepted_fidelity_digest: acceptedFidelityDigest,
+      },
+      context,
+    )
+    const hasher = createArtifactHasher()
+    let sizeBytes = 0
+    let lineCount = 0
+    let lastByte: number | undefined
+    for await (const chunk of exported.bytes) {
+      context.signal?.throwIfAborted()
+      hasher.update(chunk)
+      sizeBytes = checkedAddSafeInteger(sizeBytes, chunk.byteLength, 'Swift export byte size')
+      for (const byte of chunk) if (byte === 0x0a) lineCount += 1
+      if (chunk.byteLength > 0) lastByte = chunk[chunk.byteLength - 1]
+    }
+    if (sizeBytes > 0 && lastByte !== 0x0a) lineCount += 1
+    if (sizeBytes === 0 || lineCount !== expectedOutputCount) {
+      throw new IntegrityError('Swift Studio export does not match its inspected output count', {
+        reason: 'swift_studio_export_count_mismatch',
+        expected_output_count: expectedOutputCount,
+        actual_output_count: lineCount,
+      })
+    }
+    return Object.freeze({
+      digestAlgorithm: 'blake3',
+      digest: hasher.digestHex(),
+      sizeBytes,
+      lineCount,
+    })
+  }
+
+  async #failSwiftStudioSession(
+    row: CatalogSwiftStudioSessionRowV2,
+    primaryError: unknown,
+    failure: CatalogSwiftStudioSessionFailureV2,
+  ): Promise<CatalogSwiftStudioSessionRowV2 | null> {
+    const runtime = this.#requireSwiftStudio()
+    let current: CatalogSwiftStudioSessionRowV2 | null = row
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await runtime.catalog.transitionSwiftStudioSession({
+          namespaceId: row.namespaceId,
+          id: row.id,
+          status: 'failed',
+          preparationOwnerToken: row.preparationOwnerToken,
+          failure,
+        })
+      } catch (cleanupError) {
+        attachSuppressed(primaryError, cleanupError)
+        try {
+          current = await runtime.catalog.getSwiftStudioSession(row.namespaceId, row.id)
+        } catch (readError) {
+          attachSuppressed(primaryError, readError)
+          break
+        }
+        if (current === null) return null
+        this.#assertSwiftStudioNamespace(current, row.namespaceId)
+        if (
+          current.status === 'failed' &&
+          current.failure?.phase === failure.phase &&
+          current.failure.code === failure.code &&
+          current.failure.message === failure.message
+        ) {
+          return current
+        }
+        if (
+          current.status !== 'preparing' ||
+          current.preparationOwnerToken !== row.preparationOwnerToken
+        ) {
+          return current
+        }
+      }
+    }
+    if (
+      current?.status === 'preparing' &&
+      current.preparationOwnerToken === row.preparationOwnerToken
+    ) {
+      return await this.#abandonSwiftStudioSessionPreparation(current, primaryError)
+    }
+    return current
+  }
+
+  async #reconcileSwiftStudioProviderSession(
+    provider: SwiftStudioProviderV2,
+    primaryError: unknown,
+  ): Promise<Readonly<SwiftStudioProviderSessionV2> | null | undefined> {
+    try {
+      return await provider.getCurrentSession({
+        signal: AbortSignal.timeout(SWIFT_STUDIO_RECONCILE_TIMEOUT_MS),
+      })
+    } catch (reconcileError) {
+      attachSuppressed(primaryError, reconcileError)
+      return undefined
+    }
+  }
+
+  async #closeSwiftStudioProviderAfterPreparationFailure(
+    provider: SwiftStudioProviderV2,
+    providerSessionId: string,
+    requestId: string,
+    primaryError: unknown,
+  ): Promise<boolean> {
+    try {
+      const closed = await provider.closeSession(providerSessionId, requestId, {
+        signal: AbortSignal.timeout(SWIFT_STUDIO_RECONCILE_TIMEOUT_MS),
+      })
+      if (closed.providerSessionId !== providerSessionId) {
+        throw new IntegrityError('Swift Studio Provider closed another Session', {
+          reason: 'swift_studio_provider_close_mismatch',
+        })
+      }
+      return true
+    } catch (cleanupError) {
+      attachSuppressed(primaryError, cleanupError)
+      return false
+    }
+  }
+
+  async #reconcilePreparingSwiftStudioSession(
+    observed: CatalogSwiftStudioSessionRowV2,
+  ): Promise<CatalogSwiftStudioSessionRowV2> {
+    const runtime = this.#requireSwiftStudio()
+    const failureCode =
+      observed.preparationAbandonedAt === null ? 'prepare_expired' : 'prepare_unconfirmed'
+    let claimed: Awaited<
+      ReturnType<V2WorkspaceSwiftStudioCatalog['claimSwiftStudioSessionPreparation']>
+    >
+    try {
+      claimed = await runtime.catalog.claimSwiftStudioSessionPreparation(
+        observed.namespaceId,
+        observed.id,
+        observed.preparationOwnerToken,
+        runtime.preparationAbandonGraceMs,
+      )
+    } catch {
+      return observed
+    }
+    if (claimed.row === null) return observed
+    this.#assertSwiftStudioNamespace(claimed.row, observed.namespaceId)
+    if (!claimed.claimed) return claimed.row
+    let row = claimed.row
+
+    let current: Readonly<SwiftStudioProviderSessionV2> | null
+    try {
+      current = await runtime.provider.getCurrentSession({
+        signal: AbortSignal.timeout(SWIFT_STUDIO_RECONCILE_TIMEOUT_MS),
+      })
+    } catch (error) {
+      row = (await this.#abandonSwiftStudioSessionPreparation(row, error)) ?? row
+      return row
+    }
+    if (current === null) {
+      const reconciliationError = new IntegrityError(
+        'Swift Studio Session preparation ended without a Provider Session',
+        { reason: 'swift_studio_provider_prepare_absent', session_id: row.id },
+      )
+      return (
+        (await this.#failSwiftStudioSession(row, reconciliationError, {
+          phase: 'provider',
+          code: failureCode,
+          message: 'Provider did not retain the Studio Session preparation',
+        })) ?? row
+      )
+    }
+
+    const expectedProviderSessionId = swiftStudioProviderSessionIdForDigestV2(row.createDigest)
+    const reconciliationError = new IntegrityError(
+      'Swift Studio Session preparation requires Provider reconciliation',
+      { reason: 'swift_studio_provider_reconcile', session_id: row.id },
+    )
+    if (current.providerSessionId !== expectedProviderSessionId) {
+      return (await this.#abandonSwiftStudioSessionPreparation(row, reconciliationError)) ?? row
+    }
+    let expected: Readonly<SwiftStudioProviderExpectedExportV2>
+    try {
+      expected = await this.#measureSwiftStudioExport(
+        row.datasetVersion,
+        swiftStudioCountToSafeNumber(row.exportOutputCount),
+        row.fidelityDigest,
+        {},
+      )
+    } catch (error) {
+      return (await this.#abandonSwiftStudioSessionPreparation(row, error)) ?? row
+    }
+    if (
+      current.datasetVersion !== row.datasetVersion ||
+      current.converter !== row.converter ||
+      current.converterVersion !== row.converterVersion ||
+      current.exportDigest !== expected.digest ||
+      current.exportSizeBytes !== expected.sizeBytes ||
+      current.outputCount !== expected.lineCount
+    ) {
+      const closed = await this.#closeSwiftStudioProviderAfterPreparationFailure(
+        runtime.provider,
+        expectedProviderSessionId,
+        row.createDigest,
+        reconciliationError,
+      )
+      if (!closed) {
+        return (await this.#abandonSwiftStudioSessionPreparation(row, reconciliationError)) ?? row
+      }
+      return (
+        (await this.#failSwiftStudioSession(row, reconciliationError, {
+          phase: 'provider',
+          code: 'export_mismatch',
+          message: 'Provider export verification failed',
+        })) ?? row
+      )
+    }
+
+    try {
+      return await this.#transitionSwiftStudioSessionReady(row, expected.digest, expected.sizeBytes)
+    } catch {
+      try {
+        return (await runtime.catalog.getSwiftStudioSession(row.namespaceId, row.id)) ?? row
+      } catch {
+        return row
+      }
+    }
+  }
+
+  async #transitionSwiftStudioSessionReady(
+    row: CatalogSwiftStudioSessionRowV2,
+    exportDigest: string,
+    exportSizeBytes: number,
+  ): Promise<CatalogSwiftStudioSessionRowV2> {
+    const runtime = this.#requireSwiftStudio()
+    let lastError: unknown = new IntegrityError(
+      'Swift Studio Session could not reach ready state',
+      { reason: 'swift_studio_session_ready_transition', session_id: row.id },
+    )
+    let confirmedPreparing = false
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const ready = await runtime.catalog.transitionSwiftStudioSession({
+          namespaceId: row.namespaceId,
+          id: row.id,
+          status: 'ready',
+          preparationOwnerToken: row.preparationOwnerToken,
+          exportDigest,
+          exportSizeBytes: BigInt(exportSizeBytes),
+        })
+        if (ready === null) {
+          throw new IntegrityError('Swift Studio Session disappeared during preparation', {
+            reason: 'swift_studio_session_disappeared',
+            session_id: row.id,
+          })
+        }
+        this.#assertSwiftStudioNamespace(ready, row.namespaceId)
+        return ready
+      } catch (error) {
+        lastError = error
+        let existing: CatalogSwiftStudioSessionRowV2 | null
+        try {
+          existing = await runtime.catalog.getSwiftStudioSession(row.namespaceId, row.id)
+        } catch (readError) {
+          attachSuppressed(error, readError)
+          break
+        }
+        if (existing === null) throw mapSwiftStudioCatalogError(error)
+        this.#assertSwiftStudioNamespace(existing, row.namespaceId)
+        if (existing.status === 'ready') {
+          if (
+            existing.exportDigest !== exportDigest ||
+            existing.exportSizeBytes !== BigInt(exportSizeBytes)
+          ) {
+            throw new IntegrityError('Swift Studio Session ready export does not match Provider', {
+              reason: 'swift_studio_session_ready_mismatch',
+              session_id: row.id,
+            })
+          }
+          return existing
+        }
+        if (existing.status !== 'preparing') throw mapSwiftStudioCatalogError(error)
+        if (existing.preparationOwnerToken !== row.preparationOwnerToken) {
+          throw new SwiftStudioSessionStateConflictErrorV2({
+            reason: 'invalid_transition',
+            session_id: existing.id,
+            status: existing.status,
+            requested_status: 'ready',
+          })
+        }
+        confirmedPreparing = true
+      }
+    }
+
+    if (confirmedPreparing) {
+      await this.#abandonSwiftStudioSessionPreparation(row, lastError)
+    }
+    throw mapSwiftStudioCatalogError(lastError)
+  }
+
+  async #convergeClosedSwiftStudioSession(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogSwiftStudioSessionRowV2> {
+    const runtime = this.#requireSwiftStudio()
+    let current = await runtime.catalog.getSwiftStudioSession(namespaceId, id)
+    let lastError: unknown = new IntegrityError(
+      'Swift Studio Session could not reach closed state',
+      { reason: 'swift_studio_session_close_transition', session_id: id },
+    )
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (current === null) {
+        throw new NotFoundError(`Swift Studio Session was not found: ${id}`, { session_id: id })
+      }
+      this.#assertSwiftStudioNamespace(current, namespaceId)
+      if (current.status === 'closed') return current
+      if (current.status !== 'ready' && current.status !== 'closing') {
+        throw new SwiftStudioSessionStateConflictErrorV2({
+          reason: 'invalid_transition',
+          session_id: current.id,
+          status: current.status,
+          requested_status: 'closed',
+        })
+      }
+      try {
+        current = await runtime.catalog.transitionSwiftStudioSession({
+          namespaceId,
+          id,
+          status: current.status === 'ready' ? 'closing' : 'closed',
+        })
+      } catch (error) {
+        lastError = error
+        try {
+          current = await runtime.catalog.getSwiftStudioSession(namespaceId, id)
+        } catch (readError) {
+          attachSuppressed(error, readError)
+          throw mapSwiftStudioCatalogError(error)
+        }
+      }
+    }
+    throw mapSwiftStudioCatalogError(lastError)
+  }
+
+  async #abandonSwiftStudioSessionPreparation(
+    row: CatalogSwiftStudioSessionRowV2,
+    primaryError: unknown,
+  ): Promise<CatalogSwiftStudioSessionRowV2 | null> {
+    const runtime = this.#requireSwiftStudio()
+    try {
+      await runtime.catalog.abandonSwiftStudioSessionPreparation(
+        row.namespaceId,
+        row.id,
+        row.preparationOwnerToken,
+      )
+      return await runtime.catalog.getSwiftStudioSession(row.namespaceId, row.id)
+    } catch (abandonError) {
+      attachSuppressed(primaryError, abandonError)
+      return null
+    }
+  }
+
+  #requireSwiftStudio(): Readonly<ResolvedV2SwiftStudioWorkspaceOptions> {
+    if (this.#swiftStudio === null) {
+      throw new ServiceUnavailableError('Swift Studio Session bridge is disabled', {
+        dependency: 'swift_studio_provider',
+      })
+    }
+    return this.#swiftStudio
+  }
+
+  #assertSwiftStudioNamespace(row: CatalogSwiftStudioSessionRowV2, namespaceId: string): void {
+    if (row.namespaceId !== namespaceId) {
+      throw new IntegrityError('Catalog returned a Swift Studio Session from another namespace', {
+        reason: 'swift_studio_session_namespace_mismatch',
+        session_id: row.id,
+      })
+    }
   }
 
   listConverters(): readonly Readonly<ConverterDescriptorV2>[] {
@@ -3267,7 +4182,100 @@ function snapshotV2WorkspaceOpenOptions(
     ...(input.datasetLimits === undefined ? {} : { datasetLimits: input.datasetLimits }),
     ...(input.transformLimits === undefined ? {} : { transformLimits: input.transformLimits }),
     ...(input.jsonlLimits === undefined ? {} : { jsonlLimits: input.jsonlLimits }),
+    ...(input.swiftStudio === undefined
+      ? {}
+      : { swiftStudio: snapshotSwiftStudioWorkspaceOpenOptions(input.swiftStudio) }),
   })
+}
+
+function snapshotSwiftStudioWorkspaceOpenOptions(
+  input: V2SwiftStudioWorkspaceOpenOptions,
+): Readonly<V2SwiftStudioWorkspaceOpenOptions> {
+  if (input === null || typeof input !== 'object') {
+    throw new TypeError('Swift Studio Workspace open options must be an object')
+  }
+  const providerBaseUrl = requireHttpOrigin('Swift Studio Provider base URL', input.providerBaseUrl)
+  const datasetExportBaseUrl = requireHttpOrigin(
+    'Swift Studio Dataset export base URL',
+    input.datasetExportBaseUrl,
+  )
+  const identity = snapshotSwiftStudioIdentity(input)
+  return Object.freeze({
+    providerBaseUrl,
+    datasetExportBaseUrl,
+    ...identity,
+    ...(input.credential === undefined ? {} : { credential: input.credential }),
+    ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
+    ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+  })
+}
+
+function snapshotSwiftStudioWorkspaceOptions(
+  input: V2SwiftStudioWorkspaceOptions,
+): Readonly<ResolvedV2SwiftStudioWorkspaceOptions> {
+  if (input === null || typeof input !== 'object') {
+    throw new TypeError('Swift Studio Workspace options must be an object')
+  }
+  if (input.catalog === null || typeof input.catalog !== 'object') {
+    throw new TypeError('Swift Studio Catalog is required')
+  }
+  if (input.provider === null || typeof input.provider !== 'object') {
+    throw new TypeError('Swift Studio Provider is required')
+  }
+  return Object.freeze({
+    catalog: input.catalog,
+    provider: input.provider,
+    datasetExportBaseUrl: requireHttpOrigin(
+      'Swift Studio Dataset export base URL',
+      input.datasetExportBaseUrl,
+    ),
+    ...snapshotSwiftStudioIdentity(input),
+    preparationAbandonGraceMs: nonnegativeSafeInteger(
+      'Swift Studio preparation abandon grace',
+      input.preparationAbandonGraceMs ?? DEFAULT_SWIFT_STUDIO_ABANDON_GRACE_MS,
+    ),
+  })
+}
+
+function snapshotSwiftStudioIdentity(input: {
+  readonly upstreamCommit: string
+  readonly imageDigest: string
+  readonly runtimeCapabilityDigest: string
+}): {
+  readonly upstreamCommit: string
+  readonly imageDigest: string
+  readonly runtimeCapabilityDigest: string
+} {
+  if (!/^[0-9a-f]{40}$/u.test(input.upstreamCommit)) {
+    throw new TypeError('Swift Studio upstream commit must be lowercase 40-hex')
+  }
+  if (!EXACT_VERSION.test(input.imageDigest)) {
+    throw new TypeError('Swift Studio image digest must be lowercase 64-hex')
+  }
+  if (!EXACT_VERSION.test(input.runtimeCapabilityDigest)) {
+    throw new TypeError('Swift Studio capability digest must be lowercase 64-hex')
+  }
+  return Object.freeze({
+    upstreamCommit: input.upstreamCommit,
+    imageDigest: input.imageDigest,
+    runtimeCapabilityDigest: input.runtimeCapabilityDigest,
+  })
+}
+
+function requireHttpOrigin(name: string, value: string): string {
+  if (typeof value !== 'string') throw new TypeError(`${name} must be a string`)
+  const url = new URL(value)
+  if (
+    url.protocol !== 'http:' ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.pathname !== '/' ||
+    url.search !== '' ||
+    url.hash !== ''
+  ) {
+    throw new TypeError(`${name} must be an HTTP origin`)
+  }
+  return url.origin
 }
 
 function snapshotJsonlLimits(input: Partial<V2JsonlLimits> | undefined): Readonly<V2JsonlLimits> {
@@ -3462,6 +4470,48 @@ function workerCountToSafeNumber(value: bigint, field: string): number {
   return Number(value)
 }
 
+function swiftStudioCountToSafeNumber(value: bigint): number {
+  if (value < 1n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new IntegrityError('Swift Studio export count is outside the safe integer range', {
+      reason: 'swift_studio_export_count_out_of_range',
+      actual: value.toString(),
+    })
+  }
+  return Number(value)
+}
+
+function mapSwiftStudioCatalogError(error: unknown): Error {
+  if (error instanceof V2CatalogSwiftStudioSessionConflictError) {
+    return new SwiftStudioSessionStateConflictErrorV2({
+      reason: error.reason,
+      session_id: error.sessionId,
+      status: error.status,
+      requested_status: error.requestedStatus,
+    })
+  }
+  return mapV2CatalogError(error, false)
+}
+
+function swiftStudioExportUrl(baseUrl: string, datasetVersion: string): string {
+  const version = DigestHexV2Schema.parse(datasetVersion)
+  return new URL(`/v2/datasets/${version}:export`, baseUrl).toString()
+}
+
+function checkedAddSafeInteger(left: number, right: number, name: string): number {
+  if (
+    !Number.isSafeInteger(left) ||
+    left < 0 ||
+    !Number.isSafeInteger(right) ||
+    right < 0 ||
+    right > Number.MAX_SAFE_INTEGER - left
+  ) {
+    throw new CapacityExceededError(`${name} exceeds the safe integer range`, {
+      resource: 'swift_studio_export_bytes',
+    })
+  }
+  return left + right
+}
+
 function requireCompletedWorkerOutputVersion(job: CatalogTransformJobRowV2): string {
   if (job.status !== 'completed' || job.outputVersion === null) {
     throw new IntegrityError('Worker staging cleanup requires a completed canonical job', {
@@ -3545,6 +4595,13 @@ function nonNegativeSafeInteger(name: string, value: number): number {
 function positiveSafeInteger(name: string, value: number): number {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new TypeError(`${name} must be a positive safe integer`)
+  }
+  return value
+}
+
+function nonnegativeSafeInteger(name: string, value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(`${name} must be a non-negative safe integer`)
   }
   return value
 }

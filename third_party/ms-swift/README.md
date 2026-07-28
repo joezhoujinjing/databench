@@ -1,9 +1,10 @@
 # ms-swift upstream integration assets
 
 This directory owns the third-party source inputs and compatibility baseline for ADR 0018. It intentionally contains
-no Databench runtime service or deployment definition. Future Python Provider code belongs in
+no Databench runtime service or deployment definition. Python Provider code belongs in
 `workers/swift-studio/`; the Gateway belongs in `apps/api/src/swift-studio/`; Dockerfile, Compose and the deployment
-runbook belong in `deploy/swift-studio/`. S1 provides those directories and a pinned, disabled-by-default GPU image.
+runbook belong in `deploy/swift-studio/`. S1 provides the pinned, disabled-by-default image/Gateway; S2 adds the
+exact Dataset and single-Session bridge without moving runtime source into this directory.
 
 ## Locked upstream
 
@@ -64,7 +65,8 @@ pnpm swift:baseline:check:green
 
 The checks validate the committed S0 evidence, including the digest-pinned Linux/NVIDIA base image, hashed dependency
 lock and the separation between base-image-provided CUDA/PyTorch packages and pip-installed packages. The current
-built image ID remains `cpu-gateway-browser-green-gpu-pending` until that same ID passes the real GS1 runner.
+built image ID remains `cpu-gateway-browser-green-gpu-pending` until that same ID passes the deferred real GPU
+runner. S2 CPU Session/prefill evidence does not change this GPU validation status.
 
 ## Patch boundary
 

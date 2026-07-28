@@ -148,6 +148,23 @@ export interface EvaluationRunCreateIdentityV1 {
   readonly evalscope_commit: string | null
 }
 
+export const V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE = 'swift-studio-session-create-v1' as const
+
+export interface SwiftStudioSessionCreateIdentityV1 {
+  readonly swift_studio_session_create_profile: typeof V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE
+  readonly namespace: string
+  readonly dataset_version: string
+  readonly converter: 'ms-swift'
+  readonly converter_version: string
+  readonly normalized_options: CanonicalJsonObject
+  readonly fidelity_digest: string
+  readonly output_count: number
+  readonly provider: 'swift-studio'
+  readonly upstream_commit: string
+  readonly image_digest: string
+  readonly runtime_capability_digest: string
+}
+
 export type V2ConverterName =
   | 'canonical-jsonl'
   | 'evalscope-general-qa'

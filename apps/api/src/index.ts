@@ -13,6 +13,9 @@ import { type ApiConfig, loadConfig } from './config.js'
 import { mcpHttpRequestTimeoutMs } from './mcp/config.js'
 import {
   DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG,
+  MS_SWIFT_UPSTREAM_COMMIT,
+  SWIFT_STUDIO_CAPABILITY_DIGEST,
+  SWIFT_STUDIO_IMAGE_DIGEST,
   type SwiftStudioGatewayConfig,
 } from './swift-studio/config.js'
 import {
@@ -77,6 +80,23 @@ export async function startApiRuntime(
     cursorSecret: config.v2CursorSecret,
     storeConfig: config.storeConfig,
     ...(config.databaseUrl === undefined ? {} : { databaseUrl: config.databaseUrl }),
+    ...(swiftStudioConfig.enabled &&
+    swiftStudioConfig.providerBaseUrl !== undefined &&
+    swiftStudioConfig.databenchBaseUrl !== undefined
+      ? {
+          swiftStudio: {
+            providerBaseUrl: swiftStudioConfig.providerBaseUrl,
+            datasetExportBaseUrl: swiftStudioConfig.databenchBaseUrl,
+            upstreamCommit: MS_SWIFT_UPSTREAM_COMMIT,
+            imageDigest: SWIFT_STUDIO_IMAGE_DIGEST,
+            runtimeCapabilityDigest: SWIFT_STUDIO_CAPABILITY_DIGEST,
+            timeoutMs: swiftStudioConfig.timeoutMs,
+            ...(swiftStudioConfig.providerCredential === undefined
+              ? {}
+              : { credential: swiftStudioConfig.providerCredential }),
+          },
+        }
+      : {}),
   })
   let workerRuntime: WorkerRuntime | null = null
   let server: ReturnType<typeof serve> | null = null

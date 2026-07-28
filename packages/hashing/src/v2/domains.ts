@@ -10,6 +10,7 @@ import type {
   IdentityClaimHashInputV1,
   IdentityRequestHashInputV1,
   RecordSeedV1,
+  SwiftStudioSessionCreateIdentityV1,
   TransformCacheIdentityV1,
   V2CandidateId,
   V2PreferenceId,
@@ -32,6 +33,8 @@ const DOMAIN = {
   identityRequest: 'databench.identity-request.databench-v2-jcs-1.v1\0',
   exportFidelity: 'databench.export-fidelity.databench-export-fidelity-1\0',
   evaluationRunCreate: 'databench.evaluation-run-create.evaluation-run-create-v1\0',
+  swiftStudioSessionCreate:
+    'databench.swift-studio-session-create.swift-studio-session-create-v1\0',
 } as const
 
 export function deriveV2RecordId(seed: RecordSeedV1): V2RecordId {
@@ -169,6 +172,25 @@ export function hashV2EvaluationRunCreate<const Identity extends EvaluationRunCr
     benchmark: identity.benchmark,
     model_name: identity.model_name,
     evalscope_commit: identity.evalscope_commit,
+  })
+}
+
+export function hashV2SwiftStudioSessionCreate<
+  const Identity extends SwiftStudioSessionCreateIdentityV1,
+>(identity: NoExtraKeys<SwiftStudioSessionCreateIdentityV1, Identity>): string {
+  return hashDomain(DOMAIN.swiftStudioSessionCreate, {
+    swift_studio_session_create_profile: identity.swift_studio_session_create_profile,
+    namespace: identity.namespace,
+    dataset_version: identity.dataset_version,
+    converter: identity.converter,
+    converter_version: identity.converter_version,
+    normalized_options: identity.normalized_options,
+    fidelity_digest: identity.fidelity_digest,
+    output_count: identity.output_count,
+    provider: identity.provider,
+    upstream_commit: identity.upstream_commit,
+    image_digest: identity.image_digest,
+    runtime_capability_digest: identity.runtime_capability_digest,
   })
 }
 

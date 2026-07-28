@@ -37,6 +37,26 @@ def shifted_component_id(value):
     return value + 1 if isinstance(value, int) and value >= 3 else value
 
 
+def shifted_dependency_id(value):
+    if value <= 108:
+        return value
+    if value == 109:
+        return value + 1
+    if value == 110:
+        return value + 2
+    return value + 3
+
+
+def shifted_dependency_api_name(dependency):
+    value = dependency.get('api_name')
+    if dependency['id'] <= 108 or not isinstance(value, str) or not value.startswith('partial_'):
+        return value
+    suffix = value.removeprefix('partial_')
+    if not suffix.isdigit():
+        return value
+    return f'partial_{int(suffix) + shifted_dependency_id(dependency["id"]) - dependency["id"]}'
+
+
 def native_gradio_config() -> dict:
     repository_root = Path(__file__).resolve().parents[3]
     baseline = json.loads(
@@ -73,8 +93,10 @@ def native_gradio_config() -> dict:
             **{
                 key: value
                 for key, value in dependency.items()
-                if key not in {'generator', 'cancel'}
+                if key not in {'id', 'api_name', 'generator', 'cancel'}
             },
+            'id': shifted_dependency_id(dependency['id']),
+            'api_name': shifted_dependency_api_name(dependency),
             'targets': [
                 [shifted_component_id(target[0]), *target[1:]]
                 for target in dependency['targets']
@@ -88,6 +110,50 @@ def native_gradio_config() -> dict:
         }
         for dependency in baseline['dependencies']
     ]
+    dependencies.extend(
+        [
+            {
+                'id': 109,
+                'api_name': 'partial_26',
+                'targets': [[None, 'then']],
+                'inputs': [],
+                'outputs': [3, 20, 52, 62],
+                'backend_fn': True,
+                'queue': True,
+                'connection': 'sse',
+                'types': {'generator': False, 'cancel': False},
+                'trigger_after': 108,
+                'trigger_mode': 'once',
+            },
+            {
+                'id': 111,
+                'api_name': 'partial_28',
+                'targets': [[None, 'then']],
+                'inputs': [],
+                'outputs': [294, 326, 336],
+                'backend_fn': True,
+                'queue': True,
+                'connection': 'sse',
+                'types': {'generator': False, 'cancel': False},
+                'trigger_after': 110,
+                'trigger_mode': 'once',
+            },
+            {
+                'id': 113,
+                'api_name': 'partial_30',
+                'targets': [[None, 'then']],
+                'inputs': [],
+                'outputs': [573, 609, 619],
+                'backend_fn': True,
+                'queue': True,
+                'connection': 'sse',
+                'types': {'generator': False, 'cancel': False},
+                'trigger_after': 112,
+                'trigger_mode': 'once',
+            },
+        ]
+    )
+    dependencies.sort(key=lambda dependency: dependency['id'])
     return {
         'version': '5.50.0',
         'mode': 'blocks',

@@ -23,6 +23,9 @@ import { registerMetaRoutes } from './routes/meta.js'
 import { registerV2Routes } from './routes/v2/index.js'
 import {
   DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG,
+  MS_SWIFT_UPSTREAM_COMMIT,
+  SWIFT_STUDIO_CAPABILITY_DIGEST,
+  SWIFT_STUDIO_IMAGE_DIGEST,
   type SwiftStudioGatewayConfig,
 } from './swift-studio/config.js'
 import { registerSwiftStudioGateway } from './swift-studio/gateway.js'
@@ -140,6 +143,30 @@ function v2RuntimeOptions(options: CreateAppOptions): V2WorkspaceMiddlewareOptio
       cursorSecret: options.v2CursorSecret,
       ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
       ...(options.storeConfig === undefined ? {} : { storeConfig: options.storeConfig }),
+      ...swiftStudioWorkspaceOpenOptions(options.swiftStudio),
+    },
+  }
+}
+
+function swiftStudioWorkspaceOpenOptions(
+  config: SwiftStudioGatewayConfig | undefined,
+): Pick<V2WorkspaceOpenOptions, 'swiftStudio'> {
+  if (
+    config?.enabled !== true ||
+    config.providerBaseUrl === undefined ||
+    config.databenchBaseUrl === undefined
+  ) {
+    return {}
+  }
+  return {
+    swiftStudio: {
+      providerBaseUrl: config.providerBaseUrl,
+      datasetExportBaseUrl: config.databenchBaseUrl,
+      upstreamCommit: MS_SWIFT_UPSTREAM_COMMIT,
+      imageDigest: SWIFT_STUDIO_IMAGE_DIGEST,
+      runtimeCapabilityDigest: SWIFT_STUDIO_CAPABILITY_DIGEST,
+      timeoutMs: config.timeoutMs,
+      ...(config.providerCredential === undefined ? {} : { credential: config.providerCredential }),
     },
   }
 }

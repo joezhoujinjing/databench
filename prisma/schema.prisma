@@ -16,6 +16,7 @@ model V2IdentityNamespace {
   refs                   V2Ref[]
   resultRefTransformJobs V2TransformJob[]  @relation("V2TransformJobResultRefNamespace")
   evaluationRuns         V2EvaluationRun[]
+  swiftStudioSessions    V2SwiftStudioSession[]
 
   @@map("identity_namespaces_v2")
 }
@@ -54,6 +55,7 @@ model V2DatasetSnapshot {
   outputTransformJobs     V2TransformJob[]           @relation("V2TransformJobOutput")
   resultRefTransformJobs  V2TransformJob[]           @relation("V2TransformJobResultRefVersion")
   evaluationRuns          V2EvaluationRun[]
+  swiftStudioSessions     V2SwiftStudioSession[]
 
   @@map("dataset_snapshots_v2")
 }
@@ -226,4 +228,42 @@ model V2EvaluationRun {
   @@index([namespaceId, datasetVersion, createdAt, id], map: "idx_evaluation_runs_v2_dataset")
   @@index([namespaceId, status, createdAt, id], map: "idx_evaluation_runs_v2_status")
   @@map("evaluation_runs_v2")
+}
+
+model V2SwiftStudioSession {
+  id                      String    @id @db.Uuid
+  namespaceId             String    @map("namespace_id") @db.Uuid
+  createDigest            String    @map("create_digest") @db.Char(64)
+  status                  String
+  datasetVersion          String    @map("dataset_version") @db.Char(64)
+  displayRef              String?   @map("display_ref")
+  converter               String
+  converterVersion        String    @map("converter_version")
+  normalizedOptions       Json      @map("normalized_options_json")
+  fidelityDigest          String    @map("fidelity_digest") @db.Char(64)
+  exportOutputCount       BigInt    @map("export_output_count")
+  exportDigest            String?   @map("export_digest") @db.Char(64)
+  exportSizeBytes         BigInt?   @map("export_size_bytes")
+  provider                String
+  providerSessionId       String    @map("provider_session_id")
+  upstreamCommit          String    @map("upstream_commit") @db.Char(40)
+  imageDigest             String    @map("image_digest") @db.Char(64)
+  runtimeCapabilityDigest String    @map("runtime_capability_digest") @db.Char(64)
+  failure                 Json?     @map("failure_json")
+  preparationOwnerToken   String    @map("preparation_owner_token") @db.Uuid
+  preparationAbandonedAt  DateTime? @map("preparation_abandoned_at") @db.Timestamptz(6)
+  preparationExpiresAt    DateTime  @default(dbgenerated("CURRENT_TIMESTAMP + INTERVAL '5 hours'")) @map("preparation_expires_at") @db.Timestamptz(6)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  readyAt                 DateTime? @map("ready_at") @db.Timestamptz(6)
+  closedAt                DateTime? @map("closed_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  namespace V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dataset   V2DatasetSnapshot   @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([namespaceId, createDigest], map: "uq_swift_studio_sessions_v2_create_digest")
+  @@unique([provider, providerSessionId], map: "uq_swift_studio_sessions_v2_provider_locator")
+  @@index([namespaceId, datasetVersion, createdAt, id], map: "idx_swift_studio_sessions_v2_dataset")
+  @@index([namespaceId, status, createdAt, id], map: "idx_swift_studio_sessions_v2_status")
+  @@map("swift_studio_sessions_v2")
 }

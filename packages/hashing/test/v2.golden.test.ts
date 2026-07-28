@@ -22,6 +22,7 @@ import {
   hashV2IdentityClaimKey,
   hashV2IdentityRequest,
   hashV2Record,
+  hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
   type IdentityClaimHashInputV1,
   type IdentityRequestHashInputV1,
@@ -29,6 +30,7 @@ import {
   type SourceRootSeedV1,
   type TransformCacheIdentityV1,
   V2_EVALUATION_RUN_CREATE_PROFILE,
+  V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '../src/index.js'
 
 const fixturePath = (name: string) =>
@@ -280,6 +282,45 @@ describe('v2 identity and version fixed vectors', () => {
     )
     expect(hashV2EvaluationRunCreate({ ...identity, provider_task_id: 'task-fixed-2' })).not.toBe(
       hashV2EvaluationRunCreate(identity),
+    )
+  })
+
+  test('locks the canonical Swift Studio Session create domain and excludes display metadata', () => {
+    const identity = {
+      swift_studio_session_create_profile: V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
+      namespace: '11111111-1111-4111-8111-111111111111',
+      dataset_version: 'a'.repeat(64),
+      converter: 'ms-swift' as const,
+      converter_version: '1.0.0',
+      normalized_options: { columns: { messages: 'messages' }, shuffle: false },
+      fidelity_digest: 'b'.repeat(64),
+      output_count: 32,
+      provider: 'swift-studio' as const,
+      upstream_commit: 'c'.repeat(40),
+      image_digest: 'd'.repeat(64),
+      runtime_capability_digest: 'e'.repeat(64),
+    }
+    const canonical =
+      '{"converter":"ms-swift","converter_version":"1.0.0","dataset_version":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","fidelity_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","image_digest":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","namespace":"11111111-1111-4111-8111-111111111111","normalized_options":{"columns":{"messages":"messages"},"shuffle":false},"output_count":32,"provider":"swift-studio","runtime_capability_digest":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","swift_studio_session_create_profile":"swift-studio-session-create-v1","upstream_commit":"cccccccccccccccccccccccccccccccccccccccc"}'
+    expect(canonicalJsonV2(identity)).toBe(canonical)
+    expect(
+      hashArtifactBytes(
+        new TextEncoder().encode(
+          `databench.swift-studio-session-create.swift-studio-session-create-v1\0${canonical}`,
+        ),
+      ),
+    ).toBe('800545a120fba5c2f243dd1dd5ee90c00d727e6d6c5ea02ea1487a2b5c2752e3')
+    expect(hashV2SwiftStudioSessionCreate(identity)).toBe(
+      '800545a120fba5c2f243dd1dd5ee90c00d727e6d6c5ea02ea1487a2b5c2752e3',
+    )
+    expect(
+      hashV2SwiftStudioSessionCreate({ ...identity, dataset_version: 'f'.repeat(64) }),
+    ).not.toBe(hashV2SwiftStudioSessionCreate(identity))
+
+    const displayOnly = { ...identity, display_ref: 'main' }
+    const widenedIdentity: typeof identity = displayOnly
+    expect(hashV2SwiftStudioSessionCreate(widenedIdentity)).toBe(
+      hashV2SwiftStudioSessionCreate(identity),
     )
   })
 

@@ -5,9 +5,9 @@
   "phase": "S1-in-progress",
   "compatibility": {
     "component_count": 1006,
-    "dependency_count": 115,
+    "dependency_count": 118,
     "components_sha256": "25b37ea3a6f435aacad158b4d14f007c746a15d1361bda8da91a125587e6e60b",
-    "dependencies_sha256": "1841b230218e968385610996bd0c4195236dc7ba585a237c8191891e2913c39d",
+    "dependencies_sha256": "81e1b6c69bd66284eb366172ebce3b5bf796f984d45f4120b019a27bdff3bbe1",
     "top_level_surfaces": [
       "llm_train",
       "llm_rlhf",

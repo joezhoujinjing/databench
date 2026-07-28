@@ -3,8 +3,8 @@
 > 每个 S Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- swift-status
-current_step: S2
-last_completed_step: S1-code-complete-gpu-deferred
+current_step: S3
+last_completed_step: S2-non-gpu-green-gpu-deferred
 runtime_enabled: false
 runtime_implemented: true
 ui_route_enabled: true
@@ -17,14 +17,15 @@ integration_mode: native-full-gradio
 
 - **当前分支:** `feat/swift-studio-integration`
 - **基线:** EvalScope E7 complete commit `25931d6`，不包含原工作树未提交的 E8 修改
-- **当前 Step:** S2 exact Dataset 与单 Studio Session bridge
-- **已完成:** ADR/技术方案/实施计划、S0，以及 S1 的
-  image/Provider/Gateway/`/training`/浏览器代码与 non-GPU gate
-- **产品状态:** `/training`、Swift Gateway 与 GPU image 已实现；Session、Dataset bridge、Artifact 开始按顺序实施
-- **运行状态:** runtime 默认 disabled；生产镜像
-  `sha256:09207c761906d5a2dae7e9a6dfd58fe963a6c3047cd9a2eb6f102632fc4d8108` 已通过完整本机 CPU
-  compatibility、Gateway、浏览器和全仓 gate；真实 NVIDIA gate 按 owner 决策后置，
-  capability 仍保持 unvalidated
+- **当前 Step:** S3 LoRA Model Artifact import
+- **已完成:** ADR/技术方案/实施计划、S0、S1 non-GPU runtime，以及 S2 exact Dataset + 单 active
+  Studio Session bridge
+- **产品状态:** `/training` 已具备 Dataset selector、fidelity review、Session create/poll/close；只有 ready
+  Session 才加载完整原生 Gradio iframe
+- **运行状态:** runtime 默认 disabled；S2 production image
+  `sha256:447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908` 已通过本机 CPU
+  compatibility、Provider、动态 Gradio prefill 与 non-GPU gate；真实 NVIDIA gate 按 owner 决策后置，
+  GPU 状态保持 deferred，capability 不标 GPU green
 - **首期模式:** 完整原生 Gradio；Databench 只桥接 Session、Dataset、workspace、Artifact
 - **控制面状态:** 没有 Training Run/Attempt；原生任务仍由 ms-swift Gradio 管理
 - **发布声明:** 不改变 V16/V17、公共云 D3、ADR 0012 或 EvalScope E8/E9
@@ -48,8 +49,8 @@ integration_mode: native-full-gradio
 |---|---|---|---|---|
 | S0 | 上游、能力与兼容性基线 | ✅ | GS0 | digest-pinned image + 195-package hash lock |
 | S1 | 完整原生 GPU Studio + iframe | 🟨 code complete | GS1 GPU deferred | 全七业务面；真实 LoRA + Infer 待补 |
-| S2 | exact Dataset + 单 Session bridge | 🔄 当前 | GS2 non-GPU | Session API、预填、真实 Dataset |
-| S3 | LoRA Model Artifact import | ⬜ | GS3 | deterministic archive、immutable finalize |
+| S2 | exact Dataset + 单 Session bridge | ✅ non-GPU | GS2 GPU deferred | Session API、预填、真实 Dataset |
+| S3 | LoRA Model Artifact import | 🔄 当前 | GS3 non-GPU | deterministic archive、immutable finalize |
 | S4 | Deployment + EvalScope 闭环 | ⬜ | GS4 | opaque Deployment ID、真实 lineage |
 | S5 | 多 Session/GPU allocator | ⬜ 后续 | 待 ADR | 不属于首期 |
 | S6 | Training control plane | ⬜ 后续 | 待 ADR | Run/Attempt/Worker/callback 接管 |
@@ -91,6 +92,31 @@ Web 外层壳分别在 `apps/api`、`apps/web`。Provider、Gateway 或 patch �
 
 当前证据见 [S1-GPU-STUDIO.md](evidence/S1-GPU-STUDIO.md)。GPU 项未完成，所以 GS1 不标绿；
 owner 已明确允许以 code-complete/gpu-deferred 状态进入 S2。
+
+## S2 交付与 Gate
+
+- [x] Session create/get/list/close Schema、REST、OpenAPI 与 generated Web client
+- [x] `swift-studio-session-create-v1` RFC 8785 + BLAKE3 identity fixed vector
+- [x] `swift_studio_sessions_v2` additive migration、exact Dataset/namespace FK 与数据库级单 active Session
+- [x] Catalog repository、五态 lifecycle、create replay 与 typed conflict
+- [x] preparation owner token + 5h lease fencing；只有当前 owner/recovery 可 CAS 写入 `ready/failed`
+- [x] 导出测量先于 admission；ambiguous create、caller abort、不同 digest admission 与终态 response loss
+  均通过 read-back/retry 收敛
+- [x] recovery 使用 PostgreSQL 时钟 claim；Provider exact export 会重新测量 digest/bytes/count，mismatch
+  必须完成 exact cleanup 后才释放 singleton
+- [x] Workspace exact Dataset resolution、`ms-swift@1.0.0` inspect/fidelity/output-count admission
+- [x] 双遍 deterministic export measurement 与 Provider exact materialization
+- [x] Provider BLAKE3/bytes/LF count/content-type 验证、partial/fsync/rename、restart recovery 与 exact cleanup
+- [x] `/training` Dataset selector、exact version 锁定、fidelity review、Session poll/close 与 ready iframe gate
+- [x] 原生 Train、RLHF、GRPO 页面通过动态 load callback 实时预填 Dataset/output/logging
+- [x] 完整七业务面与全部原生字段/callback 保留；Gradio graph 为 1,006 components / 118 dependencies
+- [x] S2 Linux/amd64 image、patch、capability manifest 与 Provider dependency 全部 digest/hash locked
+- [x] Provider 45 tests、Catalog 43 tests、真实 Postgres/MinIO Workspace 174 tests、真实 API 114
+  tests、真实 Store 85 tests、Web、OpenAPI 与 non-GPU 全仓 gate
+- [ ] 真实 Databench Dataset 的 Linux/NVIDIA LoRA + Infer（owner 后置，deferred）
+
+S2 CPU smoke 同时验证了无 Session 空态、exact Session 动态预填、close/cleanup 后恢复空态。该结果只关闭
+GS2 non-GPU gate，不将任何 GPU 训练或推理能力标记为 green。
 
 ## GS0 Gate 记录
 

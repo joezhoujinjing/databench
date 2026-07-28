@@ -13,6 +13,7 @@ import {
   RefStateConflictErrorResponseV2Schema,
   ResourceLimitErrorResponseV2Schema,
   ServiceUnavailableErrorResponseV2Schema,
+  SwiftStudioSessionStateConflictErrorResponseV2Schema,
   TooManyRequestsErrorResponseV2Schema,
   TransformJobStateConflictErrorResponseV2Schema,
   UnauthorizedErrorResponseV2Schema,
@@ -184,6 +185,44 @@ export const V2_EVALUATION_RUN_ACTION_ERROR_RESPONSES = {
     'Evaluation run state or replay body conflicts',
   ),
   413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Evaluation transition is too large'),
+} as const
+
+export const V2_SWIFT_STUDIO_SESSION_CREATE_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed Swift Studio Session request'),
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Exact Dataset was not found'),
+  409: jsonResponseV2(
+    SwiftStudioSessionStateConflictErrorResponseV2Schema,
+    'Another Swift Studio Session is active or the create request conflicts',
+  ),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Session request is too large'),
+  422: jsonResponseV2(ErrorResponse422V2Schema, 'Invalid export plan or fidelity approval'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_SWIFT_STUDIO_SESSION_LIST_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Session page request'),
+  ...internalResponse,
+  ...dependencyFailureResponse,
+} as const
+
+export const V2_SWIFT_STUDIO_SESSION_SHOW_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Swift Studio Session was not found'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Session identifier'),
+  ...internalResponse,
+  ...dependencyFailureResponse,
+} as const
+
+export const V2_SWIFT_STUDIO_SESSION_ACTION_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed Session action request'),
+  ...V2_SWIFT_STUDIO_SESSION_SHOW_ERROR_RESPONSES,
+  409: jsonResponseV2(
+    SwiftStudioSessionStateConflictErrorResponseV2Schema,
+    'Swift Studio Session state conflicts with the requested action',
+  ),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Session action is too large'),
 } as const
 
 export const V2_REF_LIST_ERROR_RESPONSES = {

@@ -77,7 +77,36 @@
     "fullscreenFailed": "浏览器未允许 Studio 进入或退出全屏。",
     "loadingStudio": "正在加载原生 Gradio Studio…",
     "frameError": "原生 Studio 页面未能加载。请重新加载，或检查 Gateway、root path 和 Provider 状态。",
-    "frameTitle": "ms-swift 原生 Gradio Studio"
+    "frameTitle": "ms-swift 原生 Gradio Studio",
+    "sessionTitle": "训练数据 Session",
+    "sessionDescription": "先选择 Databench Dataset。系统会锁定 exact version、审查 ms-swift 转换并准备当前 Studio 的输入与输出目录。",
+    "refreshSession": "刷新 Session",
+    "dataset": "Dataset",
+    "datasetHint": "选择一个 Dataset 名称；创建时会固定它当前的 exact version。",
+    "exactVersion": "Exact version",
+    "chooseDataset": "选择 Dataset",
+    "inspectDataset": "审查转换",
+    "inspecting": "正在审查…",
+    "outputRows": "{{count}} 条训练样本",
+    "confirmFidelity": "我已审查并接受此 ms-swift 转换中的语义变化。",
+    "emptyDataset": "转换结果为空，不能创建 Swift Studio Session。",
+    "openSession": "打开 Studio Session",
+    "preparingSession": "正在准备 Session…",
+    "lastSessionFailed": "上一个 Session 准备失败",
+    "sessionUnavailable": "Provider 未能准备这个 Session。",
+    "closeSession": "关闭 Session",
+    "closingSession": "正在关闭…",
+    "preparingNotice": "正在将 exact Dataset 安全写入 Provider；完成后会自动打开 Studio。",
+    "closingNotice": "Provider 正在关闭当前 Session 并执行精确清理。",
+    "sessionRequiredTitle": "请先准备训练数据",
+    "sessionRequired": "选择 Dataset、审查转换并打开 ready Session 后，完整原生 Gradio Studio 才会加载。",
+    "sessionStatus": {
+      "preparing": "Session 正在准备",
+      "ready": "Session 已就绪",
+      "closing": "Session 正在关闭",
+      "closed": "Session 已关闭",
+      "failed": "Session 失败"
+    }
   },
   "v2": {
     "gate": {

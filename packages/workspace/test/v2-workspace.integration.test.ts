@@ -36,7 +36,11 @@ import {
 } from '../src/internal/worker/canonical-finalizer.js'
 import { compileBasicCleanWorkerParametersV1 } from '../src/internal/worker/data-juicer.js'
 import { WorkerStagingJobPreparerV1 } from '../src/internal/worker/staging.js'
-import { V2Workspace } from '../src/v2/workspace.js'
+import {
+  SwiftStudioProviderConflictError,
+  type SwiftStudioProviderV2,
+} from '../src/v2/swift-studio-provider.js'
+import { V2Workspace, type V2WorkspaceSwiftStudioCatalog } from '../src/v2/workspace.js'
 
 const runIntegration = process.env.RUN_MINIO_STORE_TESTS === 'true'
 const RECORD_ID = `rec_${'9'.repeat(64)}`
@@ -620,6 +624,868 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     })
   })
 
+  test('binds an exact Dataset to one replayable Swift Studio Session', async () => {
+    const sessionSourceWorkspace = createWorkspace('swift-session-source')
+    const source = trainerRecord(
+      `rec_${'4'.repeat(64)}`,
+      `cand_${'5'.repeat(64)}`,
+      'Prepare this exact Dataset for Swift Studio.',
+    )
+    const published = await sessionSourceWorkspace.addRecords([source], {
+      ref: 'swift-session-source',
+      expected_ref_version: null,
+      message: 'Swift Studio exact source',
+    })
+    const providerCreates: Array<Parameters<SwiftStudioProviderV2['createSession']>[0]> = []
+    const providerCloses: Array<{ providerSessionId: string; requestId: string }> = []
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        providerCreates.push(input)
+        return {
+          providerSessionId: `sws_${Buffer.from(input.requestId, 'hex').toString('base64url')}`,
+          status: 'ready',
+          datasetVersion: input.datasetVersion,
+          converter: 'ms-swift',
+          converterVersion: '1.0.0',
+          exportDigest: input.expected.digest,
+          exportSizeBytes: input.expected.sizeBytes,
+          outputCount: input.expected.lineCount,
+          providerGeneration: 'integration-test',
+          replayed: false,
+        }
+      },
+      async getCurrentSession() {
+        return null
+      },
+      async closeSession(providerSessionId, requestId) {
+        providerCloses.push({ providerSessionId, requestId })
+        return {
+          providerSessionId,
+          status: 'closed',
+          providerGeneration: 'integration-test',
+          replayed: false,
+        }
+      },
+    }
+    const studio = new V2Workspace({
+      catalog,
+      store: new FileBackedV2Store({
+        objectStore: objects,
+        tempRoot: join(temporaryRoot, 'swift-session'),
+        safetyMarginBytes: 0,
+        prepareConcurrency: 1,
+        readConcurrency: 1,
+      }),
+      cursorSecret: 'swift-studio-integration-cursor-secret',
+      swiftStudio: {
+        catalog,
+        provider,
+        datasetExportBaseUrl: 'http://api:8000',
+        upstreamCommit: 'f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d',
+        imageDigest: '447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908',
+        runtimeCapabilityDigest: '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4',
+        preparationAbandonGraceMs: 0,
+      },
+    })
+    const inspected = await studio.inspectExport(published.dataset_version, {
+      converter: 'ms-swift',
+      options: {},
+    })
+    const request = {
+      dataset_version: published.dataset_version,
+      display_ref: 'swift-session-source',
+      converter: 'ms-swift' as const,
+      options: {},
+      accepted_fidelity_digest: inspected.fidelity_digest,
+    }
+    const created = await studio.createSwiftStudioSession(request)
+    expect(created).toMatchObject({
+      status: 'ready',
+      dataset_version: published.dataset_version,
+      display_ref: 'swift-session-source',
+      output_count: 1,
+      studio_path: '/swift-studio/',
+      export_digest: providerCreates[0]?.expected.digest,
+      export_size_bytes: providerCreates[0]?.expected.sizeBytes,
+    })
+    expect(providerCreates).toHaveLength(1)
+    expect(providerCreates[0]).toMatchObject({
+      datasetVersion: published.dataset_version,
+      exportUrl: `http://api:8000/v2/datasets/${published.dataset_version}:export`,
+      expected: { digestAlgorithm: 'blake3', lineCount: 1 },
+    })
+
+    await expect(studio.createSwiftStudioSession(request)).resolves.toEqual(created)
+    expect(providerCreates).toHaveLength(1)
+
+    const another = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'6'.repeat(64)}`,
+          `cand_${'7'.repeat(64)}`,
+          'A different active Studio Dataset.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    const anotherPlan = await studio.inspectExport(another.dataset_version, {
+      converter: 'ms-swift',
+      options: {},
+    })
+    await expect(
+      studio.createSwiftStudioSession({
+        dataset_version: another.dataset_version,
+        display_ref: null,
+        converter: 'ms-swift',
+        options: {},
+        accepted_fidelity_digest: anotherPlan.fidelity_digest,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SwiftStudioSessionStateConflictErrorV2',
+      detail: { reason: 'active_session_exists', session_id: created.id },
+    })
+
+    const listed = await studio.listSwiftStudioSessions({ cursor: null, limit: 20 })
+    expect(listed.items[0]).toEqual(created)
+    await expect(studio.getSwiftStudioSession(created.id)).resolves.toEqual(created)
+    const closed = await studio.closeSwiftStudioSession(created.id)
+    expect(closed).toMatchObject({ id: created.id, status: 'closed', studio_path: null })
+    expect(providerCloses).toEqual([
+      {
+        providerSessionId: `sws_${Buffer.from(created.create_digest, 'hex').toString('base64url')}`,
+        requestId: created.create_digest,
+      },
+    ])
+  })
+
+  test('fails an unprepared Provider Session and releases the singleton slot', async () => {
+    const first = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'a'.repeat(64)}`,
+          `cand_${'b'.repeat(64)}`,
+          'The first Provider preparation fails.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    const second = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'c'.repeat(64)}`,
+          `cand_${'d'.repeat(64)}`,
+          'The singleton slot must be reusable.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let createAttempts = 0
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        createAttempts += 1
+        if (createAttempts === 1) throw new Error('simulated Provider preparation failure')
+        return readyProviderSession(input)
+      },
+      async getCurrentSession() {
+        return null
+      },
+      async closeSession(providerSessionId) {
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-failure', provider)
+
+    const firstRequest = await swiftStudioRequest(studio, first.dataset_version)
+    await expect(studio.createSwiftStudioSession(firstRequest)).rejects.toThrow(
+      'simulated Provider preparation failure',
+    )
+    const failedPage = await studio.listSwiftStudioSessions({
+      dataset_version: first.dataset_version,
+      cursor: null,
+      limit: 20,
+    })
+    expect(failedPage.items).toHaveLength(1)
+    expect(failedPage.items[0]).toMatchObject({
+      status: 'failed',
+      failure: {
+        phase: 'provider',
+        code: 'prepare_unconfirmed',
+        message: 'Provider did not retain the Studio Session preparation',
+      },
+      studio_path: null,
+    })
+
+    const secondRequest = await swiftStudioRequest(studio, second.dataset_version)
+    const ready = await studio.createSwiftStudioSession(secondRequest)
+    expect(ready).toMatchObject({ status: 'ready', dataset_version: second.dataset_version })
+    await expect(studio.closeSwiftStudioSession(ready.id)).resolves.toMatchObject({
+      status: 'closed',
+    })
+  })
+
+  test('reconciles a lost Provider create response to the exact ready Session', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'e'.repeat(64)}`,
+          `cand_${'f'.repeat(64)}`,
+          'Reconcile the exact Provider locator after response loss.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let current: Awaited<ReturnType<SwiftStudioProviderV2['getCurrentSession']>> = null
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        current = readyProviderSession(input)
+        throw new Error('simulated Provider response loss')
+      },
+      async getCurrentSession() {
+        return current
+      },
+      async closeSession(providerSessionId) {
+        current = null
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-reconcile', provider)
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+
+    const ready = await studio.createSwiftStudioSession(request)
+    expect(ready).toMatchObject({
+      status: 'ready',
+      dataset_version: published.dataset_version,
+      export_digest: current?.exportDigest,
+      export_size_bytes: current?.exportSizeBytes,
+    })
+    await studio.closeSwiftStudioSession(ready.id)
+  })
+
+  test('keeps a busy Provider Session ready until native tasks can stop', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'1'.repeat(64)}`,
+          `cand_${'3'.repeat(64)}`,
+          'Keep the native Studio available while a task is active.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let current: Awaited<ReturnType<SwiftStudioProviderV2['getCurrentSession']>> = null
+    let closeAttempts = 0
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        current = readyProviderSession(input)
+        return current
+      },
+      async getCurrentSession() {
+        return current
+      },
+      async closeSession(providerSessionId) {
+        closeAttempts += 1
+        if (closeAttempts === 1) {
+          throw new SwiftStudioProviderConflictError(
+            'session_has_active_tasks',
+            'Studio Session still has an active native task',
+          )
+        }
+        current = null
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-busy-close', provider)
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    const ready = await studio.createSwiftStudioSession(request)
+
+    await expect(studio.closeSwiftStudioSession(ready.id)).rejects.toMatchObject({
+      name: 'SwiftStudioSessionStateConflictErrorV2',
+      detail: {
+        reason: 'provider_session_busy',
+        session_id: ready.id,
+        status: 'ready',
+        requested_status: 'closing',
+      },
+    })
+    await expect(studio.getSwiftStudioSession(ready.id)).resolves.toMatchObject({
+      status: 'ready',
+      studio_path: '/swift-studio/',
+    })
+    await expect(studio.closeSwiftStudioSession(ready.id)).resolves.toMatchObject({
+      status: 'closed',
+      studio_path: null,
+    })
+  })
+
+  test('gives one concurrent create replay exclusive Provider preparation ownership', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'2'.repeat(64)}`,
+          `cand_${'4'.repeat(64)}`,
+          'Only one concurrent request may prepare this Session.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let providerCreates = 0
+    let releaseProvider: (() => void) | undefined
+    let announceProvider: (() => void) | undefined
+    const providerStarted = new Promise<void>((resolve) => {
+      announceProvider = resolve
+    })
+    const providerReleased = new Promise<void>((resolve) => {
+      releaseProvider = resolve
+    })
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        providerCreates += 1
+        announceProvider?.()
+        await providerReleased
+        return readyProviderSession(input)
+      },
+      async getCurrentSession() {
+        return null
+      },
+      async closeSession(providerSessionId) {
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-owner', provider)
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+
+    const owner = studio.createSwiftStudioSession(request)
+    await providerStarted
+    const replay = await studio.createSwiftStudioSession(request)
+    expect(replay).toMatchObject({ status: 'preparing' })
+    expect(providerCreates).toBe(1)
+    releaseProvider?.()
+    const ready = await owner
+    expect(ready).toMatchObject({ status: 'ready' })
+    expect(providerCreates).toBe(1)
+    await studio.closeSwiftStudioSession(ready.id)
+  })
+
+  test('converges an admitted Session to failed even when the caller aborts admission', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'5'.repeat(64)}`,
+          `cand_${'6'.repeat(64)}`,
+          'Abort only after the Catalog admission commits.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let releaseAdmission: (() => void) | undefined
+    let announceAdmission: (() => void) | undefined
+    const admissionCommitted = new Promise<void>((resolve) => {
+      announceAdmission = resolve
+    })
+    const admissionReleased = new Promise<void>((resolve) => {
+      releaseAdmission = resolve
+    })
+    const baseCatalog = swiftStudioCatalog()
+    const delayedCatalog = swiftStudioCatalog({
+      async createOrReadSwiftStudioSession(input) {
+        const result = await baseCatalog.createOrReadSwiftStudioSession(input)
+        announceAdmission?.()
+        await admissionReleased
+        return result
+      },
+    })
+    let providerCreates = 0
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        providerCreates += 1
+        return readyProviderSession(input)
+      },
+      async getCurrentSession() {
+        return null
+      },
+      async closeSession(providerSessionId) {
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace(
+      'swift-session-admission-abort',
+      provider,
+      delayedCatalog,
+    )
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    const controller = new AbortController()
+    const creating = studio.createSwiftStudioSession(request, { signal: controller.signal })
+    await admissionCommitted
+    controller.abort(new Error('simulated caller disconnect'))
+    releaseAdmission?.()
+
+    await expect(creating).rejects.toThrow('simulated caller disconnect')
+    const page = await studio.listSwiftStudioSessions({
+      dataset_version: published.dataset_version,
+      cursor: null,
+      limit: 20,
+    })
+    expect(page.items[0]).toMatchObject({ status: 'failed' })
+    expect(providerCreates).toBe(0)
+  })
+
+  test('marks an ambiguous Provider failure abandoned and reconciles it when absence is confirmed', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'7'.repeat(64)}`,
+          `cand_${'8'.repeat(64)}`,
+          'Recover an ambiguous Provider failure without orphaning the singleton.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let currentReads = 0
+    const provider: SwiftStudioProviderV2 = {
+      async createSession() {
+        throw new Error('simulated ambiguous Provider failure')
+      },
+      async getCurrentSession() {
+        currentReads += 1
+        if (currentReads === 1) throw new Error('simulated reconcile partition')
+        return null
+      },
+      async closeSession(providerSessionId) {
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-abandoned', provider)
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+
+    await expect(studio.createSwiftStudioSession(request)).rejects.toThrow(
+      'simulated ambiguous Provider failure',
+    )
+    const page = await studio.listSwiftStudioSessions({ cursor: null, limit: 20 })
+    expect(page.items[0]).toMatchObject({
+      status: 'failed',
+      failure: { code: 'prepare_unconfirmed' },
+    })
+  })
+
+  test('reclaims an abandoned Session during different-Dataset admission', async () => {
+    const first = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'b'.repeat(64)}`,
+          `cand_${'c'.repeat(64)}`,
+          'Leave the first Provider preparation ambiguous.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    const second = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'d'.repeat(64)}`,
+          `cand_${'e'.repeat(64)}`,
+          'Admit a different exact Dataset after recovery.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let createCalls = 0
+    let currentReads = 0
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        createCalls += 1
+        if (createCalls === 1) throw new Error('simulated ambiguous Provider failure')
+        return readyProviderSession(input)
+      },
+      async getCurrentSession() {
+        currentReads += 1
+        if (currentReads === 1) throw new Error('simulated reconciliation partition')
+        return null
+      },
+      async closeSession(providerSessionId) {
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-admission-recovery', provider)
+    const firstRequest = await swiftStudioRequest(studio, first.dataset_version)
+    await expect(studio.createSwiftStudioSession(firstRequest)).rejects.toThrow(
+      'simulated ambiguous Provider failure',
+    )
+
+    const secondRequest = await swiftStudioRequest(studio, second.dataset_version)
+    const ready = await studio.createSwiftStudioSession(secondRequest)
+    expect(ready).toMatchObject({
+      dataset_version: second.dataset_version,
+      status: 'ready',
+    })
+    expect(createCalls).toBe(2)
+    const firstPage = await studio.listSwiftStudioSessions({
+      dataset_version: first.dataset_version,
+      cursor: null,
+      limit: 20,
+    })
+    expect(firstPage.items[0]).toMatchObject({ status: 'failed' })
+    await expect(studio.closeSwiftStudioSession(ready.id)).resolves.toMatchObject({
+      status: 'closed',
+    })
+  })
+
+  test('does not close an exact Provider Session when ready transition recovery takes ownership', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'f'.repeat(64)}`,
+          `cand_${'0'.repeat(64)}`,
+          'Fence ready transition recovery without closing the Provider.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    const baseCatalog = swiftStudioCatalog()
+    let readyAttempts = 0
+    const transitionFailureCatalog = swiftStudioCatalog({
+      async transitionSwiftStudioSession(input) {
+        if (input.status === 'ready' && readyAttempts < 2) {
+          readyAttempts += 1
+          throw new Error('simulated ready transition outage')
+        }
+        return await baseCatalog.transitionSwiftStudioSession(input)
+      },
+    })
+    let current: Awaited<ReturnType<SwiftStudioProviderV2['createSession']>> | null = null
+    let closeCalls = 0
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        current = readyProviderSession(input)
+        return current
+      },
+      async getCurrentSession() {
+        return current
+      },
+      async closeSession(providerSessionId) {
+        closeCalls += 1
+        current = null
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace(
+      'swift-session-ready-fence',
+      provider,
+      transitionFailureCatalog,
+    )
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    await expect(studio.createSwiftStudioSession(request)).rejects.toThrow(
+      'V2 Catalog operation is unavailable',
+    )
+    const page = await studio.listSwiftStudioSessions({ cursor: null, limit: 20 })
+    expect(page.items[0]).toMatchObject({ status: 'ready' })
+    expect(closeCalls).toBe(0)
+    expect(readyAttempts).toBe(2)
+    await expect(studio.closeSwiftStudioSession(page.items[0]?.id ?? '')).resolves.toMatchObject({
+      status: 'closed',
+    })
+  })
+
+  test('keeps a mismatched Provider export fenced until exact cleanup succeeds', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'1'.repeat(64)}`,
+          `cand_${'3'.repeat(64)}`,
+          'Reject a Provider export with the wrong digest.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let current: Awaited<ReturnType<SwiftStudioProviderV2['createSession']>> | null = null
+    let closeCalls = 0
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        current = { ...readyProviderSession(input), exportDigest: '0'.repeat(64) }
+        return current
+      },
+      async getCurrentSession() {
+        return current
+      },
+      async closeSession(providerSessionId) {
+        closeCalls += 1
+        if (closeCalls === 1) throw new Error('simulated cleanup outage')
+        current = null
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-mismatch-fence', provider)
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    await expect(studio.createSwiftStudioSession(request)).rejects.toThrow(
+      'Swift Studio Provider prepared another export',
+    )
+    const page = await studio.listSwiftStudioSessions({ cursor: null, limit: 20 })
+    expect(page.items[0]).toMatchObject({
+      status: 'failed',
+      failure: { code: 'export_mismatch' },
+    })
+    expect(closeCalls).toBe(2)
+  })
+
+  test('reads back a committed failed transition response loss', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'2'.repeat(64)}`,
+          `cand_${'4'.repeat(64)}`,
+          'Confirm a failed Catalog terminal after response loss.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    const baseCatalog = swiftStudioCatalog()
+    let loseFailedResponse = true
+    const responseLossCatalog = swiftStudioCatalog({
+      async transitionSwiftStudioSession(input) {
+        const result = await baseCatalog.transitionSwiftStudioSession(input)
+        if (input.status === 'failed' && loseFailedResponse) {
+          loseFailedResponse = false
+          throw new Error('simulated failed transition response loss')
+        }
+        return result
+      },
+    })
+    const provider: SwiftStudioProviderV2 = {
+      async createSession() {
+        throw new Error('simulated definitive Provider failure')
+      },
+      async getCurrentSession() {
+        return null
+      },
+      async closeSession(providerSessionId) {
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace(
+      'swift-session-failed-readback',
+      provider,
+      responseLossCatalog,
+    )
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    await expect(studio.createSwiftStudioSession(request)).rejects.toThrow(
+      'simulated definitive Provider failure',
+    )
+    const page = await studio.listSwiftStudioSessions({ cursor: null, limit: 20 })
+    expect(page.items[0]).toMatchObject({ status: 'failed' })
+  })
+
+  test('promotes an exact late Provider result after an ambiguous create response', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'5'.repeat(64)}`,
+          `cand_${'6'.repeat(64)}`,
+          'Recover the exact Provider result after a transient partition.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let current: Awaited<ReturnType<SwiftStudioProviderV2['createSession']>> | null = null
+    let currentReads = 0
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        current = readyProviderSession(input)
+        throw new Error('simulated lost Provider create response')
+      },
+      async getCurrentSession() {
+        currentReads += 1
+        if (currentReads === 1) throw new Error('simulated current-session partition')
+        return current
+      },
+      async closeSession(providerSessionId) {
+        current = null
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-late-ready', provider)
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    await expect(studio.createSwiftStudioSession(request)).rejects.toThrow(
+      'simulated lost Provider create response',
+    )
+    const page = await studio.listSwiftStudioSessions({ cursor: null, limit: 20 })
+    expect(page.items[0]).toMatchObject({ status: 'ready' })
+    await expect(studio.closeSwiftStudioSession(page.items[0]?.id ?? '')).resolves.toMatchObject({
+      status: 'closed',
+    })
+  })
+
+  test('does not fail an ambiguous null read before the Provider result arrives', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'7'.repeat(64)}`,
+          `cand_${'8'.repeat(64)}`,
+          'Keep the Catalog fenced across a null-before-late-ready race.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let pending: Awaited<ReturnType<SwiftStudioProviderV2['createSession']>> | null = null
+    let current: Awaited<ReturnType<SwiftStudioProviderV2['createSession']>> | null = null
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        pending = readyProviderSession(input)
+        throw new Error('simulated create response race')
+      },
+      async getCurrentSession() {
+        return current
+      },
+      async closeSession(providerSessionId) {
+        current = null
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-null-late-ready', provider)
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    await expect(studio.createSwiftStudioSession(request)).rejects.toThrow(
+      'simulated create response race',
+    )
+    current = pending
+    const page = await studio.listSwiftStudioSessions({ cursor: null, limit: 20 })
+    expect(page.items[0]).toMatchObject({ status: 'ready' })
+    await expect(studio.closeSwiftStudioSession(page.items[0]?.id ?? '')).resolves.toMatchObject({
+      status: 'closed',
+    })
+  })
+
+  test('keeps a foreign Provider locator fenced until operator repair confirms absence', async () => {
+    const first = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'a'.repeat(64)}`,
+          `cand_${'c'.repeat(64)}`,
+          'Do not release a foreign active Provider locator.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    const second = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'b'.repeat(64)}`,
+          `cand_${'d'.repeat(64)}`,
+          'A different Dataset must remain blocked by the foreign locator.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    let createCalls = 0
+    let closeCalls = 0
+    let current: Awaited<ReturnType<SwiftStudioProviderV2['createSession']>> | null = null
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        createCalls += 1
+        current =
+          createCalls === 1
+            ? {
+                ...readyProviderSession(input),
+                providerSessionId: `sws_${'A'.repeat(43)}`,
+              }
+            : readyProviderSession(input)
+        return current
+      },
+      async getCurrentSession() {
+        return current
+      },
+      async closeSession(providerSessionId) {
+        closeCalls += 1
+        current = null
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace('swift-session-foreign-locator', provider)
+    const firstRequest = await swiftStudioRequest(studio, first.dataset_version)
+    await expect(studio.createSwiftStudioSession(firstRequest)).rejects.toThrow(
+      'Swift Studio Provider prepared another export',
+    )
+    const preparing = await studio.listSwiftStudioSessions({
+      dataset_version: first.dataset_version,
+      cursor: null,
+      limit: 20,
+    })
+    expect(preparing.items[0]).toMatchObject({ status: 'preparing' })
+    expect(closeCalls).toBe(0)
+
+    const secondRequest = await swiftStudioRequest(studio, second.dataset_version)
+    await expect(studio.createSwiftStudioSession(secondRequest)).rejects.toMatchObject({
+      name: 'SwiftStudioSessionStateConflictErrorV2',
+      detail: { reason: 'active_session_exists' },
+    })
+    expect(createCalls).toBe(1)
+
+    current = null
+    const repaired = await studio.listSwiftStudioSessions({
+      dataset_version: first.dataset_version,
+      cursor: null,
+      limit: 20,
+    })
+    expect(repaired.items[0]).toMatchObject({
+      status: 'failed',
+      failure: { code: 'prepare_unconfirmed' },
+    })
+    expect(closeCalls).toBe(0)
+    const ready = await studio.createSwiftStudioSession(secondRequest)
+    expect(ready).toMatchObject({ status: 'ready', dataset_version: second.dataset_version })
+    expect(createCalls).toBe(2)
+    await expect(studio.closeSwiftStudioSession(ready.id)).resolves.toMatchObject({
+      status: 'closed',
+    })
+  })
+
+  test('reads back ready transition response loss and ignores caller abort after Provider close', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'9'.repeat(64)}`,
+          `cand_${'a'.repeat(64)}`,
+          'Converge terminal state independently from the HTTP caller.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    const baseCatalog = swiftStudioCatalog()
+    let loseReadyResponse = true
+    const responseLossCatalog = swiftStudioCatalog({
+      async transitionSwiftStudioSession(input) {
+        const result = await baseCatalog.transitionSwiftStudioSession(input)
+        if (input.status === 'ready' && loseReadyResponse) {
+          loseReadyResponse = false
+          throw new Error('simulated ready transition response loss')
+        }
+        return result
+      },
+    })
+    const controller = new AbortController()
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        return readyProviderSession(input)
+      },
+      async getCurrentSession() {
+        return null
+      },
+      async closeSession(providerSessionId) {
+        controller.abort(new Error('simulated disconnect after Provider close'))
+        return closedProviderSession(providerSessionId)
+      },
+    }
+    const studio = createSwiftStudioWorkspace(
+      'swift-session-terminal-response-loss',
+      provider,
+      responseLossCatalog,
+    )
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    const ready = await studio.createSwiftStudioSession(request)
+    expect(ready).toMatchObject({ status: 'ready' })
+
+    await expect(
+      studio.closeSwiftStudioSession(ready.id, { signal: controller.signal }),
+    ).resolves.toMatchObject({ status: 'closed' })
+  })
+
   test('production open composes Catalog, S3, and file-backed Store end to end', async () => {
     const runtime = await V2Workspace.open({
       root: join(temporaryRoot, 'production-factory'),
@@ -656,6 +1522,76 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     })
   }
 
+  function createSwiftStudioWorkspace(
+    tempName: string,
+    provider: SwiftStudioProviderV2,
+    swiftCatalog: V2WorkspaceSwiftStudioCatalog = swiftStudioCatalog(),
+  ): V2Workspace {
+    return new V2Workspace({
+      catalog,
+      store: new FileBackedV2Store({
+        objectStore: objects,
+        tempRoot: join(temporaryRoot, tempName),
+        safetyMarginBytes: 0,
+        prepareConcurrency: 1,
+        readConcurrency: 1,
+      }),
+      cursorSecret: 'swift-studio-integration-cursor-secret',
+      swiftStudio: {
+        catalog: swiftCatalog,
+        provider,
+        datasetExportBaseUrl: 'http://api:8000',
+        upstreamCommit: 'f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d',
+        imageDigest: '447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908',
+        runtimeCapabilityDigest: '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4',
+        preparationAbandonGraceMs: 0,
+      },
+    })
+  }
+
+  function swiftStudioCatalog(
+    overrides: Partial<V2WorkspaceSwiftStudioCatalog> = {},
+  ): V2WorkspaceSwiftStudioCatalog {
+    return {
+      createOrReadSwiftStudioSession: (input) => catalog.createOrReadSwiftStudioSession(input),
+      abandonSwiftStudioSessionPreparation: (namespaceId, id, preparationOwnerToken) =>
+        catalog.abandonSwiftStudioSessionPreparation(namespaceId, id, preparationOwnerToken),
+      renewSwiftStudioSessionPreparation: (namespaceId, id, preparationOwnerToken) =>
+        catalog.renewSwiftStudioSessionPreparation(namespaceId, id, preparationOwnerToken),
+      claimSwiftStudioSessionPreparation: (
+        namespaceId,
+        id,
+        observedPreparationOwnerToken,
+        preparationAbandonGraceMs,
+      ) =>
+        catalog.claimSwiftStudioSessionPreparation(
+          namespaceId,
+          id,
+          observedPreparationOwnerToken,
+          preparationAbandonGraceMs,
+        ),
+      getSwiftStudioSession: (namespaceId, id) => catalog.getSwiftStudioSession(namespaceId, id),
+      listSwiftStudioSessions: (namespaceId, filter, before, limit) =>
+        catalog.listSwiftStudioSessions(namespaceId, filter, before, limit),
+      transitionSwiftStudioSession: (input) => catalog.transitionSwiftStudioSession(input),
+      ...overrides,
+    }
+  }
+
+  async function swiftStudioRequest(studio: V2Workspace, datasetVersion: string) {
+    const inspected = await studio.inspectExport(datasetVersion, {
+      converter: 'ms-swift',
+      options: {},
+    })
+    return {
+      dataset_version: datasetVersion,
+      display_ref: null,
+      converter: 'ms-swift' as const,
+      options: {},
+      accepted_fidelity_digest: inspected.fidelity_digest,
+    }
+  }
+
   function createObservedWorkspace(
     tempName: string,
     transformRegistry?: V2TransformRegistry,
@@ -681,6 +1617,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
   }
 
   async function clearV2Catalog(): Promise<void> {
+    await prisma.v2SwiftStudioSession.deleteMany()
     await prisma.v2EvaluationRun.deleteMany()
     await prisma.v2RecordParentEdge.deleteMany()
     await prisma.v2RecordRevisionLocation.deleteMany()
@@ -855,6 +1792,34 @@ function integrationRaceRegistry(
 function expectUniqueCleanup(store: ObservedV2Store): void {
   expect(store.discardCounts.size).toBe(store.prepared.length)
   expect([...store.discardCounts.values()]).toEqual(store.prepared.map(() => 1))
+}
+
+function readyProviderSession(
+  input: Parameters<SwiftStudioProviderV2['createSession']>[0],
+): Awaited<ReturnType<SwiftStudioProviderV2['createSession']>> {
+  return {
+    providerSessionId: `sws_${Buffer.from(input.requestId, 'hex').toString('base64url')}`,
+    status: 'ready',
+    datasetVersion: input.datasetVersion,
+    converter: 'ms-swift',
+    converterVersion: '1.0.0',
+    exportDigest: input.expected.digest,
+    exportSizeBytes: input.expected.sizeBytes,
+    outputCount: input.expected.lineCount,
+    providerGeneration: 'integration-test',
+    replayed: false,
+  }
+}
+
+function closedProviderSession(
+  providerSessionId: string,
+): Awaited<ReturnType<SwiftStudioProviderV2['closeSession']>> {
+  return {
+    providerSessionId,
+    status: 'closed',
+    providerGeneration: 'integration-test',
+    replayed: false,
+  }
 }
 
 function noRefOptions() {

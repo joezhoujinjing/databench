@@ -10,6 +10,7 @@ import {
   V2CatalogLineageCycleError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
+  type V2CatalogSwiftStudioSessionConflictError,
   V2CatalogTargetNotCommittedError,
   V2CatalogTransformJobLeaseError,
 } from '../src/index.js'
@@ -73,6 +74,7 @@ beforeAll(() => {
 })
 
 beforeEach(async () => {
+  await prisma.v2SwiftStudioSession.deleteMany()
   await prisma.v2EvaluationRun.deleteMany()
   await prisma.v2RecordParentEdge.deleteMany()
   await prisma.v2RecordRevisionLocation.deleteMany()
@@ -117,6 +119,29 @@ function evaluationRunInput(namespaceId: string, providerTaskId: string) {
     benchmark: 'general_qa',
     modelName: 'Qwen/Qwen3-8B',
     evalscopeCommit: 'a'.repeat(40),
+  }
+}
+
+function swiftStudioSessionInput(
+  namespaceId: string,
+  createDigest = 'a'.repeat(64),
+  providerSessionId = 'session-fixed-1',
+) {
+  return {
+    namespaceId,
+    createDigest,
+    datasetVersion: fixtureVersion('alpha'),
+    displayRef: 'main',
+    converter: 'ms-swift' as const,
+    converterVersion: '1.0.0' as const,
+    normalizedOptions: {},
+    fidelityDigest: 'b'.repeat(64),
+    exportOutputCount: 32n,
+    provider: 'swift-studio' as const,
+    providerSessionId,
+    upstreamCommit: 'c'.repeat(40),
+    imageDigest: 'd'.repeat(64),
+    runtimeCapabilityDigest: 'e'.repeat(64),
   }
 }
 
@@ -1502,6 +1527,413 @@ describe('V2Catalog evaluation runs', () => {
         }),
       ).rejects.toThrow()
     }
+  })
+})
+
+describe('V2Catalog Swift Studio Sessions', () => {
+  test('requires exact committed Dataset FKs and merges concurrent create replays', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const input = swiftStudioSessionInput(namespaceId)
+    await expect(v2Catalog.createOrReadSwiftStudioSession(input)).rejects.toThrow()
+
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const rows = await Promise.all(
+      Array.from({ length: 16 }, (_, index) =>
+        v2Catalog.createOrReadSwiftStudioSession({
+          ...input,
+          displayRef: index % 2 === 0 ? 'main' : null,
+          providerSessionId: `session-race-${index}`,
+        }),
+      ),
+    )
+    expect(new Set(rows.map(({ row }) => row.id)).size).toBe(1)
+    expect(rows.filter(({ created }) => created)).toHaveLength(1)
+    expect(rows.every(({ row }) => row.status === 'preparing')).toBe(true)
+    expect(new Set(rows.map(({ row }) => row.preparationOwnerToken)).size).toBe(1)
+    const admitted = rows[0]?.row
+    expect(admitted).toBeDefined()
+    expect(admitted?.preparationOwnerToken).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
+    await expect(
+      v2Catalog.abandonSwiftStudioSessionPreparation(
+        namespaceId,
+        admitted?.id ?? '',
+        admitted?.preparationOwnerToken ?? '',
+      ),
+    ).resolves.toBe(true)
+    await expect(
+      v2Catalog.getSwiftStudioSession(namespaceId, admitted?.id ?? ''),
+    ).resolves.toMatchObject({
+      id: admitted?.id,
+      status: 'preparing',
+      preparationAbandonedAt: expect.any(Date),
+    })
+    expect(await prisma.v2SwiftStudioSession.count()).toBe(1)
+    await expect(
+      prisma.v2DatasetSnapshot.delete({ where: { version: input.datasetVersion } }),
+    ).rejects.toThrow()
+  })
+
+  test('enforces one active runtime Session in both the repository and database', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const { row: active } = await v2Catalog.createOrReadSwiftStudioSession(
+      swiftStudioSessionInput(namespaceId),
+    )
+    await expect(
+      v2Catalog.createOrReadSwiftStudioSession(
+        swiftStudioSessionInput(namespaceId, '1'.repeat(64), 'session-conflict'),
+      ),
+    ).rejects.toMatchObject({
+      reason: 'active_session_exists',
+      sessionId: active.id,
+      status: 'preparing',
+    } satisfies Partial<V2CatalogSwiftStudioSessionConflictError>)
+
+    await expect(
+      prisma.v2SwiftStudioSession.create({
+        data: {
+          ...swiftStudioSessionInput(namespaceId, '2'.repeat(64), 'session-db-conflict'),
+          id: '22222222-2222-4222-8222-222222222222',
+          status: 'preparing',
+          preparationOwnerToken: '22222222-2222-4222-8222-222222222223',
+        },
+      }),
+    ).rejects.toThrow()
+  })
+
+  test('enforces idempotent lifecycle bodies, releases the singleton on close, and lists exact bindings', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const { row: prepared } = await v2Catalog.createOrReadSwiftStudioSession(
+      swiftStudioSessionInput(namespaceId),
+    )
+    const readyInput = {
+      namespaceId,
+      id: prepared.id,
+      status: 'ready' as const,
+      preparationOwnerToken: prepared.preparationOwnerToken,
+      exportDigest: '3'.repeat(64),
+      exportSizeBytes: 4_096n,
+    }
+    await expect(v2Catalog.transitionSwiftStudioSession(readyInput)).resolves.toMatchObject({
+      status: 'ready',
+      exportDigest: readyInput.exportDigest,
+      exportSizeBytes: readyInput.exportSizeBytes,
+    })
+    await expect(v2Catalog.transitionSwiftStudioSession(readyInput)).resolves.toMatchObject({
+      status: 'ready',
+    })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({ ...readyInput, exportSizeBytes: 4_097n }),
+    ).rejects.toMatchObject({ reason: 'terminal_body_mismatch' })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: prepared.id,
+        status: 'closing',
+      }),
+    ).resolves.toMatchObject({ status: 'closing' })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: prepared.id,
+        status: 'closed',
+      }),
+    ).resolves.toMatchObject({ status: 'closed', closedAt: expect.any(Date) })
+
+    const { row: next } = await v2Catalog.createOrReadSwiftStudioSession(
+      swiftStudioSessionInput(namespaceId, '4'.repeat(64), 'session-after-close'),
+    )
+    expect(next.status).toBe('preparing')
+    const page = await v2Catalog.listSwiftStudioSessions(
+      namespaceId,
+      { datasetVersion: prepared.datasetVersion, status: null },
+      null,
+      20,
+    )
+    expect(new Set(page.rows.map((row) => row.id))).toEqual(new Set([prepared.id, next.id]))
+    expect(page.nextCursor).toBeNull()
+  })
+
+  test('stores only bounded sanitized failure summaries and frees the active slot', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const { row: prepared } = await v2Catalog.createOrReadSwiftStudioSession(
+      swiftStudioSessionInput(namespaceId),
+    )
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: prepared.id,
+        status: 'failed',
+        preparationOwnerToken: prepared.preparationOwnerToken,
+        failure: {
+          phase: 'dataset_prepare',
+          code: 'download_failed',
+          message: 'Authorization: Bearer-secret-value',
+        },
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    const failure = {
+      phase: 'dataset_prepare',
+      code: 'download_failed',
+      message: 'Provider download failed',
+    }
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: prepared.id,
+        status: 'failed',
+        preparationOwnerToken: prepared.preparationOwnerToken,
+        failure,
+      }),
+    ).resolves.toMatchObject({ status: 'failed', failure })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: prepared.id,
+        status: 'failed',
+        preparationOwnerToken: '11111111-1111-4111-8111-111111111111',
+        failure,
+      }),
+    ).resolves.toMatchObject({ status: 'failed', failure })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: prepared.id,
+        status: 'failed',
+        preparationOwnerToken: '11111111-1111-4111-8111-111111111111',
+        failure: { ...failure, code: 'different_failure' },
+      }),
+    ).rejects.toMatchObject({ reason: 'terminal_body_mismatch' })
+    await expect(
+      v2Catalog.createOrReadSwiftStudioSession(
+        swiftStudioSessionInput(namespaceId, '5'.repeat(64), 'session-after-failure'),
+      ),
+    ).resolves.toMatchObject({ row: { status: 'preparing' }, created: true })
+  })
+
+  test('renews and atomically claims abandoned preparation ownership while fencing stale owners', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const { row: prepared } = await v2Catalog.createOrReadSwiftStudioSession(
+      swiftStudioSessionInput(namespaceId),
+    )
+    const staleToken = '11111111-1111-4111-8111-111111111111'
+
+    await expect(
+      v2Catalog.abandonSwiftStudioSessionPreparation(namespaceId, prepared.id, staleToken),
+    ).resolves.toBe(false)
+    await expect(
+      v2Catalog.renewSwiftStudioSessionPreparation(namespaceId, prepared.id, staleToken),
+    ).resolves.toBe(false)
+    await expect(
+      v2Catalog.abandonSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+      ),
+    ).resolves.toBe(true)
+    const abandoned = await v2Catalog.getSwiftStudioSession(namespaceId, prepared.id)
+    expect(abandoned?.preparationAbandonedAt).toBeInstanceOf(Date)
+    await expect(
+      v2Catalog.claimSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+        60_000,
+      ),
+    ).resolves.toMatchObject({ claimed: false, row: { id: prepared.id } })
+
+    await prisma.$executeRaw`
+      UPDATE "swift_studio_sessions_v2"
+      SET
+        "preparation_abandoned_at" = "created_at",
+        "preparation_expires_at" = clock_timestamp() + INTERVAL '1 minute'
+      WHERE "id" = ${prepared.id}::uuid
+    `
+    await expect(
+      v2Catalog.renewSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+      ),
+    ).resolves.toBe(true)
+    const renewed = await v2Catalog.getSwiftStudioSession(namespaceId, prepared.id)
+    expect(renewed).toMatchObject({ preparationAbandonedAt: null })
+    expect((renewed?.preparationExpiresAt.getTime() ?? 0) - Date.now()).toBeGreaterThan(
+      4 * 60 * 60 * 1_000,
+    )
+
+    await expect(
+      v2Catalog.abandonSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+      ),
+    ).resolves.toBe(true)
+    const claims = await Promise.all(
+      Array.from({ length: 16 }, () =>
+        v2Catalog.claimSwiftStudioSessionPreparation(
+          namespaceId,
+          prepared.id,
+          prepared.preparationOwnerToken,
+          0,
+        ),
+      ),
+    )
+    expect(claims.filter(({ claimed }) => claimed)).toHaveLength(1)
+    const claimed = claims.find((result) => result.claimed)?.row
+    expect(claimed).not.toBeNull()
+    expect(claimed?.preparationOwnerToken).not.toBe(prepared.preparationOwnerToken)
+    expect(claimed?.preparationAbandonedAt).toBeNull()
+    expect(new Set(claims.map(({ row }) => row?.preparationOwnerToken ?? null))).toEqual(
+      new Set([claimed?.preparationOwnerToken]),
+    )
+
+    await expect(
+      v2Catalog.renewSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+      ),
+    ).resolves.toBe(false)
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: prepared.id,
+        status: 'ready',
+        preparationOwnerToken: prepared.preparationOwnerToken,
+        exportDigest: '6'.repeat(64),
+        exportSizeBytes: 8_192n,
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid_transition' })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: prepared.id,
+        status: 'failed',
+        preparationOwnerToken: prepared.preparationOwnerToken,
+        failure: {
+          phase: 'dataset_prepare',
+          code: 'stale_owner',
+          message: 'Stale owner must not terminate preparation',
+        },
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid_transition' })
+    const claimedToken = claimed?.preparationOwnerToken
+    if (!claimedToken) throw new Error('preparation claim did not return an owner token')
+    const readyInput = {
+      namespaceId,
+      id: prepared.id,
+      status: 'ready' as const,
+      preparationOwnerToken: claimedToken,
+      exportDigest: '6'.repeat(64),
+      exportSizeBytes: 8_192n,
+    }
+    await expect(v2Catalog.transitionSwiftStudioSession(readyInput)).resolves.toMatchObject({
+      status: 'ready',
+    })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        ...readyInput,
+        preparationOwnerToken: prepared.preparationOwnerToken,
+      }),
+    ).resolves.toMatchObject({ status: 'ready' })
+    await expect(
+      v2Catalog.abandonSwiftStudioSessionPreparation(namespaceId, prepared.id, claimedToken),
+    ).resolves.toBe(false)
+  })
+
+  test('claims expired preparations and rejects malformed ownership inputs', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const { row: prepared } = await v2Catalog.createOrReadSwiftStudioSession(
+      swiftStudioSessionInput(namespaceId),
+    )
+    await prisma.$executeRaw`
+      UPDATE "swift_studio_sessions_v2"
+      SET "preparation_expires_at" = clock_timestamp() - INTERVAL '1 millisecond'
+      WHERE "id" = ${prepared.id}::uuid
+    `
+    await expect(
+      v2Catalog.claimSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+        310_000,
+      ),
+    ).resolves.toMatchObject({
+      claimed: true,
+      row: {
+        id: prepared.id,
+        status: 'preparing',
+        preparationAbandonedAt: null,
+      },
+    })
+    await expect(
+      v2Catalog.renewSwiftStudioSessionPreparation(namespaceId, prepared.id, 'not-a-uuid'),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    await expect(
+      v2Catalog.abandonSwiftStudioSessionPreparation(namespaceId, prepared.id, 'not-a-uuid'),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    await expect(
+      v2Catalog.claimSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+        -1,
+      ),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+  })
+
+  test('linearizes preparation renewal against an expired-owner claim', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const { row: prepared } = await v2Catalog.createOrReadSwiftStudioSession(
+      swiftStudioSessionInput(namespaceId),
+    )
+    await prisma.$executeRaw`
+      UPDATE "swift_studio_sessions_v2"
+      SET "preparation_expires_at" = clock_timestamp() - INTERVAL '1 millisecond'
+      WHERE "id" = ${prepared.id}::uuid
+    `
+    const [renewed, claim] = await Promise.all([
+      v2Catalog.renewSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+      ),
+      v2Catalog.claimSwiftStudioSessionPreparation(
+        namespaceId,
+        prepared.id,
+        prepared.preparationOwnerToken,
+        0,
+      ),
+    ])
+    expect(Number(renewed) + Number(claim.claimed)).toBe(1)
+    const current = await v2Catalog.getSwiftStudioSession(namespaceId, prepared.id)
+    expect(current).toMatchObject({ status: 'preparing', preparationAbandonedAt: null })
+    expect((current?.preparationExpiresAt.getTime() ?? 0) - Date.now()).toBeGreaterThan(
+      4 * 60 * 60 * 1_000,
+    )
+    expect(current?.preparationOwnerToken === prepared.preparationOwnerToken).toBe(renewed)
   })
 })
 

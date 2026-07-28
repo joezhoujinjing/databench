@@ -351,15 +351,73 @@ const patchedComponents = baseline.components.flatMap((component) => {
   if (component.id !== 3) return [shifted]
   return [{ id: 3, type: 'html', skip_api: false, name: 'html', visible: true }, shifted]
 })
-const patchedDependencies = baseline.dependencies.map((dependency) => ({
-  ...dependency,
-  targets: dependency.targets.map((target) => [
-    shiftPatchedComponentId(target[0]),
-    ...target.slice(1),
-  ]),
-  inputs: dependency.inputs.map(shiftPatchedComponentId),
-  outputs: dependency.outputs.map(shiftPatchedComponentId),
-}))
+const shiftPatchedDependencyId = (value) => {
+  if (value <= 108) return value
+  if (value === 109) return value + 1
+  if (value === 110) return value + 2
+  return value + 3
+}
+const shiftPatchedApiName = (dependency) => {
+  if (dependency.id <= 108 || !/^partial_\d+$/.test(dependency.api_name ?? ''))
+    return dependency.api_name
+  const suffix = Number(dependency.api_name.slice('partial_'.length))
+  return `partial_${suffix + shiftPatchedDependencyId(dependency.id) - dependency.id}`
+}
+const patchedDependencies = [
+  ...baseline.dependencies.map((dependency) => ({
+    ...dependency,
+    id: shiftPatchedDependencyId(dependency.id),
+    api_name: shiftPatchedApiName(dependency),
+    targets: dependency.targets.map((target) => [
+      shiftPatchedComponentId(target[0]),
+      ...target.slice(1),
+    ]),
+    inputs: dependency.inputs.map(shiftPatchedComponentId),
+    outputs: dependency.outputs.map(shiftPatchedComponentId),
+  })),
+  {
+    id: 109,
+    api_name: 'partial_26',
+    targets: [[null, 'then']],
+    inputs: [],
+    outputs: [3, 20, 52, 62],
+    backend_fn: true,
+    queue: true,
+    connection: 'sse',
+    generator: false,
+    cancel: false,
+    trigger_after: 108,
+    trigger_mode: 'once',
+  },
+  {
+    id: 111,
+    api_name: 'partial_28',
+    targets: [[null, 'then']],
+    inputs: [],
+    outputs: [294, 326, 336],
+    backend_fn: true,
+    queue: true,
+    connection: 'sse',
+    generator: false,
+    cancel: false,
+    trigger_after: 110,
+    trigger_mode: 'once',
+  },
+  {
+    id: 113,
+    api_name: 'partial_30',
+    targets: [[null, 'then']],
+    inputs: [],
+    outputs: [573, 609, 619],
+    backend_fn: true,
+    queue: true,
+    connection: 'sse',
+    generator: false,
+    cancel: false,
+    trigger_after: 112,
+    trigger_mode: 'once',
+  },
+].sort((left, right) => left.id - right.id)
 const compatibility = capabilities.compatibility
 if (
   compatibility === null ||
@@ -509,6 +567,60 @@ for (const [name, relativePath, digest] of dependencyDocuments) {
 
 const dependencyLock = runtimeDocuments.get('dependency lock')
 const runtimeProvided = runtimeDocuments.get('runtime provided')
+const providerRuntimeDocuments = new Map()
+for (const [name, relativePath, digest] of [
+  [
+    'provider dependency input',
+    runtimeTarget.provider_dependency_input_path,
+    runtimeTarget.provider_dependency_input_sha256,
+  ],
+  [
+    'provider dependency lock',
+    runtimeTarget.provider_dependency_lock_path,
+    runtimeTarget.provider_dependency_lock_sha256,
+  ],
+]) {
+  if (
+    !isNonEmptyString(relativePath) ||
+    path.isAbsolute(relativePath) ||
+    relativePath.includes('..')
+  ) {
+    fail(`${name} path must be repository-relative`)
+    continue
+  }
+  if (!isSha256(digest)) {
+    fail(`${name} digest is invalid`)
+    continue
+  }
+  const documentPath = path.join(REPOSITORY_ROOT, relativePath)
+  if (!(await exists(documentPath))) {
+    fail(`${name} does not exist`)
+    continue
+  }
+  const bytes = await readFile(documentPath)
+  if (sha256(bytes) !== digest) fail(`${name} digest mismatch`)
+  providerRuntimeDocuments.set(name, bytes.toString('utf8'))
+}
+
+const providerDependencyLock = providerRuntimeDocuments.get('provider dependency lock')
+if (providerDependencyLock) {
+  if (
+    !providerDependencyLock.includes('uv pip compile workers/swift-studio/runtime-requirements.in')
+  )
+    fail('provider dependency lock has an unexpected generation command')
+  if (/^\s*(?:-e|--editable|https?:|git\+)/m.test(providerDependencyLock))
+    fail('provider dependency lock must not contain editable, URL or Git dependencies')
+  const lockedPackages = providerDependencyLock
+    .split(/\r?\n/)
+    .filter((line) => /^[A-Za-z0-9][A-Za-z0-9._-]*==/.test(line))
+  if (lockedPackages.length !== runtimeTarget.provider_dependency_lock_package_count)
+    fail('provider dependency lock package count mismatch')
+  if (!lockedPackages.includes('blake3==1.0.8 \\'))
+    fail('provider dependency lock must pin blake3 1.0.8')
+  if ((providerDependencyLock.match(/--hash=sha256:/g) ?? []).length < lockedPackages.length)
+    fail('every provider dependency must have at least one SHA-256 hash')
+}
+
 if (dependencyLock) {
   if (!dependencyLock.includes('#    pnpm swift:lock:generate'))
     fail('dependency lock has an unexpected generation command')

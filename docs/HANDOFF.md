@@ -47,8 +47,14 @@
   console smoke。可移植 Linux/NVIDIA runner、原生 callback driver 与 fail-closed evidence checker 位于
   `scripts/`，不属于 `deploy/`；GPU proof 分 candidate/final 两遍，candidate 不能关闭 GS1。当前主机没有
   NVIDIA GPU，真实 LoRA 2～5 steps、stop 与 Adapter Infer 尚未执行。Owner 已明确将 GPU gate
-  后置，S1 以 code-complete/gpu-deferred 收口并进入 S2；capability 仍 unvalidated，runtime 保持
-  disabled-by-default。证据见
+  后置，S1 以 code-complete/gpu-deferred 收口。S2 已完成 exact Dataset resolution、
+  `ms-swift@1.0.0` fidelity admission、双遍 deterministic export、单 active Studio Session、Provider
+  atomic materialization/recovery/cleanup、preparation owner token/lease 与 DB-clock CAS recovery、Session
+  REST/OpenAPI/Web 控制和 Train/RLHF/GRPO 动态 prefill；
+  完整七业务面与全部原生 callback 保持不变。S2 production image 为
+  `sha256:447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908`，non-GPU gate 已关闭，
+  GPU 状态继续 deferred，runtime 保持 disabled-by-default。当前进入 S3 LoRA immutable Model Artifact
+  import；证据与实时状态见 `docs/swift/STATUS.md`，S1 GPU 证据模板见
   `docs/swift/evidence/S1-GPU-STUDIO.md`。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。

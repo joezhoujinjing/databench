@@ -8,10 +8,14 @@ services:
       args:
         SWIFT_BASE_IMAGE: ${DATABENCH_SWIFT_BASE_IMAGE:-pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime@sha256:417bd75df6365104c283ea4c1651fb3530d9eb5a4c2fafa51943cff2a94e6385}
     environment:
+      DATABENCH_API_BASE_URL: ${DATABENCH_SWIFT_DATABENCH_BASE_URL:-http://host.docker.internal:8000}
       DATABENCH_SWIFT_ROOT_PATH: /swift-studio
+      DATABENCH_SWIFT_PROVIDER_CREDENTIAL: ${DATABENCH_SWIFT_PROVIDER_CREDENTIAL:-}
       DATABENCH_SWIFT_SESSION_LABEL: ${DATABENCH_SWIFT_SESSION_LABEL:-Local GPU Studio}
       SWIFT_UI_LANG: ${DATABENCH_SWIFT_UI_LANG:-zh}
       WEBUI_SHARE: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     gpus:
       - driver: nvidia
         device_ids:

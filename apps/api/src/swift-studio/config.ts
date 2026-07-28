@@ -6,6 +6,10 @@ import { z } from 'zod'
 export const SWIFT_STUDIO_PROXY_PREFIX = '/swift-studio' as const
 export const SWIFT_STUDIO_RUNTIME_PREFIX = '/swift-studio-runtime' as const
 export const MS_SWIFT_UPSTREAM_COMMIT = 'f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d' as const
+export const SWIFT_STUDIO_IMAGE_DIGEST =
+  '447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908' as const
+export const SWIFT_STUDIO_CAPABILITY_DIGEST =
+  '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4' as const
 export const SWIFT_STUDIO_GRADIO_VERSION = '5.50.0' as const
 export const SWIFT_STUDIO_ROUTES_SHA256 =
   '2d9b3b0ca69acf53980140fbc9eeec6280239c018be3c431181309de53225635' as const
@@ -13,6 +17,7 @@ export const SWIFT_STUDIO_ROUTES_SHA256 =
 const SwiftStudioEnvSchema = z
   .object({
     DATABENCH_SWIFT_STUDIO_ENABLED: z.enum(['true', 'false']).default('false'),
+    DATABENCH_SWIFT_STUDIO_DATABENCH_BASE_URL: z.string().trim().min(1).optional(),
     DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL: z.string().trim().min(1).optional(),
     DATABENCH_SWIFT_STUDIO_MAX_CONCURRENT_REQUESTS: z.coerce
       .number()
@@ -27,6 +32,7 @@ const SwiftStudioEnvSchema = z
       .max(1024)
       .default(32),
     DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL: z.string().trim().min(1).optional(),
+    DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL: z.string().min(16).max(4096).optional(),
     DATABENCH_SWIFT_STUDIO_REQUEST_MAX_BYTES: z.coerce
       .number()
       .int()
@@ -57,6 +63,7 @@ const SwiftStudioEnvSchema = z
     if (value.DATABENCH_SWIFT_STUDIO_ENABLED !== 'true') return
     for (const field of [
       'DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL',
+      'DATABENCH_SWIFT_STUDIO_DATABENCH_BASE_URL',
       'DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL',
       'DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST',
     ] as const) {
@@ -79,11 +86,13 @@ export interface SwiftStudioManifestRoute {
 }
 
 export interface SwiftStudioGatewayConfig {
+  readonly databenchBaseUrl?: string
   readonly enabled: boolean
   readonly internalBaseUrl?: string
   readonly maxConcurrentRequests: number
   readonly maxWebSocketConnections: number
   readonly providerBaseUrl?: string
+  readonly providerCredential?: string
   readonly proxyPrefix: typeof SWIFT_STUDIO_PROXY_PREFIX
   readonly requestMaxBytes: number
   readonly responseMaxBytes: number
@@ -129,6 +138,10 @@ export function swiftStudioGatewayConfigFromEnv(
     parsed.DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL as string,
     7861,
   )
+  const databenchBaseUrl = parsePrivateHttpOrigin(
+    parsed.DATABENCH_SWIFT_STUDIO_DATABENCH_BASE_URL as string,
+    8000,
+  )
   const routeManifestPath = parsed.DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST as string
   if (!routeManifestPath.startsWith('/')) {
     throw new TypeError('Swift Studio route manifest path must be absolute')
@@ -136,8 +149,12 @@ export function swiftStudioGatewayConfigFromEnv(
   const routes = readRouteManifest(routeManifestPath)
   return {
     enabled: true,
+    databenchBaseUrl,
     internalBaseUrl,
     providerBaseUrl,
+    ...(parsed.DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL === undefined
+      ? {}
+      : { providerCredential: parsed.DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL }),
     routeManifestPath,
     routes,
     ...common,
@@ -263,7 +280,14 @@ function parsePrivateHttpOrigin(value: string, defaultPort: number): string {
 
 function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase()
-  if (host === 'swift-studio' || host === 'localhost') return true
+  if (
+    host === 'api' ||
+    host === 'host.docker.internal' ||
+    host === 'swift-studio' ||
+    host === 'localhost'
+  ) {
+    return true
+  }
   if (isIP(host) === 6) return host === '::1' || host.startsWith('fc') || host.startsWith('fd')
   if (isIP(host) !== 4) return false
   const [first, second] = host.split('.').map(Number)

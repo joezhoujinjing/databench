@@ -114,3 +114,22 @@ export class V2CatalogTargetNotCommittedError extends Error {
     this.version = version
   }
 }
+
+export type V2CatalogSwiftStudioSessionConflictReason =
+  | 'active_session_exists'
+  | 'create_request_mismatch'
+  | 'invalid_transition'
+  | 'terminal_body_mismatch'
+
+export class V2CatalogSwiftStudioSessionConflictError extends Error {
+  override readonly name = 'V2CatalogSwiftStudioSessionConflictError'
+
+  constructor(
+    readonly reason: V2CatalogSwiftStudioSessionConflictReason,
+    readonly sessionId: string,
+    readonly status: 'preparing' | 'ready' | 'closing' | 'closed' | 'failed',
+    readonly requestedStatus: 'ready' | 'closing' | 'closed' | 'failed' | null,
+  ) {
+    super(`Swift Studio Session conflict (${reason}) for ${sessionId}`)
+  }
+}

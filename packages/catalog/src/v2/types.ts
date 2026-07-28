@@ -359,3 +359,95 @@ export type TransitionEvaluationRunV2 =
       readonly status: 'failed' | 'cancelled'
       readonly error: CatalogEvaluationRunErrorV2
     }
+
+export type CatalogSwiftStudioSessionStatusV2 =
+  | 'preparing'
+  | 'ready'
+  | 'closing'
+  | 'closed'
+  | 'failed'
+
+export interface CatalogSwiftStudioSessionFailureV2 {
+  readonly phase: string
+  readonly code: string
+  readonly message: string
+}
+
+export interface CreateSwiftStudioSessionV2 {
+  readonly namespaceId: string
+  readonly createDigest: string
+  readonly datasetVersion: string
+  readonly displayRef: string | null
+  readonly converter: 'ms-swift'
+  readonly converterVersion: '1.0.0'
+  readonly normalizedOptions: Readonly<Record<string, CatalogJsonValueV2>>
+  readonly fidelityDigest: string
+  readonly exportOutputCount: bigint
+  readonly provider: 'swift-studio'
+  readonly providerSessionId: string
+  readonly upstreamCommit: string
+  readonly imageDigest: string
+  readonly runtimeCapabilityDigest: string
+}
+
+export interface CatalogSwiftStudioSessionRowV2 extends CreateSwiftStudioSessionV2 {
+  readonly id: string
+  readonly status: CatalogSwiftStudioSessionStatusV2
+  readonly exportDigest: string | null
+  readonly exportSizeBytes: bigint | null
+  readonly failure: CatalogSwiftStudioSessionFailureV2 | null
+  readonly preparationOwnerToken: string
+  readonly preparationAbandonedAt: Date | null
+  readonly preparationExpiresAt: Date
+  readonly createdAt: Date
+  readonly readyAt: Date | null
+  readonly closedAt: Date | null
+  readonly updatedAt: Date
+}
+
+export interface CatalogSwiftStudioSessionCreateResultV2 {
+  readonly row: CatalogSwiftStudioSessionRowV2
+  readonly created: boolean
+}
+
+export interface CatalogSwiftStudioSessionPreparationClaimResultV2 {
+  readonly row: CatalogSwiftStudioSessionRowV2 | null
+  readonly claimed: boolean
+}
+
+export interface CatalogSwiftStudioSessionCursorV2 {
+  readonly createdAt: Date
+  readonly id: string
+}
+
+export interface CatalogSwiftStudioSessionPageV2 {
+  readonly rows: readonly CatalogSwiftStudioSessionRowV2[]
+  readonly nextCursor: CatalogSwiftStudioSessionCursorV2 | null
+}
+
+export interface CatalogSwiftStudioSessionListFilterV2 {
+  readonly datasetVersion: string | null
+  readonly status: CatalogSwiftStudioSessionStatusV2 | null
+}
+
+export type TransitionSwiftStudioSessionV2 =
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly preparationOwnerToken: string
+      readonly status: 'ready'
+      readonly exportDigest: string
+      readonly exportSizeBytes: bigint
+    }
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly status: 'closing' | 'closed'
+    }
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly preparationOwnerToken: string
+      readonly status: 'failed'
+      readonly failure: CatalogSwiftStudioSessionFailureV2
+    }

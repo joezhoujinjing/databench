@@ -412,6 +412,54 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v2/swift-studio-sessions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['listSwiftStudioSessionsV2']
+    put?: never
+    post: operations['createSwiftStudioSessionV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/swift-studio-sessions/{session_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['getSwiftStudioSessionV2']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/swift-studio-sessions/{session_id}:close': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['closeSwiftStudioSessionV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v2/transform-jobs': {
     parameters: {
       query?: never
@@ -634,6 +682,7 @@ export interface components {
         message: string
       }
     }
+    CloseSwiftStudioSessionRequestV2: Record<string, never>
     CompleteEvaluationRunRequestV2: {
       metrics: components['schemas']['EvaluationMetricV2'][]
       provider_report_ids: string[]
@@ -679,6 +728,16 @@ export interface components {
       provider: 'evalscope'
       provider_task_id: string
       source_ref: string | null
+    }
+    CreateSwiftStudioSessionRequestV2: {
+      accepted_fidelity_digest: string | null
+      /** @enum {string} */
+      converter: 'ms-swift'
+      dataset_version: string
+      display_ref: string | null
+      options: {
+        [key: string]: unknown
+      }
     }
     DatasetLineageV2: {
       edges: {
@@ -771,6 +830,7 @@ export interface components {
       | components['schemas']['RefStateConflictErrorResponseV2']
       | components['schemas']['TransformJobStateConflictErrorResponseV2']
       | components['schemas']['EvaluationRunStateConflictErrorResponseV2']
+      | components['schemas']['SwiftStudioSessionStateConflictErrorResponseV2']
     ErrorResponse422V2:
       | components['schemas']['ValidationErrorResponseV2']
       | components['schemas']['UnsupportedProfileErrorResponseV2']
@@ -1495,6 +1555,70 @@ export interface components {
       }
     }
     StartEvaluationRunRequestV2: Record<string, never>
+    SwiftStudioSessionFailureV2: {
+      code: string
+      message: string
+      phase: string
+    } | null
+    SwiftStudioSessionPageV2: {
+      items: components['schemas']['SwiftStudioSessionV2'][]
+      next_cursor: string | null
+    }
+    SwiftStudioSessionStateConflictDetailV2: {
+      /** @enum {string} */
+      reason:
+        | 'active_session_exists'
+        | 'create_request_mismatch'
+        | 'invalid_transition'
+        | 'provider_session_busy'
+        | 'terminal_body_mismatch'
+      /** @enum {string|null} */
+      requested_status: 'ready' | 'closing' | 'closed' | 'failed' | null
+      /** Format: uuid */
+      session_id: string
+      /** @enum {string} */
+      status: 'preparing' | 'ready' | 'closing' | 'closed' | 'failed'
+    }
+    SwiftStudioSessionStateConflictErrorResponseV2: {
+      error: {
+        /** @enum {string} */
+        code: 'swift_studio_session_state_conflict'
+        detail: components['schemas']['SwiftStudioSessionStateConflictDetailV2']
+        message: string
+      }
+    }
+    SwiftStudioSessionV2: {
+      closed_at: string | null
+      /** @enum {string} */
+      converter: 'ms-swift'
+      /** @enum {string} */
+      converter_version: '1.0.0'
+      create_digest: string
+      created_at: string
+      dataset_version: string
+      display_ref: string | null
+      export_digest: string | null
+      export_size_bytes: number | null
+      failure: components['schemas']['SwiftStudioSessionFailureV2']
+      fidelity_digest: string
+      /** Format: uuid */
+      id: string
+      image_digest: string
+      normalized_options: {
+        [key: string]: unknown
+      }
+      output_count: number
+      /** @enum {string} */
+      provider: 'swift-studio'
+      ready_at: string | null
+      runtime_capability_digest: string
+      /** @enum {string} */
+      status: 'preparing' | 'ready' | 'closing' | 'closed' | 'failed'
+      /** @enum {string|null} */
+      studio_path: '/swift-studio/' | null
+      updated_at: string
+      upstream_commit: string
+    }
     TaskEligibilityV2: {
       eligible: boolean
       output_count: number
@@ -4476,6 +4600,511 @@ export interface operations {
         }
       }
       /** @description Invalid Ref delete request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  listSwiftStudioSessionsV2: {
+    parameters: {
+      query?: {
+        dataset_version?: string
+        status?: 'preparing' | 'ready' | 'closing' | 'closed' | 'failed'
+        cursor?: string | null
+        limit?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Recent Swift Studio Sessions */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SwiftStudioSessionPageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Invalid Session page request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  createSwiftStudioSessionV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateSwiftStudioSessionRequestV2']
+      }
+    }
+    responses: {
+      /** @description Created or replayed Swift Studio Session */
+      201: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SwiftStudioSessionV2']
+        }
+      }
+      /** @description Malformed Swift Studio Session request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Exact Dataset was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Another Swift Studio Session is active or the create request conflicts */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SwiftStudioSessionStateConflictErrorResponseV2']
+        }
+      }
+      /** @description Session request is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid export plan or fidelity approval */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse422V2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  getSwiftStudioSessionV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        session_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Swift Studio Session */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SwiftStudioSessionV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Swift Studio Session was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Invalid Session identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  closeSwiftStudioSessionV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        session_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CloseSwiftStudioSessionRequestV2']
+      }
+    }
+    responses: {
+      /** @description Closed or replayed Swift Studio Session */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SwiftStudioSessionV2']
+        }
+      }
+      /** @description Malformed Session action request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Swift Studio Session was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Swift Studio Session state conflicts with the requested action */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SwiftStudioSessionStateConflictErrorResponseV2']
+        }
+      }
+      /** @description Session action is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid Session identifier */
       422: {
         headers: {
           'Cache-Control': 'private, no-store'

@@ -1,36 +1,149 @@
 diff --git a/swift/ui/app.py b/swift/ui/app.py
-index 4dcf1a9d3113cedfda33e277f93a8082ccf4fa88..5d0237d63d6617ecf75734e5ce2211482f0a68a7 100644
+index 4dcf1a9d3113cedfda33e277f93a8082ccf4fa88..a88adb7 100644
 --- a/swift/ui/app.py
 +++ b/swift/ui/app.py
-@@ -2,6 +2,7 @@
+@@ -1,7 +1,11 @@
+ # Copyright (c) ModelScope Contributors. All rights reserved.
  import gradio as gr
++import json
  import os
++import urllib.error
++import urllib.request
  from functools import partial
 +from html import escape
  from packaging import version
  from transformers.utils import strtobool
  from typing import List, Optional, Union
-@@ -53,6 +54,8 @@ class SwiftWebUI(SwiftPipeline):
+@@ -40,6 +44,74 @@ locale_dict = {
+     },
+ }
+ 
++_SESSION_CONTEXT_KEYS = {
++    'provider_session_id',
++    'status',
++    'dataset_version',
++    'display_label',
++    'dataset_path',
++    'output_dir',
++    'logging_dir',
++    'provider_generation',
++}
++_SESSION_CONTEXT_MAX_BYTES = 64 * 1024
++
++
++def _session_banner(context, lang):
++    if context is None:
++        message = {
++            'zh': '请先在 Databench 中选择 Dataset 并打开 Studio Session。',
++            'en': 'Select a Dataset in Databench and open a Studio Session first.',
++        }[lang]
++        return f'<div class="databench-swift-session"><strong>Databench:</strong> {message}</div>'
++    label = escape(context['display_label'])
++    dataset_version = escape(context['dataset_version'])
++    message = {
++        'zh': '当前 Dataset 已锁定；只有当前 Session output root 内的产物可导入。',
++        'en': 'The current Dataset is locked; only artifacts inside this Session output root can be imported.',
++    }[lang]
++    return (
++        '<div class="databench-swift-session"><strong>Databench:</strong> '
++        f'{label} · <code>{dataset_version}</code><br>{message}</div>')
++
++
++def _read_session_context():
++    port = int(os.environ.get('DATABENCH_SWIFT_PROVIDER_PORT', '7861'))
++    request = urllib.request.Request(
++        f'http://127.0.0.1:{port}/sessions/current/context',
++        headers={'Accept': 'application/json'})
++    credential = os.environ.get('DATABENCH_SWIFT_PROVIDER_CREDENTIAL')
++    if credential:
++        request.add_header('Authorization', f'Bearer {credential}')
++    try:
++        with urllib.request.urlopen(request, timeout=3) as response:
++            payload = response.read(_SESSION_CONTEXT_MAX_BYTES + 1)
++    except (OSError, urllib.error.HTTPError, urllib.error.URLError, ValueError):
++        return None
++    if len(payload) > _SESSION_CONTEXT_MAX_BYTES:
++        return None
++    try:
++        context = json.loads(payload)
++    except (UnicodeDecodeError, json.JSONDecodeError):
++        return None
++    if not isinstance(context, dict) or set(context) != _SESSION_CONTEXT_KEYS or context.get('status') != 'ready':
++        return None
++    for field in ('provider_session_id', 'dataset_version', 'display_label', 'dataset_path', 'output_dir', 'logging_dir'):
++        if not isinstance(context.get(field), str) or not context[field]:
++            return None
++    if not all(os.path.isabs(context[field]) for field in ('dataset_path', 'output_dir', 'logging_dir')):
++        return None
++    return context
++
++
++def _load_session_context(lang, include_banner=False):
++    context = _read_session_context()
++    values = [gr.skip(), gr.skip(), gr.skip()] if context is None else [
++        [context['dataset_path']], context['output_dir'], context['logging_dir']]
++    if include_banner:
++        return [_session_banner(context, lang), *values]
++    return values
++
+ 
+ class SwiftWebUI(SwiftPipeline):
+ 
+@@ -53,6 +125,7 @@ class SwiftWebUI(SwiftPipeline):
          server = os.environ.get('WEBUI_SERVER') or self.args.server_name
          port_env = os.environ.get('WEBUI_PORT')
          port = int(port_env) if port_env else self.args.server_port
 +        root_path = os.environ.get('DATABENCH_SWIFT_ROOT_PATH') or None
-+        session_label = os.environ.get('DATABENCH_SWIFT_SESSION_LABEL')
          LLMTrain.set_lang(lang)
          LLMRLHF.set_lang(lang)
          LLMGRPO.set_lang(lang)
-@@ -67,6 +70,10 @@ class SwiftWebUI(SwiftPipeline):
+@@ -67,6 +140,7 @@ class SwiftWebUI(SwiftPipeline):
                  _version = ''
              gr.HTML(f"<h1><center>{locale_dict['title'][lang]}({_version})</center></h1>")
              gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
-+            if session_label:
-+                gr.HTML(
-+                    f'<div class="databench-swift-session"><strong>Databench:</strong> '
-+                    f'{escape(session_label)}</div>')
++            session_banner = gr.HTML(_session_banner(None, lang))
              with gr.Tabs():
                  LLMTrain.build_ui(LLMTrain)
                  LLMRLHF.build_ui(LLMRLHF)
-@@ -107,7 +114,15 @@ class SwiftWebUI(SwiftPipeline):
+@@ -82,15 +156,34 @@ class SwiftWebUI(SwiftPipeline):
+             app.load(
+                 partial(LLMTrain.update_input_model, arg_cls=RLHFArguments),
+                 inputs=[LLMTrain.element('model')],
+-                outputs=[LLMTrain.element('train_record')] + list(LLMTrain.valid_elements().values()))
++                outputs=[LLMTrain.element('train_record')] + list(LLMTrain.valid_elements().values())).then(
++                    partial(_load_session_context, lang, include_banner=True),
++                    outputs=[
++                        session_banner,
++                        LLMTrain.element('dataset'),
++                        LLMTrain.element('output_dir'),
++                        LLMTrain.element('logging_dir'),
++                    ])
+             app.load(
+                 partial(LLMRLHF.update_input_model, arg_cls=RLHFArguments),
+                 inputs=[LLMRLHF.element('model')],
+-                outputs=[LLMRLHF.element('train_record')] + list(LLMRLHF.valid_elements().values()))
++                outputs=[LLMRLHF.element('train_record')] + list(LLMRLHF.valid_elements().values())).then(
++                    partial(_load_session_context, lang),
++                    outputs=[
++                        LLMRLHF.element('dataset'),
++                        LLMRLHF.element('output_dir'),
++                        LLMRLHF.element('logging_dir'),
++                    ])
+             app.load(
+                 partial(LLMGRPO.update_input_model, arg_cls=RLHFArguments),
+                 inputs=[LLMGRPO.element('model')],
+-                outputs=[LLMGRPO.element('train_record')] + list(LLMGRPO.valid_elements().values()))
++                outputs=[LLMGRPO.element('train_record')] + list(LLMGRPO.valid_elements().values())).then(
++                    partial(_load_session_context, lang),
++                    outputs=[
++                        LLMGRPO.element('dataset'),
++                        LLMGRPO.element('output_dir'),
++                        LLMGRPO.element('logging_dir'),
++                    ])
+             app.load(
+                 partial(LLMInfer.update_input_model, arg_cls=DeployArguments, has_record=False),
+                 inputs=[LLMInfer.element('model')],
+@@ -107,7 +200,15 @@ class SwiftWebUI(SwiftPipeline):
                  partial(LLMSample.update_input_model, arg_cls=SamplingArguments, has_record=False),
                  inputs=[LLMSample.element('model')],
                  outputs=list(LLMSample.valid_elements().values()))

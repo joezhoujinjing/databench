@@ -6,7 +6,8 @@
 > 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports、Predictions、
 > Dashboard、Compare、Performance、Benchmarks 与安全 Viewer 已实现，完整 UI 功能迁移 gate 已关闭。
 > ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
-> 真实 GPU gate。S2 Session/Dataset、S3 Artifact 与 S4 Deployment 仍未实现。
+> deferred GPU gate。S2 exact Dataset 与单 active Session bridge 已完成 non-GPU gate；当前进入 S3
+> immutable LoRA Artifact，S4 Deployment 仍未实现。
 
 ## `third_party/ms-swift`
 
@@ -35,11 +36,14 @@ third_party/ms-swift/
 ```text
 workers/swift-studio/
 ├─ .python-version · pyproject.toml · uv.lock
+├─ runtime-requirements.in · runtime-requirements.lock
 ├─ src/databench_swift_studio/
-│  ├─ app.py                    read-only health/runtime 与真实 Gradio config probe
-│  ├─ config.py                 fixed root、ports、workspace 与版本契约
+│  ├─ app.py                    health/runtime、Gradio probe 与 Session internal HTTP API
+│  ├─ config.py                 fixed root、ports、workspace、export limits 与版本契约
+│  ├─ errors.py                 bounded Provider error envelope
+│  ├─ sessions.py               exact export、atomic materialization、recovery 与 cleanup
 │  └─ launcher.py               Provider + native Gradio PID 1 lifecycle
-└─ tests/                       config、readiness、完整 surface/callback contract
+└─ tests/                       config、readiness、surface/callback 与 45 个 Provider cases
 
 deploy/swift-studio/
 ├─ Dockerfile                   digest/hash locked Linux/amd64 CUDA image
@@ -107,6 +111,7 @@ apps/api/
 │  │     ├─ registries.ts       converters/transforms
 │  │     ├─ transform-jobs.ts    fixed basic-clean submit/list/show/cancel/retry
 │  │     ├─ evaluations.ts       exact Dataset evaluation run create/list/show/transition
+│  │     ├─ swift-studio-sessions.ts exact Dataset Studio Session create/list/show/close
 │  │     ├─ openapi.ts          route schema helpers
 │  │     └─ transport.ts        streaming/error transport helpers
 │  └─ v2/
@@ -190,10 +195,11 @@ apps/web/
 │  │  ├─ ui-capability-manifest.json
 │  │  ├─ implemented-capabilities.json
 │  │  └─ fixtures/benchmarks-five-categories.json
-│  ├─ training/                 ADR 0018 S1；不复刻 Gradio 字段
-│  │  ├─ api/                   locked Provider runtime client
+│  ├─ training/                 ADR 0018 S2；不复刻 Gradio 字段
+│  │  ├─ api/                   locked Provider runtime + generated Session REST adapters/hooks
+│  │  ├─ components/            Dataset/fidelity/Session create-poll-close 控制
 │  │  ├─ domain/                fixed same-origin path 与 iframe boot contract
-│  │  └─ routes/studio.tsx      loading/error/reconnect/fullscreen iframe shell
+│  │  └─ routes/studio.tsx      ready Session gate + loading/error/reconnect/fullscreen iframe shell
 │  ├─ v2/
 │  │  ├─ api/                   v2 client/hooks/query keys/stream export
 │  │  ├─ components/            gate、冲突恢复、records、fidelity review
@@ -534,7 +540,7 @@ MCP runtime 与真实 Excel fixture 已按上文实际落点登记。离线配�
 docs/swift/
 ├─ TECHNICAL-DESIGN.md   完整原生 Gradio、四桥、Session/Artifact 与演进边界
 ├─ PLAN.md               S0-S4 主计划，S5/S6 后续扩展
-└─ STATUS.md             当前真实状态；S2 current，S1 GPU deferred
+└─ STATUS.md             当前真实状态；S3 current，S1/S2 GPU deferred
 ```
 
 计划中的 Web/API/Provider/deploy/DB 文件只有在对应 Step 实现并过 gate 后，才能加入本文的当前文件级

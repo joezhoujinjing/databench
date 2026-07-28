@@ -46,7 +46,7 @@
     },
     "image_repository": "databench/swift-studio",
     "image_tag": "4.4.2",
-    "image_id": "sha256:09207c761906d5a2dae7e9a6dfd58fe963a6c3047cd9a2eb6f102632fc4d8108",
+    "image_id": "sha256:447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908",
     "image_validation_status": "cpu-gateway-browser-green-gpu-pending",
     "python": "3.11",
     "cuda": "12.8.1",
@@ -56,11 +56,16 @@
     "build_helper_path": "scripts/apply-swift-patch.py",
     "build_helper_sha256": "d4652022f9a057337ab5e714bed317bf13e358e114582d7c96e8f76503330f4c",
     "capability_manifest_path": "runtime-capabilities.json",
-    "capability_manifest_sha256": "d5d103922d96cf861bb1f4eddd8d2d2681b2c0670946aff3bee1dad6d97037ca",
+    "capability_manifest_sha256": "01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4",
     "dependency_input_path": "runtime-requirements.in",
     "dependency_input_sha256": "22af95e22c763ae3469129bb6945c2037af9a3780834d27fc81e241f62a9de00",
     "runtime_provided_path": "runtime-provided.txt",
     "runtime_provided_sha256": "8b3e8f74d618235841e803f9ff21dff3fd4033d3d399662377ee6b2ff27087d8",
+    "provider_dependency_input_path": "workers/swift-studio/runtime-requirements.in",
+    "provider_dependency_input_sha256": "92dab8d12d555dd7437962675a65185cae134632cc1a19a5519fb53c5fa447b9",
+    "provider_dependency_lock_path": "workers/swift-studio/runtime-requirements.lock",
+    "provider_dependency_lock_sha256": "28dfff03d39b58d94b0969b83eee89c9229d1519c84c8f2ea83c05d6a304d748",
+    "provider_dependency_lock_package_count": 1,
     "dependency_lock_path": "runtime-requirements.lock",
     "dependency_lock_sha256": "4ed9ea77fc7228a758a2cd077b65e3ea0b5a6dfe7bb0cedb2ef78b85618655ba",
     "dependency_lock_package_count": 195,
@@ -75,11 +80,11 @@
   "patches": [
     {
       "path": "patches/0001-databench-session-prefill.patch",
-      "sha256": "c309cec73e863ef4b507d51eda4a2a3bd67cdf549e6fe15974f22a08970f59ff",
+      "sha256": "0340badc58b1ca57b40cac2d21e24c59c80eb3f8ab293887304c41832cab076f",
       "scope": [
         "fixed root path",
-        "Databench Session banner",
-        "Dataset/output/logging prefill",
+        "dynamic Databench Session banner",
+        "dynamic Dataset/output/logging prefill from Provider context",
         "disable Gradio monitoring and MCP"
       ]
     },

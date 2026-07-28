@@ -9,6 +9,7 @@ import {
   V2CatalogLineageCycleError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
+  V2CatalogSwiftStudioSessionConflictError,
   V2CatalogTargetNotCommittedError,
   V2CatalogTransformJobLeaseError,
 } from './errors.js'
@@ -35,6 +36,14 @@ import type {
   CatalogRunRowV2,
   CatalogSnapshotInputV2,
   CatalogSnapshotRowV2,
+  CatalogSwiftStudioSessionCreateResultV2,
+  CatalogSwiftStudioSessionCursorV2,
+  CatalogSwiftStudioSessionFailureV2,
+  CatalogSwiftStudioSessionListFilterV2,
+  CatalogSwiftStudioSessionPageV2,
+  CatalogSwiftStudioSessionPreparationClaimResultV2,
+  CatalogSwiftStudioSessionRowV2,
+  CatalogSwiftStudioSessionStatusV2,
   CatalogTransformJobCursorV2,
   CatalogTransformJobErrorV2,
   CatalogTransformJobPageV2,
@@ -47,6 +56,7 @@ import type {
   CompareAndSetRefV2,
   CompleteTransformJobV2,
   CreateEvaluationRunV2,
+  CreateSwiftStudioSessionV2,
   CreateTransformJobV2,
   DeleteRefResultV2,
   DeleteRefV2,
@@ -58,6 +68,7 @@ import type {
   SetTransformJobStagingKeysV2,
   TransformJobLeaseV2,
   TransitionEvaluationRunV2,
+  TransitionSwiftStudioSessionV2,
   UpdateTransformJobProgressV2,
 } from './types.js'
 
@@ -84,6 +95,9 @@ const MAX_EVALUATION_OPTIONS_BYTES = 64 * 1024
 const MAX_EVALUATION_METRICS = 10_000
 const MAX_EVALUATION_METRICS_BYTES = 8 * 1024 * 1024
 const MAX_PROVIDER_REPORT_IDS = 32
+const SWIFT_PROVIDER_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/
+const MAX_SWIFT_OPTIONS_BYTES = 64 * 1024
+const MAX_SWIFT_PREPARATION_ABANDON_GRACE_MS = 24 * 60 * 60 * 1_000
 
 export interface V2CatalogOptions {
   readonly databaseUrl?: string
@@ -203,6 +217,35 @@ interface EvaluationRunSqlRow {
   readonly updated_at: Date
 }
 
+interface SwiftStudioSessionSqlRow {
+  readonly id: string
+  readonly namespace_id: string
+  readonly create_digest: string
+  readonly status: string
+  readonly dataset_version: string
+  readonly display_ref: string | null
+  readonly converter: string
+  readonly converter_version: string
+  readonly normalized_options_json: Prisma.JsonValue
+  readonly fidelity_digest: string
+  readonly export_output_count: bigint
+  readonly export_digest: string | null
+  readonly export_size_bytes: bigint | null
+  readonly provider: string
+  readonly provider_session_id: string
+  readonly upstream_commit: string
+  readonly image_digest: string
+  readonly runtime_capability_digest: string
+  readonly failure_json: Prisma.JsonValue | null
+  readonly preparation_owner_token: string
+  readonly preparation_abandoned_at: Date | null
+  readonly preparation_expires_at: Date
+  readonly created_at: Date
+  readonly ready_at: Date | null
+  readonly closed_at: Date | null
+  readonly updated_at: Date
+}
+
 const TRANSFORM_JOB_COLUMNS = Prisma.sql`
   "id", "cache_key", "op", "op_version", "params_json", "input_version",
   "capability_name", "capability_version", "status", "attempt", "lease_owner",
@@ -220,6 +263,15 @@ const EVALUATION_RUN_COLUMNS = Prisma.sql`
   "archive_status", "archive_attempt", "result_artifact_key", "result_artifact_digest",
   "result_artifact_size_bytes", "archive_error_json", "created_at", "started_at",
   "finished_at", "updated_at"
+`
+
+const SWIFT_STUDIO_SESSION_COLUMNS = Prisma.sql`
+  "id", "namespace_id", "create_digest", "status", "dataset_version", "display_ref",
+  "converter", "converter_version", "normalized_options_json", "fidelity_digest",
+  "export_output_count", "export_digest", "export_size_bytes", "provider",
+  "provider_session_id", "upstream_commit", "image_digest", "runtime_capability_digest",
+  "failure_json", "preparation_owner_token", "preparation_abandoned_at",
+  "preparation_expires_at", "created_at", "ready_at", "closed_at", "updated_at"
 `
 
 export class V2Catalog {
@@ -633,6 +685,377 @@ export class V2Catalog {
     return rows[0]
       ? sqlRowToEvaluationRun(rows[0])
       : await this.getEvaluationRun(input.namespaceId, input.id)
+  }
+
+  async createOrReadSwiftStudioSession(
+    input: CreateSwiftStudioSessionV2,
+  ): Promise<CatalogSwiftStudioSessionCreateResultV2> {
+    validateCreateSwiftStudioSession(input)
+    return await this.#client.$transaction(async (tx) => {
+      await acquireSwiftStudioSessionLock(tx)
+      const id = randomUUID()
+      const preparationOwnerToken = randomUUID()
+      const normalizedOptionsJson = JSON.stringify(input.normalizedOptions)
+      const inserted = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        INSERT INTO "swift_studio_sessions_v2" (
+          "id", "namespace_id", "create_digest", "status", "dataset_version", "display_ref",
+          "converter", "converter_version", "normalized_options_json", "fidelity_digest",
+          "export_output_count", "provider", "provider_session_id", "upstream_commit",
+          "image_digest", "runtime_capability_digest", "preparation_owner_token"
+        )
+        VALUES (
+          ${id}::uuid, ${input.namespaceId}::uuid, ${input.createDigest}, 'preparing',
+          ${input.datasetVersion}, ${input.displayRef}, ${input.converter},
+          ${input.converterVersion}, ${normalizedOptionsJson}::jsonb, ${input.fidelityDigest},
+          ${input.exportOutputCount}, ${input.provider}, ${input.providerSessionId},
+          ${input.upstreamCommit}, ${input.imageDigest}, ${input.runtimeCapabilityDigest},
+          ${preparationOwnerToken}::uuid
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING ${SWIFT_STUDIO_SESSION_COLUMNS}
+      `)
+      if (inserted.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Swift Studio Session insert returned more than one row',
+        )
+      }
+      const created = inserted[0]
+      if (created) {
+        return Object.freeze({ row: sqlRowToSwiftStudioSession(created), created: true })
+      }
+
+      const replayRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+        FROM "swift_studio_sessions_v2"
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "create_digest" = ${input.createDigest}
+      `)
+      if (replayRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Swift Studio Session replay lookup returned more than one row',
+        )
+      }
+      const replay = replayRows[0]
+      if (replay) {
+        const row = sqlRowToSwiftStudioSession(replay)
+        if (!sameSwiftStudioSessionCreate(row, input)) {
+          throw new V2CatalogSwiftStudioSessionConflictError(
+            'create_request_mismatch',
+            row.id,
+            row.status,
+            null,
+          )
+        }
+        return Object.freeze({ row, created: false })
+      }
+
+      const activeRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+        FROM "swift_studio_sessions_v2"
+        WHERE "provider" = ${input.provider} AND "status" IN ('preparing', 'ready', 'closing')
+      `)
+      if (activeRows.length > 1) {
+        throw new V2CatalogConsistencyError('More than one active Swift Studio Session exists')
+      }
+      const active = activeRows[0]
+      if (active) {
+        const row = sqlRowToSwiftStudioSession(active)
+        throw new V2CatalogSwiftStudioSessionConflictError(
+          'active_session_exists',
+          row.id,
+          row.status,
+          null,
+        )
+      }
+
+      const locatorRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+        FROM "swift_studio_sessions_v2"
+        WHERE
+          "provider" = ${input.provider} AND
+          "provider_session_id" = ${input.providerSessionId}
+      `)
+      if (locatorRows.length !== 1 || !locatorRows[0]) {
+        throw new V2CatalogConsistencyError(
+          'Swift Studio Session insert conflicted but the winning row could not be read',
+        )
+      }
+      const locator = sqlRowToSwiftStudioSession(locatorRows[0])
+      throw new V2CatalogSwiftStudioSessionConflictError(
+        'create_request_mismatch',
+        locator.id,
+        locator.status,
+        null,
+      )
+    })
+  }
+
+  async getSwiftStudioSession(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogSwiftStudioSessionRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateSwiftStudioSessionId(id)
+    const rows = await this.#client.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+      SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+      FROM "swift_studio_sessions_v2"
+      WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError('Swift Studio Session lookup returned more than one row')
+    }
+    return rows[0] ? sqlRowToSwiftStudioSession(rows[0]) : null
+  }
+
+  async abandonSwiftStudioSessionPreparation(
+    namespaceId: string,
+    id: string,
+    preparationOwnerToken: string,
+  ): Promise<boolean> {
+    validateNamespaceId(namespaceId)
+    validateSwiftStudioSessionId(id)
+    validateSwiftStudioSessionPreparationOwnerToken(preparationOwnerToken)
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "swift_studio_sessions_v2"
+      SET
+        "preparation_abandoned_at" = COALESCE(
+          "preparation_abandoned_at",
+          clock_timestamp()
+        ),
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        "id" = ${id}::uuid AND
+        "status" = 'preparing' AND
+        "preparation_owner_token" = ${preparationOwnerToken}::uuid
+      RETURNING "id"
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError(
+        'Swift Studio Session preparation abandon returned more than one row',
+      )
+    }
+    return rows.length === 1
+  }
+
+  async renewSwiftStudioSessionPreparation(
+    namespaceId: string,
+    id: string,
+    preparationOwnerToken: string,
+  ): Promise<boolean> {
+    validateNamespaceId(namespaceId)
+    validateSwiftStudioSessionId(id)
+    validateSwiftStudioSessionPreparationOwnerToken(preparationOwnerToken)
+    const rows = await this.#client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+      UPDATE "swift_studio_sessions_v2"
+      SET
+        "preparation_abandoned_at" = NULL,
+        "preparation_expires_at" = clock_timestamp() + INTERVAL '5 hours',
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        "id" = ${id}::uuid AND
+        "status" = 'preparing' AND
+        "preparation_owner_token" = ${preparationOwnerToken}::uuid
+      RETURNING "id"
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError(
+        'Swift Studio Session preparation renew returned more than one row',
+      )
+    }
+    return rows.length === 1
+  }
+
+  async claimSwiftStudioSessionPreparation(
+    namespaceId: string,
+    id: string,
+    observedPreparationOwnerToken: string,
+    preparationAbandonGraceMs: number,
+  ): Promise<CatalogSwiftStudioSessionPreparationClaimResultV2> {
+    validateNamespaceId(namespaceId)
+    validateSwiftStudioSessionId(id)
+    validateSwiftStudioSessionPreparationOwnerToken(observedPreparationOwnerToken)
+    validateSwiftStudioSessionPreparationAbandonGrace(preparationAbandonGraceMs)
+    const preparationOwnerToken = randomUUID()
+    const rows = await this.#client.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+      UPDATE "swift_studio_sessions_v2"
+      SET
+        "preparation_owner_token" = ${preparationOwnerToken}::uuid,
+        "preparation_abandoned_at" = NULL,
+        "preparation_expires_at" = clock_timestamp() + INTERVAL '5 hours',
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        "id" = ${id}::uuid AND
+        "status" = 'preparing' AND
+        "preparation_owner_token" = ${observedPreparationOwnerToken}::uuid AND
+        (
+          "preparation_expires_at" <= clock_timestamp() OR
+          (
+            "preparation_abandoned_at" IS NOT NULL AND
+            "preparation_abandoned_at" <= clock_timestamp() -
+              (${preparationAbandonGraceMs} * INTERVAL '1 millisecond')
+          )
+        )
+      RETURNING ${SWIFT_STUDIO_SESSION_COLUMNS}
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError(
+        'Swift Studio Session preparation claim returned more than one row',
+      )
+    }
+    const claimed = rows[0]
+    if (claimed) {
+      return Object.freeze({ row: sqlRowToSwiftStudioSession(claimed), claimed: true })
+    }
+    return Object.freeze({
+      row: await this.getSwiftStudioSession(namespaceId, id),
+      claimed: false,
+    })
+  }
+
+  async listSwiftStudioSessions(
+    namespaceId: string,
+    filter: CatalogSwiftStudioSessionListFilterV2,
+    before: CatalogSwiftStudioSessionCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogSwiftStudioSessionPageV2> {
+    validateNamespaceId(namespaceId)
+    validateSwiftStudioSessionListFilter(filter)
+    if (before !== null) validateSwiftStudioSessionCursor(before)
+    const fetchLimit = checkedPageFetchLimit(limit, 'Swift Studio Session page limit')
+    const rows = await this.#client.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+      SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+      FROM "swift_studio_sessions_v2"
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        ${
+          filter.datasetVersion === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`"dataset_version" = ${filter.datasetVersion}`
+        } AND
+        ${filter.status === null ? Prisma.sql`TRUE` : Prisma.sql`"status" = ${filter.status}`} AND
+        ${
+          before === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`
+              (
+                date_trunc('milliseconds', "created_at") < ${before.createdAt} OR
+                (
+                  date_trunc('milliseconds', "created_at") = ${before.createdAt} AND
+                  "id"::text COLLATE "C" < ${before.id}
+                )
+              )
+            `
+        }
+      ORDER BY date_trunc('milliseconds', "created_at") DESC, "id"::text COLLATE "C" DESC
+      LIMIT ${fetchLimit}
+    `)
+    const hasMore = rows.length > limit
+    const pageRows = rows.slice(0, limit).map(sqlRowToSwiftStudioSession)
+    const last = hasMore ? pageRows.at(-1) : undefined
+    return {
+      rows: Object.freeze(pageRows),
+      nextCursor:
+        last === undefined
+          ? null
+          : Object.freeze({ createdAt: truncateDateToMilliseconds(last.createdAt), id: last.id }),
+    }
+  }
+
+  async transitionSwiftStudioSession(
+    input: TransitionSwiftStudioSessionV2,
+  ): Promise<CatalogSwiftStudioSessionRowV2 | null> {
+    validateSwiftStudioSessionTransition(input)
+    return await this.#client.$transaction(async (tx) => {
+      await acquireSwiftStudioSessionLock(tx)
+      const fromStatus =
+        input.status === 'ready'
+          ? 'preparing'
+          : input.status === 'closing'
+            ? 'ready'
+            : input.status === 'closed'
+              ? 'closing'
+              : 'preparing'
+      const preparationOwnerFence =
+        input.status === 'ready' || input.status === 'failed'
+          ? Prisma.sql`AND "preparation_owner_token" = ${input.preparationOwnerToken}::uuid`
+          : Prisma.empty
+      let assignments: Prisma.Sql
+      if (input.status === 'ready') {
+        assignments = Prisma.sql`
+          "status" = 'ready',
+          "export_digest" = ${input.exportDigest},
+          "export_size_bytes" = ${input.exportSizeBytes},
+          "preparation_abandoned_at" = NULL,
+          "ready_at" = clock_timestamp()
+        `
+      } else if (input.status === 'failed') {
+        const failureJson = JSON.stringify(input.failure)
+        assignments = Prisma.sql`
+          "status" = 'failed',
+          "preparation_abandoned_at" = NULL,
+          "failure_json" = ${failureJson}::jsonb
+        `
+      } else if (input.status === 'closed') {
+        assignments = Prisma.sql`
+          "status" = 'closed',
+          "closed_at" = clock_timestamp()
+        `
+      } else {
+        assignments = Prisma.sql`"status" = 'closing'`
+      }
+      const updatedRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        UPDATE "swift_studio_sessions_v2"
+        SET ${assignments}, "updated_at" = clock_timestamp()
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "id" = ${input.id}::uuid AND
+          "status" = ${fromStatus}
+          ${preparationOwnerFence}
+        RETURNING ${SWIFT_STUDIO_SESSION_COLUMNS}
+      `)
+      if (updatedRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Swift Studio Session transition returned more than one row',
+        )
+      }
+      const updated = updatedRows[0]
+      if (updated) return sqlRowToSwiftStudioSession(updated)
+
+      const existingRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+        FROM "swift_studio_sessions_v2"
+        WHERE "namespace_id" = ${input.namespaceId}::uuid AND "id" = ${input.id}::uuid
+      `)
+      if (existingRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Swift Studio Session transition lookup returned more than one row',
+        )
+      }
+      const existingSql = existingRows[0]
+      if (!existingSql) return null
+      const existing = sqlRowToSwiftStudioSession(existingSql)
+      if (existing.status !== input.status) {
+        throw new V2CatalogSwiftStudioSessionConflictError(
+          'invalid_transition',
+          existing.id,
+          existing.status,
+          input.status,
+        )
+      }
+      if (!sameSwiftStudioSessionTransitionBody(existing, input)) {
+        throw new V2CatalogSwiftStudioSessionConflictError(
+          'terminal_body_mismatch',
+          existing.id,
+          existing.status,
+          input.status,
+        )
+      }
+      return existing
+    })
   }
 
   async createOrReadTransformJob(input: CreateTransformJobV2): Promise<CatalogTransformJobRowV2> {
@@ -1507,6 +1930,16 @@ async function acquireLineageRegistrationLock(tx: Prisma.TransactionClient): Pro
   `
 }
 
+async function acquireSwiftStudioSessionLock(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$queryRaw`
+    SELECT 1 AS "locked"
+    FROM pg_advisory_xact_lock(
+      hashtext('databench-swift-studio-session-singleton'),
+      hashtext(current_schema())
+    )
+  `
+}
+
 async function registerLayoutInTransaction(
   tx: Prisma.TransactionClient,
   input: RegisterLayoutV2,
@@ -2092,6 +2525,125 @@ function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRo
   return result
 }
 
+function sqlRowToSwiftStudioSession(row: SwiftStudioSessionSqlRow): CatalogSwiftStudioSessionRowV2 {
+  const status = parseSwiftStudioSessionStatus(row.status)
+  const failure = parseStoredSwiftStudioSessionFailure(row.failure_json)
+  if (row.provider !== 'swift-studio' || row.converter !== 'ms-swift') {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session runtime is invalid')
+  }
+  if (row.converter_version !== '1.0.0') {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session converter version is invalid')
+  }
+  const hasExport = row.export_digest !== null && row.export_size_bytes !== null
+  if ((row.export_digest === null) !== (row.export_size_bytes === null)) {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session export shape is invalid')
+  }
+  const reachedReady = status === 'ready' || status === 'closing' || status === 'closed'
+  if (reachedReady !== (row.ready_at !== null && hasExport)) {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session ready shape is invalid')
+  }
+  if ((status === 'failed') !== (failure !== null)) {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session failure shape is invalid')
+  }
+  if ((status === 'closed') !== (row.closed_at !== null)) {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session close shape is invalid')
+  }
+  const result: CatalogSwiftStudioSessionRowV2 = {
+    id: row.id,
+    namespaceId: row.namespace_id,
+    createDigest: row.create_digest,
+    status,
+    datasetVersion: row.dataset_version,
+    displayRef: row.display_ref,
+    converter: row.converter,
+    converterVersion: row.converter_version,
+    normalizedOptions: parseStoredJsonObject(
+      row.normalized_options_json,
+      'Swift Studio Session normalized options',
+    ),
+    fidelityDigest: row.fidelity_digest,
+    exportOutputCount: row.export_output_count,
+    exportDigest: row.export_digest,
+    exportSizeBytes: row.export_size_bytes,
+    provider: row.provider,
+    providerSessionId: row.provider_session_id,
+    upstreamCommit: row.upstream_commit,
+    imageDigest: row.image_digest,
+    runtimeCapabilityDigest: row.runtime_capability_digest,
+    failure,
+    preparationOwnerToken: row.preparation_owner_token,
+    preparationAbandonedAt: row.preparation_abandoned_at,
+    preparationExpiresAt: row.preparation_expires_at,
+    createdAt: row.created_at,
+    readyAt: row.ready_at,
+    closedAt: row.closed_at,
+    updatedAt: row.updated_at,
+  }
+  try {
+    validateCreateSwiftStudioSession(result)
+    validateSwiftStudioSessionId(result.id)
+    validateSwiftStudioSessionPreparationOwnerToken(result.preparationOwnerToken)
+    if (
+      result.exportDigest !== null &&
+      (!EXACT_VERSION.test(result.exportDigest) ||
+        result.exportSizeBytes === null ||
+        result.exportSizeBytes < 0n ||
+        result.exportSizeBytes > POSTGRES_BIGINT_MAX)
+    ) {
+      throw new V2CatalogInputError('Swift Studio Session export metadata is invalid')
+    }
+    if (
+      !Number.isFinite(result.preparationExpiresAt.getTime()) ||
+      result.preparationExpiresAt < result.createdAt ||
+      (result.preparationAbandonedAt !== null &&
+        (!Number.isFinite(result.preparationAbandonedAt.getTime()) ||
+          result.status !== 'preparing' ||
+          result.preparationAbandonedAt < result.createdAt))
+    ) {
+      throw new V2CatalogInputError('Swift Studio Session preparation ownership is invalid')
+    }
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session is invalid', { cause })
+  }
+  return result
+}
+
+function parseSwiftStudioSessionStatus(value: string): CatalogSwiftStudioSessionStatusV2 {
+  if (
+    value === 'preparing' ||
+    value === 'ready' ||
+    value === 'closing' ||
+    value === 'closed' ||
+    value === 'failed'
+  ) {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored Swift Studio Session status is invalid')
+}
+
+function parseStoredSwiftStudioSessionFailure(
+  value: Prisma.JsonValue | null,
+): CatalogSwiftStudioSessionFailureV2 | null {
+  if (value === null) return null
+  if (
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 3 ||
+    typeof value.phase !== 'string' ||
+    typeof value.code !== 'string' ||
+    typeof value.message !== 'string'
+  ) {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session failure is invalid')
+  }
+  const failure = { phase: value.phase, code: value.code, message: value.message }
+  try {
+    validateSwiftStudioSessionFailure(failure)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored Swift Studio Session failure is invalid', { cause })
+  }
+  return failure
+}
+
 function parseEvaluationRunStatus(value: string): CatalogEvaluationRunStatusV2 {
   if (
     value === 'prepared' ||
@@ -2310,6 +2862,164 @@ function sqlRowToTransformJob(row: TransformJobSqlRow): CatalogTransformJobRowV2
     finishedAt: row.finished_at,
     updatedAt: row.updated_at,
   })
+}
+
+function validateCreateSwiftStudioSession(input: CreateSwiftStudioSessionV2): void {
+  validateNamespaceId(input.namespaceId)
+  if (!EXACT_VERSION.test(input.createDigest)) {
+    throw new V2CatalogInputError('Swift Studio Session create digest is invalid')
+  }
+  if (!EXACT_VERSION.test(input.datasetVersion)) {
+    throw new V2CatalogInputError('Swift Studio Session Dataset version is invalid')
+  }
+  if (
+    input.displayRef !== null &&
+    (!SAFE_REF_NAME.test(input.displayRef) ||
+      EXACT_VERSION.test(input.displayRef) ||
+      input.displayRef === '.' ||
+      input.displayRef === '..')
+  ) {
+    throw new V2CatalogInputError('Swift Studio Session display Ref is invalid')
+  }
+  if (input.converter !== 'ms-swift' || input.converterVersion !== '1.0.0') {
+    throw new V2CatalogInputError('Swift Studio Session converter is invalid')
+  }
+  let optionsJson: string
+  try {
+    optionsJson = JSON.stringify(input.normalizedOptions)
+  } catch (cause) {
+    throw new V2CatalogInputError('Swift Studio Session normalized options are invalid', {
+      cause,
+    })
+  }
+  if (Buffer.byteLength(optionsJson) > MAX_SWIFT_OPTIONS_BYTES) {
+    throw new V2CatalogInputError('Swift Studio Session normalized options exceed the bound')
+  }
+  if (!EXACT_VERSION.test(input.fidelityDigest)) {
+    throw new V2CatalogInputError('Swift Studio Session fidelity digest is invalid')
+  }
+  if (input.exportOutputCount <= 0n || input.exportOutputCount > POSTGRES_BIGINT_MAX) {
+    throw new V2CatalogInputError('Swift Studio Session output count must be a positive bigint')
+  }
+  if (
+    input.provider !== 'swift-studio' ||
+    !SWIFT_PROVIDER_SESSION_ID.test(input.providerSessionId) ||
+    Buffer.byteLength(input.providerSessionId) > 256
+  ) {
+    throw new V2CatalogInputError('Swift Studio Session provider locator is invalid')
+  }
+  if (!GIT_COMMIT.test(input.upstreamCommit)) {
+    throw new V2CatalogInputError('Swift Studio Session upstream commit is invalid')
+  }
+  if (
+    !EXACT_VERSION.test(input.imageDigest) ||
+    !EXACT_VERSION.test(input.runtimeCapabilityDigest)
+  ) {
+    throw new V2CatalogInputError('Swift Studio Session runtime digest is invalid')
+  }
+}
+
+function validateSwiftStudioSessionId(value: string): void {
+  if (!UUID.test(value)) throw new V2CatalogInputError('Swift Studio Session ID is invalid')
+}
+
+function validateSwiftStudioSessionPreparationOwnerToken(value: string): void {
+  if (!UUID.test(value)) {
+    throw new V2CatalogInputError('Swift Studio Session preparation owner token is invalid')
+  }
+}
+
+function validateSwiftStudioSessionPreparationAbandonGrace(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_SWIFT_PREPARATION_ABANDON_GRACE_MS) {
+    throw new V2CatalogInputError('Swift Studio Session preparation abandon grace is invalid')
+  }
+}
+
+function validateSwiftStudioSessionListFilter(filter: CatalogSwiftStudioSessionListFilterV2): void {
+  if (filter.datasetVersion !== null && !EXACT_VERSION.test(filter.datasetVersion)) {
+    throw new V2CatalogInputError('Swift Studio Session Dataset filter is invalid')
+  }
+  if (filter.status !== null) parseSwiftStudioSessionStatus(filter.status)
+}
+
+function validateSwiftStudioSessionCursor(cursor: CatalogSwiftStudioSessionCursorV2): void {
+  if (!(cursor.createdAt instanceof Date) || !Number.isFinite(cursor.createdAt.getTime())) {
+    throw new V2CatalogInputError('Swift Studio Session cursor timestamp is invalid')
+  }
+  if (cursor.createdAt.getTime() !== truncateDateToMilliseconds(cursor.createdAt).getTime()) {
+    throw new V2CatalogInputError(
+      'Swift Studio Session cursor timestamp must use millisecond precision',
+    )
+  }
+  validateSwiftStudioSessionId(cursor.id)
+}
+
+function validateSwiftStudioSessionTransition(input: TransitionSwiftStudioSessionV2): void {
+  validateNamespaceId(input.namespaceId)
+  validateSwiftStudioSessionId(input.id)
+  if (input.status === 'ready') {
+    validateSwiftStudioSessionPreparationOwnerToken(input.preparationOwnerToken)
+    if (!EXACT_VERSION.test(input.exportDigest)) {
+      throw new V2CatalogInputError('Swift Studio Session export digest is invalid')
+    }
+    if (input.exportSizeBytes < 0n || input.exportSizeBytes > POSTGRES_BIGINT_MAX) {
+      throw new V2CatalogInputError('Swift Studio Session export size is invalid')
+    }
+  } else if (input.status === 'failed') {
+    validateSwiftStudioSessionPreparationOwnerToken(input.preparationOwnerToken)
+    validateSwiftStudioSessionFailure(input.failure)
+  }
+}
+
+function validateSwiftStudioSessionFailure(failure: CatalogSwiftStudioSessionFailureV2): void {
+  if (!SAFE_EVALUATION_NAME.test(failure.phase) || !SAFE_EVALUATION_NAME.test(failure.code)) {
+    throw new V2CatalogInputError('Swift Studio Session failure phase or code is invalid')
+  }
+  if (
+    failure.message.length === 0 ||
+    Buffer.byteLength(failure.message) > 2_048 ||
+    hasControlCharacter(failure.message) ||
+    CREDENTIAL_VALUE.test(failure.message)
+  ) {
+    throw new V2CatalogInputError('Swift Studio Session failure message is invalid')
+  }
+}
+
+function sameSwiftStudioSessionCreate(
+  row: CatalogSwiftStudioSessionRowV2,
+  input: CreateSwiftStudioSessionV2,
+): boolean {
+  return (
+    row.namespaceId === input.namespaceId &&
+    row.createDigest === input.createDigest &&
+    row.datasetVersion === input.datasetVersion &&
+    row.converter === input.converter &&
+    row.converterVersion === input.converterVersion &&
+    sameJsonValue(row.normalizedOptions as unknown as Prisma.JsonValue, input.normalizedOptions) &&
+    row.fidelityDigest === input.fidelityDigest &&
+    row.exportOutputCount === input.exportOutputCount &&
+    row.provider === input.provider &&
+    row.upstreamCommit === input.upstreamCommit &&
+    row.imageDigest === input.imageDigest &&
+    row.runtimeCapabilityDigest === input.runtimeCapabilityDigest
+  )
+}
+
+function sameSwiftStudioSessionTransitionBody(
+  row: CatalogSwiftStudioSessionRowV2,
+  input: TransitionSwiftStudioSessionV2,
+): boolean {
+  if (input.status === 'ready') {
+    return row.exportDigest === input.exportDigest && row.exportSizeBytes === input.exportSizeBytes
+  }
+  if (input.status === 'failed') {
+    return (
+      row.failure?.phase === input.failure.phase &&
+      row.failure.code === input.failure.code &&
+      row.failure.message === input.failure.message
+    )
+  }
+  return true
 }
 
 function validateCreateEvaluationRun(input: CreateEvaluationRunV2): void {

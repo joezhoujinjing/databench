@@ -90,6 +90,24 @@ export type EvaluationRunStateConflictDetailV2 = z.infer<
   typeof EvaluationRunStateConflictDetailV2Schema
 >
 
+export const SwiftStudioSessionStateConflictDetailV2Schema = z
+  .strictObject({
+    reason: z.enum([
+      'active_session_exists',
+      'create_request_mismatch',
+      'invalid_transition',
+      'provider_session_busy',
+      'terminal_body_mismatch',
+    ]),
+    session_id: z.uuid(),
+    status: z.enum(['preparing', 'ready', 'closing', 'closed', 'failed']),
+    requested_status: z.enum(['ready', 'closing', 'closed', 'failed']).nullable(),
+  })
+  .meta({ id: 'SwiftStudioSessionStateConflictDetailV2' })
+export type SwiftStudioSessionStateConflictDetailV2 = z.infer<
+  typeof SwiftStudioSessionStateConflictDetailV2Schema
+>
+
 export const PostTrainingV2LimitsSchema = z
   .strictObject({
     max_record_bytes: z.number().int().safe().nonnegative(),
@@ -736,6 +754,10 @@ const EvaluationRunStateConflictErrorBodyV2Schema = createDetailedErrorBodyV2Sch
   'evaluation_run_state_conflict',
   EvaluationRunStateConflictDetailV2Schema,
 )
+const SwiftStudioSessionStateConflictErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
+  'swift_studio_session_state_conflict',
+  SwiftStudioSessionStateConflictDetailV2Schema,
+)
 const UnsupportedProfileErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
   'unsupported_profile',
   UnsupportedProfileDetailV2Schema,
@@ -783,6 +805,7 @@ export const ErrorBodyV2Schema = z
     RefStateConflictErrorBodyV2Schema,
     TransformJobStateConflictErrorBodyV2Schema,
     EvaluationRunStateConflictErrorBodyV2Schema,
+    SwiftStudioSessionStateConflictErrorBodyV2Schema,
     UnsupportedProfileErrorBodyV2Schema,
     FidelityErrorBodyV2Schema,
     IntegrityErrorBodyV2Schema,
@@ -878,6 +901,14 @@ export type EvaluationRunStateConflictErrorResponseV2 = z.infer<
   typeof EvaluationRunStateConflictErrorResponseV2Schema
 >
 
+export const SwiftStudioSessionStateConflictErrorResponseV2Schema = createErrorResponseV2Schema(
+  'SwiftStudioSessionStateConflictErrorResponseV2',
+  SwiftStudioSessionStateConflictErrorBodyV2Schema,
+)
+export type SwiftStudioSessionStateConflictErrorResponseV2 = z.infer<
+  typeof SwiftStudioSessionStateConflictErrorResponseV2Schema
+>
+
 export const FidelityErrorResponseV2Schema = createErrorResponseV2Schema(
   'FidelityErrorResponseV2',
   FidelityErrorBodyV2Schema,
@@ -939,6 +970,7 @@ export const ErrorResponse409V2Schema = z
     RefStateConflictErrorResponseV2Schema,
     TransformJobStateConflictErrorResponseV2Schema,
     EvaluationRunStateConflictErrorResponseV2Schema,
+    SwiftStudioSessionStateConflictErrorResponseV2Schema,
   ])
   .meta({ id: 'ErrorResponse409V2' })
 export type ErrorResponse409V2 = z.infer<typeof ErrorResponse409V2Schema>

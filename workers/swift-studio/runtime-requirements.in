@@ -1,0 +1,2 @@
+# Provider-only packages not already supplied by the locked ms-swift runtime.
+blake3==1.0.8
