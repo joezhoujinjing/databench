@@ -5,8 +5,8 @@
 > 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E7 已
 > 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports、Predictions、
 > Dashboard、Compare、Performance、Benchmarks 与安全 Viewer 已实现，完整 UI 功能迁移 gate 已关闭。
-> ms-swift ADR 0018 已接受并新增 `docs/swift/` 与 S0 的 `third_party/ms-swift/`；当前尚未创建计划中的
-> `workers/swift-studio`、`deploy/swift-studio` 或 `/training`。
+> ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
+> 真实 GPU gate。S2 Session/Dataset、S3 Artifact 与 S4 Deployment 仍未实现。
 
 ## `third_party/ms-swift`
 
@@ -22,12 +22,49 @@ third_party/ms-swift/
 ├─ runtime-provided.txt                  base image 提供的 CUDA/PyTorch exact versions
 ├─ runtime-requirements.lock             Linux/amd64 hash-locked dependency closure
 ├─ patches/
-│  └─ 0001-databench-session-prefill.patch
+│  ├─ 0001-databench-session-prefill.patch
+│  └─ 0002-python311-attrdict3-metadata.patch
 └─ README.md
 ```
 
-这里只保留第三方集成构建输入，不放 Databench Python 服务或部署定义。后续 Provider 源码归属
-`workers/swift-studio/`；Dockerfile、Compose 和 gateway deployment 配置归属 `deploy/swift-studio/`。
+这里只保留第三方集成构建输入，不放 Databench Python 服务或部署定义。Provider 源码归属
+`workers/swift-studio/`；Dockerfile、Compose 和部署说明归属 `deploy/swift-studio/`。
+
+## `workers/swift-studio` 与 `deploy/swift-studio`
+
+```text
+workers/swift-studio/
+├─ .python-version · pyproject.toml · uv.lock
+├─ src/databench_swift_studio/
+│  ├─ app.py                    read-only health/runtime 与真实 Gradio config probe
+│  ├─ config.py                 fixed root、ports、workspace 与版本契约
+│  └─ launcher.py               Provider + native Gradio PID 1 lifecycle
+└─ tests/                       config、readiness、完整 surface/callback contract
+
+deploy/swift-studio/
+├─ Dockerfile                   digest/hash locked Linux/amd64 CUDA image
+├─ compose.yaml                 explicit swift-gpu local profile
+└─ README.md                    deployment-only runbook
+```
+
+`deploy/swift-studio/` 不拥有 Provider、upstream、patch、lock、Gateway 或 Web 源码；Docker build 只从其
+权威目录复制这些固定输入。
+
+S1 的仓库级 GPU 验收工具不属于 deployment asset，固定落在：
+
+```text
+scripts/
+├─ run-swift-s1-gpu-gate.mjs              Linux/NVIDIA host + exact image 编排
+├─ run-swift-s1-gpu-gate.test.mjs         pnpm CLI 参数分隔符回归
+├─ run-swift-s1-gpu-driver.py              容器内原生 Gradio callback 驱动
+├─ run-swift-s1-gpu-driver.test.py         process/Gradio State CPU-only 回归
+├─ check-swift-s1-gpu-evidence.mjs         结构化证据 fail-closed checker
+├─ check-swift-s1-gpu-evidence.test.mjs    checker 负向 tests
+└─ fixtures/swift-s1-gpu-sft.jsonl         固定 32 条本地兼容 S1 fixture
+```
+
+运行证据只写 ignored `output/swift-gpu-gate/`；这些脚本和 fixture 不进入 `deploy/swift-studio/`、Provider
+runtime 或第三方构建输入。
 
 ## `apps/api`
 
@@ -45,6 +82,10 @@ apps/api/
 │  │  ├─ config.ts             disabled-by-default internal origin + route manifest gate
 │  │  ├─ routes.ts             method/path/query/response exact allowlist
 │  │  └─ gateway.ts            bounded same-origin proxy 与 generated-document enforcement
+│  ├─ swift-studio/
+│  │  ├─ config.ts             disabled-by-default origin、route manifest 与容量边界
+│  │  ├─ gateway.ts            bounded HTTP/Queue/SSE/upload/download proxy
+│  │  └─ upgrade.ts            raw HTTP/1 WebSocket tunnel 与连接上限
 │  ├─ mcp/
 │  │  ├─ register.ts           stateless MCP server 与四个 tools
 │  │  ├─ config.ts · origin.ts disabled-by-default config 与 Origin 防护
@@ -149,6 +190,10 @@ apps/web/
 │  │  ├─ ui-capability-manifest.json
 │  │  ├─ implemented-capabilities.json
 │  │  └─ fixtures/benchmarks-five-categories.json
+│  ├─ training/                 ADR 0018 S1；不复刻 Gradio 字段
+│  │  ├─ api/                   locked Provider runtime client
+│  │  ├─ domain/                fixed same-origin path 与 iframe boot contract
+│  │  └─ routes/studio.tsx      loading/error/reconnect/fullscreen iframe shell
 │  ├─ v2/
 │  │  ├─ api/                   v2 client/hooks/query keys/stream export
 │  │  ├─ components/            gate、冲突恢复、records、fidelity review
@@ -175,6 +220,7 @@ apps/web/
 /transforms
 /lineage/:ref
 /export/:ref
+/training
 /evaluations
 /evaluations/tasks
 /evaluations/reports
@@ -189,7 +235,10 @@ apps/web/
 
 `/recipe`、`/vocabularies`、`/v2/...` 等旧产品页面不在 route tree。Web 只通过生成的
 OpenAPI 类型和 REST client 访问 Databench 后端。Evaluation provider API 只通过 E4 隔离的 exact Zod client
-访问 same-origin gateway；锁定 EvalScope React 基线的全部业务页面已在 E7 完成原生迁移。
+访问 same-origin gateway；Swift 的非公共 `/swift-studio-runtime/runtime` 也只通过
+`training/api/` 内锁定的 exact Zod adapter 访问。这两个 provider 例外都不是通用 HTTP
+client。锁定 EvalScope React 基线的全部业务页面已在 E7 完成原生迁移。训练页面只嵌入固定
+`/swift-studio/` 的原生 Gradio，不复制其字段、Tabs 或 callback。
 
 ## `packages/hashing`
 
@@ -485,7 +534,7 @@ MCP runtime 与真实 Excel fixture 已按上文实际落点登记。离线配�
 docs/swift/
 ├─ TECHNICAL-DESIGN.md   完整原生 Gradio、四桥、Session/Artifact 与演进边界
 ├─ PLAN.md               S0-S4 主计划，S5/S6 后续扩展
-└─ STATUS.md             当前真实状态；S1 current，runtime/UI disabled
+└─ STATUS.md             当前真实状态；S2 current，S1 GPU deferred
 ```
 
 计划中的 Web/API/Provider/deploy/DB 文件只有在对应 Step 实现并过 gate 后，才能加入本文的当前文件级

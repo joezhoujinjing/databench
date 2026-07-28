@@ -1,7 +1,27 @@
 {
   "schema_version": 1,
+  "manifest_id": "swift-runtime-capabilities@1",
   "upstream_commit": "f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d",
-  "phase": "S0-baseline",
+  "phase": "S1-in-progress",
+  "compatibility": {
+    "component_count": 1006,
+    "dependency_count": 115,
+    "components_sha256": "25b37ea3a6f435aacad158b4d14f007c746a15d1361bda8da91a125587e6e60b",
+    "dependencies_sha256": "1841b230218e968385610996bd0c4195236dc7ba585a237c8191891e2913c39d",
+    "top_level_surfaces": [
+      "llm_train",
+      "llm_rlhf",
+      "llm_grpo",
+      "llm_infer",
+      "llm_export",
+      "llm_eval",
+      "llm_sample"
+    ]
+  },
+  "provider_capabilities": {
+    "starting": ["runtime-health"],
+    "ready": ["native-full-gradio", "runtime-health"]
+  },
   "status_values": ["planned", "green"],
   "capabilities": [
     {
@@ -15,19 +35,22 @@
         "swift/cli/web_ui.py"
       ],
       "surface_present": true,
-      "runtime_installed": false,
-      "runtime_validated": false,
+      "runtime_installed": true,
+      "runtime_validated": true,
       "requirements": ["ms-swift==4.4.2", "gradio==5.50.0"],
-      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json"],
+      "evidence": [
+        "fixture:third_party/ms-swift/gradio-baseline.json",
+        "runtime:docs/swift/evidence/S1-GPU-STUDIO.md"
+      ],
       "status": "green",
-      "known_limitations": ["S1 image and iframe are not implemented"]
+      "known_limitations": ["Linux/NVIDIA training and inference validation remains open"]
     },
     {
       "id": "surface.train",
       "kind": "native-ui-surface",
       "upstream_sources": ["swift/ui/llm_train/**"],
       "surface_present": true,
-      "runtime_installed": false,
+      "runtime_installed": true,
       "runtime_validated": false,
       "requirements": ["torch", "transformers", "peft"],
       "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_train"],
@@ -39,7 +62,7 @@
       "kind": "native-ui-surface",
       "upstream_sources": ["swift/ui/llm_rlhf/**"],
       "surface_present": true,
-      "runtime_installed": false,
+      "runtime_installed": true,
       "runtime_validated": false,
       "requirements": ["trl", "algorithm-specific dependencies"],
       "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_rlhf"],
@@ -63,7 +86,7 @@
       "kind": "native-ui-surface",
       "upstream_sources": ["swift/ui/llm_infer/**"],
       "surface_present": true,
-      "runtime_installed": false,
+      "runtime_installed": true,
       "runtime_validated": false,
       "requirements": ["transformers", "optional vllm/sglang/lmdeploy"],
       "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_infer"],
@@ -75,7 +98,7 @@
       "kind": "native-ui-surface",
       "upstream_sources": ["swift/ui/llm_export/**"],
       "surface_present": true,
-      "runtime_installed": false,
+      "runtime_installed": true,
       "runtime_validated": false,
       "requirements": ["merge/quantization backend selected by the user"],
       "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_export"],
@@ -87,19 +110,21 @@
       "kind": "native-ui-surface",
       "upstream_sources": ["swift/ui/llm_eval/**"],
       "surface_present": true,
-      "runtime_installed": false,
+      "runtime_installed": true,
       "runtime_validated": false,
       "requirements": ["evalscope"],
       "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_eval"],
       "status": "green",
-      "known_limitations": ["Local baseline warns that evalscope is not installed"]
+      "known_limitations": [
+        "Text/OpenCompass dependencies are installed; VLM video evaluation remains uninstalled because decord 0.6.0 has no supported Python 3.11 wheel"
+      ]
     },
     {
       "id": "surface.sample",
       "kind": "native-ui-surface",
       "upstream_sources": ["swift/ui/llm_sample/**"],
       "surface_present": true,
-      "runtime_installed": false,
+      "runtime_installed": true,
       "runtime_validated": false,
       "requirements": ["sampling backend selected by the user"],
       "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_sample"],
@@ -110,19 +135,22 @@
       "id": "integration.root-path",
       "kind": "databench-integration",
       "upstream_sources": [],
-      "surface_present": false,
-      "runtime_installed": false,
-      "runtime_validated": false,
+      "surface_present": true,
+      "runtime_installed": true,
+      "runtime_validated": true,
       "requirements": ["downstream patch", "streaming reverse proxy"],
-      "evidence": ["patch:third_party/ms-swift/patches/0001-databench-session-prefill.patch"],
-      "status": "planned",
-      "known_limitations": ["Implemented and browser-validated in S1"]
+      "evidence": [
+        "patch:third_party/ms-swift/patches/0001-databench-session-prefill.patch",
+        "runtime:docs/swift/evidence/S1-GPU-STUDIO.md"
+      ],
+      "status": "green",
+      "known_limitations": ["The root path is locked to /swift-studio"]
     },
     {
       "id": "integration.session-context",
       "kind": "databench-integration",
       "upstream_sources": [],
-      "surface_present": false,
+      "surface_present": true,
       "runtime_installed": false,
       "runtime_validated": false,
       "requirements": ["S2 Session API", "Dataset/output/logging prefill"],
@@ -135,7 +163,7 @@
       "kind": "runtime-capability",
       "upstream_sources": [],
       "surface_present": true,
-      "runtime_installed": false,
+      "runtime_installed": true,
       "runtime_validated": false,
       "requirements": ["Linux", "NVIDIA GPU", "pinned Qwen model", "pinned image"],
       "evidence": ["planned:docs/swift/evidence/S1-GPU-STUDIO.md"],
@@ -147,7 +175,7 @@
       "kind": "runtime-capability",
       "upstream_sources": [],
       "surface_present": true,
-      "runtime_installed": false,
+      "runtime_installed": true,
       "runtime_validated": false,
       "requirements": ["Linux", "NVIDIA GPU", "completed LoRA output"],
       "evidence": ["planned:docs/swift/evidence/S1-GPU-STUDIO.md"],

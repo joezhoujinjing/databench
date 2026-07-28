@@ -1,6 +1,7 @@
 # ADR 0018 — ms-swift 原生 Gradio Studio 嵌入与 Databench 桥接
 
-- **状态:** Accepted——owner 于 2026-07-28 确认采用完整原生 Gradio 的最小集成方案
+- **状态:** Accepted——owner 于 2026-07-28 确认采用完整原生 Gradio 的最小集成方案；
+  同日进一步确认真实 NVIDIA gate 后置，不阻塞 S2-S4 代码实施
 - **日期:** 2026-07-28
 - **决策者:** owner
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
@@ -188,6 +189,23 @@ Dataset exact binding、Session、Model Artifact 和 Deployment ID 继续保持�
   smoke 当作离线 gate；
 - ADR 0017 只禁止把 EvalScope SPA 作为第二个用户可见应用嵌入。它不自动禁止本 ADR 对 ms-swift Gradio
   作出的独立 iframe 决策。
+
+### 11. Owner 修订：GPU gate 后置，实施继续
+
+owner 于 2026-07-28 明确要求“GPU 先跳过，后面再弄，先继续”。因此：
+
+- S1 可以在 non-GPU 全仓、Provider、Gateway、浏览器、镜像兼容和 GPU gate 工具本身全绿后，
+  以 `code-complete / gpu-deferred` 状态提交；
+- S2-S4 可继续实施非 GPU 契约、数据、Session、Artifact、Deployment 和 EvalScope 桥接，
+  不再以 GS1 的真实 NVIDIA 证据作为代码进入条件；
+- 所有未执行的 LoRA、Stop、Adapter Infer、Deployment/Evaluation GPU 证据依然保持
+  `deferred/unvalidated`，不得伪装为 green；
+- `runtime.qwen-small-sft-lora` 和 `runtime.transformers-lora-infer` 保持
+  `runtime_validated=false`，直到 candidate/final 在真实 Linux/NVIDIA 主机通过；
+- runtime 仍 disabled-by-default。对外声明完整 Dataset → Training → Evaluation 闭环之前，
+  必须补齐方案中所有 deferred GPU gates。
+
+这是实施顺序修订，不是验收标准删除。
 
 ## 非目标
 

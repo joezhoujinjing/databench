@@ -1,0 +1,28 @@
+services:
+  swift-studio:
+    profiles: ["swift-gpu"]
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: deploy/swift-studio/Dockerfile
+      args:
+        SWIFT_BASE_IMAGE: ${DATABENCH_SWIFT_BASE_IMAGE:-pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime@sha256:417bd75df6365104c283ea4c1651fb3530d9eb5a4c2fafa51943cff2a94e6385}
+    environment:
+      DATABENCH_SWIFT_ROOT_PATH: /swift-studio
+      DATABENCH_SWIFT_SESSION_LABEL: ${DATABENCH_SWIFT_SESSION_LABEL:-Local GPU Studio}
+      SWIFT_UI_LANG: ${DATABENCH_SWIFT_UI_LANG:-zh}
+      WEBUI_SHARE: "false"
+    gpus:
+      - driver: nvidia
+        device_ids:
+          - ${DATABENCH_SWIFT_GPU_DEVICE_ID:-0}
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DATABENCH_SWIFT_GRADIO_PORT:-17860}:7860"
+      - "127.0.0.1:${DATABENCH_SWIFT_PROVIDER_PORT:-17861}:7861"
+    volumes:
+      - swift-studio-data:/var/lib/databench-swift-studio
+
+volumes:
+  swift-studio-data:

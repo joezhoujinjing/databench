@@ -44,18 +44,26 @@
       "read_through_registry": "docker.m.daocloud.io",
       "resolved_at": "2026-07-28T09:48:38Z"
     },
+    "image_repository": "databench/swift-studio",
+    "image_tag": "4.4.2",
+    "image_id": "sha256:09207c761906d5a2dae7e9a6dfd58fe963a6c3047cd9a2eb6f102632fc4d8108",
+    "image_validation_status": "cpu-gateway-browser-green-gpu-pending",
     "python": "3.11",
     "cuda": "12.8.1",
     "torch": "2.8.0",
     "transformers": "4.57.6",
     "gradio": "5.50.0",
+    "build_helper_path": "scripts/apply-swift-patch.py",
+    "build_helper_sha256": "d4652022f9a057337ab5e714bed317bf13e358e114582d7c96e8f76503330f4c",
+    "capability_manifest_path": "runtime-capabilities.json",
+    "capability_manifest_sha256": "d5d103922d96cf861bb1f4eddd8d2d2681b2c0670946aff3bee1dad6d97037ca",
     "dependency_input_path": "runtime-requirements.in",
-    "dependency_input_sha256": "d87ab67bc64e158be6c987c13f131760199c4dcd1a0b552832f619d4ef8d338a",
+    "dependency_input_sha256": "22af95e22c763ae3469129bb6945c2037af9a3780834d27fc81e241f62a9de00",
     "runtime_provided_path": "runtime-provided.txt",
     "runtime_provided_sha256": "8b3e8f74d618235841e803f9ff21dff3fd4033d3d399662377ee6b2ff27087d8",
     "dependency_lock_path": "runtime-requirements.lock",
-    "dependency_lock_sha256": "9da563f95463de1855934914bc79c199b7e16c3bbdf54e2ab47deb02b7c97713",
-    "dependency_lock_package_count": 227,
+    "dependency_lock_sha256": "4ed9ea77fc7228a758a2cd077b65e3ea0b5a6dfe7bb0cedb2ef78b85618655ba",
+    "dependency_lock_package_count": 195,
     "dependency_lock_resolver": "uv 0.11.1",
     "dependency_lock_exclude_newer": "2026-07-28T00:00:00Z"
   },
@@ -73,6 +81,13 @@
         "Databench Session banner",
         "Dataset/output/logging prefill",
         "disable Gradio monitoring and MCP"
+      ]
+    },
+    {
+      "path": "patches/0002-python311-attrdict3-metadata.patch",
+      "sha256": "a2788b119b942e2485dbd9686fe236f718701843f17ed5dcbc12ed38c9af9bce",
+      "scope": [
+        "replace unsupported attrdict distribution metadata with Python 3.11-compatible attrdict3"
       ]
     }
   ],

@@ -4,14 +4,17 @@
 accelerate
 addict
 aiohttp
-attrdict
+attrdict3==2.0.2
 binpacking
 charset-normalizer
 cpm-kernels
 dacite
 datasets>=3.0,<4.8.5
 einops
-evalscope[opencompass,vlmeval]>=1.0.0
+# Keep the text/OpenCompass evaluation runtime in S1. The vlmeval extra pulls
+# the Python-3.6-tagged decord 0.6.0 wheel and remains an uninstalled optional
+# runtime until it has a supported Python 3.11 video backend.
+evalscope[opencompass]>=1.0.0
 fastapi
 gradio==5.50.0
 importlib-metadata
@@ -32,6 +35,7 @@ rouge
 safetensors
 scipy
 sentencepiece
+setuptools==80.9.0
 simplejson>=3.3.0
 sortedcontainers>=1.5.9
 swanlab

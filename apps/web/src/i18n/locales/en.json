@@ -4,6 +4,7 @@
     "datasets": "Datasets",
     "ingest": "Ingest",
     "transforms": "Transforms",
+    "training": "Training",
     "evaluations": "Evaluations"
   },
   "common": {
@@ -46,6 +47,37 @@
     "healthStatus": "Health status",
     "unreachable": "Backend unreachable.",
     "reset": "Reset to default"
+  },
+  "training": {
+    "eyebrow": "Native Swift Studio",
+    "title": "Model training",
+    "description": "Use the complete ms-swift Gradio Studio inside Databench. Its training, inference, deployment, export, evaluation, sampling pages, and native interactions remain intact.",
+    "recheck": "Recheck",
+    "checking": "Checking Swift Studio…",
+    "disabledTitle": "Swift Studio is not enabled",
+    "disabled": "The connected backend has not enabled the optional GPU Studio. A deployment operator can enable the Swift Studio profile.",
+    "incompatibleTitle": "Swift Studio version mismatch",
+    "incompatible": "The Provider, ms-swift, Gradio, root path, or surface capability does not match the runtime locked by Databench.",
+    "sameOriginTitle": "This connection cannot open Studio",
+    "sameOrigin": "The native Studio must load through the current Databench site's same-origin /swift-studio/ entry point; a cross-origin API cannot provide the iframe session.",
+    "bearerTitle": "Bearer-only authentication cannot open Studio",
+    "bearer": "An iframe cannot attach the configured Authorization header. Use the same-origin cookie session or configure the ingress to authorize /swift-studio/ without browser bearer headers.",
+    "unavailableTitle": "Swift Studio is temporarily unavailable",
+    "unavailable": "The GPU Studio or its Provider cannot currently be reached. The page will check again after the service recovers.",
+    "retry": "Retry",
+    "startingTitle": "Swift Studio is starting",
+    "starting": "The Provider is running and waiting for the complete Gradio component and callback graph to become ready.",
+    "nativeStudio": "Complete native UI",
+    "gpuReady": "GPU available",
+    "gpuUnavailable": "GPU not detected",
+    "gpuWarning": "The UI is ready, but the container did not detect a CUDA GPU. All pages remain browsable; training and GPU inference require an NVIDIA runtime.",
+    "reconnect": "Reload",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen",
+    "fullscreenFailed": "The browser did not allow the Studio to enter or exit fullscreen.",
+    "loadingStudio": "Loading the native Gradio Studio…",
+    "frameError": "The native Studio page could not be loaded. Reload it or check the Gateway, root path, and Provider status.",
+    "frameTitle": "Native ms-swift Gradio Studio"
   },
   "v2": {
     "gate": {

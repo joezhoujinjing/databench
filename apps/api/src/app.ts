@@ -21,6 +21,11 @@ import {
 import { openApiConfig } from './openapi.js'
 import { registerMetaRoutes } from './routes/meta.js'
 import { registerV2Routes } from './routes/v2/index.js'
+import {
+  DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG,
+  type SwiftStudioGatewayConfig,
+} from './swift-studio/config.js'
+import { registerSwiftStudioGateway } from './swift-studio/gateway.js'
 
 export interface CreateAppOptions {
   readonly version?: string
@@ -31,6 +36,8 @@ export interface CreateAppOptions {
   readonly mcp?: McpRuntimeConfig
   readonly openApiServerUrl?: string
   readonly storeConfig?: V2WorkspaceOpenOptions['storeConfig']
+  readonly swiftStudio?: SwiftStudioGatewayConfig
+  readonly swiftStudioFetch?: typeof fetch
   readonly v2CursorSecret?: Uint8Array | string
   readonly v2Workspace?: ApiV2Workspace
   readonly workspaceRoot?: string
@@ -103,6 +110,10 @@ function createRoutedApp(
       timeoutMs: 30_000,
     },
     ...(options.evalscopeFetch === undefined ? {} : { fetch: options.evalscopeFetch }),
+  })
+  registerSwiftStudioGateway(app, {
+    config: options.swiftStudio ?? DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG,
+    ...(options.swiftStudioFetch === undefined ? {} : { fetch: options.swiftStudioFetch }),
   })
   if (mcpRuntime !== undefined) {
     registerMcpRoutes(app, mcpRuntime)

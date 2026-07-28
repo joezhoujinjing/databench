@@ -10,7 +10,7 @@ describe('i18n resources', () => {
     const enKeys = flattenKeys(en)
     const zhKeys = flattenKeys(zh)
 
-    expect(enKeys).toHaveLength(460)
+    expect(enKeys).toHaveLength(490)
     expect(zhKeys).toEqual(enKeys)
     expect(enKeys).toEqual(
       expect.arrayContaining([
@@ -22,6 +22,10 @@ describe('i18n resources', () => {
         'v2.transforms.jobs.status.finalizing',
         'v2.export.title',
         'nav.evaluations',
+        'nav.training',
+        'training.sameOrigin',
+        'training.bearer',
+        'training.fullscreenFailed',
       ]),
     )
   })

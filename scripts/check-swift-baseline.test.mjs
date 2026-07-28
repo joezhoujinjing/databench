@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -137,6 +137,16 @@ test('rejects a floating Linux GPU base image', async () => {
   )
 })
 
+test('rejects an unlocked built Swift Studio image', async () => {
+  await expectFailure(
+    'lock',
+    (document) => {
+      document.runtime_target.image_id = 'databench/swift-studio:4.4.2'
+    },
+    /Swift runtime image ID must be digest pinned/,
+  )
+})
+
 test('rejects a dependency lock outside the third-party baseline', async () => {
   await expectFailure(
     'lock',
@@ -145,4 +155,38 @@ test('rejects a dependency lock outside the third-party baseline', async () => {
     },
     /dependency lock path must be relative to upstream\.lock/,
   )
+})
+
+test('rejects drift in the repository-owned image build helper', async () => {
+  await expectFailure(
+    'lock',
+    (document) => {
+      document.runtime_target.build_helper_sha256 = '0'.repeat(64)
+    },
+    /Swift image build helper digest mismatch/,
+  )
+})
+
+test('rejects runtime or gateway code under deploy/swift-studio', async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'databench-swift-deploy-negative-'))
+  try {
+    await Promise.all(
+      ['Dockerfile', 'README.md', 'compose.yaml', 'provider.py'].map((fileName) =>
+        writeFile(path.join(temporaryRoot, fileName), '', 'utf8'),
+      ),
+    )
+    await mkdir(path.join(temporaryRoot, 'gateway'))
+    const result = spawnSync(process.execPath, [CHECKER], {
+      cwd: REPOSITORY_ROOT,
+      env: { ...process.env, SWIFT_DEPLOY_DIRECTORY: temporaryRoot },
+      encoding: 'utf8',
+    })
+    assert.notEqual(result.status, 0, result.stdout)
+    assert.match(
+      `${result.stdout}\n${result.stderr}`,
+      /deploy\/swift-studio must contain only Dockerfile, README\.md and compose\.yaml/,
+    )
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true })
+  }
 })

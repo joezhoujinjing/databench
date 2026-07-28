@@ -6,8 +6,9 @@
 > `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E7 已完成：backend-only runtime、disabled-by-default
 > gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports、逐样本、Dashboard、
 > 比较、Performance、Benchmark 和安全 Viewer 已实现；锁定 React 基线的完整 UI 功能迁移 gate 已关闭。
-> ms-swift ADR 0018 已接受，S0 upstream/compatibility baseline 已完成并进入 S1；完整原生 Gradio、
-> `/training`、GPU runtime、Studio Session 与 Model Artifact 均尚未实现。
+> ms-swift ADR 0018 已接受，S0 已完成；S1 的完整原生 Gradio、`/training`、GPU image、Provider 与
+> Gateway 已 code-complete，真实 Linux/NVIDIA LoRA + Infer gate 按 owner 决策后置且 capability 保持
+> unvalidated。当前进入 S2 Studio Session 与 Dataset bridge；Model Artifact 属于 S3。
 
 ## 顶层目录
 
@@ -31,15 +32,17 @@ databench-ts/
 │  └─ v1-retirement/    ADR 0013 R4 显式维护工具，不进入产品 runtime
 ├─ workers/
 │  ├─ python/           通用 Python capability Worker；内部 gRPC
-│  └─ evalscope/        EvalScope Python provider service；内部 HTTP
+│  ├─ evalscope/        EvalScope Python provider service；内部 HTTP
+│  └─ swift-studio/     ms-swift Provider + native Gradio launcher；内部 HTTP
 ├─ prisma/              v2-only schema 与 forward migrations
 ├─ deploy/
 │  ├─ ecs/              既有托管部署资产
 │  ├─ evalscope/        EvalScope image、upstream patch/vendor 与 gateway manifest
+│  ├─ swift-studio/     仅 Swift Dockerfile、Compose 与部署说明
 │  └─ offline/          ADR 0012 Ubuntu 单机离线发布
 ├─ third_party/
 │  └─ ms-swift/         锁定 upstream archive、patch 与 Gradio compatibility baseline；非 runtime 代码
-├─ scripts/             repo gate、测试 schema、EvalScope parity 与辅助脚本
+├─ scripts/             repo gate、测试 schema、EvalScope parity、Swift GPU gate 与辅助脚本
 ├─ THIRD_PARTY_NOTICES.md
 └─ docs/
    ├─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
@@ -51,7 +54,7 @@ databench-ts/
 不是第二套产品。Web 路由和 CLI 主命令不带版本：
 
 ```text
-Web: /datasets /ingest /transforms /evaluations/*
+Web: /datasets /ingest /transforms /training /evaluations/*
 CLI: databench dataset|converter|transform|ref|lineage ...
 REST: /v2/...
 ```
@@ -103,11 +106,12 @@ hashing
    ├─ apps/api           │
    └─ apps/cli           │
 
-apps/web 仅消费 generated OpenAPI client
+apps/web 对 Databench `/v2/*` 仅消费 generated OpenAPI client；锁定 Provider 状态使用隔离 exact adapter
 tooling/openapi-export 仅装配 apps/api
 tooling/v1-retirement 是显式 maintenance 边界
 workers/python 通用 Python Worker（内部 gRPC，不进入 TS package DAG）
 workers/evalscope EvalScope provider service（内部 HTTP，不进入 TS package DAG）
+workers/swift-studio Swift Provider/launcher（内部 HTTP，不进入 TS package DAG）
 ```
 
 精确允许关系：
@@ -145,9 +149,11 @@ MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访
 3. `hashing` 和 `schema` 保持纯；不得依赖 Prisma、对象存储或 Parquet runtime。
 4. 样本 payload 只存在对象存储的 immutable Parquet artifact；Postgres 只存 catalog
    元数据、身份 claim、lineage、run 与 ref。
-5. `apps/web` 对 Databench REST 的 wire 类型只来自生成的
-   `apps/web/src/api/generated/schema.ts`；后续 EvalScope provider API 使用 `apps/web/src/evaluations/`
-   内隔离的 pinned Zod adapter，不能混入 Databench contract 或成为任意 HTTP client。
+5. `apps/web` 对 Databench `/v2/*` REST 的 wire 类型只来自生成的
+   `apps/web/src/api/generated/schema.ts`；EvalScope provider API 使用 `apps/web/src/evaluations/`
+   内隔离的 pinned Zod adapter，Swift Provider runtime 状态使用
+   `apps/web/src/training/api/` 内隔离的 exact Zod adapter。两者都不能混入 Databench
+   contract 或成为任意 HTTP client。
 6. `tooling/v1-retirement` 不得被应用启动、普通请求或隐式 migration 调用；它只服务
    ADR 0013 的显式数据退役流程。
 
@@ -184,10 +190,17 @@ packages/<name>/
   `apps/web/src/api/generated/schema.ts`。
 - Node 版本：`.nvmrc`，当前 Node 22 LTS。
 
+Swift S1 增加 `apps/api/src/swift-studio` 的完整锁定 Web App Gateway，以及唯一 SPA 内的 lazy
+`/training` 外层壳。Provider/Gradio 不进入 TypeScript package DAG；Web 不解析 `/config` 或复刻字段；
+Gateway 和 Provider 端口仍默认关闭且不属于公共 REST/OpenAPI。仓库级 GPU runner、driver、
+evidence checker 和固定 fixture 归 `scripts/`；`deploy/swift-studio/` 只拥有 Dockerfile、Compose 与部署说明。
+
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E7 已完成。Swift ADR 0018 已接受但 S0-S6 均未完成，runtime
-与 UI route 保持 disabled。EvalScope runtime 仍 disabled-by-default；Web 已
+产品切换 R0-R5、MCP M0-M3、EvalScope E0-E7 与 Swift S0 已完成。Swift S1 已 code-complete，真实 NVIDIA
+LoRA/Infer gate 按 owner 决策后置且尚未关闭；S2 Dataset/Session 开始实施。runtime 保持
+disabled-by-default，`/training` 在未启用时显示明确 unavailable
+boundary。EvalScope runtime 仍 disabled-by-default；Web 已
 完成锁定 EvalScope React 基线的完整业务功能迁移，结果归档与最终离线集成仍分别属于 E8/E9。MCP 和单个
 CPU-only Worker只获
 授权进入 ADR 0012 的

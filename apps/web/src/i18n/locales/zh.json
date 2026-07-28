@@ -4,6 +4,7 @@
     "datasets": "数据集",
     "ingest": "导入",
     "transforms": "转换",
+    "training": "训练",
     "evaluations": "测评"
   },
   "common": {
@@ -46,6 +47,37 @@
     "healthStatus": "健康状态",
     "unreachable": "无法连接后端。",
     "reset": "恢复默认"
+  },
+  "training": {
+    "eyebrow": "原生 Swift Studio",
+    "title": "模型训练",
+    "description": "在 Databench 中使用完整的 ms-swift Gradio Studio。训练、推理、部署、导出、评测和采样页面及其原生交互均保持不变。",
+    "recheck": "重新检测",
+    "checking": "正在检测 Swift Studio…",
+    "disabledTitle": "Swift Studio 未启用",
+    "disabled": "当前后端没有启用可选的 GPU Studio。请由部署管理员开启 Swift Studio profile。",
+    "incompatibleTitle": "Swift Studio 版本不匹配",
+    "incompatible": "Provider、ms-swift、Gradio、root path 或页面能力与 Databench 锁定版本不一致。",
+    "sameOriginTitle": "当前连接方式无法打开 Studio",
+    "sameOrigin": "原生 Studio 必须通过 Databench 当前站点的 /swift-studio/ 同源入口加载；跨域 API 地址不支持 iframe 会话。",
+    "bearerTitle": "仅 Bearer 认证时无法打开 Studio",
+    "bearer": "iframe 无法携带连接设置中的 Authorization 请求头。请使用同源 Cookie 会话，或由入口网关为 /swift-studio/ 配置不依赖浏览器 Bearer 请求头的认证方式。",
+    "unavailableTitle": "Swift Studio 暂时不可用",
+    "unavailable": "GPU Studio 或它的 Provider 当前无法连接。页面会在服务恢复后重新检测。",
+    "retry": "重试",
+    "startingTitle": "Swift Studio 正在启动",
+    "starting": "Provider 已运行，正在等待完整 Gradio 组件和 callback 图就绪。",
+    "nativeStudio": "完整原生界面",
+    "gpuReady": "GPU 可用",
+    "gpuUnavailable": "未检测到 GPU",
+    "gpuWarning": "界面已经可用，但当前容器没有检测到 CUDA GPU；可以浏览全部页面，训练与 GPU 推理需要连接 NVIDIA runtime。",
+    "reconnect": "重新加载",
+    "fullscreen": "全屏",
+    "exitFullscreen": "退出全屏",
+    "fullscreenFailed": "浏览器未允许 Studio 进入或退出全屏。",
+    "loadingStudio": "正在加载原生 Gradio Studio…",
+    "frameError": "原生 Studio 页面未能加载。请重新加载，或检查 Gateway、root path 和 Provider 状态。",
+    "frameTitle": "ms-swift 原生 Gradio Studio"
   },
   "v2": {
     "gate": {

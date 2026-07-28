@@ -18,6 +18,7 @@ const EXTRA_SOURCES = [
 ]
 
 const PATCHED_SOURCES = new Set([
+  'setup.py',
   'swift/ui/app.py',
   'swift/ui/llm_train/dataset.py',
   'swift/ui/llm_train/hyper.py',

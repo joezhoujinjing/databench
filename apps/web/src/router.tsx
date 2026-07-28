@@ -75,6 +75,12 @@ const transformsRoute = createRoute({
   component: V2TransformsPage,
 })
 
+const trainingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/training',
+  component: lazyRouteComponent(() => import('./training/routes/studio.js'), 'TrainingRoute'),
+})
+
 const lineageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/lineage/$ref',
@@ -241,6 +247,7 @@ const routeTree = rootRoute.addChildren([
   recordDetailRoute,
   ingestRoute,
   transformsRoute,
+  trainingRoute,
   lineageRoute,
   exportRoute,
   evaluationRouteTree,

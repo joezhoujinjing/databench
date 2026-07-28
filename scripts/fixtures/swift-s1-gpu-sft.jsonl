@@ -1,0 +1,32 @@
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 1 + 1?"},{"role":"assistant","content":"2"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 2 + 3?"},{"role":"assistant","content":"5"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 5 - 2?"},{"role":"assistant","content":"3"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 4 times 3?"},{"role":"assistant","content":"12"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 12 divided by 4?"},{"role":"assistant","content":"3"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 7 + 6?"},{"role":"assistant","content":"13"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 15 - 8?"},{"role":"assistant","content":"7"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 6 times 5?"},{"role":"assistant","content":"30"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 18 divided by 3?"},{"role":"assistant","content":"6"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 9 + 4?"},{"role":"assistant","content":"13"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 20 - 11?"},{"role":"assistant","content":"9"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 7 times 8?"},{"role":"assistant","content":"56"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 24 divided by 6?"},{"role":"assistant","content":"4"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 11 + 12?"},{"role":"assistant","content":"23"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 30 - 17?"},{"role":"assistant","content":"13"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 9 times 9?"},{"role":"assistant","content":"81"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 35 divided by 5?"},{"role":"assistant","content":"7"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 14 + 15?"},{"role":"assistant","content":"29"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 42 - 19?"},{"role":"assistant","content":"23"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 12 times 4?"},{"role":"assistant","content":"48"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 48 divided by 8?"},{"role":"assistant","content":"6"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 16 + 17?"},{"role":"assistant","content":"33"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 50 - 24?"},{"role":"assistant","content":"26"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 13 times 3?"},{"role":"assistant","content":"39"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 63 divided by 9?"},{"role":"assistant","content":"7"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 18 + 19?"},{"role":"assistant","content":"37"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 60 - 28?"},{"role":"assistant","content":"32"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 14 times 5?"},{"role":"assistant","content":"70"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 72 divided by 8?"},{"role":"assistant","content":"9"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 21 + 22?"},{"role":"assistant","content":"43"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 75 - 36?"},{"role":"assistant","content":"39"}]}
+{"messages":[{"role":"system","content":"You are a concise arithmetic assistant."},{"role":"user","content":"What is 15 times 6?"},{"role":"assistant","content":"90"}]}

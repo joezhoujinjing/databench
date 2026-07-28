@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -27,6 +27,7 @@ const CONFIG_BASELINE_PATH = inputPath(
   'third_party/ms-swift/gradio-baseline.json',
 )
 const ROUTES_PATH = inputPath('SWIFT_GRADIO_ROUTES_PATH', 'third_party/ms-swift/gradio-routes.json')
+const DEPLOY_DIRECTORY = inputPath('SWIFT_DEPLOY_DIRECTORY', 'deploy/swift-studio')
 const REQUIRE_S0_GREEN = process.argv.includes('--require-s0-green')
 const errors = []
 
@@ -90,6 +91,26 @@ const [lock, sourceManifest, capabilities, baseline, routes] = await Promise.all
   ].map(async (filePath) => JSON.parse(await readFile(filePath, 'utf8'))),
 )
 
+const expectedDeployEntries = ['Dockerfile', 'README.md', 'compose.yaml'].sort((left, right) =>
+  left.localeCompare(right, 'en'),
+)
+if (!(await exists(DEPLOY_DIRECTORY))) {
+  fail('Swift deploy directory does not exist')
+} else {
+  const deployEntries = (await readdir(DEPLOY_DIRECTORY, { withFileTypes: true })).sort(
+    (left, right) => left.name.localeCompare(right.name, 'en'),
+  )
+  if (
+    stableJson(deployEntries.map((entry) => entry.name)) !== stableJson(expectedDeployEntries) ||
+    deployEntries.some((entry) => !entry.isFile())
+  ) {
+    fail(
+      'deploy/swift-studio must contain only Dockerfile, README.md and compose.yaml; ' +
+        'runtime and gateway code belong outside deploy',
+    )
+  }
+}
+
 for (const [name, document] of [
   ['upstream lock', lock],
   ['source manifest', sourceManifest],
@@ -109,12 +130,38 @@ for (const [name, value] of [
   if (value !== lock.commit) fail(`${name} commit does not match upstream.lock`)
 }
 
+if (capabilities.manifest_id !== 'swift-runtime-capabilities@1')
+  fail('capability manifest id must remain swift-runtime-capabilities@1')
+if (!['S1-in-progress', 'S1-complete'].includes(capabilities.phase))
+  fail('capability manifest phase must describe S1')
+if (stableJson(capabilities.status_values) !== stableJson(['planned', 'green']))
+  fail('capability manifest status values have drifted')
+if (
+  stableJson(capabilities.provider_capabilities) !==
+  stableJson({
+    starting: ['runtime-health'],
+    ready: ['native-full-gradio', 'runtime-health'],
+  })
+)
+  fail('Provider capability declarations have drifted')
+
 if (lock.tag !== 'v4.4.2') fail('upstream tag must remain v4.4.2 during S0')
 if (!isSha256(lock.commit) && !/^[a-f0-9]{40}$/.test(lock.commit))
   fail('upstream commit must be a full Git commit')
 if (!/^[a-f0-9]{40}$/.test(lock.tree)) fail('upstream tree must be a full Git tree')
 if (lock.license.spdx !== 'Apache-2.0') fail('ms-swift license must be Apache-2.0')
 if (!isSha256(lock.license.sha256)) fail('license digest is invalid')
+if (lock.runtime_target.image_repository !== 'databench/swift-studio')
+  fail('Swift runtime image repository must remain databench/swift-studio')
+if (lock.runtime_target.image_tag !== '4.4.2') fail('Swift runtime image tag must match ms-swift')
+if (!/^sha256:[a-f0-9]{64}$/.test(lock.runtime_target.image_id))
+  fail('Swift runtime image ID must be digest pinned')
+if (
+  !['cpu-gateway-browser-green-gpu-pending', 's1-gpu-green'].includes(
+    lock.runtime_target.image_validation_status,
+  )
+)
+  fail('Swift runtime image validation status is invalid')
 
 const archivePath = manifestRelativePath(LOCK_PATH, lock.source_archive.path)
 if (!(await exists(archivePath))) {
@@ -169,29 +216,35 @@ for (const patch of lock.patches) {
     fail(`patch digest mismatch: ${patch.path}`)
 }
 
-const allowedPatchedFiles = new Set([
-  'swift/ui/app.py',
-  'swift/ui/llm_train/dataset.py',
-  'swift/ui/llm_train/hyper.py',
-  'swift/ui/llm_train/runtime.py',
+const requiredPatchFiles = new Map([
+  [
+    'patches/0001-databench-session-prefill.patch',
+    new Set([
+      'swift/ui/app.py',
+      'swift/ui/llm_train/dataset.py',
+      'swift/ui/llm_train/hyper.py',
+      'swift/ui/llm_train/runtime.py',
+    ]),
+  ],
+  ['patches/0002-python311-attrdict3-metadata.patch', new Set(['setup.py'])],
 ])
-const primaryPatch = lock.patches.find(
-  (patch) => patch.path === 'patches/0001-databench-session-prefill.patch',
-)
-if (!primaryPatch) {
-  fail('required Databench Session prefill patch is missing')
-} else {
-  const patchContents = await readFile(manifestRelativePath(LOCK_PATH, primaryPatch.path), 'utf8')
+for (const [patchPath, expectedFiles] of requiredPatchFiles) {
+  const patch = lock.patches.find((candidate) => candidate.path === patchPath)
+  if (!patch) {
+    fail(`required downstream patch is missing: ${patchPath}`)
+    continue
+  }
+  const patchContents = await readFile(manifestRelativePath(LOCK_PATH, patch.path), 'utf8')
   const touched = new Set(
     [...patchContents.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)].map((match) => match[1]),
   )
-  if (touched.size !== allowedPatchedFiles.size)
-    fail('downstream patch must touch exactly the four approved integration files')
+  if (touched.size !== expectedFiles.size)
+    fail(`downstream patch has an unexpected file count: ${patchPath}`)
   for (const filePath of touched) {
-    if (!allowedPatchedFiles.has(filePath))
-      fail(`downstream patch touches an unapproved file: ${filePath}`)
+    if (!expectedFiles.has(filePath))
+      fail(`downstream patch touches an unapproved file: ${patchPath} -> ${filePath}`)
   }
-  for (const filePath of allowedPatchedFiles) {
+  for (const filePath of expectedFiles) {
     if (!touched.has(filePath)) fail(`downstream patch is missing approved file: ${filePath}`)
     if (sourceByPath.get(filePath)?.status !== 'patched-in-image')
       fail(`patched source is not classified as patched-in-image: ${filePath}`)
@@ -214,6 +267,8 @@ for (const capability of capabilities.capabilities) {
     if (typeof capability[flag] !== 'boolean')
       fail(`capability ${flag} is not boolean: ${capability.id}`)
   }
+  if (capability.runtime_validated && !capability.runtime_installed)
+    fail(`runtime-validated capability is not installed: ${capability.id}`)
   if (!['planned', 'green'].includes(capability.status))
     fail(`invalid capability status: ${capability.id}`)
   if (!Array.isArray(capability.requirements) || capability.requirements.length === 0)
@@ -289,6 +344,35 @@ const componentTypes = Object.fromEntries(
 if (stableJson(componentTypes) !== stableJson(baseline.component_type_counts))
   fail('component type counts do not match components')
 
+const shiftPatchedComponentId = (value) =>
+  Number.isSafeInteger(value) && value >= 3 ? value + 1 : value
+const patchedComponents = baseline.components.flatMap((component) => {
+  const shifted = { ...component, id: shiftPatchedComponentId(component.id) }
+  if (component.id !== 3) return [shifted]
+  return [{ id: 3, type: 'html', skip_api: false, name: 'html', visible: true }, shifted]
+})
+const patchedDependencies = baseline.dependencies.map((dependency) => ({
+  ...dependency,
+  targets: dependency.targets.map((target) => [
+    shiftPatchedComponentId(target[0]),
+    ...target.slice(1),
+  ]),
+  inputs: dependency.inputs.map(shiftPatchedComponentId),
+  outputs: dependency.outputs.map(shiftPatchedComponentId),
+}))
+const compatibility = capabilities.compatibility
+if (
+  compatibility === null ||
+  typeof compatibility !== 'object' ||
+  compatibility.component_count !== patchedComponents.length ||
+  compatibility.dependency_count !== patchedDependencies.length ||
+  compatibility.components_sha256 !== stableSha256(patchedComponents) ||
+  compatibility.dependencies_sha256 !== stableSha256(patchedDependencies) ||
+  stableJson(compatibility.top_level_surfaces) !== stableJson(expectedTabs)
+) {
+  fail('capability manifest patched Gradio compatibility graph has drifted')
+}
+
 const requiredCallbacks = [
   'train_local',
   'train_local_1',
@@ -352,12 +436,11 @@ if (await exists(archivePath)) {
       if (sha256(bytes) !== source.upstream_sha256)
         fail(`source archive digest mismatch: ${source.upstream_path}`)
     }
-    if (primaryPatch) {
-      execFileSync(
-        'git',
-        ['apply', '--check', manifestRelativePath(LOCK_PATH, primaryPatch.path)],
-        { cwd: extractedRoot, stdio: 'pipe' },
-      )
+    for (const patch of lock.patches) {
+      execFileSync('git', ['apply', '--check', manifestRelativePath(LOCK_PATH, patch.path)], {
+        cwd: extractedRoot,
+        stdio: 'pipe',
+      })
     }
   } catch (error) {
     fail(`source archive or downstream patch verification failed: ${error.message}`)
@@ -378,7 +461,24 @@ if (
 if (runtimeTarget.base_image_media_type !== 'application/vnd.docker.distribution.manifest.v2+json')
   fail('Swift runtime base image must resolve to the locked single-platform manifest')
 
+if (runtimeTarget.build_helper_path !== 'scripts/apply-swift-patch.py') {
+  fail('Swift image build helper path has drifted')
+} else {
+  const buildHelperPath = path.join(REPOSITORY_ROOT, runtimeTarget.build_helper_path)
+  if (!(await exists(buildHelperPath))) {
+    fail('Swift image build helper does not exist')
+  } else if (sha256(await readFile(buildHelperPath)) !== runtimeTarget.build_helper_sha256) {
+    fail('Swift image build helper digest mismatch')
+  }
+}
+if (!isSha256(runtimeTarget.build_helper_sha256)) fail('Swift image build helper digest is invalid')
+
 const dependencyDocuments = [
+  [
+    'capability manifest',
+    runtimeTarget.capability_manifest_path,
+    runtimeTarget.capability_manifest_sha256,
+  ],
   ['dependency input', runtimeTarget.dependency_input_path, runtimeTarget.dependency_input_sha256],
   ['runtime provided', runtimeTarget.runtime_provided_path, runtimeTarget.runtime_provided_sha256],
   ['dependency lock', runtimeTarget.dependency_lock_path, runtimeTarget.dependency_lock_sha256],

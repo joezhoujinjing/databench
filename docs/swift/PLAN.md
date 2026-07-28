@@ -10,10 +10,12 @@
 
 ## 实施原则
 
-1. 一个 accepted Step 一个 PR/commit，当前 gate 全绿后再进入下一 Step；
+1. 一个 accepted Step 一个 PR/commit；owner 于 2026-07-28 明确后置真实 GPU gate，因此
+   S1-S4 的 non-GPU gate 全绿即可继续，deferred GPU gate 仍是最终闭环必要条件；
 2. 首期完整保留原版 ms-swift Gradio UI，不以 React 复刻或 SFT-only 页面替代；
 3. 首期只桥接 Session、Dataset、workspace 和 Artifact，不伪造 Training Run；
-4. Databench REST 只经 Workspace + Schema；Web 只使用 generated OpenAPI client；
+4. Databench 公共 REST 只经 Workspace + Schema，Web 对 `/v2/*` 只使用 generated OpenAPI
+   client；S1 的非公共 Provider runtime 状态仅通过隔离、锁定的 Zod adapter 读取；
 5. Dataset payload 不进 Postgres，Model Artifact immutable + conditional create；
 6. 页面存在与运行能力验证分开，所有支持声明来自 runtime capability manifest；
 7. Swift 实现不混入 EvalScope E8 未提交工作树；后续需要 E8/E9 时显式 merge/rebase；
@@ -25,13 +27,16 @@
 |---|---|---|---|
 | S0 | 上游与兼容性基线 | lock、manifest、fixtures、license、patch baseline | ADR/方案 accepted |
 | S1 | 本地完整 GPU Studio | pinned image、完整 Gradio、Gateway/iframe、真实 LoRA | S0 green |
-| S2 | Dataset + Session bridge | exact export、Session 表/API、预填 patch、单 active conflict | S1 green |
-| S3 | LoRA Artifact import | output discovery、deterministic archive、immutable Artifact | S2 green |
-| S4 | Deployment + EvalScope | Artifact deployment、opaque ID、真实 Evaluation lineage | S3 green |
+| S2 | Dataset + Session bridge | exact export、Session 表/API、预填 patch、单 active conflict | S1 code-complete；GPU deferred |
+| S3 | LoRA Artifact import | output discovery、deterministic archive、immutable Artifact | S2 non-GPU green |
+| S4 | Deployment + EvalScope | Artifact deployment、opaque ID、真实 Evaluation lineage | S3 non-GPU green |
 | S5 | 多 Session/GPU | per-session runtime、allocator、quota、retention | S4 green + owner demand |
 | S6 | Training control plane | Run/Attempt/Profile、callback 接管、Worker lease | S4 green + separate owner decision |
 
 S0-S4 构成当前 accepted 主计划。S5/S6 是保留扩展点，不属于首期完成声明。
+
+GPU 后置只改变实施顺序：每个 Step 的 GPU 项标记 deferred，非 GPU 契约与真实
+Postgres/MinIO/Provider/浏览器 gate 仍必须通过。未补齐 deferred 项前不声明完整闭环。
 
 ## S0 — 上游、能力与兼容性基线
 
@@ -102,6 +107,8 @@ callback 完成一次小模型 LoRA + Infer。
 - iframe loading/error/reconnect/fullscreen shell；
 - 完整七业务面浏览器 evidence；
 - `Qwen/Qwen3-0.6B` 或 `Qwen/Qwen2.5-0.5B-Instruct` 原生 LoRA + Infer smoke；
+- `scripts/run-swift-s1-gpu-gate.mjs` 可移植 Linux/NVIDIA runner、固定 JSONL fixture、原生 callback
+  driver、结构化 evidence 与 fail-closed checker；
 - disabled-by-default config。
 
 ### Gate GS1
@@ -111,6 +118,12 @@ callback 完成一次小模型 LoRA + Infer。
 - `/training` direct refresh、iframe root path、静态资源、Queue、SSE、WS、upload/download smoke；
 - 浏览器确认七个顶级业务面全部存在，无被隐藏或删除的原生 callback；
 - 真实 GPU：32～100 条本地兼容 JSONL，LoRA rank 8、2～5 steps 完成；
+- 先在 `S1-in-progress` 镜像上产生 candidate proof，再更新 capability/lock、重建最终镜像并产生
+  final proof；candidate 不能关闭 GS1；
+- native 训练子进程必须真实 exit `0`；Stop/Infer 后 exact process tree、GPU compute context 和显存必须
+  释放；GPU 容器必须经 `rm` 与 post-remove inspect 双重确认不存在；
+- gate-only 容器使用 host PID namespace，使 NVML/`nvidia-smi` 的 host PID 能与 exact native
+  process tree 交叉验证；这个扩大只用于验收容器，不进入 Studio 产品部署；
 - 原生 Runtime 展示日志并能停止单独的长任务；
 - 原生 Infer 加载 Adapter 成功；
 - unavailable GPU/provider 时 Databench 页面稳定降级；
@@ -173,6 +186,9 @@ Dataset/output/logging path。
 - close/cleanup 只使用 exact Session locator，活动任务时不误删；
 - OpenAPI generated client 无 drift；
 - 全仓 gates + Provider tests + 真实依赖 + 浏览器 + GPU gate。
+
+上述两个 GPU 项按 owner 修订后置；S2 代码提交仍要求 exact Dataset materialization、
+prefill、singleton conflict 与所有 non-GPU gate 真实通过。
 
 ### 不包含
 

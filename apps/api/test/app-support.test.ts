@@ -109,6 +109,44 @@ describe('api support', () => {
     ).toThrow()
   })
 
+  test('keeps Swift Studio disabled by default and loads only locked private routing', () => {
+    const base = {
+      DATABENCH_OBJECT_STORE: 's3',
+      DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+      S3_BUCKET: 'v2-config-test',
+    }
+    expect(loadConfig(base).swiftStudio).toMatchObject({
+      enabled: false,
+      proxyPrefix: '/swift-studio',
+    })
+    const manifest = fileURLToPath(
+      new URL('../../../third_party/ms-swift/gradio-routes.json', import.meta.url),
+    )
+    expect(
+      loadConfig({
+        ...base,
+        DATABENCH_SWIFT_STUDIO_ENABLED: 'true',
+        DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL: 'http://swift-studio:7860',
+        DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL: 'http://swift-studio:7861',
+        DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST: manifest,
+      }).swiftStudio,
+    ).toMatchObject({
+      enabled: true,
+      internalBaseUrl: 'http://swift-studio:7860',
+      providerBaseUrl: 'http://swift-studio:7861',
+      routeManifestPath: manifest,
+    })
+    expect(() =>
+      loadConfig({
+        ...base,
+        DATABENCH_SWIFT_STUDIO_ENABLED: 'true',
+        DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL: 'http://swift-studio:7860',
+        DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL: 'http://public.example:7861',
+        DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST: manifest,
+      }),
+    ).toThrow('private HTTP origin')
+  })
+
   test('meta routes expose the v2-only health, version, and capability contract', async () => {
     const app = createTestApp({ version: '1.2.3', workspaceRoot: './bench-test' })
 

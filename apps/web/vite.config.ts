@@ -3,6 +3,8 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+const apiTarget = process.env.DATABENCH_DEV_API_ORIGIN ?? 'http://127.0.0.1:8000'
+
 export default defineConfig({
   build: {
     manifest: true,
@@ -16,12 +18,17 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/capabilities': 'http://127.0.0.1:8000',
-      '/evalscope-api': 'http://127.0.0.1:8000',
-      '/health': 'http://127.0.0.1:8000',
-      '/openapi.json': 'http://127.0.0.1:8000',
-      '/v2': 'http://127.0.0.1:8000',
-      '/version': 'http://127.0.0.1:8000',
+      '/capabilities': apiTarget,
+      '/evalscope-api': apiTarget,
+      '/health': apiTarget,
+      '/openapi.json': apiTarget,
+      '/swift-studio': {
+        target: apiTarget,
+        ws: true,
+      },
+      '/swift-studio-runtime': apiTarget,
+      '/v2': apiTarget,
+      '/version': apiTarget,
     },
   },
 })

@@ -52,7 +52,7 @@
       "bytes": 6524,
       "python_lines": 166,
       "kind": "build-input",
-      "status": "vendored-in-image",
+      "status": "patched-in-image",
       "target": "image:/opt/ms-swift/setup.py",
       "capability_ids": [],
       "reason": "locked build, license, or supporting runtime input"

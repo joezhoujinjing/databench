@@ -7,6 +7,33 @@ on:
       - main
 
 jobs:
+  swift-studio-provider:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.11.15
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.11.1
+
+      - run: uv sync --directory workers/swift-studio --frozen
+      - run: pnpm swift:baseline:check:green
+      - run: pnpm swift:baseline:test
+      - run: pnpm test:swift:python
+      - run: pnpm swift:s1:gpu:driver:test
+      - run: pnpm swift:s1:gpu:runner:test
+      - run: pnpm swift:s1:gpu:evidence:test
+
   worker-foundation:
     runs-on: macos-15
     steps:

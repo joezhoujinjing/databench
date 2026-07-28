@@ -13,7 +13,6 @@ accelerate==1.14.0 \
     # via
     #   -r third_party/ms-swift/runtime-requirements.in
     #   ms-opencompass
-    #   ms-vlmeval
     #   peft
     #   trl
 addict==2.4.0 \
@@ -186,18 +185,13 @@ anyio==4.14.2 \
     --hash=sha256:9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494 \
     --hash=sha256:cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f
     # via
-    #   google-genai
     #   gradio
     #   httpx
     #   openai
     #   starlette
-asttokens==3.0.2 \
-    --hash=sha256:3ecdbd8f2cc195f53ccada3a613538bb5f9ef6f6869129f13e03c30a677b8fe2 \
-    --hash=sha256:9da13157f5b28becde0bd374fc677dcd3c290614264eff096f167c469cd9f933
-    # via stack-data
-attrdict==2.0.1 \
-    --hash=sha256:35c90698b55c683946091177177a9e9c0713a0860f0e049febd72649ccd77b70 \
-    --hash=sha256:9432e3498c74ff7e1b20b3d93b45d766b71cbffa90923496f82c4ae38b92be34
+attrdict3==2.0.2 \
+    --hash=sha256:004c171ca1120cc1755701db99d7fa4944afb1e68950434efdaa542513335fe8 \
+    --hash=sha256:a98b72de6a3f20b0997cc7efbba3555af6558ed9a97de4468a3f81cac11595dc
     # via -r third_party/ms-swift/runtime-requirements.in
 attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
@@ -208,27 +202,6 @@ attrs==26.1.0 \
     #   jsonschema
     #   modelscope
     #   referencing
-av==18.0.0 \
-    --hash=sha256:0f65518a184613e41536f29e8758c8e3d8293e46bf5bef108f04f925bbfa3f44 \
-    --hash=sha256:149289d40e732a6e49c9530bc245b49d9964cfd1c8c9e06778703b7d5bba6b25 \
-    --hash=sha256:30404f53ca1ea7f350ac86ff22a2c04f903014758e9b33f398c5a62de34bd84f \
-    --hash=sha256:35274c20d2ad3b4774fe632bcef2e34af79858ddf899352339cc3babbc13a484 \
-    --hash=sha256:4d683b7747a0ba9222b8a5f81e41db5f796e7f64473454ec4fe2548e083c2fa0 \
-    --hash=sha256:4ef7e72c3d3a872584a1215173b16e0226811037f40dcdbf75992631098df1ba \
-    --hash=sha256:55a646e9afce9fdc5de5224205a8a12c7ed1ba9803145dcc876c40bfc03a109b \
-    --hash=sha256:613153e48cefc91700746dde0ad0282d4677b194cba22cc771de14c78411cf8b \
-    --hash=sha256:6882a48f7aec2863c96cddee3256ff2da98f7fb6cbed83cee9d7e70a8f186a6b \
-    --hash=sha256:88ce194c2201c6a6d40336adee8a5ddde46ed743eacb500e3ae9368d1c6d889e \
-    --hash=sha256:88dd8e35e9242662b409a6a05fd24a6775d949eb05da0ba31cab4f250eacbab5 \
-    --hash=sha256:96f594ff506a09475e5549359352332049a25d37a08f00b4623f7f6e92e45b9c \
-    --hash=sha256:aa15e567a018cc94a26b0ab45da676dee70c4146ace6e92e47d30cc9689cbfbe \
-    --hash=sha256:aaf4d354d2beaa6651e4f92e54409a578bde64f79c0beef9a30b388d06f7c629 \
-    --hash=sha256:adac2b3833b6cb9bd6cb52664a522b94db453615b3675b1dbb26e13fe1c80da6 \
-    --hash=sha256:ae56b40b6f8b067a8ad2dac664fbfbabac7f7a55b9a7bb031eb99289252bc017 \
-    --hash=sha256:ea2e8ebbce521f21b55df9400e00d721623c9020ef158f5a188a96130be0743f \
-    --hash=sha256:ef96dabb3e50dac249913145dff5424b302b257fd95dcb64be3c7b7a8aef16d1 \
-    --hash=sha256:f8f454349c402e2c8d6fa80b54eb2a3f86c00f414d2b399f01ae6dab075c6fd8
-    # via qwen-vl-utils
 binpacking==2.0.1 \
     --hash=sha256:c3e95c6cdc661d3d00e48da5f317a111531267069f2b4a288d74401b83779ffd \
     --hash=sha256:f274a60486543e2def108d05e7ae81a83e045d7bf872ae830f1582629e53ebdf
@@ -698,9 +671,7 @@ cryptography==49.0.0 \
     --hash=sha256:f78ff2c9ed8dc2d036b0f4d640e22522213d047c1b14e61205a7e55c80a494d4 \
     --hash=sha256:f89660a348f4f78a92366240a61404e337586ef7f5909a2fef59ca88ef505493 \
     --hash=sha256:fc1e275c2f1d97b1a6450b8b0ea3ebfa6e087a611c2b26cb2404d48588abab7b
-    # via
-    #   aliyun-python-sdk-core
-    #   google-auth
+    # via aliyun-python-sdk-core
 cycler==0.12.1 \
     --hash=sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30 \
     --hash=sha256:88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c
@@ -720,19 +691,6 @@ datasets==4.8.4 \
     #   modelscope
     #   ms-opencompass
     #   trl
-decorator==5.3.1 \
-    --hash=sha256:4cbcdd55a6efadb9dbea26b858f4fb3264567b52d69ca0d25b721b553f60ea82 \
-    --hash=sha256:f47fe6fdbd2edd623ecfe36875d37aba411624e2670dd395dddae1358689bb3c
-    # via
-    #   ipdb
-    #   ipython
-decord==0.6.0 \
-    --hash=sha256:02665d7c4f1193a330205a791bc128f7e108eb6ae5b67144437a02f700943bad \
-    --hash=sha256:51997f20be8958e23b7c4061ba45d0efcd86bffd5fe81c695d0befee0d442976 \
-    --hash=sha256:85ef90d2f872384657d7774cc486c237c5b12df62d4ac5cb5c8d6001fa611323 \
-    --hash=sha256:9c20674964fb1490c677bd911d2023d2a09fec7a58a4bb0b7ddf1ccc269f107a \
-    --hash=sha256:a0eb1258beade34dceb29d97856a7764d179db1b5182899b61874f3418a1abc8
-    # via ms-vlmeval
 defusedxml==0.7.1 \
     --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
     --hash=sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61
@@ -747,18 +705,14 @@ dill==0.4.1 \
 distro==1.9.0 \
     --hash=sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed \
     --hash=sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2
-    # via
-    #   google-genai
-    #   openai
+    # via openai
 docstring-parser==0.18.0 \
     --hash=sha256:292510982205c12b1248696f44959db3cdd1740237a968ea1e2e7a900eeb2015 \
     --hash=sha256:b3fcbed555c47d8479be0796ef7e19c2670d428d72e96da63f3a40122860374b
     # via evalscope
 dotenv==0.9.9 \
     --hash=sha256:29cf74a087b31dafdb5a446b6d7e11cbce8ed2741540e2339c69fbef92c94ce9
-    # via
-    #   evalscope
-    #   ms-vlmeval
+    # via evalscope
 editdistance==0.8.1 \
     --hash=sha256:0247e7a1e9c66ea75211a97e725366bff19a52aac2c838ed5f90025630e976dd \
     --hash=sha256:04e229d6f4ce0c12abc9f4cd4023a5b5fa9620226e0207b119c3c2778b036250 \
@@ -839,11 +793,6 @@ einops==0.8.2 \
     #   -r third_party/ms-swift/runtime-requirements.in
     #   modelscope
     #   ms-opencompass
-    #   ms-vlmeval
-et-xmlfile==2.0.0 \
-    --hash=sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa \
-    --hash=sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54
-    # via openpyxl
 evalscope==1.9.1 \
     --hash=sha256:2e5e53fbf1daa45b574b1b60541eae59ea6335bcdd381399e853c0010fa83c6b \
     --hash=sha256:38493434cbbe9e08791de2e3956c911a5bafd57c678998eeeec8af67fdc7529c
@@ -852,10 +801,6 @@ evaluate==0.4.6 \
     --hash=sha256:bca85bc294f338377b7ac2f861e21c308b11b2a285f510d7d5394d5df437db29 \
     --hash=sha256:e07036ca12b3c24331f83ab787f21cc2dbf3631813a1631e63e40897c69a3f21
     # via ms-opencompass
-executing==2.2.1 \
-    --hash=sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4 \
-    --hash=sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017
-    # via stack-data
 fastapi==0.140.7 \
     --hash=sha256:09a640af2d29006345e1f28e4f031fa60f89b1a75d29f26070f3afa677d66cce \
     --hash=sha256:960bb9696d8fd19dff488aa4f67f276364542cfcce9f7e68a82fe49dce126626
@@ -1163,14 +1108,6 @@ fuzzywuzzy==0.18.0 \
     --hash=sha256:45016e92264780e58972dca1b3d939ac864b78437422beecebb3095f8efd00e8 \
     --hash=sha256:928244b28db720d1e0ee7587acf660ea49d7e4c632569cad4f1cd7e68a5f0993
     # via ms-opencompass
-google-auth==2.56.2 \
-    --hash=sha256:c8270ea95b2697b74e3d8438ae9c5b898e38b623b915c7b5c5635921e7de68a6 \
-    --hash=sha256:e28f103ca8091fb7012b99c44243d7366c29863713b8e34a220c3322b7a07051
-    # via google-genai
-google-genai==2.8.0 \
-    --hash=sha256:37a9b3cb127d763e7f4ca47452ae3562c87728773bd1b149f7b559c239da2bc1 \
-    --hash=sha256:4da0a223a100f4b37f609a68b835e3326ab0fa313314dc0fd9d34e76ee293844
-    # via ms-vlmeval
 gradio==5.50.0 \
     --hash=sha256:d06770d57cdda9b703ef9cf767ac93a890a0e12d82679a310eef74203a3673f4
     # via -r third_party/ms-swift/runtime-requirements.in
@@ -1318,7 +1255,6 @@ httpx==0.28.1 \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
     # via
     #   datasets
-    #   google-genai
     #   gradio
     #   gradio-client
     #   litellm
@@ -1333,10 +1269,8 @@ huggingface-hub==0.36.2 \
     #   evaluate
     #   gradio
     #   gradio-client
-    #   ms-vlmeval
     #   peft
     #   sentence-transformers
-    #   timm
     #   tokenizers
     #   transformers
 human-eval==1.0.3 \
@@ -1351,10 +1285,6 @@ idna==3.18 \
     #   httpx
     #   requests
     #   yarl
-imageio==2.37.4 \
-    --hash=sha256:1ab2e22c8debf700f24c3ac43e8f95f3b3a8110c83b93411e97b4b0b2cd1c7e6 \
-    --hash=sha256:e45cbc5e83502047fb138f7f585f7f105a136a57eea5f4b3cfc6ce1b52720bd3
-    # via ms-vlmeval
 immutabledict==4.3.1 \
     --hash=sha256:c9facdc0ff30fdb8e35bd16532026cac472a549e182c94fa201b51b25e4bf7bf \
     --hash=sha256:f844a669106cfdc73f47b1a9da003782fb17dc955a54c80972e0d93d1c63c514
@@ -1365,22 +1295,6 @@ importlib-metadata==8.9.0 \
     # via
     #   -r third_party/ms-swift/runtime-requirements.in
     #   litellm
-ipdb==0.13.13 \
-    --hash=sha256:45529994741c4ab6d2388bfa5d7b725c2cf7fe9deffabdb8a6113aa5ed449ed4 \
-    --hash=sha256:e3ac6018ef05126d442af680aad863006ec19d02290561ac88b8b1c0b0cfc726
-    # via ms-vlmeval
-ipython==9.15.0 \
-    --hash=sha256:515ad9c3cdf0c932a5a9f6245419e8aba706b7bd03c3e1d3a1c83d9351d6aa6e \
-    --hash=sha256:da2819ce2aa83135257df830660b1176d986c3d2876db24df01974fa955b2756
-    # via ipdb
-ipython-pygments-lexers==1.1.1 \
-    --hash=sha256:09c0138009e56b6854f9535736f4171d855c8c08a563a0dcd8022f78355c7e81 \
-    --hash=sha256:a9462224a505ade19a605f71f8fa63c2048833ce50abc86768a0d81d876dc81c
-    # via ipython
-jedi==0.20.0 \
-    --hash=sha256:7bdd9c2634f56713299976f4cbd59cb3fa92165cc5e05ea811fb253480728b67 \
-    --hash=sha256:c3f4ccbd276696f4b19c54618d4fb18f9fc24b0aef02acf704b23f487daa1011
-    # via ipython
 jieba==0.42.1 \
     --hash=sha256:055ca12f62674fafed09427f176506079bc135638a14e23e25be909131928db2
     # via
@@ -1518,9 +1432,7 @@ joblib==1.5.3 \
 json-repair==0.61.7 \
     --hash=sha256:45c99b8cffef404e846b60d3dc21fc6f0fd5a4595cebad169dfab083ffb8246a \
     --hash=sha256:a3754543f050093efcda6c9ab00b20a236b5d082c8c622bc65b88fa74ff8d51f
-    # via
-    #   -r third_party/ms-swift/runtime-requirements.in
-    #   ms-vlmeval
+    # via -r third_party/ms-swift/runtime-requirements.in
 json5==0.15.0 \
     --hash=sha256:56636a30c0e8a4665fe2179c0212f32eae3796dea89ea6f649b9436ecdb39618 \
     --hash=sha256:7424d1f1eb1d56da6e3d70643f53619862b4ce81440bdb8ecfd6f875e5ba4a71
@@ -2050,12 +1962,7 @@ matplotlib==3.11.1 \
     --hash=sha256:f2912f647f3fbe1ccf085f91e213936f9101bead81a5e670565b1f1b3712f4fb
     # via
     #   -r third_party/ms-swift/runtime-requirements.in
-    #   ms-vlmeval
     #   seaborn
-matplotlib-inline==0.2.2 \
-    --hash=sha256:3c821cf1c209f59fb2d2d64abbf5b23b67bcb2210d663f9918dd851c6da1fcf6 \
-    --hash=sha256:72f3fe8fce36b70d4a5b612f899090cd0401deddc4ea90e1572b9f4bfb058c79
-    # via ipython
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
@@ -2085,9 +1992,6 @@ mpmath==1.3.0 \
 ms-opencompass==0.1.6 \
     --hash=sha256:793b1ef3d65dae6ad39f7bb5cc6fe3f509149410340460a5573869f3f9d13829 \
     --hash=sha256:c255a804e9ccf3c3735733993cf96ad57c056435676e1828567f30f3c55133a4
-    # via evalscope
-ms-vlmeval==0.0.18 \
-    --hash=sha256:e55965dbf1119d783adef000adeca4361f8e2401ee1533ae4cc6e8a4475465a4
     # via evalscope
 msgpack==1.2.1 \
     --hash=sha256:01e2dd6c9b19d333a00282330cc8a73d38d8dabc306dc5b42cd668c3ac82e833 \
@@ -2344,7 +2248,6 @@ nltk==3.10.0 \
     #   -r third_party/ms-swift/runtime-requirements.in
     #   evalscope
     #   ms-opencompass
-    #   ms-vlmeval
     #   rouge-score
 numpy==1.26.4 \
     --hash=sha256:03a8c78d01d9781b28a6989f6fa1bb2c4f2d51201cf99d3dd875df6fbd96b23b \
@@ -2388,17 +2291,13 @@ numpy==1.26.4 \
     #   accelerate
     #   contourpy
     #   datasets
-    #   decord
     #   evaluate
     #   gradio
     #   h5py
     #   human-eval
-    #   imageio
     #   matplotlib
     #   mmengine-lite
     #   ms-opencompass
-    #   ms-vlmeval
-    #   opencv-python
     #   pandas
     #   peft
     #   rank-bm25
@@ -2409,7 +2308,6 @@ numpy==1.26.4 \
     #   seaborn
     #   sentence-transformers
     #   tensorboard
-    #   torchvision
     #   transformers
 nvidia-ml-py==13.610.43 \
     --hash=sha256:65437eb73d68d0c62c931ca4d45038472faff03bd0b8729abba4b899f70d60f2 \
@@ -2423,7 +2321,6 @@ openai==2.49.0 \
     #   evalscope
     #   litellm
     #   ms-opencompass
-    #   ms-vlmeval
 opencc==1.4.1 \
     --hash=sha256:0a459aea4fb18a1f0e5b6c72e7486a1b2994a0f3ed4e6a1e1452cf6001720360 \
     --hash=sha256:0afecd22b3963bc1ac96069a5e8c1ba3f4800708360b5a67ab8b302a0271fdc6 \
@@ -2452,19 +2349,6 @@ opencc==1.4.1 \
     --hash=sha256:f44ae128b3ae69651a171a918d2c707a9388838dc791d23935fed2f0066d7ce2 \
     --hash=sha256:f7ae7ea361d27ba14d7725420cc2217b8986416473537b4b79f32b2e203d12c8
     # via ms-opencompass
-opencv-python==4.11.0.86 \
-    --hash=sha256:03d60ccae62304860d232272e4a4fda93c39d595780cb40b161b310244b736a4 \
-    --hash=sha256:085ad9b77c18853ea66283e98affefe2de8cc4c1f43eda4c100cf9b2721142ec \
-    --hash=sha256:1b92ae2c8852208817e6776ba1ea0d6b1e0a1b5431e971a2a0ddd2a8cc398202 \
-    --hash=sha256:432f67c223f1dc2824f5e73cdfcd9db0efc8710647d4e813012195dc9122a52a \
-    --hash=sha256:6b02611523803495003bd87362db3e1d2a0454a6a63025dc6658a9830570aa0d \
-    --hash=sha256:810549cb2a4aedaa84ad9a1c92fbfdfc14090e2749cedf2c1589ad8359aa169b \
-    --hash=sha256:9d05ef13d23fe97f575153558653e2d6e87103995d54e6a35db3f282fe1f9c66
-    # via ms-vlmeval
-openpyxl==3.1.5 \
-    --hash=sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2 \
-    --hash=sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050
-    # via ms-vlmeval
 orjson==3.11.9 \
     --hash=sha256:011382e2a60fda9d46f1cdee31068cfc52ffe952b587d683ec0463002802a0f4 \
     --hash=sha256:03db380e3780fa0015ed776a90f20e8e20bb11dde13b216ce19e5718e3dfba62 \
@@ -2564,7 +2448,6 @@ packaging==26.2 \
     #   modelscope
     #   peft
     #   plotly
-    #   qwen-vl-utils
     #   ray
     #   tensorboard
     #   transformers
@@ -2632,20 +2515,11 @@ pandas==2.3.3 \
     #   evaluate
     #   gradio
     #   ms-opencompass
-    #   ms-vlmeval
     #   seaborn
-parso==0.8.7 \
-    --hash=sha256:a8926eb2a1b915486941fdbd31e86a4baf88fe8c210f25f2f35ecec5b574ca1c \
-    --hash=sha256:eaaac4c9fdd5e9e8852dc778d2d7405897ec510f2a298071453e5e3a07914bb1
-    # via jedi
 peft==0.19.1 \
     --hash=sha256:0d97542fe96dcdaa20d3b81c06f26f988618f416a73544ab23c3618ccb674a40 \
     --hash=sha256:2113f72a81621b5913ef28f9022204c742df111890c5f49d812716a4a301e356
     # via -r third_party/ms-swift/runtime-requirements.in
-pexpect==4.9.0 \
-    --hash=sha256:7236d1e080e4936be2dc3e326cec0af72acf9212a7e1d060210e70a47e253523 \
-    --hash=sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f
-    # via ipython
 pillow==11.3.0 \
     --hash=sha256:023f6d2d11784a465f09fd09a34b150ea4672e85fb3d05931d89f373ab14abb2 \
     --hash=sha256:02a723e6bf909e7cea0dac1b0e0310be9d7650cd66222a5f1c571455c0a45214 \
@@ -2757,13 +2631,9 @@ pillow==11.3.0 \
     #   -r third_party/ms-swift/runtime-requirements.in
     #   evalscope
     #   gradio
-    #   imageio
     #   matplotlib
     #   modelscope
-    #   ms-vlmeval
-    #   qwen-vl-utils
     #   tensorboard
-    #   torchvision
 platformdirs==4.11.0 \
     --hash=sha256:0555d18370482847566ffabcaa53ad7c6c1c29f195989ae1ed634a05f76ea1e0 \
     --hash=sha256:360ccded2b7fce0af0ff80cc8f5942a1c5d99b0e856033acb030bfc634709e74
@@ -2775,19 +2645,13 @@ plotly==6.9.0 \
 portalocker==3.2.0 \
     --hash=sha256:1f3002956a54a8c3730586c5c77bf18fae4149e07eaf1c29fc3faf4d5a3f89ac \
     --hash=sha256:3cdc5f565312224bc570c49337bd21428bba0ef363bbcf58b9ef4a9f11779968
-    # via
-    #   ms-vlmeval
-    #   sacrebleu
+    # via sacrebleu
 prettytable==3.18.0 \
     --hash=sha256:439217116152244369caf3d9f1caf2f9fe29b03bd79e88d2928c8e718c95d680 \
     --hash=sha256:b3346e0e6f79180833aebaac088ae926340586cf6d7d991b9eb125b65f72313a
     # via
     #   ms-opencompass
     #   pyecharts
-prompt-toolkit==3.0.53 \
-    --hash=sha256:01c0891d7f9237d5e339f7d3e42cdae80b7534abb1c7c0e3352efba6231492f2 \
-    --hash=sha256:9ec8a0ad96d5c56148b3f914aa79c1564c3fde5d2e6b876e7bc327e353cf8fa6
-    # via ipython
 propcache==0.5.2 \
     --hash=sha256:01c4fc7480cd0598bb4b57022df55b9ca296da7fc5a8760bd8451a7e63a7d427 \
     --hash=sha256:04dc2390d9edbbaef7461f33322555976ffddf0b650a038649d026358714e6c5 \
@@ -2924,7 +2788,6 @@ protobuf==7.35.1 \
     --hash=sha256:ce115a26fe0c39a2c29973d914d327e516a6455464489fe3cd1e51a1b354f81a
     # via
     #   ms-opencompass
-    #   ms-vlmeval
     #   ray
     #   tensorboard
 psutil==7.2.2 \
@@ -2951,17 +2814,8 @@ psutil==7.2.2 \
     --hash=sha256:fd04ef36b4a6d599bbdb225dd1d3f51e00105f6d48a28f006da7f9822f2606d8
     # via
     #   accelerate
-    #   ipython
     #   peft
     #   swanlab
-ptyprocess==0.7.0 \
-    --hash=sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35 \
-    --hash=sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220
-    # via pexpect
-pure-eval==0.2.3 \
-    --hash=sha256:1db8e35b67b3d218d818ae653e27f06c3aa420901fa7b081ca98cbedc874e0d0 \
-    --hash=sha256:5f4e983f40564c576c7c8635ae88db5956bb2229d7e9237d03b3c0b0190eaf42
-    # via stack-data
 pyarrow==25.0.0 \
     --hash=sha256:0222f0071d13313962a88d21bf28b80d355ac39d81bfa6ff3fe00eeaf748e4be \
     --hash=sha256:0490a7f8b38ffe11cc26526b50c65d111cb54ddac3717cec781806793f1244dc \
@@ -3007,14 +2861,6 @@ pyarrow==25.0.0 \
     --hash=sha256:f57a39dbcb416345401c2e77a4373669b45fd111a1768e6cf267a7a0607ff0ec \
     --hash=sha256:fa1482b3da10cac2d4db6e26b81da543e237616af2ef6d466018b31ca586496f
     # via datasets
-pyasn1==0.6.4 \
-    --hash=sha256:9c447d8431c947fe4c8febc4ed9e760bc29011a5b01e5c74b67025bd9fb8ce81 \
-    --hash=sha256:deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b
-    # via pyasn1-modules
-pyasn1-modules==0.4.2 \
-    --hash=sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a \
-    --hash=sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6
-    # via google-auth
 pycparser==3.0 \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
@@ -3068,7 +2914,6 @@ pydantic==2.12.3 \
     # via
     #   evalscope
     #   fastapi
-    #   google-genai
     #   gradio
     #   litellm
     #   openai
@@ -3203,10 +3048,7 @@ pyecharts==2.1.0 \
 pygments==2.20.0 \
     --hash=sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f \
     --hash=sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176
-    # via
-    #   ipython
-    #   ipython-pygments-lexers
-    #   rich
+    # via rich
 pylatexenc==2.11 \
     --hash=sha256:305a072a99ce736246049c9da05841b9d718c0f7ea8888f5f596cf15cb621053 \
     --hash=sha256:e78e7391d6c104f1ed150e21cfaa58016cdb50aa54406a2eecb793649ffdfdd0
@@ -3237,7 +3079,6 @@ python-dotenv==1.2.2 \
     # via
     #   dotenv
     #   litellm
-    #   ms-vlmeval
 python-levenshtein==0.27.3 \
     --hash=sha256:27dc2d65aeb62a7d6852388f197073296370779286c0860b087357f3b8129a62 \
     --hash=sha256:5d6168a8e8befb25abf04d2952368a446722be10e8ced218d0dc4fd3703a43a1
@@ -3336,12 +3177,7 @@ pyyaml==6.0.3 \
     #   ray
     #   swankit
     #   swanlab
-    #   timm
     #   transformers
-qwen-vl-utils==0.0.14 \
-    --hash=sha256:5e28657bfd031e56bd447c5901b58ddfc3835285ed100f4c56580e0ade054e96 \
-    --hash=sha256:9c7cad5ae803b3a10f8bb7194deb12aeacdd032f92f4224e880c73587a7346ad
-    # via ms-vlmeval
 rank-bm25==0.2.2 \
     --hash=sha256:096ccef76f8188563419aaf384a02f0ea459503fdf77901378d4fd9d87e5e51d \
     --hash=sha256:7bd4a95571adadfc271746fa146a4bcfd89c0cf731e49c3d1ad863290adbe8ae
@@ -3587,15 +3423,11 @@ requests==2.34.2 \
     #   datasets
     #   evalscope
     #   evaluate
-    #   google-auth
-    #   google-genai
     #   huggingface-hub
     #   modelscope
     #   modelscope-hub
     #   ms-opencompass
-    #   ms-vlmeval
     #   oss2
-    #   qwen-vl-utils
     #   ray
     #   swanlab
     #   tiktoken
@@ -3607,7 +3439,6 @@ rich==15.0.0 \
     #   evalscope
     #   mmengine-lite
     #   ms-opencompass
-    #   ms-vlmeval
     #   typer
 rouge==1.0.1 \
     --hash=sha256:12b48346ca47d6bcf3c45061f315452b9ccec0620ee895ec85b7efc3d54aae34 \
@@ -3802,7 +3633,6 @@ safetensors==0.8.0 \
     #   -r third_party/ms-swift/runtime-requirements.in
     #   accelerate
     #   peft
-    #   timm
     #   transformers
 scikit-learn==1.9.0 \
     --hash=sha256:051075bda8b7aab87b1906ab3d4740a1e1224a19d7b3781a576736edc94e76aa \
@@ -3976,15 +3806,13 @@ sentencepiece==0.2.2 \
     --hash=sha256:f7c06c751c19d923435a54bff4f7e66e728fad160e8da28254f133abc9725820 \
     --hash=sha256:fa9f5ef0e2a82233dd0b8b32ea3f5710e0c44afbc07ed3620219f32601e56090 \
     --hash=sha256:fd523c4992041faa5c2b3cde62253d11a96c30d73a34afe48a486e8e2254cd1c
+    # via -r third_party/ms-swift/runtime-requirements.in
+setuptools==80.9.0 \
+    --hash=sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922 \
+    --hash=sha256:f36b47402ecde768dbfafc46e8e4207b4360c654f1f3bb84475f0a28628fb19c
     # via
     #   -r third_party/ms-swift/runtime-requirements.in
-    #   ms-vlmeval
-setuptools==83.0.0 \
-    --hash=sha256:025bccbbf0fa05b6192bc64ae1e7b16e001fd6d6d4d5de03c97b1c1ade523bef \
-    --hash=sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3
-    # via
     #   modelscope
-    #   ms-vlmeval
     #   swanlab
     #   tensorboard
     #   triton
@@ -4097,7 +3925,7 @@ six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
     # via
-    #   attrdict
+    #   attrdict3
     #   oss2
     #   python-dateutil
     #   rouge
@@ -4106,29 +3934,19 @@ six==1.17.0 \
 sniffio==1.3.1 \
     --hash=sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2 \
     --hash=sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc
-    # via
-    #   google-genai
-    #   openai
+    # via openai
 sortedcontainers==2.4.0 \
     --hash=sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88 \
     --hash=sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0
     # via
     #   -r third_party/ms-swift/runtime-requirements.in
     #   modelscope
-stack-data==0.6.3 \
-    --hash=sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9 \
-    --hash=sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695
-    # via ipython
 starlette==0.52.1 \
     --hash=sha256:0029d43eb3d273bc4f83a08720b4912ea4b071087a3b48db01b7c839f7954d74 \
     --hash=sha256:834edd1b0a23167694292e94f597773bc3f89f362be6effee198165a35d62933
     # via
     #   fastapi
     #   gradio
-sty==1.0.6 \
-    --hash=sha256:2b1eba187b3961644f797f97177f939c109c916d3d3a2cb6784454d1f1ce4983 \
-    --hash=sha256:d43ecb71b7bad0b56d622cb219d0be303c16fcb4143b84d1465ded22e29baa00
-    # via ms-vlmeval
 swankit==0.2.4 \
     --hash=sha256:8e6d3a50451ed1f708f375b839964c5815fe7152a39ed7588921d67c1ba469f8 \
     --hash=sha256:ed89b7d23351f4038930da78d34195604d76c2285c31586ecf1a4cb9fad9c33d
@@ -4150,12 +3968,7 @@ tabulate==0.10.0 \
     # via
     #   evalscope
     #   ms-opencompass
-    #   ms-vlmeval
     #   sacrebleu
-tenacity==9.1.4 \
-    --hash=sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55 \
-    --hash=sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a
-    # via google-genai
 tensorboard==2.21.0 \
     --hash=sha256:7279316dcb6bd5bc391d623dea841531299cde1887310e8133bc34a996d32255
     # via -r third_party/ms-swift/runtime-requirements.in
@@ -4236,16 +4049,9 @@ tiktoken==0.13.0 \
     #   -r third_party/ms-swift/runtime-requirements.in
     #   litellm
     #   ms-opencompass
-    #   ms-vlmeval
 timeout-decorator==0.5.0 \
     --hash=sha256:6a2f2f58db1c5b24a2cc79de6345760377ad8bdc13813f5265f6c3e63d16b3d7
-    # via
-    #   ms-opencompass
-    #   ms-vlmeval
-timm==1.0.28 \
-    --hash=sha256:3789d313fdd5541a327b60180d70dbb4bdec73db8ff0655e413db3c3d134a9a4 \
-    --hash=sha256:e577b88da96b3a722ea5e2f042455ce6f715d398304d8e63b17d126ed7d89968
-    # via ms-vlmeval
+    # via ms-opencompass
 tokenizers==0.22.2 \
     --hash=sha256:143b999bdc46d10febb15cbffb4207ddd1f410e2c755857b5a0797961bbdc113 \
     --hash=sha256:1a62ba2c5faa2dd175aaeed7b15abf18d20266189fb3406c5d0550dd34dd5f37 \
@@ -4292,18 +4098,11 @@ tqdm==4.70.0 \
     #   modelscope
     #   modelscope-hub
     #   ms-opencompass
-    #   ms-vlmeval
     #   nltk
     #   openai
     #   peft
     #   sentence-transformers
     #   transformers
-traitlets==5.15.1 \
-    --hash=sha256:770a53705f84b81ac107e83a1b3328ff2dae16094d8fc3cfc004e4b22dfd8e92 \
-    --hash=sha256:7b1c07854fe25acb39e009bae49f11b79ff6cbb2f27999104e9110e7a6b53722
-    # via
-    #   ipython
-    #   matplotlib-inline
 transformers==4.57.6 \
     --hash=sha256:4c9e9de11333ddfe5114bc872c9f370509198acf0b87a832a0ab9458e2bd0550 \
     --hash=sha256:55e44126ece9dc0a291521b7e5492b572e6ef2766338a610b9ab5afbb70689d3
@@ -4311,7 +4110,6 @@ transformers==4.57.6 \
     #   -r third_party/ms-swift/runtime-requirements.in
     #   evalscope
     #   ms-opencompass
-    #   ms-vlmeval
     #   peft
     #   sentence-transformers
     #   transformers-stream-generator
@@ -4337,13 +4135,10 @@ typing-extensions==4.16.0 \
     #   aiosignal
     #   anyio
     #   fastapi
-    #   google-genai
     #   gradio
     #   gradio-client
     #   grpcio
     #   huggingface-hub
-    #   ipython
-    #   ms-vlmeval
     #   openai
     #   pydantic
     #   pydantic-core
@@ -4377,16 +4172,10 @@ uvicorn==0.51.0 \
     # via
     #   -r third_party/ms-swift/runtime-requirements.in
     #   gradio
-validators==0.35.0 \
-    --hash=sha256:992d6c48a4e77c81f1b4daba10d16c3a9bb0dbb79b3a19ea847ff0928e70497a \
-    --hash=sha256:e8c947097eae7892cb3d26868d637f79f47b4a0554bc6b80065dfe5aac3705dd
-    # via ms-vlmeval
 wcwidth==0.8.2 \
     --hash=sha256:91fbef97204b96a3d4d421609b80340b760cf33e26da123ff243d76b1fda8dda \
     --hash=sha256:d63947694a0539a1d51e01eda7caf800c291020e6cdd7e28ad7b14dd33ad4f85
-    # via
-    #   prettytable
-    #   prompt-toolkit
+    # via prettytable
 websockets==15.0.1 \
     --hash=sha256:0701bc3cfcb9164d04a14b149fd74be7347a530ad3bbf15ab2c678a2cd3dd9a2 \
     --hash=sha256:0a34631031a8f05657e8e90903e656959234f3a04552259458aac0b0f9ae6fd9 \
@@ -4457,9 +4246,7 @@ websockets==15.0.1 \
     --hash=sha256:f29d80eb9a9263b8d109135351caf568cc3f80b9928bccde535c235de55c22d9 \
     --hash=sha256:f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f \
     --hash=sha256:fcd5cf9e305d7b8338754470cf69cf81f420459dbae8a3b40cee57417f4614a7
-    # via
-    #   google-genai
-    #   gradio-client
+    # via gradio-client
 werkzeug==3.1.8 \
     --hash=sha256:63a77fb8892bf28ebc3178683445222aa500e48ebad5ec77b0ad80f8726b1f50 \
     --hash=sha256:9bad61a4268dac112f1c5cd4630a56ede601b6ed420300677a869083d70a4c44
@@ -4559,10 +4346,6 @@ wrapt==2.2.2 \
     --hash=sha256:fa81c5b5fe8cd6c41e3a798533b81288279e5fdbde2128f21071922764281c99 \
     --hash=sha256:fb18fc51e813df0d9c98049e3bf2298a5495a648602040e21fa3c7329371159e
     # via swanlab
-xlsxwriter==3.2.9 \
-    --hash=sha256:254b1c37a368c444eac6e2f867405cc9e461b0ed97a3233b2ac1e574efb4140c \
-    --hash=sha256:9a5db42bc5dff014806c58a20b9eae7322a134abb6fce3c92c181bfb275ec5b3
-    # via ms-vlmeval
 xxhash==3.8.1 \
     --hash=sha256:000435984a0469b0f822fe76f35bddea0f96a4d6521b3339a60a6428cdee1edc \
     --hash=sha256:00de40f3b42240db23a82a5c682b55d7263d84a26a953240c1aee463409660e3 \
@@ -4975,7 +4758,6 @@ zstandard==0.25.0 \
 
 # The following packages were excluded from the output:
 # torch
-# torchvision
 # triton
 # nvidia-cublas-cu12
 # nvidia-cuda-cupti-cu12

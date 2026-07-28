@@ -11,6 +11,14 @@ import { serve } from '@hono/node-server'
 import { createApp, createOpenApiDocument } from './app.js'
 import { type ApiConfig, loadConfig } from './config.js'
 import { mcpHttpRequestTimeoutMs } from './mcp/config.js'
+import {
+  DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG,
+  type SwiftStudioGatewayConfig,
+} from './swift-studio/config.js'
+import {
+  attachSwiftStudioUpgradeProxy,
+  type SwiftStudioUpgradeProxy,
+} from './swift-studio/upgrade.js'
 
 export { createApp, createOpenApiDocument, loadConfig }
 
@@ -33,6 +41,7 @@ export function createAppFromConfig(config: ApiConfig) {
     ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
     mcp: config.mcp,
     storeConfig: config.storeConfig,
+    ...(config.swiftStudio === undefined ? {} : { swiftStudio: config.swiftStudio }),
     v2CursorSecret: config.v2CursorSecret,
     version: config.version,
     workspaceRoot: config.workspaceRoot,
@@ -61,6 +70,8 @@ export async function startApiRuntime(
   dependencies: ApiRuntimeDependencies = DEFAULT_RUNTIME_DEPENDENCIES,
 ): Promise<ApiRuntime> {
   const mcpConfig = config.mcp ?? { enabled: false }
+  const swiftStudioConfig: SwiftStudioGatewayConfig =
+    config.swiftStudio ?? DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG
   const workspace = await dependencies.openWorkspace({
     root: config.workspaceRoot,
     cursorSecret: config.v2CursorSecret,
@@ -69,6 +80,7 @@ export async function startApiRuntime(
   })
   let workerRuntime: WorkerRuntime | null = null
   let server: ReturnType<typeof serve> | null = null
+  let swiftStudioUpgradeProxy: SwiftStudioUpgradeProxy | null = null
   try {
     if (config.worker?.enabled === true) {
       workerRuntime = await dependencies.openWorkerRuntime({
@@ -92,20 +104,39 @@ export async function startApiRuntime(
       corsOrigins: config.corsOrigins,
       ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
       mcp: mcpConfig,
+      swiftStudio: swiftStudioConfig,
       version: config.version,
       workspaceRoot: config.workspaceRoot,
       workerJobsAvailable:
         workerRuntime?.supportsCapability(DATA_JUICER_BATCH_CAPABILITY_V1, '1') ?? false,
     })
     server = dependencies.serve({ fetch: app.fetch, port: config.port })
-    const requestTimeoutMs = mcpHttpRequestTimeoutMs(mcpConfig)
+    if (swiftStudioConfig.enabled) {
+      if (!(server instanceof HttpServer)) {
+        throw new TypeError('Swift Studio requires the Node HTTP/1 server WebSocket boundary')
+      }
+      swiftStudioUpgradeProxy = attachSwiftStudioUpgradeProxy(server, swiftStudioConfig)
+    }
+    const mcpRequestTimeoutMs = mcpHttpRequestTimeoutMs(mcpConfig)
+    const swiftRequestTimeoutMs = swiftStudioConfig.enabled
+      ? swiftStudioConfig.streamTimeoutMs
+      : undefined
+    const requestTimeoutMs = [mcpRequestTimeoutMs, swiftRequestTimeoutMs].reduce<
+      number | undefined
+    >(
+      (maximum, candidate) =>
+        candidate === undefined ? maximum : Math.max(maximum ?? 0, candidate),
+      undefined,
+    )
     if (requestTimeoutMs !== undefined) {
       if (!(server instanceof HttpServer)) {
-        throw new TypeError('MCP requires the Node HTTP/1 server request timeout boundary')
+        throw new TypeError('Long-lived routes require the Node HTTP/1 request timeout boundary')
       }
       server.requestTimeout = requestTimeoutMs
     }
   } catch (error) {
+    swiftStudioUpgradeProxy?.close()
+    if (server !== null) await closeServer(server).catch(() => undefined)
     await workerRuntime?.stop().catch(() => undefined)
     await workspace.close().catch(() => undefined)
     throw error
@@ -118,6 +149,7 @@ export async function startApiRuntime(
     server: openedServer,
     async close() {
       closePromise ??= (async () => {
+        swiftStudioUpgradeProxy?.close()
         const serverClosed = closeServer(openedServer)
         await workerRuntime?.stop()
         await workspace.close()

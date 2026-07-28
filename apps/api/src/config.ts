@@ -5,6 +5,10 @@ import { type V2WorkspaceOpenOptions, v2ObjectStoreConfigFromEnv } from '@databe
 import { z } from 'zod'
 import { type EvalScopeGatewayConfig, evalScopeGatewayConfigFromEnv } from './evalscope/config.js'
 import { type McpRuntimeConfig, mcpConfigFromEnv } from './mcp/config.js'
+import {
+  type SwiftStudioGatewayConfig,
+  swiftStudioGatewayConfigFromEnv,
+} from './swift-studio/config.js'
 
 // Read the service version from the monorepo root package.json rather than
 // hard-coding it, so a single bump there propagates to /health and /version.
@@ -91,6 +95,7 @@ export interface ApiConfig {
   readonly openApiServerUrl?: string
   readonly port: number
   readonly storeConfig: NonNullable<V2WorkspaceOpenOptions['storeConfig']>
+  readonly swiftStudio?: SwiftStudioGatewayConfig
   readonly v2CursorSecret: string
   readonly version: string
   readonly workspaceRoot: string
@@ -108,6 +113,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     mcp: mcpConfigFromEnv(env),
     port: parsed.PORT,
     storeConfig: v2ObjectStoreConfigFromEnv(env),
+    swiftStudio: swiftStudioGatewayConfigFromEnv(env),
     v2CursorSecret: parsed.DATABENCH_V2_CURSOR_SECRET,
     version: readVersion(),
     workspaceRoot: parsed.DATABENCH_ROOT,

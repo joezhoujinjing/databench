@@ -41,8 +41,15 @@
   Studio Session、exact Dataset export、GPU/Session workspace 与 LoRA Model Artifact import，不先建设
   Training Run/Attempt 或接管原生 callback。实施从 EvalScope E7 complete commit `25931d6` 建立独立
   `feat/swift-studio-integration` 分支；S0 已完成并锁定 upstream、完整 Gradio baseline、Linux/amd64
-  GPU base image digest 与 227-package hash lock，当前进入 S1。runtime 与 `/training` 仍未实现、
-  保持 disabled。
+  GPU base image digest 与 195-package hash lock。S1 已实现 non-root pinned image、Provider、完整
+  Gradio config readiness、bounded HTTP/Queue/SSE/WS/upload/download Gateway 和 `/training` 原生 iframe
+  外层壳，并通过生产镜像 CPU compatibility、七页面、direct refresh、reconnect/fullscreen 与正常场景
+  console smoke。可移植 Linux/NVIDIA runner、原生 callback driver 与 fail-closed evidence checker 位于
+  `scripts/`，不属于 `deploy/`；GPU proof 分 candidate/final 两遍，candidate 不能关闭 GS1。当前主机没有
+  NVIDIA GPU，真实 LoRA 2～5 steps、stop 与 Adapter Infer 尚未执行。Owner 已明确将 GPU gate
+  后置，S1 以 code-complete/gpu-deferred 收口并进入 S2；capability 仍 unvalidated，runtime 保持
+  disabled-by-default。证据见
+  `docs/swift/evidence/S1-GPU-STUDIO.md`。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -78,6 +85,7 @@ Web
   /transforms
   /lineage/:ref
   /export/:ref
+  /training
   /evaluations
   /evaluations/tasks
   /evaluations/reports
@@ -110,7 +118,8 @@ REST
 2. API/CLI 只经 Workspace + Schema 触达数据。
 3. 样本 payload 不进 Postgres。
 4. artifacts/manifests immutable；Refs 使用 CAS。
-5. Web wire type 只来自 generated OpenAPI client。
+5. Web 对 Databench `/v2/*` 的 wire type 只来自 generated OpenAPI client；锁定 Provider
+   非公共状态契约只使用已登记的隔离 exact Zod adapter。
 6. 不修改旧仓库 `~/Desktop/databench/`。
 7. 普通启动、请求和 migration wrapper 不隐式删除对象。
 8. V16/V17 未过不宣称 production readiness。

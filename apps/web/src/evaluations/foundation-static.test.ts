@@ -43,7 +43,7 @@ describe('Evaluation UI foundation static boundaries', () => {
     ]) {
       expect(router).toContain(`path: '${route}'`)
     }
-    expect(router.match(/lazyRouteComponent\(/gu)).toHaveLength(11)
+    expect(router.match(/lazyRouteComponent\(/gu)).toHaveLength(12)
   })
 
   test('uses the path-free configured-source refresh control on reports', async () => {

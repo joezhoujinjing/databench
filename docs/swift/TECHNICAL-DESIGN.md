@@ -175,7 +175,7 @@ Object Store
 
 ```text
 training/
-├─ api/                 generated Databench API wrappers only
+├─ api/                 generated Databench API wrappers + locked Provider runtime adapter
 ├─ components/          Dataset selector、Session banner、Artifact importer
 ├─ routes/              /training lazy route
 ├─ styles/              仅 Databench 外层壳样式
@@ -212,7 +212,10 @@ training/
 - Model Artifact finalization；
 - 生成浏览器可用的相对 `studio_path`，不返回 internal origin/absolute path。
 
-API 不直连 Catalog、Store 或 IO。Web 对 Databench REST 只消费 generated OpenAPI client。
+API 不直连 Catalog、Store 或 IO。Web 对 Databench `/v2/*` REST 只消费 generated OpenAPI
+client；S1 的 `/swift-studio-runtime/runtime` 不是公共领域 REST，由
+`apps/web/src/training/api/` 中隔离的 exact Zod adapter 绑定锁定 Provider 版本，不扩展成
+通用 HTTP client。
 
 ### 5.3 Swift Studio Provider
 
@@ -257,7 +260,8 @@ third_party/ms-swift/
 ├─ gradio-routes.json
 ├─ runtime-capabilities.json
 ├─ patches/
-│  └─ 0001-databench-session-prefill.patch
+│  ├─ 0001-databench-session-prefill.patch
+│  └─ 0002-python311-attrdict3-metadata.patch
 └─ vendor/
    └─ ms-swift-upstream.tar.gz
 ```
@@ -268,11 +272,14 @@ third_party/ms-swift/
 deploy/swift-studio/
 ├─ Dockerfile
 ├─ compose.yaml
-└─ gateway/              deployment-only 配置
+└─ README.md             deployment-only runbook
 ```
 
-`deploy/` 不持有 Python Provider 源码、vendored upstream、补丁或兼容性 fixture。镜像构建只消费
-`third_party/ms-swift/` 与 `workers/swift-studio/` 的固定输入。
+`deploy/` 不持有 Python Provider、Gateway、Web、GPU gate 源码、vendored upstream、补丁或兼容性
+fixture。Gateway 固定属于 `apps/api/src/swift-studio/`；镜像构建消费
+`third_party/ms-swift/` 与 `workers/swift-studio/` 的固定输入，以及 `scripts/apply-swift-patch.py`
+这个受 baseline digest 审计的仓库级构建 helper。helper 仍属于 `scripts/`，不因被 Dockerfile 消费而进入
+`deploy/` 所有权。
 
 `upstream.lock` 至少固定：
 
@@ -782,6 +789,16 @@ iframe /swift-studio/
 iframe 至少允许原生 UI 所需的 scripts/forms/downloads；是否允许 popups 由 S1 对 Hub/docs/报告新窗口真实
 测试决定。页面高度采用 viewport 计算，避免固定 800px 和双重滚动。
 
+首期明确把锁定的 ms-swift/Gradio runtime 作为**受信任的同源内部应用**：iframe 不加会破坏完整原生
+callback、下载和组件行为的 sandbox。相应地，同源第三方 JavaScript 理论上可访问父页面与该 origin 的
+Web storage；这是 owner 已接受的首期信任边界，不得在文档中伪称为隔离执行环境。Gateway 仍剥离浏览器
+Cookie、Databench Authorization 与上游 Set-Cookie，避免无意建立两套会话命名空间。
+
+iframe URL 不从可配置 REST base 拼接，始终是浏览器同源 `/swift-studio/`。相对 API base 和绝对同源
+base 可使用；跨域 API base 明确显示不支持，因为 iframe navigation 不能携带 bearer header，且
+`frame-ancestors 'self'`/`SAMEORIGIN` 与本设计不允许跨 origin 嵌入。`load` 事件本身不代表 ready；Web
+必须同时验证锁定 Gradio config、root path、`gradio-app` DOM 与 custom element 已注册。
+
 ### 13.3 兼容性 manifest
 
 S0/S1 固定：
@@ -964,15 +981,17 @@ S1 最小 green：
 ```text
 full-gradio-surface
 databench-root-path-embed
-single-session-context
 qwen-small-sft-lora
 transformers-lora-infer
 ```
 
+`single-session-context` 依赖 S2 的 Session API、singleton conflict 与动态预填，属于 S2 minimum，不能作为
+S1 的进入条件。S1 只用固定本地兼容 JSONL 证明原生 GPU callback；S2 才证明 Databench exact Dataset。
+
 其他 RLHF/GRPO/vLLM/DeepSpeed/Megatron/quantization/Eval/Sample 页面从第一天保留，但只有在真实 gate 后
 才把对应 `runtime-validated` 置为 true。
 
-## 20. 最小真实 GPU Gate
+## 20. 分 Step 的最小真实 GPU Gate
 
 建议模型：
 
@@ -981,7 +1000,8 @@ Qwen/Qwen3-0.6B
 或 Qwen/Qwen2.5-0.5B-Instruct
 ```
 
-Dataset：32～100 条 Databench exact SFT records。
+S1 Dataset：仓库固定的 32～100 条本地兼容 SFT JSONL。S2 以同类参数改用 Databench exact Dataset
+export；S1 不提前依赖 Session/Dataset bridge。
 
 建议 smoke 参数：
 
@@ -994,22 +1014,39 @@ gradient_accumulation_steps = 1
 save_steps = 1
 ```
 
-必须验证：
+S1 必须验证：
 
 1. `/training` iframe 显示锁定上游全部七个顶级业务面；
 2. Gradio static/config/Queue/SSE/WS/upload/download 的必要路径通过 Gateway；
-3. exact Dataset inspect/fidelity/export 的 version、converter、digest、count 一致；
-4. Gradio Dataset 和 output_dir 正确预填；
-5. 使用预填 Dataset 完成真实 LoRA；
-6. 原生 Runtime 能查看日志并停止一个长任务；
-7. 原生 Infer 使用 Adapter 成功；
-8. output discovery 只列出当前 Session root；
-9. LoRA importer 拒绝 symlink、pickle 和 snapshot 变化；
-10. finalize response 丢失后可幂等重放；
-11. Artifact 从对象存储下载到全新目录后，以 explicit base + adapter 完成推理；
-12. Studio 重启后已发布 Artifact 仍可用；
-13. 第二个 active Session 收到确定 409；
-14. 浏览器 direct refresh、console、连接失败和恢复状态正确。
+3. 固定本地 JSONL 通过原生 `train_local` 完成真实 LoRA，最终 step loss finite，native
+   process exit code 为 `0`；
+4. 原生 Runtime 能查看日志并用原生 `kill_task` 停止一个长任务；绑定 exact PID/starttime 而不是
+   仅判断 endpoint 或输出目录。验收容器显式使用 gate-only host PID namespace，使
+   NVML/`nvidia-smi` 返回的 host PID 可与容器中 exact process tree 对齐；该设置不进入产品
+   Studio Compose。Stop 只在“原生 Runtime 日志已观察且 GPU compute context 已建立”后触发；
+5. 原生 `deploy_model` + `send_message` 使用同一 Adapter 返回非空结果；Stop/Infer 后 gate process
+   tree、GPU compute context 与显存返回 idle baseline + fixed tolerance；
+6. gate 容器只在 exact `docker rm` 成功且后续 inspect 确认 not-found 后才能标记已清理；
+7. runner、driver、checker 源码 digest 进入证据并由 checker 绑定当前 tracked source；
+8. GPU proof 分两遍：`S1-in-progress` candidate 只验证运行组合，不能关闭 GS1；更新
+   capability/lock 并重建后，必须在新的 `S1-complete` final image ID 上重跑 final proof；
+9. 浏览器 direct refresh、console、连接失败和恢复状态正确。
+
+S2 在 GS2 增加：
+
+1. exact Dataset inspect/fidelity/export 的 version、converter、digest、count 一致；
+2. Gradio Dataset/output/logging 正确动态预填，并使用该 export 完成 LoRA + Infer；
+3. 第二个 active Session 收到确定 409。
+
+S3 在 GS3 增加：
+
+1. output discovery 只列出当前 Session root；
+2. LoRA importer 拒绝 symlink、pickle 和 snapshot 变化；
+3. finalize response 丢失后可幂等重放；
+4. Artifact 从对象存储下载到全新目录后，以 explicit base + adapter 完成推理；
+5. Studio 重启后已发布 Artifact 仍可用。
+
+这三个 gate 不能合并为 S1 的前置条件，否则会形成“S1 未过不能进入 S2、但 S1 又要求 S2 已实现”的循环。
 
 ## 21. Deployment 与 EvalScope 扩展
 
@@ -1074,7 +1111,7 @@ docs/swift/
 ```text
 apps/api → workspace + schema
 workspace → catalog/store/io/schema/hashing + internal provider adapter
-apps/web → generated OpenAPI client
+apps/web → generated OpenAPI client + isolated locked Swift Provider runtime adapter
 workers/swift-studio → Databench REST/internal control contract，不进入 TS package DAG
 third_party/ms-swift → deploy image build input，不进入 runtime import DAG
 ```
@@ -1097,6 +1134,9 @@ pnpm offline:check
 git diff --check
 ```
 
-涉及数据库、对象存储、Provider、浏览器或 GPU 的 Step 必须增加对应真实 gate，不能用 fake 替代后声明
-完成。Swift runtime 保持 disabled-by-default，直到 S4 通过完整 Dataset → Artifact → Deployment →
-EvalScope gate。即使 owner 允许内部试用，也不改变 V16/V17 状态或公共云 D3。
+涉及数据库、对象存储、Provider 和浏览器的 Step 必须增加对应真实 gate，不能用 fake
+替代。owner 于 2026-07-28 明确将 GPU gate 后置，允许 S1 以
+`code-complete / gpu-deferred` 收口并继续 S2-S4；该修订不删除任何 GPU 验收项，所有能力保持
+unvalidated，最终闭环声明前必须补齐。Swift runtime 保持 disabled-by-default，直到 S4 和全部
+deferred GPU gate 通过完整 Dataset → Artifact → Deployment → EvalScope gate。该顺序修订不改变
+V16/V17 状态或公共云 D3。
