@@ -7,7 +7,9 @@ import {
 import {
   evaluationBenchmarksSearchSchema,
   evaluationCompareSearchSchema,
+  evaluationDashboardSearchSchema,
   evaluationPerformanceCompareSearchSchema,
+  evaluationPerformanceDetailSearchSchema,
   evaluationPerformanceSearchSchema,
   evaluationReportDetailSearchSchema,
   evaluationReportsSearchSchema,
@@ -104,6 +106,7 @@ const evaluationsRoute = createRoute({
 const evaluationsDashboardRoute = createRoute({
   getParentRoute: () => evaluationsRoute,
   path: '/',
+  validateSearch: evaluationDashboardSearchSchema,
   component: lazyRouteComponent(
     () => import('./evaluations/routes/dashboard.js'),
     'EvaluationDashboardRoute',
@@ -177,6 +180,7 @@ const evaluationPerformanceDetailRoute = createRoute({
     parse: (params) => parseReportRouteParams(params, 'performanceKey'),
     stringify: (params) => stringifyReportRouteParams(params, 'performanceKey'),
   },
+  validateSearch: evaluationPerformanceDetailSearchSchema,
   component: lazyRouteComponent(
     () => import('./evaluations/routes/performance-detail.js'),
     'EvaluationPerformanceDetailRoute',

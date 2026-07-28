@@ -8,6 +8,7 @@ import {
   generatedDocumentDescriptorSchema,
   listPerfRunsResponseSchema,
   listReportsResponseSchema,
+  loadMultiReportResponseSchema,
   loadReportResponseSchema,
   logResponseSchema,
   perfDetailResponseSchema,
@@ -204,7 +205,7 @@ export const EVALSCOPE_JSON_OPERATIONS = {
     method: 'GET',
     path: '/reports/load_multi',
     query: ['report_names'],
-    schema: loadReportResponseSchema,
+    schema: loadMultiReportResponseSchema,
     scope: 'api',
   }),
   reportsDataFrame: operation({

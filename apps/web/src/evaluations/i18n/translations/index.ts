@@ -20,6 +20,7 @@ import * as tabs from './tabs.js'
 import * as tasks from './tasks.js'
 import * as trace from './trace.js'
 import type { Dict, Locale } from './types.js'
+import * as viewer from './viewer.js'
 
 export type { Dict, Locale }
 
@@ -45,6 +46,7 @@ const en: Dict = {
   tabs: tabs.en,
   form: form.en,
   empty: empty.en,
+  viewer: viewer.en,
 }
 
 const zh: Dict = {
@@ -69,6 +71,7 @@ const zh: Dict = {
   tabs: tabs.zh,
   form: form.zh,
   empty: empty.zh,
+  viewer: viewer.zh,
 }
 
 const translations: Record<Locale, Dict> = { en, zh }

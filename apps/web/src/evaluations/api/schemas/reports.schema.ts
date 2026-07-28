@@ -69,6 +69,10 @@ export const loadReportResponseSchema = z.object({
   task_config: z.record(z.string(), z.unknown()),
 })
 
+export const loadMultiReportResponseSchema = z.object({
+  report_list: z.array(reportDataSchema),
+})
+
 export const reportSummarySchema = z.object({
   name: z.string(),
   model_name: z.string(),

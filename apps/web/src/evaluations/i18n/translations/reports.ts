@@ -43,6 +43,10 @@ export const en: Dict = {
   },
   clearSelection: 'Clear',
   capReached: 'You can compare up to 5 runs.',
+  sortBy: 'Sort by',
+  sortOrder: 'Sort order',
+  ascending: 'Ascending',
+  descending: 'Descending',
 }
 
 export const zh: Dict = {
@@ -87,4 +91,8 @@ export const zh: Dict = {
   },
   clearSelection: '清空',
   capReached: '最多可对比 5 个运行。',
+  sortBy: '排序字段',
+  sortOrder: '排序方向',
+  ascending: '升序',
+  descending: '降序',
 }

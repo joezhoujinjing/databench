@@ -1,6 +1,9 @@
 import type { Dict } from './types.js'
 
 export const en: Dict = {
+  description: 'Browse, inspect and compare EvalScope performance runs.',
+  noData: 'No performance reports have been discovered yet.',
+  staleDataKept: 'Showing the last successful result while refresh is retried.',
   overview: 'Overview',
   charts: 'Charts',
   runs: 'runs',
@@ -40,6 +43,7 @@ export const en: Dict = {
   sort_rps: 'Best RPS',
   sort_latency: 'Min Latency',
   comparePageTitle: 'Compare',
+  compareDescription: 'Compare workload, configuration and performance deltas across runs.',
   comparing: 'Comparing {{n}} runs',
   selectToCompare: 'Select at least 2 runs to compare',
   singleRunHint:
@@ -67,6 +71,14 @@ export const en: Dict = {
     'Very low sample size (n < 30): P90 / P95 / P99 are unreliable and de-emphasized. Raw values are preserved below and in the detail artifacts.',
   lowSampleWarn:
     'Low sample size (30 \u2264 n < 100): P95 / P99 are de-emphasized. Raw values are preserved below and in the detail artifacts.',
+  lowSample_critical:
+    'Very low sample size (n < 30): tail percentiles are unreliable and de-emphasized.',
+  lowSample_warning: 'Low sample size (30 \u2264 n < 100): P95 / P99 are de-emphasized.',
+  lowSample_normal: 'Sample size is sufficient for the displayed percentile comparison.',
+  verdict_improvement: 'Improvement',
+  verdict_regression: 'Regression',
+  verdict_neutral: 'No change',
+  verdict_incomputable: 'N/A',
   workloadMismatch:
     'Workloads differ between the compared runs. The comparison continues, but interpret the deltas with caution.',
   configDiffTitle: 'Configuration Differences',
@@ -79,6 +91,9 @@ export const en: Dict = {
 }
 
 export const zh: Dict = {
+  description: '浏览、查看并对比 EvalScope 性能压测结果。',
+  noData: '尚未发现性能压测报告。',
+  staleDataKept: '刷新重试期间继续显示上一次成功加载的结果。',
   overview: '概览',
   charts: '图表',
   runs: '组',
@@ -118,6 +133,7 @@ export const zh: Dict = {
   sort_rps: '最优 RPS',
   sort_latency: '最低延迟',
   comparePageTitle: '对比',
+  compareDescription: '对比不同压测的工作负载、配置与性能变化。',
   comparing: '正在对比 {{n}} 个压测',
   selectToCompare: '至少选择 2 个压测进行对比',
   singleRunHint: '单轮压测：趋势图不适用，请查看 Runs 页的百分位与逐请求明细。',
@@ -143,6 +159,13 @@ export const zh: Dict = {
     '样本数极少（n < 30）：P90 / P95 / P99 不可靠并已去强调。原始值仍保留在下表及明细产物中。',
   lowSampleWarn:
     '样本数偏少（30 \u2264 n < 100）：P95 / P99 已去强调。原始值仍保留在下表及明细产物中。',
+  lowSample_critical: '样本数极少（n < 30）：尾部百分位不可靠并已去强调。',
+  lowSample_warning: '样本数偏少（30 \u2264 n < 100）：P95 / P99 已去强调。',
+  lowSample_normal: '样本数足以支持当前百分位对比。',
+  verdict_improvement: '改善',
+  verdict_regression: '回归',
+  verdict_neutral: '无变化',
+  verdict_incomputable: '不可算',
   workloadMismatch: '被对比压测的工作负载不一致。对比将继续，但请谨慎解读 delta。',
   configDiffTitle: '配置差异',
   configKeyCol: '配置项',

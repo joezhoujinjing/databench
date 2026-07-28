@@ -1,5 +1,5 @@
-import { EvaluationFoundationPage } from './FoundationPage.js'
+import { PerformancePage } from '../features/performance/PerformancePage.js'
 
 export function EvaluationPerformanceRoute() {
-  return <EvaluationFoundationPage name="performance" />
+  return <PerformancePage />
 }

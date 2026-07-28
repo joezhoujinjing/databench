@@ -20,6 +20,8 @@ describe('EvalScope metric display domain', () => {
 
   it('uses canonical aliases and deterministic half-up rounding', () => {
     expect(resolveMetricKey('Average Accuracy')).toBe('accuracy')
+    expect(resolveMetricKey('Average latency (s)')).toBe('latency')
+    expect(resolveMetricKey('Output throughput (tokens/s)')).toBe('throughput')
     expect(resolveMetricKey('pass@1')).toBe('pass_rate')
     expect(roundHalfUp(1.005, 2)).toBe(1.01)
     expect(roundHalfUp(-0.5, 0)).toBe(0)

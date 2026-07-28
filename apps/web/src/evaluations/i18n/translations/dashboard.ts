@@ -21,6 +21,10 @@ export const en: Dict = {
   filter_eval: 'Eval',
   filter_perf: 'Perf',
   noMatch: 'No matching runs',
+  noMatchHint: 'Adjust the type or search filters to see more runs.',
+  description: 'Track evaluation and performance activity from the configured result source.',
+  typeFilter: 'Run type',
+  partialTitle: 'Some recent activity could not be loaded.',
 }
 
 export const zh: Dict = {
@@ -44,4 +48,8 @@ export const zh: Dict = {
   filter_eval: '评测',
   filter_perf: '压测',
   noMatch: '无匹配的运行记录',
+  noMatchHint: '调整类型或搜索条件以查看更多运行记录。',
+  description: '查看已配置结果源中的模型测评与性能压测动态。',
+  typeFilter: '运行类型',
+  partialTitle: '部分最近运行暂时无法加载。',
 }

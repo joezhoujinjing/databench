@@ -1,5 +1,5 @@
-import { EvaluationFoundationPage } from './FoundationPage.js'
+import { ComparePage } from '../features/compare/ComparePage.js'
 
 export function EvaluationCompareRoute() {
-  return <EvaluationFoundationPage name="compare" />
+  return <ComparePage />
 }

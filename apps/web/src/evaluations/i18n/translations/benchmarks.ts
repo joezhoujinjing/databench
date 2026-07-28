@@ -16,6 +16,8 @@ export const en: Dict = {
   noResults: 'No matching benchmarks found',
   clearFilters: 'Clear filters',
   showing: 'Showing {{n}} of {{total}}',
+  description: 'Browse the complete EvalScope benchmark catalogue by category, tags and metadata.',
+  useBenchmark: 'Use in evaluation task',
 }
 
 export const zh: Dict = {
@@ -34,4 +36,6 @@ export const zh: Dict = {
   noResults: '未找到匹配的基准测试',
   clearFilters: '清除筛选',
   showing: '显示 {{n}} / {{total}}',
+  description: '按类别、标签和元数据浏览完整的 EvalScope 基准测试目录。',
+  useBenchmark: '用于测评任务',
 }

@@ -9,6 +9,14 @@ const routeKeyList = z
   .regex(/^[A-Za-z0-9_;-]{2,8192}$/u)
   .optional()
 
+const filterList = z.string().trim().min(1).max(4096).optional()
+
+export const evaluationDashboardSearchSchema = z.object({
+  type: z.enum(['all', 'eval', 'perf']).default('all'),
+  search: optionalText,
+  page: positivePage,
+})
+
 export const evaluationTasksSearchSchema = z.object({
   tab: z.enum(['eval', 'perf']).default('eval'),
   source: z.literal('databench').optional(),
@@ -43,16 +51,34 @@ export const evaluationReportDetailSearchSchema = z.object({
 
 export const evaluationCompareSearchSchema = z.object({
   reports: routeKeyList,
+  tab: z.enum(['score', 'prediction']).default('score'),
+  dataset: z.string().trim().min(1).max(512).optional(),
+  subset: z.string().trim().min(1).max(512).optional(),
+  threshold: z.coerce.number().finite().default(0.5),
+  filters: filterList,
+  sample: positivePage,
 })
 
 export const evaluationPerformanceSearchSchema = z.object({
   search: optionalText,
   sortBy: z.enum(['time', 'rps', 'latency']).default('time'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  page: positivePage,
+})
+
+export const evaluationPerformanceDetailSearchSchema = z.object({
+  tab: z.enum(['overview', 'charts', 'runs']).optional(),
+  run: z.string().trim().min(1).max(512).optional(),
+  status: z.enum(['all', 'success', 'failed']).default('all'),
   page: positivePage,
 })
 
 export const evaluationPerformanceCompareSearchSchema = z.object({
   runs: routeKeyList,
+  baseline: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{2,2731}$/u)
+    .optional(),
   embedding: z
     .union([z.literal(0), z.literal(1), z.enum(['0', '1'])])
     .transform((value) => Number(value) as 0 | 1)
@@ -62,7 +88,7 @@ export const evaluationPerformanceCompareSearchSchema = z.object({
 export const evaluationBenchmarksSearchSchema = z.object({
   category: z.enum(['all', 'text', 'multimodal', 'agent', 'aigc']).default('all'),
   search: optionalText,
-  tag: optionalText,
+  tags: filterList,
   page: positivePage,
 })
 

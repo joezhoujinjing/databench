@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import {
+  evaluationBenchmarksSearchSchema,
+  evaluationCompareSearchSchema,
+  evaluationDashboardSearchSchema,
   evaluationPerformanceCompareSearchSchema,
+  evaluationPerformanceDetailSearchSchema,
   evaluationReportDetailSearchSchema,
   evaluationTasksSearchSchema,
   evaluationViewerSearchSchema,
@@ -41,6 +45,29 @@ describe('Evaluation route contracts', () => {
   test('accepts numeric search parsing while preserving the typed embedding flag', () => {
     expect(evaluationPerformanceCompareSearchSchema.parse({ embedding: 0 })).toEqual({
       embedding: 0,
+    })
+  })
+
+  test('keeps E7 dashboard, compare, performance and benchmark state refreshable', () => {
+    expect(evaluationDashboardSearchSchema.parse({})).toEqual({ page: 1, type: 'all' })
+    expect(
+      evaluationCompareSearchSchema.parse({
+        dataset: 'gsm8k',
+        reports: 'YQ;Yg',
+        sample: 2,
+        subset: 'main',
+        tab: 'prediction',
+        threshold: '0.7',
+      }),
+    ).toMatchObject({ sample: 2, tab: 'prediction', threshold: 0.7 })
+    expect(evaluationPerformanceDetailSearchSchema.parse({})).toEqual({
+      page: 1,
+      status: 'all',
+    })
+    expect(evaluationBenchmarksSearchSchema.parse({ tags: 'math;reasoning' })).toEqual({
+      category: 'all',
+      page: 1,
+      tags: 'math;reasoning',
     })
   })
 

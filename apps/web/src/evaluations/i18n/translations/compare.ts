@@ -1,6 +1,7 @@
 import type { Dict } from './types.js'
 
 export const en: Dict = {
+  noAlignedSample: 'No aligned sample is available for this model.',
   title: 'Compare Models',
   scoreComparison: 'Score Comparison',
   predictionComparison: 'Prediction Comparison',
@@ -28,9 +29,14 @@ export const en: Dict = {
   maxThreeHint: 'Up to 3 models can be compared.',
   sample: 'Sample',
   maxThreeSelected: 'Only the first 3 will be compared.',
+  description: 'Compare scores and aligned predictions across two or three evaluation reports.',
+  allAny: 'All: Any',
+  aboveRate: 'above threshold',
+  noFilteredPredictions: 'No aligned samples match the current model filters.',
 }
 
 export const zh: Dict = {
+  noAlignedSample: '这个模型没有可对齐的样本。',
   title: '模型对比',
   scoreComparison: '分数对比',
   predictionComparison: '预测对比',
@@ -58,4 +64,8 @@ export const zh: Dict = {
   maxThreeHint: '最多支持对比 3 个模型。',
   sample: '样本',
   maxThreeSelected: '仅对比前 3 个。',
+  description: '对比两到三个测评报告的分数和对齐后的逐样本预测。',
+  allAny: '全部：不限',
+  aboveRate: '高于阈值',
+  noFilteredPredictions: '当前模型筛选下没有匹配的对齐样本。',
 }

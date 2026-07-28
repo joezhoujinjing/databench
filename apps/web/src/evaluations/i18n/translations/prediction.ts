@@ -31,6 +31,9 @@ export const en: Dict = {
   messageNotFound: 'No message ID starts with this value in the current filter.',
   messageAmbiguous: 'More than one message ID matches; enter a longer prefix.',
   noFilteredSamples: 'No samples match the current threshold view.',
+  any: 'Any',
+  above: 'Above',
+  below: 'Below',
 }
 
 export const zh: Dict = {
@@ -63,4 +66,7 @@ export const zh: Dict = {
   messageNotFound: '当前筛选结果中没有以该值开头的消息 ID。',
   messageAmbiguous: '匹配到多个消息 ID，请输入更长的前缀。',
   noFilteredSamples: '当前阈值筛选下没有样本。',
+  any: '不限',
+  above: '高于',
+  below: '低于',
 }

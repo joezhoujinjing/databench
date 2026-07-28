@@ -3,8 +3,8 @@
 > 每个 E Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- evalscope-status
-current_step: E7
-last_completed_step: E6
+current_step: E8
+last_completed_step: E7
 runtime_enabled: false
 ui_routes_enabled: true
 upstream_commit: b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
@@ -16,18 +16,22 @@ e5_implementation: complete
 e5_gate: passed
 e6_implementation: complete
 e6_gate: passed
+e7_implementation: complete
+e7_gate: passed
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/evalscope-integration-design`
-- **当前 Step:** E7 Dashboard、Compare、Performance、Benchmarks 与 Viewer
+- **当前 Step:** E8 完整结果归档与 retention
 - **已完成:** E0 决策/来源/能力基线；E1 `evalscope-general-qa@1.0.0` projection；E2 Evaluation Run
   控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环；E4 Databench Evaluation UI foundation；
-  E5 Tasks、Databench Dataset、task monitor 与安全报告入口；E6 Reports、Details、Predictions 与逐样本内容展示
+  E5 Tasks、Databench Dataset、task monitor 与安全报告入口；E6 Reports、Details、Predictions 与逐样本内容展示；
+  E7 Dashboard、Evaluation Compare、Performance、Benchmarks 与安全 Viewer 完整业务面
 - **产品状态:** backend-only image 与 same-origin gateway 仍 disabled-by-default；`/evaluations/*` 原生
-  lazy routes 已开放，Tasks、Reports、Details 与 Predictions 已可用；E7 尚未完成，不计为完整复刻
-- **GE7:** `pnpm evalscope:parity:check:green` 按设计保持失败；60 个 capability 中 30 个 green、30 个 planned
+  lazy routes 已开放；锁定 React 基线的全部业务页面已按 Databench 风格迁入唯一 SPA，E7 完整复刻 gate 已关闭
+- **GE7:** `pnpm evalscope:parity:check:green` 通过；60 个 capability 全部 green，其中 58 个 target capability
+  已实现、2 个为 Databench application/brand shell exclusion
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
 
 ## Step 状态
@@ -41,8 +45,8 @@ e6_gate: passed
 | E4 | Evaluation UI foundation | ✅ | GE4 | routes/client/tokens/i18n/primitives；11 个 lazy entries |
 | E5 | Tasks 与 Databench Dataset 闭环 | ✅ | GE5 | eval/perf、monitor、exact Dataset、safe viewer |
 | E6 | Reports、Details 与 Predictions | ✅ | GE6 | catalogue、overview/details、逐样本与富内容 |
-| E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ⬜ 当前 | GE7 | 完整 UI 复刻唯一 gate |
-| E8 | 结果归档与 retention | ⬜ | GE8 | |
+| E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ✅ | GE7 | 完整 UI 复刻唯一 gate 已通过 |
+| E8 | 结果归档与 retention | ⬜ 当前 | GE8 | |
 | E9 | 安全、容量、离线与最终集成 gate | ⬜ | GE9 | |
 
 ## E0 交付
@@ -260,3 +264,37 @@ Gate 通过：
 
 E6 将 16 个 target capability 置为 green；连同 E4/E5 和两个 brand-shell exclusion，目前为 30 green /
 30 planned。E7 仍是完整 UI 复刻的唯一 gate；runtime disabled-by-default、V16/V17 与公共云 D3 均未改变。
+
+## E7 交付与 Gate 记录
+
+- Dashboard 已实现 evaluation/performance/去重模型/最近运行四个 KPI、可点击导航、合并 recent feed、
+  类型筛选、300ms URL 搜索、分页、刷新以及 partial/welcome/no-data/no-match 状态；
+- Evaluation Compare 已实现 URL 恢复的 2–3 slots、Score/Prediction、共同 dataset/subset 交集、metric-native
+  图表/表格 fallback、threshold 与每模型 presets、对齐样本分页、Left/Right 键盘导航和单列错误隔离；
+- Performance catalogue/detail/runs/requests/compare 已实现搜索排序、最多五项选择、configured refresh、
+  provider/protocol、single-run 分支、closed-loop、workload/percentile、50/page request filters、默认
+  oldest/newest baseline、URL swap、direction-aware delta、低样本阈值、workload/config diff 和条件图表；
+- Benchmark catalogue 已实现 217 条真实配置的五类计数、300ms 搜索、任一标签命中、chips、24/page、
+  完整中英文 Markdown 详情、Paper、焦点锁定/Escape/焦点恢复；详情到预选任务作为独立 extension 验收；
+- Viewer 继续只读取 opaque generated document，iframe 精确保持 `sandbox="allow-scripts"` 且不含
+  `allow-same-origin`；同页和新标签页均不暴露 raw active HTML；
+- source manifest 的 183 个文件与 34 个 upstream tests 均闭环到现存 target；capability manifest 的 60 项
+  全部 green，58 个非 shell-exclusion ID 全部进入 implemented registry；
+- 桌面浏览器使用 1 条真实 evaluation report、3 条 performance report 和 217 个 Benchmark 完成验收；
+  Evaluation Compare 因真实 fixture 只有一条报告，浏览器验证不足两条状态，双报告行为由 domain/static
+  tests 覆盖且未制造假报告。手机版竖屏按 owner 决策不属于当前 Web gate；完整证据见
+  [E7-COMPLETE-UI-PARITY.md](evidence/E7-COMPLETE-UI-PARITY.md)。
+
+Gate 通过：
+
+- Web 42 files / 138 tests，Web typecheck 通过；
+- `pnpm lint`、`pnpm build`、`pnpm typecheck`、`pnpm test`、`pnpm openapi:check`、
+  `pnpm v2:status:check`、`pnpm peers check`、`pnpm evalscope:parity:check`、
+  `pnpm evalscope:parity:check:green`、`pnpm evalscope:parity:test`、`pnpm offline:check` 与
+  `git diff --check` 全部通过；
+- Web production build 保持 11 个 Evaluation lazy route entries，initial JS 852,543 bytes，低于
+  950,000-byte budget；E7 页面与富内容依赖保持 route-level lazy loading；
+- 最终桌面浏览器 console 0 error / 0 warning。
+
+E7 只关闭锁定 EvalScope React UI 的完整功能迁移 gate。Runtime 仍 disabled-by-default；结果归档属于 E8，
+安全/容量/离线最终集成属于 E9；V16/V17 与公共云 D3 均未改变。

@@ -2,9 +2,9 @@
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
-> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E6 已
-> 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports 与 Predictions
-> 已实现；E7 业务页面能力仍未迁移完成。
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E7 已
+> 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports、Predictions、
+> Dashboard、Compare、Performance、Benchmarks 与安全 Viewer 已实现，完整 UI 功能迁移 gate 已关闭。
 
 ## `apps/api`
 
@@ -112,7 +112,7 @@ apps/web/
 │  │  ├─ shell/                 导航、连接设置、语言切换
 │  │  ├─ common/                状态、JSON、复制
 │  │  └─ ui/                    基础 UI primitives
-│  ├─ evaluations/              ADR 0017；E4-E6 Evaluation UI
+│  ├─ evaluations/              ADR 0017；E4-E7 complete Evaluation UI
 │  │  ├─ api/                   exact-operation Zod client、report schemas、typed errors
 │  │  ├─ components/            capability boundary、breadcrumb、source refresh、安全 document frame
 │  │  ├─ domain/                route key、report、metric、task state 与 AgentTrace 纯逻辑
@@ -166,7 +166,7 @@ apps/web/
 
 `/recipe`、`/vocabularies`、`/v2/...` 等旧产品页面不在 route tree。Web 只通过生成的
 OpenAPI 类型和 REST client 访问 Databench 后端。Evaluation provider API 只通过 E4 隔离的 exact Zod client
-访问 same-origin gateway；Tasks、Reports 与 Predictions 已完成，E7 其余业务能力仍按 gate 分步加入。
+访问 same-origin gateway；锁定 EvalScope React 基线的全部业务页面已在 E7 完成原生迁移。
 
 ## `packages/hashing`
 

@@ -86,3 +86,6 @@ export const benchmarksResponseSchema = z.object({
   agent: z.array(benchmarkEntrySchema).optional(),
   aigc: z.array(benchmarkEntrySchema).optional(),
 })
+
+export type BenchmarkEntry = z.infer<typeof benchmarkEntrySchema>
+export type BenchmarksResponse = z.infer<typeof benchmarksResponseSchema>

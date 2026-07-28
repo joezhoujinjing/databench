@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
-  "phase": "E6-reports-predictions",
+  "phase": "E7-complete-ui-parity",
   "capability_schema": {
     "status_values": ["planned", "green"],
     "classifications": [
@@ -214,9 +214,15 @@
       "api_operations": ["GET /api/v1/reports/list", "GET /api/v1/perf/list"],
       "target": "apps/web/src/evaluations/routes/dashboard.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:dashboard-kpis"],
-      "browser_evidence": ["upstream-code:pages/DashboardPage.tsx", "planned:GE7:dashboard-kpis"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/dashboard.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
+      "browser_evidence": [
+        "upstream-code:pages/DashboardPage.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#dashboard"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "dashboard.recent-feed-filters",
@@ -230,12 +236,15 @@
       "api_operations": ["GET /api/v1/reports/list", "GET /api/v1/perf/list"],
       "target": "apps/web/src/evaluations/features/dashboard/RecentRuns.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:dashboard-recent-feed"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/dashboard.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/DashboardPage.tsx",
-        "planned:GE7:dashboard-filters"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#dashboard"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "dashboard.partial-empty-states",
@@ -252,12 +261,15 @@
       "api_operations": ["GET /api/v1/reports/list", "GET /api/v1/perf/list"],
       "target": "apps/web/src/evaluations/features/dashboard/DashboardState.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:dashboard-states"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/dashboard.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/DashboardPage.tsx",
-        "planned:GE7:dashboard-partial"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#dashboard"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "tasks.tabs-url-state",
@@ -682,12 +694,19 @@
       "contract": "Restore two to three model slots from URL and support report-name add, remove and cancel-add actions.",
       "default_or_rule": "At least two and at most three slots; invalid URL entries produce an incompatibility state, not extra slots.",
       "responsive_a11y": "Slot labels, remove buttons and add dialog are keyboard operable.",
-      "api_operations": ["GET /api/v1/reports/load_multi"],
+      "api_operations": ["GET /api/v1/reports/load"],
       "target": "apps/web/src/evaluations/routes/compare.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:compare-slots-url"],
-      "browser_evidence": ["upstream-code:pages/ComparePage.tsx", "planned:GE7:compare-add-remove"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/compare.test.ts",
+        "test-file:apps/web/src/evaluations/routes/contracts.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
+      "browser_evidence": [
+        "upstream-code:pages/ComparePage.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#evaluation-compare"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "compare.score-domain",
@@ -701,12 +720,18 @@
       "contract": "Preserve Score and Prediction tabs, average row, dataset rows, radar and chart fallback.",
       "default_or_rule": "Score is default; non-comparable metrics use the fallback table.",
       "responsive_a11y": "Chart values have table equivalents and tabs expose selection state.",
-      "api_operations": ["GET /api/v1/reports/load_multi"],
+      "api_operations": ["GET /api/v1/reports/load"],
       "target": "apps/web/src/evaluations/features/compare/ScoreComparison.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:compare-score-domain"],
-      "browser_evidence": ["upstream-code:pages/ComparePage.tsx", "planned:GE7:compare-score"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/compare.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
+      "browser_evidence": [
+        "upstream-code:pages/ComparePage.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#evaluation-compare"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "compare.dataset-subset-intersection",
@@ -720,15 +745,15 @@
       "contract": "Compute the common dataset and subset intersection for selected runs.",
       "default_or_rule": "No intersection renders a reason and preserves slot selection.",
       "responsive_a11y": "Incompatibility reason is announced and does not trap focus.",
-      "api_operations": ["GET /api/v1/reports/load_multi"],
+      "api_operations": ["GET /api/v1/reports/load"],
       "target": "apps/web/src/evaluations/domain/compare.ts",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:compare-intersection"],
+      "tests": ["test-file:apps/web/src/evaluations/domain/compare.test.ts"],
       "browser_evidence": [
         "upstream-code:domain/compare/compareModel.ts",
-        "planned:GE7:compare-no-intersection"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#evaluation-compare"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "compare.prediction-filters-presets",
@@ -742,12 +767,15 @@
       "api_operations": ["GET /api/v1/reports/predictions"],
       "target": "apps/web/src/evaluations/features/compare/PredictionFilters.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:compare-per-model-filters"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/compare.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/ComparePage.tsx",
-        "planned:GE7:compare-filter-presets"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#evaluation-compare"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "compare.aligned-navigation-keyboard",
@@ -761,9 +789,12 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/compare/AlignedSampleNavigator.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:compare-keyboard-navigation"],
-      "browser_evidence": ["upstream-code:pages/ComparePage.tsx", "planned:GE7:compare-left-right"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/e7-static.test.ts"],
+      "browser_evidence": [
+        "upstream-code:pages/ComparePage.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#evaluation-compare"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "compare.parallel-samples-errors",
@@ -777,12 +808,12 @@
       "api_operations": ["GET /api/v1/reports/predictions"],
       "target": "apps/web/src/evaluations/features/compare/ParallelSamples.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:compare-parallel-errors"],
+      "tests": ["test-file:apps/web/src/evaluations/e7-static.test.ts"],
       "browser_evidence": [
         "upstream-code:pages/ComparePage.tsx",
-        "planned:GE7:compare-column-error"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#evaluation-compare"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.catalogue-search-sort",
@@ -799,12 +830,15 @@
       "api_operations": ["GET /api/v1/perf/list"],
       "target": "apps/web/src/evaluations/features/performance/PerformanceCatalogue.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-catalogue-search-sort"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/performance/view.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/PerfReportsPage.tsx",
-        "planned:GE7:performance-catalogue"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.catalogue-selection-actions",
@@ -818,12 +852,12 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/performance/PerformanceSelection.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-selection-actions"],
+      "tests": ["test-file:apps/web/src/evaluations/e7-static.test.ts"],
       "browser_evidence": [
         "upstream-code:pages/PerfReportsPage.tsx",
-        "planned:GE7:performance-selection"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.catalogue-refresh-states",
@@ -837,12 +871,12 @@
       "api_operations": ["GET /api/v1/perf/list"],
       "target": "apps/web/src/evaluations/features/performance/PerformanceCatalogueState.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-refresh-stale"],
+      "tests": ["test-file:apps/web/src/evaluations/e7-static.test.ts"],
       "browser_evidence": [
         "upstream-code:pages/PerfReportsPage.tsx",
-        "planned:GE7:performance-refresh"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.detail-provider-metadata",
@@ -860,12 +894,12 @@
       "api_operations": ["GET /api/v1/perf/detail"],
       "target": "apps/web/src/evaluations/domain/performance/provider.ts",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:provider-resolution"],
+      "tests": ["test-file:apps/web/src/evaluations/domain/performance/provider.test.ts"],
       "browser_evidence": [
         "upstream-code:domain/perf/providerResolution.ts",
-        "planned:GE7:provider-fallback"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.detail-tabs-single-run",
@@ -882,12 +916,15 @@
       "api_operations": ["GET /api/v1/perf/detail"],
       "target": "apps/web/src/evaluations/routes/performance-detail.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-single-run-tabs"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/performance/view.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/PerfReportDetailPage.tsx",
-        "planned:GE7:single-run-browser"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.detail-summary-closed-loop",
@@ -904,12 +941,15 @@
       "api_operations": ["GET /api/v1/perf/detail", "GET /api/v1/perf/chart"],
       "target": "apps/web/src/evaluations/features/performance/PerformanceOverview.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-summary-closed-loop"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/performance/view.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/PerfReportDetailPage.tsx",
-        "planned:GE7:closed-loop"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.detail-embedding-conditions",
@@ -926,12 +966,12 @@
       "api_operations": ["GET /api/v1/perf/detail", "GET /api/v1/perf/chart"],
       "target": "apps/web/src/evaluations/domain/performance/view.ts",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-embedding-rerank"],
+      "tests": ["test-file:apps/web/src/evaluations/domain/performance/view.test.ts"],
       "browser_evidence": [
         "upstream-code:pages/performanceView.test.tsx",
-        "planned:GE7:embedding-browser"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.runs-workload-percentiles",
@@ -949,9 +989,15 @@
       "api_operations": ["GET /api/v1/perf/runs", "GET /api/v1/perf/chart"],
       "target": "apps/web/src/evaluations/features/performance/PerformanceRuns.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-runs-workload"],
-      "browser_evidence": ["upstream-code:pages/PerfRunsTab.tsx", "planned:GE7:performance-runs"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/performance/view.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
+      "browser_evidence": [
+        "upstream-code:pages/PerfRunsTab.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "performance.requests-filter-pagination",
@@ -965,9 +1011,12 @@
       "api_operations": ["GET /api/v1/perf/requests", "GET /api/v1/perf/chart"],
       "target": "apps/web/src/evaluations/features/performance/PerformanceRequests.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-request-pagination"],
-      "browser_evidence": ["upstream-code:pages/PerfRunsTab.tsx", "planned:GE7:request-filters"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/e7-static.test.ts"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfRunsTab.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "performance.compare-baseline-url",
@@ -986,9 +1035,15 @@
       "api_operations": ["GET /api/v1/perf/detail"],
       "target": "apps/web/src/evaluations/routes/performance-compare.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-baseline-swap-url"],
-      "browser_evidence": ["upstream-code:pages/PerfComparePage.tsx", "planned:GE7:baseline-swap"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/performance/compare.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
+      "browser_evidence": [
+        "upstream-code:pages/PerfComparePage.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "performance.compare-delta-verdict",
@@ -1005,12 +1060,12 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/domain/performance/compare.ts",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-delta-verdict"],
+      "tests": ["test-file:apps/web/src/evaluations/domain/performance/compare.test.ts"],
       "browser_evidence": [
         "upstream-code:domain/perf/compareModel.ts",
-        "planned:GE7:delta-verdict"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.compare-low-sample",
@@ -1024,9 +1079,12 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/performance/LowSampleNotice.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-low-sample-thresholds"],
-      "browser_evidence": ["upstream-code:pages/PerfComparePage.tsx", "planned:GE7:low-sample"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/performance/compare.test.ts"],
+      "browser_evidence": [
+        "upstream-code:pages/PerfComparePage.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "performance.compare-compatibility-config",
@@ -1044,12 +1102,15 @@
       "api_operations": ["GET /api/v1/perf/detail"],
       "target": "apps/web/src/evaluations/features/performance/ComparisonCompatibility.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-workload-config-diff"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/performance/compare.test.ts",
+        "test-file:apps/web/src/evaluations/domain/performance/view.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/PerfComparePage.tsx",
-        "planned:GE7:workload-mismatch"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "performance.compare-conditional-charts",
@@ -1066,12 +1127,15 @@
       "api_operations": ["GET /api/v1/perf/compare/chart"],
       "target": "apps/web/src/evaluations/features/performance/PerformanceCompareCharts.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:performance-conditional-charts"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/performance/compare.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/PerfComparePage.tsx",
-        "planned:GE7:performance-chart-fallback"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#performance"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "benchmarks.categories-counts",
@@ -1085,9 +1149,15 @@
       "api_operations": ["GET /api/v1/eval/benchmarks?all=true"],
       "target": "apps/web/src/evaluations/routes/benchmarks.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:benchmark-five-categories"],
-      "browser_evidence": ["upstream-code:pages/BenchmarksPage.tsx", "planned:GE7:benchmark-tabs"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/benchmarks.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
+      "browser_evidence": [
+        "upstream-code:pages/BenchmarksPage.tsx",
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#benchmarks"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "benchmarks.search-tag-filters",
@@ -1101,12 +1171,15 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/benchmarks/BenchmarkFilters.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:benchmark-search-tags"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/benchmarks.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/BenchmarksPage.tsx",
-        "planned:GE7:benchmark-filters"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#benchmarks"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "benchmarks.cards-pagination",
@@ -1120,12 +1193,15 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/benchmarks/BenchmarkCards.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:benchmark-cards-pagination"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/benchmarks.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/BenchmarksPage.tsx",
-        "planned:GE7:benchmark-narrow-grid"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#benchmarks"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "benchmarks.detail-markdown-paper",
@@ -1139,12 +1215,15 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/benchmarks/BenchmarkDetail.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:benchmark-detail-markdown"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/benchmarks.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/BenchmarksPage.tsx",
-        "planned:GE7:benchmark-detail"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#benchmarks"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "benchmarks.loading-no-result",
@@ -1158,12 +1237,15 @@
       "api_operations": ["GET /api/v1/eval/benchmarks?all=true"],
       "target": "apps/web/src/evaluations/features/benchmarks/BenchmarkState.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE7:benchmark-states"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/benchmarks.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts"
+      ],
       "browser_evidence": [
         "upstream-code:pages/BenchmarksPage.tsx",
-        "planned:GE7:benchmark-no-result"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#benchmarks"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "viewer.sanitized-document",
@@ -1183,12 +1265,16 @@
       ],
       "target": "apps/web/src/evaluations/routes/viewer.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE3:generated-document-security", "planned:GE7:viewer-states"],
+      "tests": [
+        "test-file:apps/web/src/evaluations/api/client.test.ts",
+        "test-file:apps/web/src/evaluations/e7-static.test.ts",
+        "test-file:workers/evalscope/tests/test_documents.py"
+      ],
       "browser_evidence": [
         "upstream-code:pages/ReportViewerPage.tsx",
-        "planned:GE7:sandbox-viewer"
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#safe-viewer-and-security-replacement"
       ],
-      "status": "planned"
+      "status": "green"
     },
     {
       "parity_id": "extension.benchmark-task-preselection",
@@ -1202,9 +1288,14 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/features/benchmarks/UseBenchmarkAction.tsx",
       "upstream_coverage": false,
-      "tests": ["planned:GE7:extension-benchmark-preselection"],
-      "browser_evidence": ["planned:GE7:extension-benchmark-preselection"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/e7-static.test.ts",
+        "test-file:apps/web/src/evaluations/routes/contracts.test.ts"
+      ],
+      "browser_evidence": [
+        "browser-file:docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md#benchmarks"
+      ],
+      "status": "green"
     },
     {
       "parity_id": "extension.databench-dataset-source",

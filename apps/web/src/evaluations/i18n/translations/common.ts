@@ -9,6 +9,8 @@ export const en: Dict = {
   stop: 'Stop',
   retry: 'Retry',
   loadError: 'Failed to load data',
+  remove: 'Remove',
+  close: 'Close',
 }
 
 export const zh: Dict = {
@@ -20,4 +22,6 @@ export const zh: Dict = {
   stop: '停止',
   retry: '重试',
   loadError: '数据加载失败',
+  remove: '移除',
+  close: '关闭',
 }

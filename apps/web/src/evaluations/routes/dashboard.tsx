@@ -1,5 +1,5 @@
-import { EvaluationFoundationPage } from './FoundationPage.js'
+import { DashboardPage } from '../features/dashboard/DashboardPage.js'
 
 export function EvaluationDashboardRoute() {
-  return <EvaluationFoundationPage name="dashboard" />
+  return <DashboardPage />
 }

@@ -3,9 +3,9 @@
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
-> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E6 已完成：backend-only runtime、disabled-by-default
-> gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports 与逐样本闭环已实现；
-> E7 的 Dashboard、比较、Performance 报告、Benchmark 和 Viewer 页面仍未迁移完成。
+> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E7 已完成：backend-only runtime、disabled-by-default
+> gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports、逐样本、Dashboard、
+> 比较、Performance、Benchmark 和安全 Viewer 已实现；锁定 React 基线的完整 UI 功能迁移 gate 已关闭。
 
 ## 顶层目录
 
@@ -124,7 +124,8 @@ client。E3 增加独立 Python provider service 与 `apps/api` same-origin exac
 EvalScope 通过 Databench REST exact inspect/export 获取，API 不直连下层包。E4 在唯一 Databench SPA 中
 增加 lazy `/evaluations/*` route tree、Evaluation shell、scoped tokens/i18n/primitives 和隔离的 exact Zod
 client。E5 在该边界实现 Tasks 与 exact Dataset 闭环；E6 实现 Reports catalogue、详情、Predictions、
-样本形态与富内容展示。UI 对 Databench `/v2/*` 仍只用 generated client；EvalScope client 只能访问
+样本形态与富内容展示；E7 完成 Dashboard、Evaluation Compare、Performance 全业务面、Benchmark 与
+安全 Viewer。UI 对 Databench `/v2/*` 仍只用 generated client；EvalScope client 只能访问
 `deploy/evalscope/api-routes.json` 明确允许的方法与精确路径，不能成为通用反向代理。
 
 MCP runtime 内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
@@ -180,9 +181,9 @@ packages/<name>/
 
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E6 已完成。EvalScope runtime 仍 disabled-by-default；Web 已有
-Evaluation Tasks、Databench Dataset、Reports 与 Predictions 闭环，但 E7 业务能力仍为 planned，不得宣称
-完整 UI 复刻。MCP 和单个 CPU-only Worker只获
+产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E7 已完成。EvalScope runtime 仍 disabled-by-default；Web 已
+完成锁定 EvalScope React 基线的完整业务功能迁移，结果归档与最终离线集成仍分别属于 E8/E9。MCP 和单个
+CPU-only Worker只获
 授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台

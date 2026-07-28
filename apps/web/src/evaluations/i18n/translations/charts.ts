@@ -10,6 +10,7 @@ export const en: Dict = {
   retry: 'Retry',
   fallbackTitle: 'Data table',
   fallbackHint: 'Showing the same underlying data as a table.',
+  tableFallback: 'Show table fallback',
 }
 
 export const zh: Dict = {
@@ -22,4 +23,5 @@ export const zh: Dict = {
   retry: '重试',
   fallbackTitle: '数据表',
   fallbackHint: '以数据表形式展示相同的底层数据。',
+  tableFallback: '显示数据表后备视图',
 }

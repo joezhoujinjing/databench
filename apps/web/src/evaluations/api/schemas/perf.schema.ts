@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const tableCellSchema = z.union([z.string(), z.number()])
+const tableCellSchema = z.union([z.string(), z.number(), z.null()])
 
 export const perfRunSummarySchema = z.object({
   path: z.string(),
@@ -71,3 +71,11 @@ export const perfRequestsResponseSchema = z.object({
   page_size: z.number(),
   has_db: z.boolean(),
 })
+
+export type ListPerfRunsResponse = z.infer<typeof listPerfRunsResponseSchema>
+export type PerfDetailResponse = z.infer<typeof perfDetailResponseSchema>
+export type PerfRequestRow = z.infer<typeof perfRequestsResponseSchema>['rows'][number]
+export type PerfRequestsResponse = z.infer<typeof perfRequestsResponseSchema>
+export type PerfRunItem = z.infer<typeof perfRunItemSchema>
+export type PerfRunSummary = z.infer<typeof perfRunSummarySchema>
+export type PerfRunsListResponse = z.infer<typeof perfRunsListResponseSchema>
