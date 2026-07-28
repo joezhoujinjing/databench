@@ -33,7 +33,7 @@ diff --git a/evalscope/service/utils/process.py b/evalscope/service/utils/proces
 +            raise RuntimeError(f'Task {task_id} already has an active process')
 @@ -84,0 +88,2 @@
 +    from databench_evalscope.security import install_socket_guard
-+    restore_socket = install_socket_guard(os.getenv('EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST', ''))
++    restore_socket = install_socket_guard(os.getenv('EVALSCOPE_TASK_NETWORK_ALLOWLIST', ''))
 @@ -95,0 +101,2 @@
 +        finally:
 +            restore_socket()

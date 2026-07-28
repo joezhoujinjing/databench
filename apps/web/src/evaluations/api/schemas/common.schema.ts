@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { EVALSCOPE_PLOTLY_ASSET_SHA256, EVALSCOPE_UPSTREAM_COMMIT } from '../config.js'
+import { taskTerminalSchema } from './eval.schema.js'
 
 const opaqueDocumentIdSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/u)
 
@@ -58,7 +59,7 @@ export const logResponseSchema = z.object({
 export const taskStatusResponseSchema = z.object({
   status: z.string(),
   task_id: z.string(),
-  terminal: z.unknown().optional(),
+  terminal: taskTerminalSchema.optional(),
   provider_signal: z.string().optional(),
 })
 

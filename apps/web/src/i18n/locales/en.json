@@ -109,6 +109,7 @@
       "manifest": "View raw manifest",
       "lineage": "View lineage",
       "export": "Export",
+      "createEvaluation": "Create evaluation",
       "delete": "Move to trash",
       "deleteTitle": "Move {{name}} to trash?",
       "deleteDescription": "The dataset will leave the active list and can be restored from Trash. Stored versions and lineage are not deleted.",

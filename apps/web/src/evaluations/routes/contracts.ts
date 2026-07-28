@@ -17,6 +17,10 @@ export const evaluationTasksSearchSchema = z.object({
     .regex(/^[0-9a-f]{64}$/u)
     .optional(),
   benchmark: optionalText,
+  taskId: z
+    .string()
+    .regex(/^(?:eval|perf)_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
+    .optional(),
 })
 
 export const evaluationReportsSearchSchema = z.object({

@@ -44,6 +44,11 @@ def test_malicious_html_is_sanitized_and_plotly_is_rebuilt_from_json(tmp_path: P
     assert 'alert(1)' not in text
     assert f'plotly-{PLOTLY_DIGEST}.min.js' in text
     assert 'Plotly.newPlot(document.getElementById("plot")' in text
+    assert '"displaylogo":false' in text
+    assert 'document.createElement=function(name,options)' in text
+    assert text.index('document.createElement=function(name,options)') < text.index(
+        f'plotly-{PLOTLY_DIGEST}.min.js'
+    )
     assert "unsafe-inline" not in headers['Content-Security-Policy']
     assert "unsafe-eval" not in headers['Content-Security-Policy']
     assert "connect-src 'none'" in headers['Content-Security-Policy']
@@ -146,6 +151,11 @@ def test_json_sanitizer_removes_credentials_paths_and_maps_media(tmp_path: Path)
     assert 'api_key' not in value
     assert value['message'] == '[credential] [path]'
     assert value['media'] == 'r0/image.png'
+
+
+def test_json_sanitizer_normalizes_non_finite_numbers() -> None:
+    value = sanitize_json({'nan': float('nan'), 'positive': float('inf'), 'negative': -float('inf')})
+    assert value == {'nan': None, 'positive': None, 'negative': None}
 
 
 def test_html_sanitizer_never_keeps_remote_images() -> None:

@@ -355,24 +355,29 @@ THIRD_PARTY_NOTICES.md
 E3 后的 backend runtime 布局为：
 
 ```text
-deploy/evalscope/
-├─ README.md
-├─ Dockerfile
+workers/evalscope/
 ├─ .python-version · pyproject.toml · uv.lock
-├─ api-routes.json
-├─ patches/0001-databench-runtime-boundary.patch
-├─ runtime/databench_evalscope/
+├─ src/databench_evalscope/
 │  ├─ app.py · wsgi.py · config.py
 │  ├─ databench.py · storage.py
 │  └─ security.py · documents.py · errors.py
-├─ test/                       Python runtime/security tests
+└─ tests/                      Python runtime/security tests
+
+deploy/evalscope/
+├─ README.md
+├─ Dockerfile
+├─ api-routes.json
+├─ patches/0001-databench-runtime-boundary.patch
 └─ vendor/
    ├─ evalscope-upstream.tar.gz
    ├─ plotly-2.35.2.min.js · plotly-LICENSE.txt
    └─ punkt_tab.zip
 ```
 
-镜像删除 upstream `evalscope/web`，只运行 Gunicorn/Flask backend。`upstream-manifest.json` 是文件来源真源，
+两个 Python 服务同处 `workers/`，但协议和职责不同：`workers/python` 是 Workspace 通过内部 gRPC
+调用的通用 capability host；`workers/evalscope` 是 Web 经 API gateway 通过内部 HTTP 调用的评测
+provider。`deploy/evalscope` 只保留构建和部署资产。镜像删除 upstream `evalscope/web`，只运行
+Gunicorn/Flask backend。`upstream-manifest.json` 是文件来源真源，
 `ui-capability-manifest.json` 是业务能力验收真源；前者的 `adapted` 不能替代后者的 green。E1/E2 的
 converter/export 与 Workspace/REST/OpenAPI 数据链没有被 Python service 绕开。
 

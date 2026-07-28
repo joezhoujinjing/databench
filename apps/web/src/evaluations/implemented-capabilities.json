@@ -2,8 +2,17 @@
   "schema_version": 1,
   "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
   "capability_ids": [
+    "extension.databench-dataset-source",
     "foundation.api-contracts",
     "foundation.locale-content",
-    "foundation.responsive-a11y-primitives"
+    "foundation.polling-query-abort",
+    "foundation.responsive-a11y-primitives",
+    "shell.safe-report-new-tab",
+    "tasks.benchmark-autocomplete",
+    "tasks.dataset-args-editor",
+    "tasks.evaluation-form-fields",
+    "tasks.monitor-lifecycle",
+    "tasks.performance-form-fields",
+    "tasks.tabs-url-state"
   ]
 }

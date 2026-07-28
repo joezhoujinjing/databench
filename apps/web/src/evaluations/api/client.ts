@@ -154,11 +154,13 @@ async function responseError(
   operation: EvalScopeJsonOperation,
 ): Promise<EvalScopeApiError> {
   let code: string | undefined
+  let field: string | undefined
   let message = `EvalScope request failed with HTTP ${response.status}`
   try {
     const body = (await response.json()) as unknown
     if (isRecord(body) && isRecord(body.error)) {
       if (typeof body.error.code === 'string') code = body.error.code
+      if (typeof body.error.field === 'string') field = body.error.field
       if (typeof body.error.message === 'string') message = body.error.message
     }
   } catch {
@@ -172,6 +174,7 @@ async function responseError(
   const kind = unavailable ? 'unavailable' : response.status >= 500 ? 'http-5xx' : 'http-4xx'
   return new EvalScopeApiError(kind, message, {
     ...(code === undefined ? {} : { code }),
+    ...(field === undefined ? {} : { field }),
     status: response.status,
   })
 }

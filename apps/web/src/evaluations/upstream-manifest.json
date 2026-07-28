@@ -432,7 +432,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/eval/EvalConfigForm.tsx",
+      "target_path": "apps/web/src/evaluations/features/tasks/EvaluationForm.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": [
         "tasks.benchmark-autocomplete",
@@ -446,7 +446,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/eval/TaskMonitor.tsx",
+      "target_path": "apps/web/src/evaluations/features/tasks/TaskMonitor.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["shell.safe-report-new-tab", "tasks.monitor-lifecycle"]
     },
@@ -499,7 +499,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/perf/PerfConfigForm.tsx",
+      "target_path": "apps/web/src/evaluations/features/tasks/PerformanceForm.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["tasks.performance-form-fields"]
     },
@@ -783,7 +783,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/tasks/TaskFormFields.test.tsx",
+      "target_path": "apps/web/src/evaluations/domain/form/form.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["tasks.evaluation-form-fields"]
     },
@@ -793,7 +793,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/tasks/TaskFormFields.tsx",
+      "target_path": "apps/web/src/evaluations/features/tasks/TaskFormField.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["tasks.evaluation-form-fields"]
     },
@@ -803,7 +803,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/tasks/TaskRunnerPage.test.tsx",
+      "target_path": "apps/web/src/evaluations/domain/tasks/state.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["tasks.evaluation-form-fields"]
     },
@@ -813,7 +813,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/components/tasks/TaskRunnerPage.tsx",
+      "target_path": "apps/web/src/evaluations/features/tasks/TasksPage.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["tasks.evaluation-form-fields", "tasks.monitor-lifecycle"]
     },
@@ -1131,7 +1131,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/domain/form/validation.datasetArgs.test.ts",
+      "target_path": "apps/web/src/evaluations/domain/form/form.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["tasks.dataset-args-editor", "tasks.evaluation-form-fields"]
     },
@@ -1141,7 +1141,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/domain/form/validation.firstInvalid.test.ts",
+      "target_path": "apps/web/src/evaluations/domain/form/form.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["tasks.evaluation-form-fields"]
     },
@@ -1151,7 +1151,7 @@
       "kind": "test",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/domain/form/validation.numeric.test.ts",
+      "target_path": "apps/web/src/evaluations/domain/form/form.test.ts",
       "reason": "adapt test to Databench router, API and visual primitives",
       "parity_ids": ["tasks.evaluation-form-fields"]
     },
@@ -1288,7 +1288,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/hooks/useCopy.ts",
+      "target_path": "apps/web/src/components/common/CopyTextButton.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.polling-query-abort"]
     },
@@ -1298,7 +1298,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/hooks/useFormErrors.ts",
+      "target_path": "apps/web/src/evaluations/domain/form/validation.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.polling-query-abort"]
     },
@@ -1308,7 +1308,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/hooks/usePolling.ts",
+      "target_path": "apps/web/src/evaluations/hooks/use-task-runner.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.polling-query-abort"]
     },
@@ -1318,7 +1318,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/hooks/useQueryParams.ts",
+      "target_path": "apps/web/src/evaluations/routes/contracts.ts",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["foundation.polling-query-abort"]
     },
@@ -1655,7 +1655,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/pages/EvalTaskPage.tsx",
+      "target_path": "apps/web/src/evaluations/features/tasks/EvaluationForm.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["tasks.evaluation-form-fields"]
     },
@@ -1746,7 +1746,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/pages/PerfTaskPage.tsx",
+      "target_path": "apps/web/src/evaluations/features/tasks/PerformanceForm.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["tasks.performance-form-fields"]
     },
@@ -1776,7 +1776,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/pages/ReportViewerPage.tsx",
+      "target_path": "apps/web/src/evaluations/routes/viewer.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["shell.safe-report-new-tab", "viewer.sanitized-document"]
     },
@@ -1786,7 +1786,7 @@
       "kind": "production",
       "status": "adapted",
       "coverage_kind": "capability-source",
-      "target_path": "apps/web/src/evaluations/pages/TasksPage.tsx",
+      "target_path": "apps/web/src/evaluations/features/tasks/TasksPage.tsx",
       "reason": "capability source tracked by the capability manifest",
       "parity_ids": ["tasks.tabs-url-state"]
     },

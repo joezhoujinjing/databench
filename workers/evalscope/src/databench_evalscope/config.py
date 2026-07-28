@@ -124,6 +124,7 @@ class RuntimeConfig:
     plotly_asset_path: Path
     plotly_asset_sha256: str
     endpoint_allowlist: str
+    dataset_endpoint_allowlist: str
     model_redirect_max_hops: int
     input_max_bytes: int
     output_max_bytes: int
@@ -197,6 +198,13 @@ class RuntimeConfig:
                 500,
             )
 
+        endpoint_allowlist = env.get('EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST', '').strip()
+        dataset_endpoint_allowlist = env.get('EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST', '').strip()
+        from .security import EndpointPolicy
+
+        EndpointPolicy(endpoint_allowlist, redirect_max_hops=redirect_max_hops)
+        EndpointPolicy(dataset_endpoint_allowlist)
+
         config = cls(
             output_dir=output_dir,
             input_dir=input_dir,
@@ -208,7 +216,8 @@ class RuntimeConfig:
             databench_origin=_origin(env),
             plotly_asset_path=plotly_path,
             plotly_asset_sha256=plotly_digest,
-            endpoint_allowlist=env.get('EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST', '').strip(),
+            endpoint_allowlist=endpoint_allowlist,
+            dataset_endpoint_allowlist=dataset_endpoint_allowlist,
             model_redirect_max_hops=redirect_max_hops,
             input_max_bytes=_positive_int(env, 'EVALSCOPE_INPUT_MAX_BYTES', 1_073_741_824),
             output_max_bytes=_positive_int(env, 'EVALSCOPE_OUTPUT_MAX_BYTES', 4_294_967_296),

@@ -28,6 +28,7 @@ export const foundationEn: Dict = {
   foundationOnly:
     'E4 proves the Databench shell, router, service boundary, API contract, localization and accessibility primitives only.',
   nextStep: 'E5–E7 deliver the functional page parity',
+  viewerDocumentRequired: 'A valid report document is required to open the safe viewer.',
   pages: {
     dashboard: 'Evaluation dashboard',
     tasks: 'Evaluation tasks',
@@ -66,6 +67,7 @@ export const foundationZh: Dict = {
     '这个路由已支持直接刷新和集成测试。业务控件会在后续已接受的 UI 步骤中迁入，本步骤不会把它计为已完成。',
   foundationOnly: 'E4 只验证 Databench 应用壳、路由、服务边界、API 契约、国际化和无障碍基础组件。',
   nextStep: 'E5–E7 交付页面功能等价',
+  viewerDocumentRequired: '需要有效的报告文档才能打开安全查看器。',
   pages: {
     dashboard: '测评看板',
     tasks: '测评任务',

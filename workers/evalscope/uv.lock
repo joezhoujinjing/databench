@@ -324,7 +324,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bleach", specifier = "==6.2.0" },
-    { name = "evalscope", extras = ["service"], path = "vendor/evalscope-upstream.tar.gz" },
+    { name = "evalscope", extras = ["service"], path = "../../deploy/evalscope/vendor/evalscope-upstream.tar.gz" },
     { name = "flask", specifier = "==3.1.2" },
     { name = "gunicorn", specifier = "==23.0.0" },
     { name = "html5lib", specifier = "==1.1" },
@@ -438,7 +438,7 @@ wheels = [
 [[package]]
 name = "evalscope"
 version = "0.0.0.dev0"
-source = { path = "vendor/evalscope-upstream.tar.gz" }
+source = { path = "../../deploy/evalscope/vendor/evalscope-upstream.tar.gz" }
 dependencies = [
     { name = "aiohttp" },
     { name = "colorlog" },

@@ -42,7 +42,7 @@ export function Surface({ className, ...props }: HTMLAttributes<HTMLElement>) {
   return (
     <section
       className={cn(
-        'rounded-[6px] border border-border bg-surface/82 shadow-[0_1px_0_rgba(255,255,255,0.025)_inset,0_22px_70px_rgba(0,0,0,0.16)]',
+        'min-w-0 rounded-[6px] border border-border bg-surface/82 shadow-[0_1px_0_rgba(255,255,255,0.025)_inset,0_22px_70px_rgba(0,0,0,0.16)]',
         className,
       )}
       {...props}

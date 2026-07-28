@@ -79,6 +79,36 @@ describe('EvalScope exact client', () => {
     )
   })
 
+  test('preserves safe field pointers for dataset_args admission errors', async () => {
+    const client = createEvalScopeClient(
+      vi.fn<typeof fetch>(async () =>
+        jsonResponse(
+          {
+            error: {
+              code: 'dataset_args_locator_forbidden',
+              field: '/dataset_args/gsm8k/local_path',
+              message: 'Dataset Args contains a forbidden locator',
+            },
+          },
+          { status: 422 },
+        ),
+      ),
+    )
+
+    await expect(
+      client.request('evalInvoke', {
+        body: { dataset_args: { local_path: '/tmp/data' } },
+        taskId: 'eval_12345678-1234-4123-8123-123456789abc',
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<EvalScopeApiError>>({
+        code: 'dataset_args_locator_forbidden',
+        field: '/dataset_args/gsm8k/local_path',
+        status: 422,
+      }),
+    )
+  })
+
   test('derives generated document and asset URLs from the fixed gateway', () => {
     const client = createEvalScopeClient(vi.fn<typeof fetch>())
     const descriptor = {

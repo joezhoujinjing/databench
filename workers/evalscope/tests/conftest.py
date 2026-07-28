@@ -9,7 +9,7 @@ from databench_evalscope.config import PLOTLY_SHA256, RuntimeConfig
 
 @pytest.fixture
 def runtime_config(tmp_path: Path) -> RuntimeConfig:
-    root = Path(__file__).resolve().parents[1]
+    deployment_root = Path(__file__).resolve().parents[3] / 'deploy' / 'evalscope'
     return RuntimeConfig(
         output_dir=tmp_path / 'outputs',
         input_dir=tmp_path / 'inputs',
@@ -19,9 +19,10 @@ def runtime_config(tmp_path: Path) -> RuntimeConfig:
         databench_base_url='http://databench.internal:8000',
         databench_service_credential='internal-service-credential',
         databench_origin='http://databench.test',
-        plotly_asset_path=root / 'vendor' / 'plotly-2.35.2.min.js',
+        plotly_asset_path=deployment_root / 'vendor' / 'plotly-2.35.2.min.js',
         plotly_asset_sha256=PLOTLY_SHA256,
         endpoint_allowlist='http|127.0.0.1/32|8001',
+        dataset_endpoint_allowlist='',
         model_redirect_max_hops=0,
         input_max_bytes=1024 * 1024,
         output_max_bytes=8 * 1024 * 1024,

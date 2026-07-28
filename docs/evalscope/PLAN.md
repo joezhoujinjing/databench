@@ -95,7 +95,7 @@ E9 安全复核、离线、升级与最终 parity gate
 | E0 | ADR、方案、parity/source evidence | docs、third-party evidence | GE0 |
 | E1 | `evalscope-general-qa@1.0.0` | schema、io、workspace、API | GE1 |
 | E2 | `evaluation_runs_v2` 和 REST | Prisma、catalog、workspace、API | GE2 |
-| E3 | backend-only image、exact API proxy、active-content/egress/task safety、Databench source preparation | deploy/evalscope、gateway | GE3 |
+| E3 | backend-only image、exact API proxy、active-content/egress/task safety、Databench source preparation | workers/evalscope、deploy/evalscope、gateway | GE3 |
 | E4 | routes、API adapter、tokens、i18n、primitives | apps/web | GE4 |
 | E5 | eval/perf tasks、monitor、Dataset selector | apps/web、EvalScope backend | GE5 |
 | E6 | reports/detail/predictions/full sample rendering | apps/web | GE6 |

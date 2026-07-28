@@ -24,6 +24,7 @@ export interface SelectInputProps<T extends string | number> {
   'aria-label'?: string
   className?: string
   disabled?: boolean
+  id?: string
   onValueChange: (value: T) => void
   options: readonly SelectOption<T>[]
   value: T
@@ -41,6 +42,7 @@ export function SelectInput<T extends string | number>({
   'aria-label': ariaLabel,
   className,
   disabled = false,
+  id: inputId,
   onValueChange,
   options,
   value,
@@ -117,6 +119,7 @@ export function SelectInput<T extends string | number>({
             'border-primary shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_72%,transparent)]',
         )}
         disabled={disabled}
+        id={inputId}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={handleKeyDown}
         type="button"

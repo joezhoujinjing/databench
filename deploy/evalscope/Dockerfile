@@ -3,7 +3,7 @@ FROM ${PYTHON_IMAGE}
 
 ARG UV_VERSION=0.11.1
 ARG EVALSCOPE_SOURCE_SHA256=39073ef3b55906cef8fc072a4851ee27e3efa064fd9289f84837a67730ed1579
-ARG EVALSCOPE_PATCH_SHA256=e35cdc900e71f86da57f7c8719e5ca5a54192dfbac7e6ebdc2dbc8b7423b007f
+ARG EVALSCOPE_PATCH_SHA256=2ab66ebcd8b6a63527bfe17eca6573301e0ebff2cda62935d6feae63677439c9
 ARG PLOTLY_SHA256=6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603
 ARG PLOTLY_LICENSE_SHA256=67a26cf80f03ff388f26945dfc1f6caed1a0746ff43871190339b3aee49b94bb
 ARG NLTK_PUNKT_TAB_SHA256=e57f64187974277726a3417ca6f181ec5403676c717672eef6a748a7b20e0106
@@ -11,21 +11,22 @@ ARG NLTK_PUNKT_TAB_SHA256=e57f64187974277726a3417ca6f181ec5403676c717672eef6a748
 ENV DEBIAN_FRONTEND=noninteractive \
     EVALSCOPE_SERVE_WEB=false \
     NLTK_DATA=/opt/nltk_data \
-    PYTHONPATH=/app/runtime \
+    PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates patch \
     && python -m pip install --no-cache-dir "uv==${UV_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-COPY deploy/evalscope/pyproject.toml deploy/evalscope/uv.lock ./
-COPY deploy/evalscope/vendor/evalscope-upstream.tar.gz /app/vendor/evalscope-upstream.tar.gz
+WORKDIR /workspace/workers/evalscope
+COPY workers/evalscope/pyproject.toml workers/evalscope/uv.lock ./
+COPY deploy/evalscope/vendor/evalscope-upstream.tar.gz /workspace/deploy/evalscope/vendor/evalscope-upstream.tar.gz
 
-RUN printf '%s  %s\n' "${EVALSCOPE_SOURCE_SHA256}" /app/vendor/evalscope-upstream.tar.gz | sha256sum -c - \
+RUN printf '%s  %s\n' "${EVALSCOPE_SOURCE_SHA256}" /workspace/deploy/evalscope/vendor/evalscope-upstream.tar.gz | sha256sum -c - \
     && uv sync --frozen --no-dev --no-install-package evalscope
 
 COPY deploy/evalscope/vendor/plotly-2.35.2.min.js /opt/vendor/plotly-2.35.2.min.js
@@ -39,7 +40,7 @@ RUN printf '%s  %s\n' "${EVALSCOPE_PATCH_SHA256}" /opt/patches/0001-databench-ru
     && printf '%s  %s\n' "${NLTK_PUNKT_TAB_SHA256}" /opt/vendor/punkt_tab.zip | sha256sum -c - \
     && python -m zipfile -e /opt/vendor/punkt_tab.zip /opt/nltk_data/tokenizers \
     && mkdir -p /opt/src \
-    && tar -xzf /app/vendor/evalscope-upstream.tar.gz -C /opt/src \
+    && tar -xzf /workspace/deploy/evalscope/vendor/evalscope-upstream.tar.gz -C /opt/src \
     && cd /opt/src/evalscope-upstream \
     && patch --batch --forward -p1 < /opt/patches/0001-databench-runtime-boundary.patch \
     && uv pip install --python /app/.venv/bin/python --no-deps /opt/src/evalscope-upstream \
@@ -49,17 +50,18 @@ RUN printf '%s  %s\n' "${EVALSCOPE_PATCH_SHA256}" /opt/patches/0001-databench-ru
     && test -f /app/.venv/lib/python3.12/site-packages/evalscope/benchmarks/_meta/general_qa.json \
     && test ! -e /app/.venv/lib/python3.12/site-packages/evalscope/web
 
-COPY deploy/evalscope/runtime /app/runtime
+COPY workers/evalscope/src /app/src
 
 RUN groupadd --gid 10001 evalscope \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin evalscope \
-    && mkdir -p /var/lib/evalscope/outputs /var/lib/evalscope/inputs \
+    && useradd --uid 10001 --gid 10001 --home-dir /var/lib/evalscope/home --no-create-home --shell /usr/sbin/nologin evalscope \
+    && mkdir -p /var/lib/evalscope/outputs /var/lib/evalscope/inputs /var/lib/evalscope/home \
     && chown -R 10001:10001 /var/lib/evalscope \
-    && chmod 0750 /var/lib/evalscope/outputs /var/lib/evalscope/inputs \
+    && chmod 0750 /var/lib/evalscope/outputs /var/lib/evalscope/inputs /var/lib/evalscope/home \
     && chmod 0444 /opt/vendor/plotly-2.35.2.min.js /opt/vendor/plotly-LICENSE.txt /opt/vendor/punkt_tab.zip \
     && test -f /opt/vendor/plotly-LICENSE.txt \
     && test -f /opt/nltk_data/tokenizers/punkt_tab/english/ortho_context.tab
 
+WORKDIR /app
 USER 10001:10001
 EXPOSE 9000
 

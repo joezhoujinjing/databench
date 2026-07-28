@@ -109,6 +109,7 @@
       "manifest": "查看原始清单",
       "lineage": "查看血缘",
       "export": "导出",
+      "createEvaluation": "创建评测",
       "delete": "移入回收站",
       "deleteTitle": "将 {{name}} 移入回收站？",
       "deleteDescription": "该数据集会从当前列表移入回收站，可随时恢复；已保存的版本与血缘不会删除。",

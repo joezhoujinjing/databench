@@ -21,9 +21,9 @@ dev = [
 package = false
 
 [tool.uv.sources]
-evalscope = { path = "vendor/evalscope-upstream.tar.gz" }
+evalscope = { path = "../../deploy/evalscope/vendor/evalscope-upstream.tar.gz" }
 
 [tool.pytest.ini_options]
-testpaths = ["test"]
+testpaths = ["tests"]
 addopts = "-q"
-pythonpath = ["runtime"]
+pythonpath = ["src"]

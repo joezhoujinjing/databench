@@ -3,9 +3,9 @@
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
-> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E4 已完成：backend-only runtime 与 disabled-by-default
-> gateway 已实现，Databench Web 已增加 Evaluation 原生路由、API adapter、视觉与国际化底座；E5-E7
-> 业务页面能力仍未迁移完成。
+> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E5 已完成：backend-only runtime、disabled-by-default
+> gateway、Evaluation 原生路由、UI foundation、Tasks 和 Databench Dataset 闭环已实现；E6/E7 的报告、
+> 逐样本、比较、Performance 报告和 Benchmark 页面仍未迁移完成。
 
 ## 顶层目录
 
@@ -27,10 +27,13 @@ databench-ts/
 ├─ tooling/
 │  ├─ openapi-export/   确定性导出/校验 OpenAPI
 │  └─ v1-retirement/    ADR 0013 R4 显式维护工具，不进入产品 runtime
+├─ workers/
+│  ├─ python/           通用 Python capability Worker；内部 gRPC
+│  └─ evalscope/        EvalScope Python provider service；内部 HTTP
 ├─ prisma/              v2-only schema 与 forward migrations
 ├─ deploy/
 │  ├─ ecs/              既有托管部署资产
-│  ├─ evalscope/        pinned backend-only EvalScope image、runtime patch、gateway manifest 与测试
+│  ├─ evalscope/        EvalScope image、upstream patch/vendor 与 gateway manifest
 │  └─ offline/          ADR 0012 Ubuntu 单机离线发布
 ├─ scripts/             repo gate、测试 schema、EvalScope parity 与辅助脚本
 ├─ THIRD_PARTY_NOTICES.md
@@ -98,7 +101,8 @@ hashing
 apps/web 仅消费 generated OpenAPI client
 tooling/openapi-export 仅装配 apps/api
 tooling/v1-retirement 是显式 maintenance 边界
-deploy/evalscope backend-only Python service（不进入 TS package DAG）
+workers/python 通用 Python Worker（内部 gRPC，不进入 TS package DAG）
+workers/evalscope EvalScope provider service（内部 HTTP，不进入 TS package DAG）
 ```
 
 精确允许关系：
@@ -175,8 +179,8 @@ packages/<name>/
 
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E4 已完成。EvalScope runtime 仍 disabled-by-default；Web 已有
-Evaluation 原生路由和服务边界，但 E5-E7 业务能力仍为 planned，不得宣称完整 UI 复刻。MCP 和单个 CPU-only Worker只获
+产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E5 已完成。EvalScope runtime 仍 disabled-by-default；Web 已有
+Evaluation Tasks 与 Databench Dataset 闭环，但 E6/E7 业务能力仍为 planned，不得宣称完整 UI 复刻。MCP 和单个 CPU-only Worker只获
 授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台

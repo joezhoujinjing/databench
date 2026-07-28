@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { RefreshCw, Trash2 } from 'lucide-react'
+import { FlaskConical, RefreshCw, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CopyTextButton } from '@/components/common/CopyTextButton.js'
@@ -55,6 +55,19 @@ export function V2DatasetDetailView({
       <PageHeader
         actions={
           <>
+            <Button asChild>
+              <Link
+                search={{
+                  datasetVersion: pinnedVersion,
+                  source: 'databench',
+                  tab: 'eval',
+                }}
+                to="/evaluations/tasks"
+              >
+                <FlaskConical aria-hidden="true" size={15} />
+                {t('v2.detail.createEvaluation')}
+              </Link>
+            </Button>
             <Button asChild variant="outline">
               <Link params={{ ref: pinnedVersion }} to="/lineage/$ref">
                 {t('v2.detail.lineage')}

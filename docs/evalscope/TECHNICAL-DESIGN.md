@@ -1498,6 +1498,11 @@ apps/web/src/styles.css
 prisma/
   schema.prisma
   migrations/<timestamp>_evaluation_runs_v2/
+workers/evalscope/
+  src/databench_evalscope/
+  tests/
+  pyproject.toml
+  uv.lock
 deploy/evalscope/
   upstream.lock
   patches/
@@ -1509,8 +1514,10 @@ THIRD_PARTY_NOTICES.md
 docs/evalscope/
 ```
 
-`deploy/evalscope` 只构建 Python backend image，不进入 TS package DAG。实际落点变化必须同步更新
-`docs/project-structure.md`、`docs/directory-layout.md`、`docs/HANDOFF.md` 和产品 surface。
+`workers/evalscope` 保存 Databench-owned Python provider service，与 `workers/python` 同级，但分别使用
+内部 HTTP 和 gRPC；两者都不进入 TS package DAG。`deploy/evalscope` 只保留 Python backend image、
+upstream patch/vendor 和 gateway manifest。实际落点变化必须同步更新 `docs/project-structure.md`、
+`docs/directory-layout.md`、`docs/HANDOFF.md` 和产品 surface。
 
 ## 17. 测试与 Gate
 

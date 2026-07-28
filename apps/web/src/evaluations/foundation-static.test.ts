@@ -16,6 +16,8 @@ describe('Evaluation UI foundation static boundaries', () => {
     expect(joined).not.toContain('ThemeContext')
     expect(joined).not.toContain('LocaleContext')
     expect(joined).not.toMatch(/['"]\/api\/v1/u)
+    expect(joined).not.toMatch(/window\.open\(/u)
+    expect(joined).not.toMatch(/target=["']_blank["'][^>]*href=.*generated-documents/u)
   })
 
   test('keeps EvalScope tokens scoped and registers every route lazily', async () => {
@@ -42,6 +44,23 @@ describe('Evaluation UI foundation static boundaries', () => {
       expect(router).toContain(`path: '${route}'`)
     }
     expect(router.match(/lazyRouteComponent\(/gu)).toHaveLength(11)
+  })
+
+  test('opens generated reports only in the product viewer sandbox', async () => {
+    const safeLink = await readFile(
+      path.join(evaluationsRoot, 'components/SafeReportLink.tsx'),
+      'utf8',
+    )
+    const taskRunner = await readFile(
+      path.join(evaluationsRoot, 'hooks/use-task-runner.ts'),
+      'utf8',
+    )
+    const viewer = await readFile(path.join(evaluationsRoot, 'routes/viewer.tsx'), 'utf8')
+
+    expect(taskRunner).toContain('/evaluations/viewer?')
+    expect(safeLink).toContain('noopener noreferrer')
+    expect(viewer).toContain('sandbox="allow-scripts"')
+    expect(viewer).not.toContain('allow-same-origin')
   })
 })
 

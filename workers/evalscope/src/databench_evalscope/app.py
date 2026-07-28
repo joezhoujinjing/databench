@@ -107,6 +107,7 @@ def create_app(
         runtime.endpoint_allowlist,
         redirect_max_hops=runtime.model_redirect_max_hops,
     )
+    EndpointPolicy(runtime.dataset_endpoint_allowlist)
     upstream = _load_upstream(runtime) if upstream_app is None else upstream_app
     databench = databench_client or DatabenchClient(runtime, manifests)
     app = Flask(__name__, static_folder=None)
@@ -229,6 +230,20 @@ def create_app(
             nonlocal report_generation
             query = _validated_query(route_path)
             refresh = query.pop('refresh', None)
+            if route_path in {'/api/v1/eval/progress', '/api/v1/perf/progress'}:
+                task_id = validate_task_id(query['task_id'])
+                try:
+                    manifest = manifests.read(task_id)
+                except RuntimePolicyError as error:
+                    if error.code != 'task_not_found':
+                        raise
+                else:
+                    if manifest['terminal'] is not None:
+                        return jsonify({
+                            'percent': 100 if manifest['phase'] == 'completed' else 0,
+                            'current_step': manifest['phase'],
+                            'terminal': manifest['terminal'],
+                        })
             response = _dispatch_upstream(upstream, 'GET', route_path, query=query)
             payload, status = _bounded_json_response(response, runtime.response_max_bytes)
             safe = sanitize_json(payload, media_roots=runtime.allowed_media_roots)
@@ -410,7 +425,7 @@ def _invoke(
         _confirm_callback(manifests, databench, task_id, manifest)
         safe = sanitize_json(payload_response, media_roots=runtime.allowed_media_roots)
         safe['terminal'] = manifest['terminal']
-        return jsonify(safe), 200 if manifest['phase'] in {'completed', 'cancelled'} else max(status, 500)
+        return jsonify(safe), 200
     except RuntimePolicyError as error:
         if not owns_claim:
             raise error
@@ -430,8 +445,15 @@ def _invoke(
             )
             _confirm_callback(manifests, databench, task_id, manifest)
         else:
+            manifest = current
             _confirm_callback(manifests, databench, task_id, current)
-        raise error
+        terminal = manifest['terminal']
+        return jsonify({
+            'status': 'stopped' if manifest['phase'] == 'cancelled' else 'error',
+            'task_id': task_id,
+            'error': terminal['error']['message'],
+            'terminal': terminal,
+        }), 200
     except Exception as exc:
         try:
             manifest = manifests.record_terminal(
@@ -445,8 +467,13 @@ def _invoke(
             )
             _confirm_callback(manifests, databench, task_id, manifest)
         except Exception:
-            pass
-        raise RuntimePolicyError('provider_failed', 'EvalScope task failed', 500) from exc
+            raise RuntimePolicyError('provider_failed', 'EvalScope task failed', 500) from exc
+        return jsonify({
+            'status': 'error',
+            'task_id': task_id,
+            'error': manifest['terminal']['error']['message'],
+            'terminal': manifest['terminal'],
+        }), 200
     finally:
         slots.release()
 
@@ -473,6 +500,11 @@ def _confirm_callback(
 def _load_upstream(runtime: RuntimeConfig) -> Flask:
     os.environ['EVALSCOPE_OUTPUT_DIR'] = str(runtime.output_dir)
     os.environ['EVALSCOPE_SERVE_WEB'] = 'false'
+    os.environ['EVALSCOPE_TASK_NETWORK_ALLOWLIST'] = ','.join(
+        rule
+        for rule in (runtime.endpoint_allowlist, runtime.dataset_endpoint_allowlist)
+        if rule
+    )
     from evalscope.service.app import create_app as create_upstream_app
 
     return create_upstream_app(outputs=str(runtime.output_dir))

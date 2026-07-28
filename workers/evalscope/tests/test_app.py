@@ -24,7 +24,12 @@ class FakeDatabench:
         return True
 
 
-def upstream_app(started: threading.Event | None = None, release: threading.Event | None = None) -> Flask:
+def upstream_app(
+    started: threading.Event | None = None,
+    release: threading.Event | None = None,
+    *,
+    fail_eval: bool = False,
+) -> Flask:
     app = Flask('upstream-test')
 
     @app.post('/api/v1/eval/invoke')
@@ -33,6 +38,12 @@ def upstream_app(started: threading.Event | None = None, release: threading.Even
             started.set()
         if release is not None:
             assert release.wait(timeout=5)
+        if fail_eval:
+            return jsonify({
+                'status': 'error',
+                'task_id': request.headers['EvalScope-Task-Id'],
+                'error': 'upstream failed',
+            }), 500
         return jsonify({
             'status': 'completed',
             'task_id': request.headers['EvalScope-Task-Id'],
@@ -140,7 +151,9 @@ def test_backend_only_exact_route_and_config_boundary(runtime_config) -> None:
     }
     assert '/var/' not in str(config)
 
-    manifest_path = Path(__file__).resolve().parents[1] / 'api-routes.json'
+    manifest_path = (
+        Path(__file__).resolve().parents[3] / 'deploy' / 'evalscope' / 'api-routes.json'
+    )
     route_manifest = json.loads(manifest_path.read_text())
     expected = {
         (
@@ -282,6 +295,64 @@ def test_blocking_invoke_and_polling_are_concurrent(runtime_config) -> None:
     release.set()
     thread.join(timeout=5)
     assert result == [200]
+
+
+def test_progress_replays_persisted_terminal_after_invoke(runtime_config) -> None:
+    app = create_app(
+        runtime_config,
+        upstream_app=upstream_app(),
+        databench_client=FakeDatabench(),
+        reconcile_on_start=False,
+    )
+    client = app.test_client()
+    invoked = client.post(
+        '/api/v1/eval/invoke',
+        json=eval_payload(),
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert invoked.status_code == 200
+
+    progress = client.get(f'/api/v1/eval/progress?task_id={EVAL_ID}')
+    assert progress.status_code == 200
+    assert progress.get_json() == {
+        'percent': 100,
+        'current_step': 'completed',
+        'terminal': invoked.get_json()['terminal'],
+    }
+
+
+def test_claimed_provider_failure_returns_and_replays_typed_terminal(runtime_config) -> None:
+    app = create_app(
+        runtime_config,
+        upstream_app=upstream_app(fail_eval=True),
+        databench_client=FakeDatabench(),
+        reconcile_on_start=False,
+    )
+    client = app.test_client()
+    invoked = client.post(
+        '/api/v1/eval/invoke',
+        json=eval_payload(),
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert invoked.status_code == 200
+    assert invoked.get_json() == {
+        'status': 'error',
+        'task_id': EVAL_ID,
+        'error': 'upstream failed',
+        'terminal': {
+            'status': 'failed',
+            'metrics': None,
+            'provider_report_ids': None,
+            'error': {
+                'phase': 'provider_run',
+                'code': 'provider_failed',
+                'message': 'EvalScope task failed',
+            },
+        },
+    }
+    progress = client.get(f'/api/v1/eval/progress?task_id={EVAL_ID}')
+    assert progress.status_code == 200
+    assert progress.get_json()['terminal'] == invoked.get_json()['terminal']
 
 
 def test_manual_and_startup_reconciliation(runtime_config) -> None:

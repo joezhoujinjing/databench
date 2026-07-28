@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import math
 import mimetypes
 import os
 import re
@@ -120,6 +121,8 @@ def sanitize_json(value: Any, *, depth: int = 0, media_roots: tuple[Path, ...] =
         if locator is not None:
             return locator
         return sanitize_text(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
     if value is None or isinstance(value, (bool, int, float)):
         return value
     raise RuntimePolicyError('upstream_response_invalid', 'Upstream response contains an invalid value', 502)
@@ -265,6 +268,7 @@ def extract_plotly_specs(raw: str) -> list[PlotlySpec]:
             _validate_plotly_json(config)
             config = dict(config)
             config['responsive'] = True
+            config['displaylogo'] = False
             config.pop('plotlyServerURL', None)
             specs.append(PlotlySpec(element_id, data, layout, config))
             if len(specs) > 128:
@@ -516,7 +520,15 @@ class GeneratedDocumentStore:
         scripts = ''
         if specs:
             asset = f'/evalscope-api/generated-assets/plotly-{self._plotly_digest}.min.js'
-            scripts = f'<script nonce="{safe_nonce}" src="{asset}"></script>'
+            bootstrap = (
+                f'<script nonce="{safe_nonce}">(function(){{'
+                'const createElement=document.createElement.bind(document);'
+                'document.createElement=function(name,options){'
+                'const element=createElement(name,options);'
+                f'if(String(name).toLowerCase()==="style"){{element.setAttribute("nonce",{_json_script(nonce)});}}'
+                'return element;};})();</script>'
+            )
+            scripts = bootstrap + f'<script nonce="{safe_nonce}" src="{asset}"></script>'
             calls: list[str] = []
             for spec in specs:
                 calls.append(
@@ -566,7 +578,11 @@ class GeneratedDocumentStore:
                 _validate_plotly_json(item['config'])
             except RuntimePolicyError as exc:
                 raise RuntimePolicyError('generated_document_invalid', 'Generated document is invalid', 500) from exc
-            result.append(PlotlySpec(element_id, item['data'], item['layout'], item['config']))
+            config = dict(item['config'])
+            config['responsive'] = True
+            config['displaylogo'] = False
+            config.pop('plotlyServerURL', None)
+            result.append(PlotlySpec(element_id, item['data'], item['layout'], config))
         return result
 
 

@@ -9,17 +9,25 @@ import {
 
 describe('Evaluation route contracts', () => {
   test('applies stable task defaults and validates Databench exact versions', () => {
+    const taskId = 'eval_123e4567-e89b-42d3-a456-426614174000'
     expect(evaluationTasksSearchSchema.parse({})).toEqual({ tab: 'eval' })
     expect(
       evaluationTasksSearchSchema.parse({
         tab: 'eval',
         source: 'databench',
         datasetVersion: 'a'.repeat(64),
+        taskId,
       }),
-    ).toEqual({ tab: 'eval', source: 'databench', datasetVersion: 'a'.repeat(64) })
+    ).toEqual({
+      tab: 'eval',
+      source: 'databench',
+      datasetVersion: 'a'.repeat(64),
+      taskId,
+    })
     expect(() =>
       evaluationTasksSearchSchema.parse({ source: 'databench', datasetVersion: '/tmp/data' }),
     ).toThrow()
+    expect(() => evaluationTasksSearchSchema.parse({ taskId: 'eval_1700000000000' })).toThrow()
   })
 
   test('keeps generated document ids opaque', () => {

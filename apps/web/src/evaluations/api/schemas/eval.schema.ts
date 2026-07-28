@@ -1,6 +1,44 @@
 import { z } from 'zod'
 
-export const invokeStatusSchema = z.enum(['ok', 'completed', 'error', 'stopped'])
+const taskTerminalErrorSchema = z
+  .object({
+    phase: z.string().min(1).max(128),
+    code: z.string().min(1).max(128),
+    message: z.string().min(1).max(2048),
+  })
+  .strict()
+
+const taskMetricSchema = z
+  .object({
+    dataset: z.string(),
+    subset: z.string().nullable(),
+    metric: z.string(),
+    score: z.number().finite().nullable(),
+    sample_count: z.number().int().nonnegative().nullable(),
+    categories: z.array(z.string()),
+  })
+  .strict()
+
+export const taskTerminalSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('completed'),
+      metrics: z.array(taskMetricSchema),
+      provider_report_ids: z.array(z.string()),
+      error: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.enum(['failed', 'cancelled']),
+      metrics: z.null(),
+      provider_report_ids: z.null(),
+      error: taskTerminalErrorSchema,
+    })
+    .strict(),
+])
+
+export const invokeStatusSchema = z.enum(['ok', 'completed', 'error', 'stopped', 'terminal_replay'])
 
 export const evalInvokeResponseSchema = z.object({
   status: invokeStatusSchema,
@@ -8,12 +46,14 @@ export const evalInvokeResponseSchema = z.object({
   result: z.unknown().optional(),
   table: z.string().optional(),
   error: z.string().optional(),
+  terminal: taskTerminalSchema.optional(),
 })
 
 export const progressResponseSchema = z
   .object({
     percent: z.number(),
     current_step: z.string().optional(),
+    terminal: taskTerminalSchema.optional(),
   })
   .catchall(z.unknown())
 

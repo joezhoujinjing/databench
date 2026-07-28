@@ -25,9 +25,14 @@
   Dataset source preparation、task/reconcile/model-egress/active-content 安全边界，并通过真实 BLEU/ROUGE
   evaluation 与 stop callback 闭环；E4 已增加完整 `/evaluations/*` lazy route tree、Databench 主/次导航、
   exact Zod client、无路径 public config、opaque route key、scoped tokens、完整中英文词典和可访问基础组件。
-  这些路由当前只声明迁移底座就绪，E5-E7 业务控件仍未完成。Owner 于 2026-07-28 明确
+  EvalScope 的 Databench-owned Python provider source 位于 `workers/evalscope`，与内部 gRPC 的
+  `workers/python` 同级；`deploy/evalscope` 只保留镜像、upstream patch/vendor 和 gateway 部署资产。
+  E5 已完成 Evaluation/Performance 表单、Benchmark autocomplete、Databench exact Dataset source、
+  progress/log/stop/reload task monitor 与安全报告入口，并通过真实 Dataset/native/performance/cancel/
+  provider-interrupt/same-ID gate；当前 14 个 capability green、46 个 planned，E6/E7 仍未完成，不得宣称
+  完整 UI 复刻。Owner 于 2026-07-28 明确手机版竖屏不属于当前 Web gate，并明确
   offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
-  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E4 已关闭，下一步是 E5。
+  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E5 已关闭，下一步是 E6。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 

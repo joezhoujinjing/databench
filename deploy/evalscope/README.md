@@ -1,8 +1,10 @@
-# EvalScope backend runtime
+# EvalScope deployment
 
-This directory builds the pinned, backend-only EvalScope service used by the Databench Evaluation integration. It is
-not the upstream EvalScope Web application: the image deletes `evalscope/web`, registers only the reviewed backend
-routes, and is reachable from a browser only through Databench's same-origin `/evalscope-api` gateway.
+This directory contains the image and gateway deployment assets for the pinned, backend-only EvalScope service used
+by the Databench Evaluation integration. The Databench-owned Python service source and tests live in
+`workers/evalscope`; deployment code must not become an application source directory. The image deletes
+`evalscope/web`, registers only the reviewed backend routes, and is reachable from a browser only through
+Databench's same-origin `/evalscope-api` gateway.
 
 ## Pinned inputs
 
@@ -39,6 +41,7 @@ The service fails closed unless all required values are present:
 | `DATABENCH_SERVICE_CREDENTIAL` | Optional internal service credential |
 | `DATABENCH_ORIGIN` | Exact browser origin used by generated-document CSP |
 | `EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST` | `scheme|CIDR-or-host|port` entries; empty denies every model endpoint |
+| `EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST` | Optional reviewed `scheme|host-or-CIDR|port` entries used only by native Benchmark adapters; empty denies remote Dataset downloads |
 | `EVALSCOPE_PLOTLY_ASSET_PATH` | Must point to the pinned local Plotly asset |
 | `EVALSCOPE_PLOTLY_ASSET_SHA256` | Must equal the digest in `upstream.lock` |
 
@@ -49,6 +52,11 @@ Optional bounded settings are `EVALSCOPE_INPUT_MAX_BYTES`, `EVALSCOPE_OUTPUT_MAX
 
 The production command is fixed to one Gunicorn worker with eight threads. One process owns the in-memory upstream
 process registry; the threads allow progress/log/stop requests while an invoke request blocks.
+
+The model allowlist is enforced before a task is claimed. The child-process socket guard receives the union of the
+model and Dataset allowlists so built-in Benchmark adapters can reach only operator-reviewed Dataset hosts. Adding a
+Dataset host does not make that host an admissible browser-supplied model endpoint. Offline deployments keep the
+Dataset allowlist empty and must pre-populate any native Benchmark data they intend to run.
 
 ## Databench gateway
 
@@ -71,7 +79,7 @@ offline installations.
 ## Verification
 
 ```bash
-uv run --project deploy/evalscope --frozen pytest -q deploy/evalscope/test
+uv run --project workers/evalscope --frozen pytest -q workers/evalscope/tests
 pnpm evalscope:parity:check
 pnpm evalscope:parity:test
 ```

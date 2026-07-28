@@ -3,8 +3,8 @@
 > 每个 E Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- evalscope-status
-current_step: E5
-last_completed_step: E4
+current_step: E6
+last_completed_step: E5
 runtime_enabled: false
 ui_routes_enabled: true
 upstream_commit: b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
@@ -12,17 +12,20 @@ e3_implementation: complete
 e3_gate: passed
 e4_implementation: complete
 e4_gate: passed
+e5_implementation: complete
+e5_gate: passed
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/evalscope-integration-design`
-- **当前 Step:** E5 Tasks 与 Databench Dataset 闭环；尚未开始实现
+- **当前 Step:** E6 Reports、Details 与 Predictions；尚未开始实现
 - **已完成:** E0 决策/来源/能力基线；E1 `evalscope-general-qa@1.0.0` projection；E2 Evaluation Run
-  控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环；E4 Databench Evaluation UI foundation
+  控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环；E4 Databench Evaluation UI foundation；
+  E5 Tasks、Databench Dataset、task monitor 与安全报告入口
 - **产品状态:** backend-only image 与 same-origin gateway 仍 disabled-by-default；`/evaluations/*` 原生
-  lazy routes 已开放，但 E5-E7 业务控件尚未迁移，不计为完整复刻
-- **GE7:** `pnpm evalscope:parity:check:green` 按设计保持失败；60 个 capability 中 5 个 green、55 个 planned
+  lazy routes 已开放，Tasks 已可用；E6/E7 业务页面尚未迁移，不计为完整复刻
+- **GE7:** `pnpm evalscope:parity:check:green` 按设计保持失败；60 个 capability 中 14 个 green、46 个 planned
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
 
 ## Step 状态
@@ -34,8 +37,8 @@ e4_gate: passed
 | E2 | Evaluation run 控制面 | ✅ | GE2 | exact Dataset binding、canonical create digest、REST 状态机 |
 | E3 | backend-only EvalScope 与安全 gateway | ✅ | GE3 | prebuilt image `network=none`、真实 eval/stop/report |
 | E4 | Evaluation UI foundation | ✅ | GE4 | routes/client/tokens/i18n/primitives；11 个 lazy entries |
-| E5 | Tasks 与 Databench Dataset 闭环 | ⬜ 当前 | GE5 | 下一步 |
-| E6 | Reports、Details 与 Predictions | ⬜ | GE6 | |
+| E5 | Tasks 与 Databench Dataset 闭环 | ✅ | GE5 | eval/perf、monitor、exact Dataset、safe viewer |
+| E6 | Reports、Details 与 Predictions | ⬜ 当前 | GE6 | 下一步 |
 | E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ⬜ | GE7 | 完整 UI 复刻唯一 gate |
 | E8 | 结果归档与 retention | ⬜ | GE8 | |
 | E9 | 安全、容量、离线与最终集成 gate | ⬜ | GE9 | |
@@ -149,6 +152,8 @@ runtime/UI flags、V16/V17 与公共云 D3 状态均未改变。
 
 ## E3 交付与 Gate 记录
 
+- Databench-owned EvalScope provider source、Python project 和 tests 位于 `workers/evalscope`；它与
+  `workers/python` 同级但通过内部 HTTP 而不是 gRPC 调用，`deploy/evalscope` 只保留部署资产；
 - pinned EvalScope source/patch、Python lock、base image、Plotly 2.35.2 与 NLTK `punkt_tab` 已进入
   backend-only image；完整 Python package data 保留，upstream `evalscope/web` 整目录删除；
 - Gunicorn 固定 one process + threaded；32 条 runtime routes 仅包含 reviewed provider routes 与
@@ -193,3 +198,35 @@ Owner 于 2026-07-28 确认 GE3/GE9 的 offline release boundary 是 digest-pinn
 完整证据见 [E4-UI-FOUNDATION.md](evidence/E4-UI-FOUNDATION.md)。全仓 lint/build/typecheck/test/openapi/
 v2-status/peers/offline/parity 和 `git diff --check` 均通过；`evalscope:parity:check:green` 按设计继续拒绝
 55 个 planned capability。E4 没有改变 runtime disabled-by-default、V16/V17 或公共云 D3。
+
+## E5 交付与 Gate 记录
+
+- Evaluation/Performance tabs 使用 typed URL state；完整表单、upstream defaults、条件字段、first-invalid
+  focus 和 payload validation 已落地；
+- text+multimodal Benchmark autocomplete 保留手工输入、多值、最多八项、方向键、Enter、Escape 和
+  outside-click；native `dataset_args` 保留 raw JSON，服务端 locator admission error 可回到嵌套字段；
+- Databench Dataset source 完成 Ref → exact version → inspect eligibility/fidelity → reference target →
+  provider re-inspect/export → callback 的闭环；Dataset detail 可直接进入已预选的 Evaluation task；
+- task runner 使用 UUID、重复提交保护、invoke/polling AbortController、增量 log、degraded state、stop、
+  terminal report 和刷新恢复；服务重启后 persisted terminal 重放，失联任务确定性收敛为
+  `provider_interrupted`；
+- 报告新标签页只进入 Databench opaque viewer；iframe 固定 `sandbox="allow-scripts"`，Plotly 使用本地固定
+  asset、nonce CSP 和 `displaylogo=false`；
+- Databench-owned Python provider 已迁到 `workers/evalscope`，与内部 gRPC 的 `workers/python` 同级；
+  `deploy/evalscope` 只保留镜像与部署资产；
+- 真实 Databench Dataset evaluation、native GSM8K、Performance、cancel、provider interrupt、same-ID
+  replay/conflict 均完成；任务 ID、DB 状态与桌面浏览器证据见
+  [E5-TASKS-DATASET.md](evidence/E5-TASKS-DATASET.md)；手机版竖屏按 owner 决策不属于 GE5。
+
+最终 `databench-evalscope:e5` image ID 为
+`sha256:2081e7e002a833f23d6b72f2f1d892d21702e36be5c1ddf1559648fd4afba5bf`。Gate 通过：
+
+- Python lock check 与 54 tests；Web 30 files / 99 tests；全仓 22/22 test tasks；
+- `pnpm lint`（494 files）、`pnpm build`（13/13）、`pnpm typecheck`、`pnpm openapi:check`（11/11）、
+  `pnpm v2:status:check`、`pnpm peers check`、`pnpm evalscope:parity:check`、
+  `pnpm evalscope:parity:test`（7/7）、`pnpm offline:check` 与 `git diff --check`；
+- Web production build 保持 11 个 Evaluation lazy route entries，initial JS 850,200 bytes，低于
+  950,000-byte budget。
+
+E5 将 9 个 target capability 置为 green；连同 E4 和两个 brand-shell exclusion，目前为 14 green / 46
+planned。E6/E7、runtime disabled-by-default、V16/V17 与公共云 D3 均未改变。

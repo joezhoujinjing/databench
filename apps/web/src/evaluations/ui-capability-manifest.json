@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
-  "phase": "E4-foundation",
+  "phase": "E5-tasks-dataset",
   "capability_schema": {
     "status_values": ["planned", "green"],
     "classifications": [
@@ -87,12 +87,13 @@
       "api_operations": ["GET /generated-documents/{opaque_id}"],
       "target": "apps/web/src/evaluations/components/SafeReportLink.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE5:safe-new-tab", "planned:GE6:raw-html-navigation-negative"],
-      "browser_evidence": [
-        "upstream-code:components/eval/TaskMonitor.tsx",
-        "planned:GE7:safe-new-tab"
+      "tests": [
+        "test-file:apps/web/src/evaluations/foundation-static.test.ts",
+        "test-file:apps/web/src/evaluations/api/client.test.ts",
+        "test-file:workers/evalscope/tests/test_documents.py"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     },
     {
       "parity_id": "foundation.api-contracts",
@@ -170,11 +171,14 @@
       "default_or_rule": "Unmount, route change and refresh abort obsolete work; degraded polling keeps the last valid state.",
       "responsive_a11y": "Copy and field errors expose named controls and announced status.",
       "api_operations": ["task polling operations"],
-      "target": "apps/web/src/evaluations/hooks/useEvaluationPolling.ts",
+      "target": "apps/web/src/evaluations/hooks/use-task-runner.ts",
       "upstream_coverage": true,
-      "tests": ["planned:GE5:polling-abort", "planned:GE7:query-direct-refresh"],
-      "browser_evidence": ["upstream-code:hooks", "planned:GE7:async-cleanup"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/tasks/state.test.ts",
+        "test-file:apps/web/src/evaluations/routes/contracts.test.ts"
+      ],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     },
     {
       "parity_id": "foundation.locale-content",
@@ -267,9 +271,9 @@
       "api_operations": [],
       "target": "apps/web/src/evaluations/routes/tasks.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE5:task-tabs"],
-      "browser_evidence": ["upstream-code:pages/TasksPage.tsx", "planned:GE5:task-tabs"],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/routes/contracts.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     },
     {
       "parity_id": "tasks.evaluation-form-fields",
@@ -288,12 +292,12 @@
       "api_operations": ["POST /api/v1/eval/invoke"],
       "target": "apps/web/src/evaluations/features/tasks/EvaluationForm.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE5:evaluation-form-fields"],
-      "browser_evidence": [
-        "upstream-code:components/eval/EvalConfigForm.tsx",
-        "planned:GE5:evaluation-form"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/form/form.test.ts",
+        "test-file:apps/web/src/evaluations/routes/contracts.test.ts"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     },
     {
       "parity_id": "tasks.benchmark-autocomplete",
@@ -307,12 +311,9 @@
       "api_operations": ["GET /api/v1/eval/benchmarks"],
       "target": "apps/web/src/evaluations/features/tasks/BenchmarkAutocomplete.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE5:benchmark-autocomplete"],
-      "browser_evidence": [
-        "upstream-code:components/eval/EvalConfigForm.tsx",
-        "planned:GE5:autocomplete-keyboard"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/form/form.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     },
     {
       "parity_id": "tasks.dataset-args-editor",
@@ -330,14 +331,12 @@
       "target": "apps/web/src/evaluations/features/tasks/DatasetArgsEditor.tsx",
       "upstream_coverage": true,
       "tests": [
-        "planned:GE3:dataset-args-locator-matrix",
-        "planned:GE5:dataset-args-raw-preservation"
+        "test-file:apps/web/src/evaluations/domain/form/form.test.ts",
+        "test-file:apps/web/src/evaluations/api/client.test.ts",
+        "test-file:workers/evalscope/tests/test_app.py"
       ],
-      "browser_evidence": [
-        "upstream-code:domain/form/validation.datasetArgs.test.ts",
-        "planned:GE5:dataset-args-error"
-      ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     },
     {
       "parity_id": "tasks.performance-form-fields",
@@ -354,12 +353,9 @@
       "api_operations": ["POST /api/v1/perf/invoke"],
       "target": "apps/web/src/evaluations/features/tasks/PerformanceForm.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE5:performance-form-fields"],
-      "browser_evidence": [
-        "upstream-code:components/perf/PerfConfigForm.tsx",
-        "planned:GE5:performance-form"
-      ],
-      "status": "planned"
+      "tests": ["test-file:apps/web/src/evaluations/domain/form/form.test.ts"],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     },
     {
       "parity_id": "tasks.monitor-lifecycle",
@@ -382,12 +378,12 @@
       ],
       "target": "apps/web/src/evaluations/features/tasks/TaskMonitor.tsx",
       "upstream_coverage": true,
-      "tests": ["planned:GE5:task-monitor-lifecycle"],
-      "browser_evidence": [
-        "upstream-code:components/eval/TaskMonitor.tsx",
-        "planned:GE5:task-monitor"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/tasks/state.test.ts",
+        "test-file:workers/evalscope/tests/test_app.py"
       ],
-      "status": "planned"
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     },
     {
       "parity_id": "reports.catalogue-filters-sort",
@@ -1246,9 +1242,13 @@
       "api_operations": ["Databench generated /v2 client", "POST /api/v1/eval/invoke"],
       "target": "apps/web/src/evaluations/features/tasks/DatabenchDatasetSource.tsx",
       "upstream_coverage": false,
-      "tests": ["planned:GE5:extension-databench-dataset-source"],
-      "browser_evidence": ["planned:GE5:dataset-source-flow"],
-      "status": "planned"
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/form/form.test.ts",
+        "test-file:apps/web/src/evaluations/routes/contracts.test.ts",
+        "test-file:workers/evalscope/tests/test_databench.py"
+      ],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E5-TASKS-DATASET.md"],
+      "status": "green"
     }
   ]
 }
