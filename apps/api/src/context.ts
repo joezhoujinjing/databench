@@ -37,6 +37,9 @@ export type ApiV2Workspace = Pick<
   | 'runTransform'
   | 'restoreRef'
   | 'failEvaluationRun'
+  | 'failEvaluationResultUpload'
+  | 'finalizeEvaluationResultUpload'
+  | 'prepareEvaluationResultUpload'
   | 'retryTransformJob'
   | 'startEvaluationRun'
 >

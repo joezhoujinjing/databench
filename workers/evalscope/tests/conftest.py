@@ -33,4 +33,5 @@ def runtime_config(tmp_path: Path) -> RuntimeConfig:
         max_concurrent_evals=2,
         max_concurrent_perf=2,
         max_tasks=100,
+        archive_max_bytes=8 * 1024 * 1024,
     )

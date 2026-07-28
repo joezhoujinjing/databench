@@ -9,6 +9,7 @@ import {
   SurfaceTitle,
 } from '@/components/ui/surface.js'
 import { Tabs } from '@/components/ui/tabs.js'
+import { useV2EvaluationRunByTask } from '@/v2/api/hooks.js'
 import {
   buildEvaluationPayload,
   type DatabenchEvaluationBinding,
@@ -68,6 +69,21 @@ function EvaluationTaskPanel() {
   const navigate = routeApi.useNavigate()
   const source: EvaluationSourceKind = search.source === 'databench' ? 'databench' : 'benchmark'
   const [binding, setBinding] = useState<DatabenchEvaluationBinding | null>(null)
+  const onBindingChange = useCallback(
+    (nextBinding: DatabenchEvaluationBinding | null) => {
+      setBinding(nextBinding)
+      if (nextBinding !== null) {
+        void navigate({
+          replace: true,
+          search: (current) => ({
+            ...current,
+            datasetVersion: nextBinding.datasetVersion,
+          }),
+        })
+      }
+    },
+    [navigate],
+  )
   const onTaskIdChange = useCallback(
     (taskId: string) => {
       void navigate({ replace: true, search: (current) => ({ ...current, taskId }) })
@@ -79,6 +95,11 @@ function EvaluationTaskPanel() {
     kind: 'eval',
     onTaskIdChange,
   })
+  const archiveRun = useV2EvaluationRunByTask(
+    binding?.datasetVersion ?? search.datasetVersion ?? '',
+    runner.state.taskId ?? '',
+    source === 'databench' && runner.state.taskId !== null,
+  )
   const disabled = runner.state.phase === 'running' || runner.state.phase === 'stopping'
 
   const onSourceChange = (nextSource: EvaluationSourceKind) => {
@@ -108,7 +129,7 @@ function EvaluationTaskPanel() {
             <DatabenchDatasetSource
               disabled={disabled}
               initialDatasetVersion={search.datasetVersion}
-              onBindingChange={setBinding}
+              onBindingChange={onBindingChange}
             />
           }
           disabled={disabled}
@@ -119,7 +140,14 @@ function EvaluationTaskPanel() {
           source={source}
         />
       }
-      monitor={<TaskMonitor onStop={runner.stop} state={runner.state} />}
+      monitor={
+        <TaskMonitor
+          archiveRun={archiveRun.data}
+          onStop={runner.stop}
+          showArchiveState={source === 'databench'}
+          state={runner.state}
+        />
+      }
       statusTitle={t('evaluations.eval.status')}
     />
   )

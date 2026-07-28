@@ -13,6 +13,7 @@ from .errors import RuntimePolicyError
 
 EVALSCOPE_COMMIT = 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60'
 PLOTLY_SHA256 = '6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603'
+MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 
 
 def _positive_int(env: Mapping[str, str], name: str, default: int) -> int:
@@ -38,6 +39,13 @@ def _bounded_nonnegative_int(env: Mapping[str, str], name: str, default: int, ma
             f'{name} must be between 0 and {maximum}',
             500,
         )
+    return value
+
+
+def _bounded_positive_int(env: Mapping[str, str], name: str, default: int, maximum: int) -> int:
+    value = _bounded_nonnegative_int(env, name, default, maximum)
+    if value == 0:
+        raise RuntimePolicyError('invalid_runtime_config', f'{name} must be positive', 500)
     return value
 
 
@@ -135,6 +143,7 @@ class RuntimeConfig:
     max_concurrent_evals: int
     max_concurrent_perf: int
     max_tasks: int
+    archive_max_bytes: int
 
     @classmethod
     def from_env(cls, source: Mapping[str, str] | None = None) -> 'RuntimeConfig':
@@ -228,6 +237,12 @@ class RuntimeConfig:
             max_concurrent_evals=_positive_int(env, 'EVALSCOPE_MAX_CONCURRENT_EVALS', 2),
             max_concurrent_perf=_positive_int(env, 'EVALSCOPE_MAX_CONCURRENT_PERF', 2),
             max_tasks=_positive_int(env, 'EVALSCOPE_MAX_TASKS', 10_000),
+            archive_max_bytes=_bounded_positive_int(
+                env,
+                'EVALSCOPE_ARCHIVE_MAX_BYTES',
+                MAX_ARCHIVE_BYTES,
+                MAX_ARCHIVE_BYTES,
+            ),
         )
         return config
 

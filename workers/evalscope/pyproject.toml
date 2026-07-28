@@ -3,6 +3,7 @@ name = "databench-evalscope-runtime"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "blake3==1.0.8",
   "bleach==6.2.0",
   "evalscope[service]",
   "flask==3.1.2",
@@ -10,6 +11,7 @@ dependencies = [
   "html5lib==1.1",
   "httpx==0.28.1",
   "rfc8785==0.1.4",
+  "zstandard==0.23.0",
 ]
 
 [dependency-groups]

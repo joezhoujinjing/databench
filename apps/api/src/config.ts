@@ -27,6 +27,18 @@ const EnvSchema = z
     DATABENCH_OPENAPI_SERVER_URL: z.string().trim().min(1).optional(),
     DATABENCH_ROOT: z.string().default('./bench'),
     DATABENCH_V2_CURSOR_SECRET: z.string().min(16),
+    DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(1024 * 1024 * 1024)
+      .default(1024 * 1024 * 1024),
+    DATABENCH_EVALUATION_ARCHIVE_SIGNED_URL_TTL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(15 * 60 * 1000)
+      .default(15 * 60 * 1000),
     DATABENCH_WORKER_ENABLED: z.enum(['true', 'false']).default('false'),
     DATABENCH_WORKER_TARGET: z.string().default('127.0.0.1:50051'),
     DATABENCH_WORKER_JOB_DEADLINE_MS: z.coerce.number().int().positive().default(900_000),
@@ -84,6 +96,8 @@ export interface WorkerApiConfig {
 }
 
 export interface ApiConfig {
+  readonly evaluationArchiveMaxBytes: number
+  readonly evaluationArchiveSignedUrlTtlMs: number
   readonly corsOrigins: readonly string[]
   readonly databaseUrl?: string
   readonly evalscope?: EvalScopeGatewayConfig
@@ -105,6 +119,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       .map((origin) => origin.trim())
       .filter(Boolean),
     evalscope: evalScopeGatewayConfigFromEnv(env),
+    evaluationArchiveMaxBytes: parsed.DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES,
+    evaluationArchiveSignedUrlTtlMs: parsed.DATABENCH_EVALUATION_ARCHIVE_SIGNED_URL_TTL_MS,
     mcp: mcpConfigFromEnv(env),
     port: parsed.PORT,
     storeConfig: v2ObjectStoreConfigFromEnv(env),

@@ -28,6 +28,7 @@ const OTHER_VERSION = 'b'.repeat(64)
 const ARTIFACT_DIGEST = 'c'.repeat(64)
 const CACHE_KEY = 'd'.repeat(64)
 const JOB_ID = `job_${CACHE_KEY}`
+const EVALUATION_RUN_ID = '11111111-1111-4111-8111-111111111111'
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const wireFixture = JSON.parse(
@@ -176,6 +177,109 @@ describe('V2 HTTP API', () => {
     expect(JSON.stringify(deleteRefConflict)).toContain('RefStateConflictErrorResponseV2')
     const restoreRefConflict = document.paths['/v2/refs/{name}:restore']?.post.responses[409]
     expect(JSON.stringify(restoreRefConflict)).toContain('RefStateConflictErrorResponseV2')
+  })
+
+  test('exposes exact prepare, finalize, and fail evaluation archive actions', async () => {
+    const fake = createFakeWorkspace()
+    const baseRun = {
+      id: EVALUATION_RUN_ID,
+      provider: 'evalscope' as const,
+      provider_task_id: 'eval_11111111-1111-4111-8111-111111111111',
+      create_request_digest: '1'.repeat(64),
+      provider_report_ids: [],
+      dataset_version: VERSION,
+      source_ref: null,
+      converter: 'evalscope-general-qa' as const,
+      converter_version: '1.0.0',
+      converter_options: { target_source: 'none' },
+      fidelity_digest: '2'.repeat(64),
+      benchmark: 'general_qa',
+      model_name: null,
+      evalscope_commit: null,
+      status: 'completed' as const,
+      metrics: [],
+      error: null,
+      archive_attempt: 1,
+      result_artifact_key: null,
+      result_artifact_digest: null,
+      result_artifact_size_bytes: null,
+      archive_error: null,
+      created_at: '2026-07-28T00:00:00.000Z',
+      started_at: '2026-07-28T00:00:01.000Z',
+      finished_at: '2026-07-28T00:01:00.000Z',
+      updated_at: '2026-07-28T00:01:00.000Z',
+    }
+    const workspace = {
+      ...fake.workspace,
+      async prepareEvaluationResultUpload() {
+        return {
+          run_id: EVALUATION_RUN_ID,
+          archive_status: 'uploading' as const,
+          archive_attempt: 1,
+          upload: {
+            method: 'PUT' as const,
+            url: 'https://objects.example/exact?signature=opaque',
+            expires_at: '2026-07-28T00:15:00.000Z',
+            content_type: 'application/zstd' as const,
+            required_headers: {
+              'content-type': 'application/zstd' as const,
+              'if-none-match': '*' as const,
+            },
+            max_size_bytes: 1024,
+          },
+        }
+      },
+      async finalizeEvaluationResultUpload() {
+        return {
+          ...baseRun,
+          archive_status: 'available' as const,
+          result_artifact_key: `objects/v2/evaluation-result-v1/33/${'3'.repeat(64)}.tar.zst`,
+          result_artifact_digest: '3'.repeat(64),
+          result_artifact_size_bytes: 32,
+        }
+      },
+      async failEvaluationResultUpload() {
+        return {
+          ...baseRun,
+          archive_status: 'failed' as const,
+          archive_error: {
+            phase: 'provider_archive',
+            code: 'archive_failed',
+            message: 'archive failed',
+          },
+        }
+      },
+    } satisfies ApiV2Workspace
+    const app = createTestApp({ v2Workspace: workspace })
+    const post = (suffix: string, body: unknown) =>
+      app.fetch(
+        request(`/v2/evaluation-runs/${EVALUATION_RUN_ID}:${suffix}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      )
+    expect(await json(await post('prepare-result-upload', {}))).toMatchObject({
+      archive_status: 'uploading',
+      upload: { required_headers: { 'if-none-match': '*' } },
+    })
+    expect(
+      await json(
+        await post('finalize-result-upload', {
+          archive_attempt: 1,
+          digest: '3'.repeat(64),
+          size_bytes: 32,
+        }),
+      ),
+    ).toMatchObject({ archive_status: 'available' })
+    expect(
+      await json(
+        await post('fail-result-upload', {
+          archive_attempt: 1,
+          error: { phase: 'provider_archive', code: 'archive_failed', message: 'archive failed' },
+        }),
+      ),
+    ).toMatchObject({ archive_status: 'failed' })
   })
 
   test('reports enabled V2 capability diagnostics without opening dependencies', async () => {

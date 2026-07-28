@@ -33,6 +33,7 @@ def test_runtime_config_is_fail_closed_and_path_separated(tmp_path: Path) -> Non
     assert config.input_dir.is_dir()
     assert config.endpoint_allowlist == ''
     assert config.dataset_endpoint_allowlist == ''
+    assert config.archive_max_bytes == 1024 * 1024 * 1024
 
     configured = RuntimeConfig.from_env({
         **env,
@@ -56,6 +57,8 @@ def test_runtime_config_is_fail_closed_and_path_separated(tmp_path: Path) -> Non
         RuntimeConfig.from_env({**env, 'DATABENCH_SERVICE_CREDENTIAL': 'bad\nheader'})
     with pytest.raises(RuntimePolicyError):
         RuntimeConfig.from_env({**env, 'EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST': 'https|*|443'})
+    with pytest.raises(RuntimePolicyError):
+        RuntimeConfig.from_env({**env, 'EVALSCOPE_ARCHIVE_MAX_BYTES': str(1024 * 1024 * 1024 + 1)})
 
 
 def test_config_response_origins_and_plotly_digest_are_exact(tmp_path: Path) -> None:

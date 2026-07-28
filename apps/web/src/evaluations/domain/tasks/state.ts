@@ -15,6 +15,7 @@ export interface TaskRunnerError {
 export interface TaskRunnerState {
   readonly degradedMessage: string | null
   readonly document: TaskDocument | null
+  readonly documentStatus: 'idle' | 'loading' | 'available' | 'unavailable'
   readonly error: TaskRunnerError | null
   readonly logText: string
   readonly phase: TaskPhase
@@ -28,6 +29,7 @@ export interface TaskRunnerState {
 export const INITIAL_TASK_RUNNER_STATE: TaskRunnerState = {
   degradedMessage: null,
   document: null,
+  documentStatus: 'idle',
   error: null,
   logText: '',
   phase: 'idle',
@@ -54,6 +56,8 @@ export type TaskRunnerAction =
   | { readonly taskId: string; readonly terminal: TaskTerminal; readonly type: 'terminal' }
   | { readonly error: TaskRunnerError; readonly taskId: string; readonly type: 'failed' }
   | { readonly document: TaskDocument; readonly taskId: string; readonly type: 'document' }
+  | { readonly taskId: string; readonly type: 'document-loading' }
+  | { readonly taskId: string; readonly type: 'document-unavailable' }
 
 export function taskRunnerReducer(
   state: TaskRunnerState,
@@ -68,7 +72,13 @@ export function taskRunnerReducer(
     }
   }
   if (state.taskId !== action.taskId) return state
-  if (isTerminalPhase(state.phase) && action.type !== 'document') return state
+  if (
+    isTerminalPhase(state.phase) &&
+    action.type !== 'document' &&
+    action.type !== 'document-loading' &&
+    action.type !== 'document-unavailable'
+  )
+    return state
   if (action.type === 'stopping') return { ...state, phase: 'stopping' }
   if (action.type === 'progress') {
     return { ...state, progress: Math.max(0, Math.min(100, action.percent)) }
@@ -105,7 +115,9 @@ export function taskRunnerReducer(
       terminal: action.terminal,
     }
   }
-  return { ...state, document: action.document }
+  if (action.type === 'document-loading') return { ...state, documentStatus: 'loading' }
+  if (action.type === 'document-unavailable') return { ...state, documentStatus: 'unavailable' }
+  return { ...state, document: action.document, documentStatus: 'available' }
 }
 
 export function isTerminalPhase(phase: TaskPhase): boolean {

@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 
+from .archive import package_result_archive
 from .config import EVALSCOPE_COMMIT, RuntimeConfig
 from .errors import RuntimePolicyError, UpstreamProtocolError
 from .storage import TaskManifestStore
@@ -119,6 +120,7 @@ class DatabenchClient:
         manifests: TaskManifestStore,
         *,
         client: httpx.Client | None = None,
+        uploader: httpx.Client | None = None,
     ) -> None:
         self._config = config
         self._manifests = manifests
@@ -132,6 +134,7 @@ class DatabenchClient:
             timeout=httpx.Timeout(60.0, connect=10.0),
             trust_env=False,
         )
+        self._uploader = uploader
 
     def prepare_evaluation(
         self,
@@ -233,7 +236,168 @@ class DatabenchClient:
             )
         except RuntimePolicyError:
             return False
-        return result.get('id') == run_id and result.get('status') == status
+        if result.get('id') != run_id or result.get('status') != status:
+            return False
+        if status != 'completed':
+            return True
+        try:
+            return self._archive_completed_result(
+                task_id=str(integration.get('task_id')),
+                run_id=run_id,
+                provider_report_ids=body['provider_report_ids'],
+            )
+        except RuntimePolicyError as error:
+            if error.code not in {
+                'archive_secret_detected',
+                'archive_path_invalid',
+                'archive_file_invalid',
+                'archive_too_large',
+            }:
+                return False
+            return self._fail_archive(run_id, error)
+
+    def _archive_completed_result(
+        self,
+        *,
+        task_id: str,
+        run_id: str,
+        provider_report_ids: list[str],
+    ) -> bool:
+        prepared = self._json_request(
+            'POST',
+            f'/v2/evaluation-runs/{run_id}:prepare-result-upload',
+            {},
+        )
+        parsed = self._validate_archive_prepare(prepared, run_id)
+        if parsed['archive_status'] == 'available':
+            return True
+        attempt = parsed['archive_attempt']
+        upload = parsed['upload']
+        max_bytes = min(upload['max_size_bytes'], self._config.archive_max_bytes)
+        archive = package_result_archive(
+            self._config.output_dir / task_id,
+            task_id=task_id,
+            run_id=run_id,
+            provider_report_ids=provider_report_ids,
+            max_bytes=max_bytes,
+        )
+        try:
+            uploaded = self._put_archive(upload, archive.path, archive.size)
+            if not uploaded:
+                refreshed = self._json_request(
+                    'POST',
+                    f'/v2/evaluation-runs/{run_id}:prepare-result-upload',
+                    {},
+                )
+                parsed = self._validate_archive_prepare(refreshed, run_id)
+                if parsed['archive_status'] == 'available':
+                    return True
+                if parsed['archive_attempt'] != attempt:
+                    raise UpstreamProtocolError('Databench changed an active archive attempt')
+                if not self._put_archive(parsed['upload'], archive.path, archive.size):
+                    raise RuntimePolicyError(
+                        'archive_upload_unavailable',
+                        'Evaluation archive upload could not be confirmed',
+                        503,
+                    )
+            finalized = self._json_request(
+                'POST',
+                f'/v2/evaluation-runs/{run_id}:finalize-result-upload',
+                {
+                    'archive_attempt': attempt,
+                    'digest': archive.digest,
+                    'size_bytes': archive.size,
+                },
+                retry_transport_once=True,
+            )
+            return (
+                finalized.get('id') == run_id
+                and finalized.get('archive_status') == 'available'
+                and finalized.get('archive_attempt') == attempt
+                and finalized.get('result_artifact_digest') == archive.digest
+                and finalized.get('result_artifact_size_bytes') == archive.size
+            )
+        finally:
+            archive.cleanup()
+
+    def _put_archive(self, upload: dict[str, Any], path: Path, size: int) -> bool:
+        headers = dict(upload['required_headers'])
+        headers['content-length'] = str(size)
+        try:
+            if self._uploader is None:
+                with httpx.Client(
+                    follow_redirects=False,
+                    timeout=httpx.Timeout(120.0, connect=10.0),
+                    trust_env=False,
+                ) as uploader, path.open('rb') as source:
+                    response = uploader.put(upload['url'], headers=headers, content=source)
+            else:
+                with path.open('rb') as source:
+                    response = self._uploader.put(upload['url'], headers=headers, content=source)
+        except (OSError, httpx.HTTPError):
+            return False
+        if 300 <= response.status_code < 400 or response.headers.get('location'):
+            raise RuntimePolicyError(
+                'archive_upload_redirect_rejected',
+                'Evaluation archive upload redirect was rejected',
+                502,
+            )
+        if response.status_code == 412:
+            return True
+        return response.status_code in {200, 201, 204}
+
+    def _validate_archive_prepare(self, value: dict[str, Any], run_id: str) -> dict[str, Any]:
+        if set(value) != {'run_id', 'archive_status', 'archive_attempt', 'upload'}:
+            raise UpstreamProtocolError('Databench archive preparation response is invalid')
+        attempt = value.get('archive_attempt')
+        status = value.get('archive_status')
+        upload = value.get('upload')
+        if value.get('run_id') != run_id or not isinstance(attempt, int) or attempt <= 0:
+            raise UpstreamProtocolError('Databench archive preparation response is invalid')
+        if status == 'available' and upload is None:
+            return value
+        if status != 'uploading' or not isinstance(upload, dict):
+            raise UpstreamProtocolError('Databench archive preparation response is invalid')
+        required_headers = upload.get('required_headers')
+        max_size = upload.get('max_size_bytes')
+        url = upload.get('url')
+        if (
+            set(upload)
+            != {'method', 'url', 'expires_at', 'content_type', 'required_headers', 'max_size_bytes'}
+            or upload.get('method') != 'PUT'
+            or upload.get('content_type') != 'application/zstd'
+            or required_headers
+            != {'content-type': 'application/zstd', 'if-none-match': '*'}
+            or not isinstance(max_size, int)
+            or max_size <= 0
+            or not isinstance(url, str)
+            or not url.startswith(('http://', 'https://'))
+        ):
+            raise UpstreamProtocolError('Databench archive upload descriptor is invalid')
+        return value
+
+    def _fail_archive(self, run_id: str, error: RuntimePolicyError) -> bool:
+        try:
+            current = self._json_request('GET', f'/v2/evaluation-runs/{run_id}')
+            attempt = current.get('archive_attempt')
+            if not isinstance(attempt, int) or attempt <= 0:
+                return False
+            failed = self._json_request(
+                'POST',
+                f'/v2/evaluation-runs/{run_id}:fail-result-upload',
+                {
+                    'archive_attempt': attempt,
+                    'error': {
+                        'phase': 'provider_archive',
+                        'code': error.code,
+                        'message': 'EvalScope result archive was rejected by the archive policy',
+                    },
+                },
+                retry_transport_once=True,
+            )
+        except RuntimePolicyError:
+            return False
+        return failed.get('id') == run_id and failed.get('archive_status') == 'failed'
 
     def _ensure_run_id(self, integration: dict[str, Any]) -> str:
         existing = integration.get('run_id')

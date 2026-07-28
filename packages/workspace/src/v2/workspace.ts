@@ -23,6 +23,10 @@ import {
   type CreateEvaluationRunV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
+  type FailEvaluationRunArchiveV2,
+  type FinalizeEvaluationRunArchiveV2,
+  type MarkEvaluationRunArchiveUploadingV2,
+  type PrepareEvaluationRunArchiveV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
   type RestoreRefV2,
@@ -115,8 +119,12 @@ import {
   type ExportPlanV2,
   type ExportRequestV2,
   ExportRequestV2Schema,
+  type FailEvaluationResultUploadRequestV2,
+  FailEvaluationResultUploadRequestV2Schema,
   type FailEvaluationRunRequestV2,
   FailEvaluationRunRequestV2Schema,
+  type FinalizeEvaluationResultUploadRequestV2,
+  FinalizeEvaluationResultUploadRequestV2Schema,
   type IngestResultV2,
   IngestResultV2Schema,
   type InspectExportRequestV2,
@@ -135,6 +143,9 @@ import {
   PostTrainingRecordV2Schema,
   type PostTrainingV2Capability,
   type PostTrainingV2Limits,
+  PrepareEvaluationResultUploadRequestV2Schema,
+  type PrepareEvaluationResultUploadResponseV2,
+  PrepareEvaluationResultUploadResponseV2Schema,
   type PutRefRequestV2,
   PutRefRequestV2Schema,
   RecordIdV2Schema,
@@ -162,6 +173,7 @@ import {
   RunTransformRequestV2Schema,
   type RunTransformResultV2,
   RunTransformResultV2Schema,
+  ServiceUnavailableError,
   StartEvaluationRunRequestV2Schema,
   TransformCacheIdentityV1Schema,
   type TransformDescriptorV2,
@@ -173,6 +185,8 @@ import {
   TransformJobPageV2Schema,
   TransformJobStateConflictErrorV2,
   type TransformJobV2,
+  V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES,
+  V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS,
   V2_LINEAGE_MAX_DEPTH,
   V2_LINEAGE_MAX_NODES,
   V2_RECORD_JSON_LAYOUT_VERSION,
@@ -181,6 +195,7 @@ import {
 } from '@databench/schema'
 import {
   createV2ObjectStore,
+  EvaluationArtifactStoreV1,
   FileBackedV2Store,
   type PreparedArtifactV2,
   type V2ObjectStoreConfig,
@@ -296,6 +311,18 @@ export interface V2WorkspaceCatalog {
   transitionEvaluationRun(
     input: TransitionEvaluationRunV2,
   ): Promise<CatalogEvaluationRunRowV2 | null>
+  prepareEvaluationRunArchive(
+    input: PrepareEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null>
+  markEvaluationRunArchiveUploading(
+    input: MarkEvaluationRunArchiveUploadingV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null>
+  finalizeEvaluationRunArchive(
+    input: FinalizeEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null>
+  failEvaluationRunArchive(
+    input: FailEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null>
 }
 
 export interface V2WorkspaceOperationOptions extends V2OperationContext {}
@@ -344,6 +371,7 @@ export interface V2WorkspaceOptions {
   readonly transformLimits?: Partial<V2TransformLimits>
   readonly jsonlLimits?: Partial<V2JsonlLimits>
   readonly onCleanupError?: (error: unknown, primaryError: unknown | null) => void
+  readonly evaluationArtifactStore?: EvaluationArtifactStoreV1
 }
 
 export interface V2WorkspaceOpenOptions {
@@ -354,6 +382,8 @@ export interface V2WorkspaceOpenOptions {
   readonly datasetLimits?: V2DatasetLimits
   readonly transformLimits?: Partial<V2TransformLimits>
   readonly jsonlLimits?: Partial<V2JsonlLimits>
+  readonly evaluationArchiveMaxBytes?: number
+  readonly evaluationArchiveSignedUrlTtlMs?: number
 }
 
 interface ResolvedLayoutV2 {
@@ -392,6 +422,7 @@ export class V2Workspace {
   readonly #runtimeCapability: Readonly<PostTrainingV2RuntimeCapability>
   readonly #transformSemaphore: V2TransformSemaphore
   readonly #onCleanupError: ((error: unknown, primaryError: unknown | null) => void) | undefined
+  readonly #evaluationArtifacts: EvaluationArtifactStoreV1 | undefined
   #namespacePromise: Promise<string> | undefined
   #closeOwnedResources: (() => Promise<void>) | undefined
   #closePromise: Promise<void> | undefined
@@ -416,6 +447,14 @@ export class V2Workspace {
         store,
         tempStore,
         cursorSecret: options.cursorSecret,
+        evaluationArtifactStore: new EvaluationArtifactStoreV1({
+          objectStore,
+          tempStore,
+          maxBytes: options.evaluationArchiveMaxBytes ?? V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES,
+          signedUrlTtlMs:
+            options.evaluationArchiveSignedUrlTtlMs ??
+            V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS,
+        }),
         ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
         ...(options.transformLimits === undefined
           ? {}
@@ -448,6 +487,12 @@ export class V2Workspace {
     }
     if (options.tempStore !== undefined && !(options.tempStore instanceof V2TempStore)) {
       throw new TypeError('V2Workspace tempStore must be a V2TempStore')
+    }
+    if (
+      options.evaluationArtifactStore !== undefined &&
+      !(options.evaluationArtifactStore instanceof EvaluationArtifactStoreV1)
+    ) {
+      throw new TypeError('V2Workspace evaluationArtifactStore is invalid')
     }
     this.#catalog = options.catalog
     this.#store = options.store
@@ -483,6 +528,7 @@ export class V2Workspace {
     claimedWorkspaceCaches.add(cache)
     this.#cache = cache
     this.#onCleanupError = options.onCleanupError
+    this.#evaluationArtifacts = options.evaluationArtifactStore
     this.#runtimeCapability = postTrainingV2Capability({
       datasetLimits: this.#datasetLimits,
       jsonlLimits: this.#jsonlLimits,
@@ -1133,6 +1179,203 @@ export class V2Workspace {
       },
       context,
     )
+  }
+
+  async prepareEvaluationResultUpload(
+    idInput: string,
+    requestInput: unknown,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<PrepareEvaluationResultUploadResponseV2> {
+    context.signal?.throwIfAborted()
+    PrepareEvaluationResultUploadRequestV2Schema.parse(requestInput)
+    const artifacts = this.#requireEvaluationArtifacts()
+    const id = EvaluationRunIdV2Schema.parse(idInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogEvaluationRunRowV2 | null
+    try {
+      row = await waitWithAbort(
+        this.#catalog.prepareEvaluationRunArchive({ namespaceId, id }),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row === null) throw new NotFoundError('Evaluation run was not found', { run_id: id })
+    let run = evaluationRunFromCatalogV2(row)
+    if (run.archive_status === 'available') {
+      return PrepareEvaluationResultUploadResponseV2Schema.parse({
+        run_id: id,
+        archive_status: 'available',
+        archive_attempt: run.archive_attempt,
+        upload: null,
+      })
+    }
+    if (run.archive_status !== 'pending' && run.archive_status !== 'uploading') {
+      throw evaluationArchiveConflict(run, 'archive_invalid_transition', 'uploading')
+    }
+    const attempt = run.archive_attempt
+    const target = await artifacts.staging.prepareUpload({ runId: id, attempt })
+    if (run.archive_status === 'pending') {
+      try {
+        row = await waitWithAbort(
+          this.#catalog.markEvaluationRunArchiveUploading({
+            namespaceId,
+            id,
+            archiveAttempt: attempt,
+          }),
+          context.signal,
+        )
+      } catch (error) {
+        if (context.signal?.aborted) throw error
+        mapV2CatalogError(error, false)
+      }
+      if (row === null) throw new NotFoundError('Evaluation run was not found', { run_id: id })
+      run = evaluationRunFromCatalogV2(row)
+      if (run.archive_status === 'available') {
+        return PrepareEvaluationResultUploadResponseV2Schema.parse({
+          run_id: id,
+          archive_status: 'available',
+          archive_attempt: run.archive_attempt,
+          upload: null,
+        })
+      }
+      if (run.archive_status !== 'uploading' || run.archive_attempt !== attempt) {
+        throw evaluationArchiveConflict(run, 'archive_attempt_mismatch', 'uploading')
+      }
+    }
+    return PrepareEvaluationResultUploadResponseV2Schema.parse({
+      run_id: id,
+      archive_status: 'uploading',
+      archive_attempt: attempt,
+      upload: {
+        method: 'PUT',
+        url: target.writeUrl,
+        expires_at: target.expiresAt.toISOString(),
+        content_type: target.mediaType,
+        required_headers: target.requiredHeaders,
+        max_size_bytes: target.maxSize,
+      },
+    })
+  }
+
+  async finalizeEvaluationResultUpload(
+    idInput: string,
+    requestInput: FinalizeEvaluationResultUploadRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunV2> {
+    context.signal?.throwIfAborted()
+    const artifacts = this.#requireEvaluationArtifacts()
+    const id = EvaluationRunIdV2Schema.parse(idInput)
+    const request = FinalizeEvaluationResultUploadRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const existing = await this.getEvaluationRun(id, context)
+    if (existing === null) throw new NotFoundError('Evaluation run was not found', { run_id: id })
+    if (existing.archive_status === 'available') {
+      assertEvaluationArchiveReplay(existing, request)
+      await this.#cleanupEvaluationArchiveStaging(artifacts, id, request.archive_attempt)
+      return existing
+    }
+    if (existing.archive_status !== 'uploading') {
+      throw evaluationArchiveConflict(existing, 'archive_invalid_transition', 'available')
+    }
+    if (existing.archive_attempt !== request.archive_attempt) {
+      throw evaluationArchiveConflict(existing, 'archive_attempt_mismatch', 'available')
+    }
+    const artifact = await artifacts.finalize({
+      runId: id,
+      attempt: request.archive_attempt,
+      expectedDigest: request.digest,
+      expectedSize: request.size_bytes,
+      ...(context.signal === undefined ? {} : { signal: context.signal }),
+    })
+    let row: CatalogEvaluationRunRowV2 | null
+    try {
+      row = await waitWithAbort(
+        this.#catalog.finalizeEvaluationRunArchive({
+          namespaceId,
+          id,
+          archiveAttempt: request.archive_attempt,
+          resultArtifactKey: artifact.key,
+          resultArtifactDigest: artifact.digest,
+          resultArtifactSizeBytes: BigInt(artifact.size),
+        }),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row === null) throw new NotFoundError('Evaluation run was not found', { run_id: id })
+    const run = evaluationRunFromCatalogV2(row)
+    if (run.archive_status !== 'available') {
+      throw evaluationArchiveConflict(run, 'archive_invalid_transition', 'available')
+    }
+    assertEvaluationArchiveReplay(run, request)
+    await this.#cleanupEvaluationArchiveStaging(artifacts, id, request.archive_attempt)
+    return run
+  }
+
+  async failEvaluationResultUpload(
+    idInput: string,
+    requestInput: FailEvaluationResultUploadRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<EvaluationRunV2> {
+    context.signal?.throwIfAborted()
+    const artifacts = this.#requireEvaluationArtifacts()
+    const id = EvaluationRunIdV2Schema.parse(idInput)
+    const request = FailEvaluationResultUploadRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogEvaluationRunRowV2 | null
+    try {
+      row = await waitWithAbort(
+        this.#catalog.failEvaluationRunArchive({
+          namespaceId,
+          id,
+          archiveAttempt: request.archive_attempt,
+          error: request.error,
+        }),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row === null) throw new NotFoundError('Evaluation run was not found', { run_id: id })
+    const run = evaluationRunFromCatalogV2(row)
+    if (run.archive_attempt !== request.archive_attempt) {
+      throw evaluationArchiveConflict(run, 'archive_attempt_mismatch', 'failed')
+    }
+    if (
+      run.archive_status !== 'failed' ||
+      canonicalJsonV2(run.archive_error) !== canonicalJsonV2(request.error)
+    ) {
+      throw evaluationArchiveConflict(run, 'archive_body_mismatch', 'failed')
+    }
+    await this.#cleanupEvaluationArchiveStaging(artifacts, id, request.archive_attempt)
+    return run
+  }
+
+  #requireEvaluationArtifacts(): EvaluationArtifactStoreV1 {
+    if (this.#evaluationArtifacts === undefined) {
+      throw new ServiceUnavailableError('Evaluation archive storage is not configured', {
+        dependency: 'object_store',
+        retryable: true,
+      })
+    }
+    return this.#evaluationArtifacts
+  }
+
+  async #cleanupEvaluationArchiveStaging(
+    artifacts: EvaluationArtifactStoreV1,
+    runId: string,
+    attempt: number,
+  ): Promise<void> {
+    try {
+      await artifacts.staging.deleteExact({ runId, attempt }, {})
+    } catch (error) {
+      this.#reportCleanupError(error, null)
+    }
   }
 
   async #transitionEvaluationRun(
@@ -2698,6 +2941,35 @@ function evaluationTransitionBodyMatches(
   return canonicalJsonV2(run.error) === canonicalJsonV2(input.error)
 }
 
+function evaluationArchiveConflict(
+  run: EvaluationRunV2,
+  reason: 'archive_invalid_transition' | 'archive_attempt_mismatch' | 'archive_body_mismatch',
+  requestedArchiveStatus: 'uploading' | 'available' | 'failed',
+): EvaluationRunStateConflictErrorV2 {
+  return new EvaluationRunStateConflictErrorV2({
+    reason,
+    run_id: run.id,
+    status: run.status,
+    requested_status: null,
+    archive_status: run.archive_status,
+    archive_attempt: run.archive_attempt,
+    requested_archive_status: requestedArchiveStatus,
+  })
+}
+
+function assertEvaluationArchiveReplay(
+  run: EvaluationRunV2,
+  request: FinalizeEvaluationResultUploadRequestV2,
+): void {
+  if (
+    run.archive_attempt !== request.archive_attempt ||
+    run.result_artifact_digest !== request.digest ||
+    run.result_artifact_size_bytes !== request.size_bytes
+  ) {
+    throw evaluationArchiveConflict(run, 'archive_body_mismatch', 'available')
+  }
+}
+
 function requireExactDatasetVersion(input: string): string {
   return DigestHexV2Schema.parse(input)
 }
@@ -3259,6 +3531,25 @@ function snapshotV2WorkspaceOpenOptions(
   ) {
     throw new TypeError('V2Workspace storeConfig must be an object')
   }
+  if (input.evaluationArchiveMaxBytes !== undefined) {
+    const limit = positiveSafeInteger('evaluationArchiveMaxBytes', input.evaluationArchiveMaxBytes)
+    if (limit > V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES) {
+      throw new TypeError(
+        `evaluationArchiveMaxBytes must not exceed ${V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES}`,
+      )
+    }
+  }
+  if (input.evaluationArchiveSignedUrlTtlMs !== undefined) {
+    const ttlMs = positiveSafeInteger(
+      'evaluationArchiveSignedUrlTtlMs',
+      input.evaluationArchiveSignedUrlTtlMs,
+    )
+    if (ttlMs > V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS) {
+      throw new TypeError(
+        `evaluationArchiveSignedUrlTtlMs must not exceed ${V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS}`,
+      )
+    }
+  }
   return Object.freeze({
     cursorSecret: input.cursorSecret,
     ...(input.root === undefined ? {} : { root: input.root }),
@@ -3267,6 +3558,12 @@ function snapshotV2WorkspaceOpenOptions(
     ...(input.datasetLimits === undefined ? {} : { datasetLimits: input.datasetLimits }),
     ...(input.transformLimits === undefined ? {} : { transformLimits: input.transformLimits }),
     ...(input.jsonlLimits === undefined ? {} : { jsonlLimits: input.jsonlLimits }),
+    ...(input.evaluationArchiveMaxBytes === undefined
+      ? {}
+      : { evaluationArchiveMaxBytes: input.evaluationArchiveMaxBytes }),
+    ...(input.evaluationArchiveSignedUrlTtlMs === undefined
+      ? {}
+      : { evaluationArchiveSignedUrlTtlMs: input.evaluationArchiveSignedUrlTtlMs }),
   })
 }
 

@@ -1,20 +1,36 @@
-import { CheckCircle2, Loader2, OctagonX, Square, XCircle } from 'lucide-react'
+import {
+  Archive,
+  CheckCircle2,
+  Cloud,
+  CloudOff,
+  Loader2,
+  OctagonX,
+  Square,
+  XCircle,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Alert } from '@/components/ui/alert.js'
 import { Badge } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
+import type { EvaluationRunV2 } from '@/v2/api/types.js'
 import { SafeReportLink } from '../../components/SafeReportLink.js'
+import { evaluationResultAvailability } from '../../domain/tasks/availability.js'
 import type { TaskRunnerState } from '../../domain/tasks/state.js'
 
 export function TaskMonitor({
   onStop,
   state,
+  archiveRun,
+  showArchiveState = false,
 }: {
   readonly onStop: () => Promise<void>
   readonly state: TaskRunnerState
+  readonly archiveRun?: EvaluationRunV2 | null | undefined
+  readonly showArchiveState?: boolean
 }) {
   const { t } = useTranslation()
   const active = state.phase === 'running' || state.phase === 'stopping'
+  const availability = showArchiveState ? evaluationResultAvailability(state, archiveRun) : null
 
   return (
     <div className="space-y-4">
@@ -123,6 +139,33 @@ export function TaskMonitor({
           {t('evaluations.common.openNewTab')}
         </SafeReportLink>
       ) : null}
+
+      {availability === null ? null : (
+        <section className="space-y-2 border-border border-t pt-4">
+          <h3 className="font-medium text-muted-foreground text-sm">
+            {t('evaluations.tasks.resultAvailability')}
+          </h3>
+          <div className="flex flex-wrap gap-2" role="status">
+            <Badge tone={availability.online === 'available' ? 'green' : 'muted'}>
+              {availability.online === 'available' ? (
+                <Cloud aria-hidden="true" size={13} />
+              ) : availability.online === 'unavailable' ? (
+                <CloudOff aria-hidden="true" size={13} />
+              ) : (
+                <Loader2 aria-hidden="true" className="animate-spin" size={13} />
+              )}
+              {t(`evaluations.tasks.online_${availability.online}`)}
+            </Badge>
+            <Badge tone={availability.archive === 'available' ? 'green' : 'muted'}>
+              <Archive aria-hidden="true" size={13} />
+              {t(`evaluations.tasks.archive_${availability.archive}`)}
+            </Badge>
+          </div>
+          {archiveRun?.archive_status === 'failed' && archiveRun.archive_error !== null ? (
+            <p className="text-danger text-xs">{archiveRun.archive_error.message}</p>
+          ) : null}
+        </section>
+      )}
     </div>
   )
 }

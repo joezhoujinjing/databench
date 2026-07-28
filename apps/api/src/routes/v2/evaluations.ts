@@ -6,8 +6,12 @@ import {
   EvaluationRunPageV2Schema,
   EvaluationRunParamsV2Schema,
   EvaluationRunV2Schema,
+  FailEvaluationResultUploadRequestV2Schema,
   FailEvaluationRunRequestV2Schema,
+  FinalizeEvaluationResultUploadRequestV2Schema,
   NotFoundError,
+  PrepareEvaluationResultUploadRequestV2Schema,
+  PrepareEvaluationResultUploadResponseV2Schema,
   StartEvaluationRunRequestV2Schema,
 } from '@databench/schema'
 import { createRoute, type OpenAPIHono } from '@hono/zod-openapi'
@@ -96,6 +100,63 @@ const completeEvaluationRunRoute = actionRoute('complete', CompleteEvaluationRun
 const failEvaluationRunRoute = actionRoute('fail', FailEvaluationRunRequestV2Schema)
 const cancelEvaluationRunRoute = actionRoute('cancel', CancelEvaluationRunRequestV2Schema)
 
+const prepareEvaluationResultUploadRoute = createRoute({
+  method: 'post',
+  path: '/v2/evaluation-runs/{run_id}:prepare-result-upload',
+  operationId: 'prepareEvaluationResultUploadV2',
+  tags: ['v2 evaluation runs'],
+  request: {
+    params: EvaluationRunParamsV2Schema,
+    body: {
+      required: true,
+      content: { 'application/json': { schema: PrepareEvaluationResultUploadRequestV2Schema } },
+    },
+  },
+  responses: {
+    200: jsonResponseV2(
+      PrepareEvaluationResultUploadResponseV2Schema,
+      'Prepare or replay exact evaluation result upload',
+    ),
+    ...V2_EVALUATION_RUN_ACTION_ERROR_RESPONSES,
+  },
+})
+
+const finalizeEvaluationResultUploadRoute = createRoute({
+  method: 'post',
+  path: '/v2/evaluation-runs/{run_id}:finalize-result-upload',
+  operationId: 'finalizeEvaluationResultUploadV2',
+  tags: ['v2 evaluation runs'],
+  request: {
+    params: EvaluationRunParamsV2Schema,
+    body: {
+      required: true,
+      content: { 'application/json': { schema: FinalizeEvaluationResultUploadRequestV2Schema } },
+    },
+  },
+  responses: {
+    200: jsonResponseV2(EvaluationRunV2Schema, 'Finalize or replay evaluation result upload'),
+    ...V2_EVALUATION_RUN_ACTION_ERROR_RESPONSES,
+  },
+})
+
+const failEvaluationResultUploadRoute = createRoute({
+  method: 'post',
+  path: '/v2/evaluation-runs/{run_id}:fail-result-upload',
+  operationId: 'failEvaluationResultUploadV2',
+  tags: ['v2 evaluation runs'],
+  request: {
+    params: EvaluationRunParamsV2Schema,
+    body: {
+      required: true,
+      content: { 'application/json': { schema: FailEvaluationResultUploadRequestV2Schema } },
+    },
+  },
+  responses: {
+    200: jsonResponseV2(EvaluationRunV2Schema, 'Fail or replay evaluation result upload'),
+    ...V2_EVALUATION_RUN_ACTION_ERROR_RESPONSES,
+  },
+})
+
 export function registerV2EvaluationRunRoutes(app: OpenAPIHono<ApiEnv>): void {
   for (const route of [
     createEvaluationRunRoute,
@@ -105,6 +166,9 @@ export function registerV2EvaluationRunRoutes(app: OpenAPIHono<ApiEnv>): void {
     completeEvaluationRunRoute,
     failEvaluationRunRoute,
     cancelEvaluationRunRoute,
+    prepareEvaluationResultUploadRoute,
+    finalizeEvaluationResultUploadRoute,
+    failEvaluationResultUploadRoute,
   ]) {
     app.openAPIRegistry.registerPath(route)
   }
@@ -189,6 +253,50 @@ export function registerV2EvaluationRunRoutes(app: OpenAPIHono<ApiEnv>): void {
       maxDepth: 4,
     })
     const run = await getV2Workspace(context).cancelEvaluationRun(runId, request, {
+      signal: context.req.raw.signal,
+    })
+    return context.json(run, 200)
+  })
+
+  app.post('/v2/evaluation-runs/:target{[^/]+:prepare-result-upload}', async (context) => {
+    const runId = actionTarget(context.req.param('target'), ':prepare-result-upload')
+    EvaluationRunParamsV2Schema.parse({ run_id: runId })
+    assertJsonContentTypeV2(context.req.raw)
+    const request = await readRawJsonRequestV2(
+      context,
+      PrepareEvaluationResultUploadRequestV2Schema,
+      { maxBytes: TERMINAL_RUN_MAX_BYTES, maxDepth: 2 },
+    )
+    const result = await getV2Workspace(context).prepareEvaluationResultUpload(runId, request, {
+      signal: context.req.raw.signal,
+    })
+    return context.json(result, 200)
+  })
+
+  app.post('/v2/evaluation-runs/:target{[^/]+:finalize-result-upload}', async (context) => {
+    const runId = actionTarget(context.req.param('target'), ':finalize-result-upload')
+    EvaluationRunParamsV2Schema.parse({ run_id: runId })
+    assertJsonContentTypeV2(context.req.raw)
+    const request = await readRawJsonRequestV2(
+      context,
+      FinalizeEvaluationResultUploadRequestV2Schema,
+      { maxBytes: TERMINAL_RUN_MAX_BYTES, maxDepth: 3 },
+    )
+    const run = await getV2Workspace(context).finalizeEvaluationResultUpload(runId, request, {
+      signal: context.req.raw.signal,
+    })
+    return context.json(run, 200)
+  })
+
+  app.post('/v2/evaluation-runs/:target{[^/]+:fail-result-upload}', async (context) => {
+    const runId = actionTarget(context.req.param('target'), ':fail-result-upload')
+    EvaluationRunParamsV2Schema.parse({ run_id: runId })
+    assertJsonContentTypeV2(context.req.raw)
+    const request = await readRawJsonRequestV2(context, FailEvaluationResultUploadRequestV2Schema, {
+      maxBytes: TERMINAL_RUN_MAX_BYTES,
+      maxDepth: 4,
+    })
+    const run = await getV2Workspace(context).failEvaluationResultUpload(runId, request, {
       signal: context.req.raw.signal,
     })
     return context.json(run, 200)

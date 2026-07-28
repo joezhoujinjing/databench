@@ -29,6 +29,10 @@ import {
   type CreateEvaluationRunV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
+  type FailEvaluationRunArchiveV2,
+  type FinalizeEvaluationRunArchiveV2,
+  type MarkEvaluationRunArchiveUploadingV2,
+  type PrepareEvaluationRunArchiveV2,
   type RegisterLayoutV2,
   type RegisterTransformResultV2,
   type RestoreRefV2,
@@ -61,6 +65,10 @@ import {
 import {
   type ConditionalCreateInput,
   type ConditionalCreateResult,
+  EVALUATION_ARCHIVE_MEDIA_TYPE_V1,
+  EvaluationArtifactStoreV1,
+  evaluationArchiveObjectKeyV1,
+  evaluationArchiveStagingKeyV1,
   type ObjectDownloadInputV2,
   type ObjectHeadV2,
   type PreparedArtifactV2,
@@ -2598,6 +2606,92 @@ describe('V2Workspace evaluation runs', () => {
       }),
     ).rejects.toMatchObject({ code: 'validation_error' })
   })
+
+  test('finalizes immutable archives after PG, safely replays, and cleans only the exact attempt', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'databench-workspace-evaluation-archive-'))
+    try {
+      const objectStore = new MemoryWorkerStagingObjectStore()
+      const tempStore = new V2TempStore({ safetyMarginBytes: 0, tempRoot: root })
+      const artifacts = new EvaluationArtifactStoreV1({
+        maxBytes: 1024,
+        now: () => NOW,
+        objectStore,
+        signedUrlTtlMs: 15 * 60 * 1000,
+        tempStore,
+      })
+      const rig = createRig({}, undefined, undefined, undefined, tempStore, artifacts)
+      const dataset = makeDataset('a', 'Archive this result.')
+      rig.seed(dataset)
+      const inspected = await rig.workspace.inspectExport(dataset.version, {
+        converter: 'evalscope-general-qa',
+        options: { target_source: 'none' },
+      })
+      const created = await rig.workspace.createEvaluationRun({
+        provider: 'evalscope',
+        provider_task_id: 'task-archive',
+        dataset_version: dataset.version,
+        source_ref: null,
+        converter: 'evalscope-general-qa',
+        converter_options: { target_source: 'none' },
+        accepted_fidelity_digest: inspected.fidelity_digest,
+        model_name: null,
+        evalscope_commit: null,
+      })
+      await rig.workspace.startEvaluationRun(created.id, {})
+      await rig.workspace.completeEvaluationRun(created.id, {
+        metrics: [],
+        provider_report_ids: ['report-archive'],
+      })
+      const prepared = await rig.workspace.prepareEvaluationResultUpload(created.id, {})
+      expect(prepared).toMatchObject({
+        archive_attempt: 1,
+        archive_status: 'uploading',
+        upload: {
+          content_type: 'application/zstd',
+          required_headers: { 'if-none-match': '*' },
+        },
+      })
+      const bytes = Buffer.from('stable archive bytes')
+      const digest = hashArtifactBytes(bytes)
+      const stagingKey = evaluationArchiveStagingKeyV1({ attempt: 1, runId: created.id })
+      objectStore.seed(stagingKey, bytes, EVALUATION_ARCHIVE_MEDIA_TYPE_V1)
+      rig.catalog.finalizeEvaluationRunArchive.mockRejectedValueOnce(new Error('postgres failed'))
+      await expect(
+        rig.workspace.finalizeEvaluationResultUpload(created.id, {
+          archive_attempt: 1,
+          digest,
+          size_bytes: bytes.byteLength,
+        }),
+      ).rejects.toMatchObject({ code: 'service_unavailable' })
+      expect(objectStore.has(stagingKey)).toBe(true)
+      expect(objectStore.has(evaluationArchiveObjectKeyV1(digest))).toBe(true)
+
+      const finalized = await rig.workspace.finalizeEvaluationResultUpload(created.id, {
+        archive_attempt: 1,
+        digest,
+        size_bytes: bytes.byteLength,
+      })
+      expect(finalized).toMatchObject({
+        archive_attempt: 1,
+        archive_status: 'available',
+        result_artifact_digest: digest,
+        result_artifact_size_bytes: bytes.byteLength,
+      })
+      expect(objectStore.has(stagingKey)).toBe(false)
+      await expect(
+        rig.workspace.finalizeEvaluationResultUpload(created.id, {
+          archive_attempt: 1,
+          digest: '0'.repeat(64),
+          size_bytes: bytes.byteLength,
+        }),
+      ).rejects.toMatchObject({
+        code: 'evaluation_run_state_conflict',
+        detail: { reason: 'archive_body_mismatch' },
+      })
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
 })
 
 class FakeStore implements V2Store {
@@ -3054,6 +3148,82 @@ class FakeCatalog implements V2WorkspaceCatalog {
     },
   )
 
+  readonly prepareEvaluationRunArchive = vi.fn(
+    async (input: PrepareEvaluationRunArchiveV2): Promise<CatalogEvaluationRunRowV2 | null> => {
+      const row = this.evaluationRuns.get(input.id)
+      if (!row || row.namespaceId !== input.namespaceId) return null
+      if (
+        row.status !== 'completed' ||
+        (row.archiveStatus !== 'not_requested' && row.archiveStatus !== 'failed')
+      ) {
+        return row
+      }
+      const next: CatalogEvaluationRunRowV2 = {
+        ...row,
+        archiveStatus: 'pending',
+        archiveAttempt: row.archiveAttempt + 1,
+        archiveError: null,
+        updatedAt: NOW,
+      }
+      this.evaluationRuns.set(next.id, next)
+      return next
+    },
+  )
+
+  readonly markEvaluationRunArchiveUploading = vi.fn(
+    async (
+      input: MarkEvaluationRunArchiveUploadingV2,
+    ): Promise<CatalogEvaluationRunRowV2 | null> => {
+      const row = this.evaluationRuns.get(input.id)
+      if (!row || row.namespaceId !== input.namespaceId) return null
+      if (row.archiveStatus !== 'pending' || row.archiveAttempt !== input.archiveAttempt) return row
+      const next = { ...row, archiveStatus: 'uploading' as const, updatedAt: NOW }
+      this.evaluationRuns.set(next.id, next)
+      return next
+    },
+  )
+
+  readonly finalizeEvaluationRunArchive = vi.fn(
+    async (input: FinalizeEvaluationRunArchiveV2): Promise<CatalogEvaluationRunRowV2 | null> => {
+      const row = this.evaluationRuns.get(input.id)
+      if (!row || row.namespaceId !== input.namespaceId) return null
+      if (row.archiveStatus !== 'uploading' || row.archiveAttempt !== input.archiveAttempt)
+        return row
+      const next: CatalogEvaluationRunRowV2 = {
+        ...row,
+        archiveStatus: 'available',
+        resultArtifactKey: input.resultArtifactKey,
+        resultArtifactDigest: input.resultArtifactDigest,
+        resultArtifactSizeBytes: input.resultArtifactSizeBytes,
+        archiveError: null,
+        updatedAt: NOW,
+      }
+      this.evaluationRuns.set(next.id, next)
+      return next
+    },
+  )
+
+  readonly failEvaluationRunArchive = vi.fn(
+    async (input: FailEvaluationRunArchiveV2): Promise<CatalogEvaluationRunRowV2 | null> => {
+      const row = this.evaluationRuns.get(input.id)
+      if (!row || row.namespaceId !== input.namespaceId) return null
+      if (
+        (row.archiveStatus !== 'pending' && row.archiveStatus !== 'uploading') ||
+        row.archiveAttempt !== input.archiveAttempt
+      ) {
+        return row
+      }
+      const next: CatalogEvaluationRunRowV2 = {
+        ...row,
+        archiveStatus: 'failed',
+        archiveError: input.error,
+        updatedAt: NOW,
+      }
+      this.evaluationRuns.set(next.id, next)
+      return next
+    },
+  )
+
   readonly findRun = vi.fn(async (cacheKey: string): Promise<CatalogRunRowV2 | null> => {
     this.events.push('findRun')
     return this.runs.get(cacheKey) ?? null
@@ -3214,6 +3384,7 @@ function createRig(
   converterRegistry?: V2ConverterRegistry,
   cache?: V2DatasetCache,
   tempStore?: V2TempStore,
+  evaluationArtifactStore?: EvaluationArtifactStoreV1,
 ): TestRig {
   const events: string[] = []
   const store = new FakeStore(events)
@@ -3226,6 +3397,7 @@ function createRig(
     cursorSecret: CURSOR_SECRET,
     transformLimits,
     ...(tempStore === undefined ? {} : { tempStore }),
+    ...(evaluationArtifactStore === undefined ? {} : { evaluationArtifactStore }),
     ...(transformRegistry === undefined ? {} : { transformRegistry }),
     ...(converterRegistry === undefined ? {} : { converterRegistry }),
     ...(cache === undefined ? {} : { cache }),
@@ -3475,10 +3647,10 @@ class MemoryWorkerStagingObjectStore implements WorkerStagingObjectStoreV1 {
   >()
   failDelete = false
 
-  seed(key: string, bytes: Uint8Array): void {
+  seed(key: string, bytes: Uint8Array, contentType = 'application/x-ndjson'): void {
     this.#objects.set(key, {
       bytes: bytes.slice(),
-      contentType: 'application/x-ndjson',
+      contentType,
     })
   }
 

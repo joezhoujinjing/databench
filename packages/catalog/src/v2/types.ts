@@ -359,3 +359,22 @@ export type TransitionEvaluationRunV2 =
       readonly status: 'failed' | 'cancelled'
       readonly error: CatalogEvaluationRunErrorV2
     }
+
+export interface PrepareEvaluationRunArchiveV2 {
+  readonly namespaceId: string
+  readonly id: string
+}
+
+export interface MarkEvaluationRunArchiveUploadingV2 extends PrepareEvaluationRunArchiveV2 {
+  readonly archiveAttempt: number
+}
+
+export interface FinalizeEvaluationRunArchiveV2 extends MarkEvaluationRunArchiveUploadingV2 {
+  readonly resultArtifactKey: string
+  readonly resultArtifactDigest: string
+  readonly resultArtifactSizeBytes: bigint
+}
+
+export interface FailEvaluationRunArchiveV2 extends MarkEvaluationRunArchiveUploadingV2 {
+  readonly error: CatalogEvaluationRunErrorV2
+}

@@ -18,6 +18,7 @@ import {
   listConvertersV2,
   listDatasetRecordsV2,
   listDeletedRefsV2,
+  listEvaluationRunsV2,
   listRefsV2,
   listTransformJobsV2,
   listTransformsV2,
@@ -201,6 +202,39 @@ export function useV2TransformJob(jobId: string) {
     queryKey: v2QueryKeys.transformJob(connectionScope, base, jobId),
     refetchInterval: (query) =>
       query.state.data && !isTerminalTransformJob(query.state.data) ? 1_000 : false,
+  })
+}
+
+export function useV2EvaluationRunByTask(
+  datasetVersion: string,
+  providerTaskId: string,
+  enabled: boolean,
+) {
+  const { base, connectionScope, token } = useBackend()
+  return useQuery({
+    enabled: enabled && datasetVersion.trim() !== '' && providerTaskId.trim() !== '',
+    queryFn: async ({ signal }) => {
+      const page = await listEvaluationRunsV2({
+        base,
+        datasetVersion,
+        limit: 100,
+        signal,
+        token,
+      })
+      return page.items.find((run) => run.provider_task_id === providerTaskId) ?? null
+    },
+    queryKey: v2QueryKeys.evaluationRunByTask(
+      connectionScope,
+      base,
+      datasetVersion,
+      providerTaskId,
+    ),
+    refetchInterval: (query) => {
+      const run = query.state.data
+      if (run?.archive_status === 'available') return false
+      if (run?.archive_status === 'failed') return 10_000
+      return 2_000
+    },
   })
 }
 

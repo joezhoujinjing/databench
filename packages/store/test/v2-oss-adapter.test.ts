@@ -25,6 +25,10 @@ class FakeOssClient implements OssConditionalClientV2 {
   readonly getCalls: Array<{ readonly name: string; readonly options: GetOptions }> = []
   readonly metaCalls: Array<{ readonly name: string; readonly options: GetOptions }> = []
   readonly bucketInfoCalls: Array<{ readonly name: string; readonly options: GetOptions }> = []
+  readonly signatureCalls: Array<{
+    readonly name: string
+    readonly options: Readonly<Record<string, unknown>>
+  }> = []
   bucketInfoResult: BucketInfoResult = { bucket: {} }
   bucketInfoError: unknown
   putError: unknown
@@ -75,9 +79,38 @@ class FakeOssClient implements OssConditionalClientV2 {
     if (this.bucketInfoError !== undefined) throw this.bucketInfoError
     return this.bucketInfoResult
   }
+
+  signatureUrl(name: string, options: Readonly<Record<string, unknown>>): string {
+    this.signatureCalls.push({ name, options })
+    return `https://objects.example/${encodeURIComponent(name)}`
+  }
 }
 
 describe('OssConditionalObjectStoreV2 conditional create', () => {
+  test('presigns the exact conditional PUT contract', async () => {
+    const client = new FakeOssClient()
+    await expect(
+      createStore(client).presignStaging({
+        contentType: 'application/zstd',
+        expiresInSeconds: 900,
+        ifNoneMatch: '*',
+        key: 'staging/evaluations/v1/run/1/result.tar.zst',
+        method: 'PUT',
+      }),
+    ).resolves.toContain('objects.example')
+    expect(client.signatureCalls).toEqual([
+      {
+        name: 'staging/evaluations/v1/run/1/result.tar.zst',
+        options: {
+          'Content-Type': 'application/zstd',
+          'If-None-Match': '*',
+          expires: 900,
+          method: 'PUT',
+        },
+      },
+    ])
+  })
+
   test('uses forbid-overwrite, a caller-owned stream and the fixed request timeout', async () => {
     const client = new FakeOssClient()
     const store = createStore(client)

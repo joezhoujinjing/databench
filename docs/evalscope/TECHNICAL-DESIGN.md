@@ -1155,6 +1155,9 @@ objects/v2/evaluation-result-v1/<digest[0:2]>/<digest>.tar.zst
 在线报告继续读 EvalScope volume。operator 清理 online output 后，provider report 可能 unavailable，但
 archive 仍存在；UI 必须区分“在线可查看”和“仅归档可用”。首期不从 archive 重建在线报告。
 
+归档、在线 volume、PG locator 的保留和一致性备份责任见
+[RETENTION.md](RETENTION.md)。
+
 ## 12. Gateway、安全与运行资源
 
 ### 12.1 Gateway
@@ -1323,8 +1326,8 @@ DATABENCH_EVALSCOPE_ENABLED=false
 DATABENCH_EVALSCOPE_INTERNAL_BASE_URL
 DATABENCH_EVALSCOPE_PROXY_PREFIX=/evalscope-api
 DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST
-DATABENCH_EVALUATION_UPLOAD_TTL_SECONDS=900
-DATABENCH_EVALUATION_MAX_ARTIFACT_BYTES=1073741824
+DATABENCH_EVALUATION_ARCHIVE_SIGNED_URL_TTL_MS=900000
+DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES=1073741824
 ```
 
 功能 disabled-by-default。EvalScope health、fixed commit、proxy prefix、persistent roots 或 resource limits

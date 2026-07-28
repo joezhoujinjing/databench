@@ -57,6 +57,7 @@ export function useTaskRunner({
 
   const requestDocument = useCallback(
     async (taskId: string, signal?: AbortSignal) => {
+      dispatch({ taskId, type: 'document-loading' })
       try {
         const document = await client.request(kind === 'eval' ? 'evalReport' : 'perfReport', {
           query: { task_id: taskId },
@@ -65,6 +66,7 @@ export function useTaskRunner({
         if (activeTaskRef.current === taskId) dispatch({ document, taskId, type: 'document' })
       } catch (error) {
         if (!isAbort(error) && activeTaskRef.current === taskId) {
+          dispatch({ taskId, type: 'document-unavailable' })
           dispatch({ message: errorMessage(error), taskId, type: 'degraded' })
         }
       }

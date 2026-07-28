@@ -80,10 +80,22 @@ export type TransformJobStateConflictDetailV2 = z.infer<
 
 export const EvaluationRunStateConflictDetailV2Schema = z
   .strictObject({
-    reason: z.enum(['create_request_mismatch', 'invalid_transition', 'terminal_body_mismatch']),
+    reason: z.enum([
+      'create_request_mismatch',
+      'invalid_transition',
+      'terminal_body_mismatch',
+      'archive_invalid_transition',
+      'archive_attempt_mismatch',
+      'archive_body_mismatch',
+    ]),
     run_id: z.uuid(),
     status: z.enum(['prepared', 'running', 'completed', 'failed', 'cancelled']),
     requested_status: z.enum(['running', 'completed', 'failed', 'cancelled']).nullable(),
+    archive_status: z
+      .enum(['not_requested', 'pending', 'uploading', 'available', 'failed'])
+      .optional(),
+    archive_attempt: z.number().int().safe().nonnegative().optional(),
+    requested_archive_status: z.enum(['uploading', 'available', 'failed']).optional(),
   })
   .meta({ id: 'EvaluationRunStateConflictDetailV2' })
 export type EvaluationRunStateConflictDetailV2 = z.infer<

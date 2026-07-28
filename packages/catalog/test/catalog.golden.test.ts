@@ -1334,6 +1334,57 @@ describe('V2Catalog evaluation runs', () => {
     ).rejects.toThrow()
   })
 
+  test('serializes archive attempts and replays concurrent finalize without changing the locator', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const prepared = await v2Catalog.createOrReadEvaluationRun(
+      evaluationRunInput(namespaceId, 'task-archive-race'),
+    )
+    await v2Catalog.transitionEvaluationRun({ namespaceId, id: prepared.id, status: 'running' })
+    await v2Catalog.transitionEvaluationRun({
+      namespaceId,
+      id: prepared.id,
+      status: 'completed',
+      metrics: [],
+      providerReportIds: ['report-archive'],
+    })
+    const claims = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        v2Catalog.prepareEvaluationRunArchive({ namespaceId, id: prepared.id }),
+      ),
+    )
+    expect(claims.every((row) => row?.archiveStatus === 'pending')).toBe(true)
+    expect(new Set(claims.map((row) => row?.archiveAttempt))).toEqual(new Set([1]))
+    const uploading = await v2Catalog.markEvaluationRunArchiveUploading({
+      namespaceId,
+      id: prepared.id,
+      archiveAttempt: 1,
+    })
+    expect(uploading).toMatchObject({ archiveStatus: 'uploading', archiveAttempt: 1 })
+    const digest = 'd'.repeat(64)
+    const locator = {
+      namespaceId,
+      id: prepared.id,
+      archiveAttempt: 1,
+      resultArtifactKey: `objects/v2/evaluation-result-v1/dd/${digest}.tar.zst`,
+      resultArtifactDigest: digest,
+      resultArtifactSizeBytes: 512n,
+    }
+    const finalized = await Promise.all(
+      Array.from({ length: 12 }, () => v2Catalog.finalizeEvaluationRunArchive(locator)),
+    )
+    expect(finalized.every((row) => row?.archiveStatus === 'available')).toBe(true)
+    expect(finalized.every((row) => row?.resultArtifactDigest === digest)).toBe(true)
+    expect(
+      await v2Catalog.prepareEvaluationRunArchive({ namespaceId, id: prepared.id }),
+    ).toMatchObject({
+      archiveStatus: 'available',
+      archiveAttempt: 1,
+    })
+  })
+
   test('lists scoped runs and enforces the execution transition matrix', async () => {
     await v2Catalog.registerCommittedLayout(
       registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),

@@ -50,7 +50,11 @@ import type {
   CreateTransformJobV2,
   DeleteRefResultV2,
   DeleteRefV2,
+  FailEvaluationRunArchiveV2,
   FailTransformJobV2,
+  FinalizeEvaluationRunArchiveV2,
+  MarkEvaluationRunArchiveUploadingV2,
+  PrepareEvaluationRunArchiveV2,
   RegisterLayoutV2,
   RegisterTransformResultV2,
   RestoreRefResultV2,
@@ -629,6 +633,102 @@ export class V2Catalog {
     `)
     if (rows.length > 1) {
       throw new V2CatalogConsistencyError('Evaluation run transition returned more than one row')
+    }
+    return rows[0]
+      ? sqlRowToEvaluationRun(rows[0])
+      : await this.getEvaluationRun(input.namespaceId, input.id)
+  }
+
+  async prepareEvaluationRunArchive(
+    input: PrepareEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateEvaluationArchiveIdentity(input)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET
+        "archive_status" = 'pending',
+        "archive_attempt" = "archive_attempt" + 1,
+        "archive_error_json" = NULL,
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "status" = 'completed' AND
+        "archive_status" IN ('not_requested', 'failed')
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    return await this.#archiveMutationResult(input, rows, 'prepare')
+  }
+
+  async markEvaluationRunArchiveUploading(
+    input: MarkEvaluationRunArchiveUploadingV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateEvaluationArchiveAttempt(input)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET "archive_status" = 'uploading', "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "archive_status" = 'pending' AND
+        "archive_attempt" = ${input.archiveAttempt}
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    return await this.#archiveMutationResult(input, rows, 'mark uploading')
+  }
+
+  async finalizeEvaluationRunArchive(
+    input: FinalizeEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateFinalizeEvaluationArchive(input)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET
+        "archive_status" = 'available',
+        "result_artifact_key" = ${input.resultArtifactKey},
+        "result_artifact_digest" = ${input.resultArtifactDigest},
+        "result_artifact_size_bytes" = ${input.resultArtifactSizeBytes},
+        "archive_error_json" = NULL,
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "archive_status" = 'uploading' AND
+        "archive_attempt" = ${input.archiveAttempt}
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    return await this.#archiveMutationResult(input, rows, 'finalize')
+  }
+
+  async failEvaluationRunArchive(
+    input: FailEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateEvaluationArchiveAttempt(input)
+    validateEvaluationError(input.error)
+    const errorJson = JSON.stringify(input.error)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET
+        "archive_status" = 'failed',
+        "archive_error_json" = ${errorJson}::jsonb,
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "archive_status" IN ('pending', 'uploading') AND
+        "archive_attempt" = ${input.archiveAttempt}
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    return await this.#archiveMutationResult(input, rows, 'fail')
+  }
+
+  async #archiveMutationResult(
+    input: PrepareEvaluationRunArchiveV2,
+    rows: EvaluationRunSqlRow[],
+    action: string,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError(`Evaluation archive ${action} returned more than one row`)
     }
     return rows[0]
       ? sqlRowToEvaluationRun(rows[0])
@@ -2390,6 +2490,36 @@ function validateEvaluationRunTransition(input: TransitionEvaluationRunV2): void
     validateProviderReportIds(input.providerReportIds)
   } else if (input.status === 'failed' || input.status === 'cancelled') {
     validateEvaluationError(input.error)
+  }
+}
+
+function validateEvaluationArchiveIdentity(input: PrepareEvaluationRunArchiveV2): void {
+  validateNamespaceId(input.namespaceId)
+  validateEvaluationRunId(input.id)
+}
+
+function validateEvaluationArchiveAttempt(input: MarkEvaluationRunArchiveUploadingV2): void {
+  validateEvaluationArchiveIdentity(input)
+  if (
+    !Number.isSafeInteger(input.archiveAttempt) ||
+    input.archiveAttempt < 1 ||
+    input.archiveAttempt > 2_147_483_647
+  ) {
+    throw new V2CatalogInputError('Evaluation archive attempt is invalid')
+  }
+}
+
+function validateFinalizeEvaluationArchive(input: FinalizeEvaluationRunArchiveV2): void {
+  validateEvaluationArchiveAttempt(input)
+  if (!EXACT_VERSION.test(input.resultArtifactDigest)) {
+    throw new V2CatalogInputError('Evaluation result artifact digest is invalid')
+  }
+  if (input.resultArtifactSizeBytes <= 0n || input.resultArtifactSizeBytes > POSTGRES_BIGINT_MAX) {
+    throw new V2CatalogInputError('Evaluation result artifact size is invalid')
+  }
+  const expectedKey = `objects/v2/evaluation-result-v1/${input.resultArtifactDigest.slice(0, 2)}/${input.resultArtifactDigest}.tar.zst`
+  if (input.resultArtifactKey !== expectedKey) {
+    throw new V2CatalogInputError('Evaluation result artifact key is invalid')
   }
 }
 

@@ -33,10 +33,13 @@
   legacy/structured/AgentTrace 展示、富内容渲染与 configured source refresh；E7 已完成 Dashboard、
   Evaluation Compare、Performance catalogue/detail/runs/requests/compare、五类 Benchmark 目录/详情和安全
   Viewer。60 个 capability 已全部 green，其中 58 个 target capability 已实现、2 个为 Databench shell
-  exclusion，锁定 React 基线的完整 UI 功能迁移 gate 已关闭。Owner 于 2026-07-28 明确手机版竖屏不属于
+  exclusion，锁定 React 基线的完整 UI 功能迁移 gate 已关闭。E8 已完成 deterministic result archive、
+  attempt-scoped conditional upload、BLAKE3 content-addressed immutable object、PG locator、exact cleanup、
+  online/archive 独立状态与 retention。Owner 于 2026-07-28 明确手机版竖屏不属于
   当前 Web gate，并明确
   offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
-  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E7 已关闭，下一步是 E8 结果归档。
+  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E8 已关闭，当前进入 E9 最终集成
+  gate。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
