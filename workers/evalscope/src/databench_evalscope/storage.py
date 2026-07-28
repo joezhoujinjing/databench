@@ -82,6 +82,26 @@ class TaskManifestStore:
         self._locks_guard = threading.Lock()
         self._capacity_lock = threading.Lock()
 
+    def has_claim(self, task_id: str) -> bool:
+        validate_task_id(task_id)
+        with self._task_lock(task_id):
+            task_dir = self._root / task_id
+            try:
+                task_stat = task_dir.lstat()
+            except FileNotFoundError:
+                return False
+            if not task_dir.is_dir() or task_dir.is_symlink() or task_stat.st_nlink < 2:
+                raise RuntimePolicyError('task_storage_invalid', 'Task storage is invalid', 500)
+
+            claim_path = task_dir / _CLAIM_FILE
+            try:
+                claim_stat = claim_path.lstat()
+            except FileNotFoundError:
+                return False
+            if claim_path.is_symlink() or not claim_path.is_file() or claim_stat.st_nlink != 1:
+                raise RuntimePolicyError('task_storage_invalid', 'Task claim storage is invalid', 500)
+            return True
+
     def claim(self, task_id: str, task_kind: TaskKind, digest: str) -> ClaimResult:
         validate_task_id(task_id)
         if not _DIGEST.fullmatch(digest):
@@ -583,7 +603,8 @@ def _finite(value: int | float) -> bool:
 
 
 def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
-    allowed = {
+    version = value.get('schema_version')
+    common = {
         'schema_version',
         'task_id',
         'run_id',
@@ -596,7 +617,13 @@ def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
         'evalscope_commit',
         'input_filename',
     }
-    if set(value) != allowed or value.get('schema_version') != 1:
+    deployment_fields = {
+        'model_deployment_id',
+        'model_artifact_id',
+        'model_deployment_digest',
+    }
+    expected = common if version == 1 else common | deployment_fields if version == 2 else set()
+    if set(value) != expected:
         raise RuntimePolicyError('task_integration_invalid', 'Task integration fields are invalid', 500)
     validate_task_id(value.get('task_id'))
     run_id = value.get('run_id')
@@ -626,6 +653,28 @@ def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
         item = value.get(field)
         if item is not None and not _bounded_text(item, 512):
             raise RuntimePolicyError('task_integration_invalid', f'Task integration {field} is invalid', 500)
+    if version == 2:
+        for field in ('model_deployment_id', 'model_artifact_id'):
+            item = value.get(field)
+            if not isinstance(item, str) or not _RUN_ID.fullmatch(item):
+                raise RuntimePolicyError(
+                    'task_integration_invalid',
+                    f'Task integration {field} is invalid',
+                    500,
+                )
+        deployment_digest = value.get('model_deployment_digest')
+        if not isinstance(deployment_digest, str) or not _EXACT_VERSION.fullmatch(deployment_digest):
+            raise RuntimePolicyError(
+                'task_integration_invalid',
+                'Task integration Model Deployment digest is invalid',
+                500,
+            )
+        if value.get('model_name') is None:
+            raise RuntimePolicyError(
+                'task_integration_invalid',
+                'Task integration served model is invalid',
+                500,
+            )
     return copy.deepcopy(value)
 
 

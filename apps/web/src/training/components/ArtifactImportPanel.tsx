@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.j
 import { Field } from '@/components/ui/field.js'
 import { SelectInput, TextInput } from '@/components/ui/input.js'
 import { ellipsizeMiddle, formatInteger } from '@/lib/format.js'
+import { ModelDeploymentPanel } from '@/models/components/ModelDeploymentPanel.js'
 import { V2MutationError } from '@/v2/components/V2MutationError.js'
 import {
   chooseModelArtifactDownloadTarget,
@@ -424,6 +425,7 @@ function ArtifactDetail({ artifact }: { readonly artifact: ModelArtifactV2 }) {
       <p className="break-all text-dim-foreground text-xs">
         BLAKE3 {ellipsizeMiddle(artifact.archive_digest, 14)}
       </p>
+      <ModelDeploymentPanel artifact={artifact} />
     </div>
   )
 }

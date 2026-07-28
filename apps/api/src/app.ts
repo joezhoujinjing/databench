@@ -37,6 +37,8 @@ export interface CreateAppOptions {
   readonly evalscope?: EvalScopeGatewayConfig
   readonly evalscopeFetch?: typeof fetch
   readonly mcp?: McpRuntimeConfig
+  readonly modelDeploymentOperatorToken?: string
+  readonly modelDeploymentServiceCredential?: string
   readonly openApiServerUrl?: string
   readonly storeConfig?: V2WorkspaceOpenOptions['storeConfig']
   readonly swiftStudio?: SwiftStudioGatewayConfig
@@ -90,9 +92,11 @@ function createRoutedApp(
   }
   app.use('*', createCorsMiddleware({ origins: options.corsOrigins ?? [] }))
   app.use('/v2/*', createV2PrivateResponseMiddleware())
+  app.use('/internal/v1/*', createV2PrivateResponseMiddleware())
   if (v2Runtime !== undefined) {
     const workspaceMiddleware = createV2WorkspaceMiddleware(v2Runtime)
     app.use('/v2/*', workspaceMiddleware)
+    app.use('/internal/v1/*', workspaceMiddleware)
     if (mcpRuntime !== undefined) {
       app.use('/mcp', async (context, next) => {
         if (context.req.method !== 'POST') return next()
@@ -102,7 +106,15 @@ function createRoutedApp(
     }
   }
   registerMetaRoutes(app, options)
-  registerV2Routes(app, { workerJobsAvailable: options.workerJobsAvailable ?? false })
+  registerV2Routes(app, {
+    workerJobsAvailable: options.workerJobsAvailable ?? false,
+    ...(options.modelDeploymentOperatorToken === undefined
+      ? {}
+      : { modelDeploymentOperatorToken: options.modelDeploymentOperatorToken }),
+    ...(options.modelDeploymentServiceCredential === undefined
+      ? {}
+      : { modelDeploymentServiceCredential: options.modelDeploymentServiceCredential }),
+  })
   registerEvalScopeGateway(app, {
     config: options.evalscope ?? {
       enabled: false,

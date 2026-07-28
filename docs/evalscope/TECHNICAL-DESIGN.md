@@ -963,6 +963,7 @@ model V2EvaluationRun {
   namespaceId                String    @map("namespace_id") @db.Uuid
   provider                   String
   providerTaskId             String    @map("provider_task_id")
+  createProfile              String    @map("create_profile")
   createRequestDigest        String    @map("create_request_digest") @db.Char(64)
   providerReportIds          Json?     @map("provider_report_ids_json")
   datasetVersion             String    @map("dataset_version") @db.Char(64)
@@ -973,6 +974,9 @@ model V2EvaluationRun {
   fidelityDigest             String    @map("fidelity_digest") @db.Char(64)
   benchmark                  String
   modelName                  String?   @map("model_name")
+  modelDeploymentId          String?   @map("model_deployment_id") @db.Uuid
+  modelArtifactId            String?   @map("model_artifact_id") @db.Uuid
+  modelDeploymentDigest      String?   @map("model_deployment_digest") @db.Char(64)
   evalscopeCommit            String?   @map("evalscope_commit")
   status                     String
   metrics                    Json?     @map("metrics_json")
@@ -988,8 +992,14 @@ model V2EvaluationRun {
   finishedAt                 DateTime? @map("finished_at") @db.Timestamptz(6)
   updatedAt                  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  namespace V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  dataset   V2DatasetSnapshot   @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  namespace       V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dataset         V2DatasetSnapshot   @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  modelDeployment V2ModelDeployment?  @relation(
+    fields: [namespaceId, modelDeploymentId, modelArtifactId, modelDeploymentDigest],
+    references: [namespaceId, id, artifactId, createDigest],
+    onDelete: Restrict,
+    onUpdate: Restrict
+  )
 
   @@unique([namespaceId, provider, providerTaskId], map: "uq_evaluation_runs_v2_provider_task")
   @@index([namespaceId, datasetVersion, createdAt, id], map: "idx_evaluation_runs_v2_dataset")
@@ -1003,7 +1013,8 @@ model V2EvaluationRun {
 动态生成。
 
 Migration 使用 raw CHECK 固定 provider、status、archive status、digest、terminal timestamp、JSON shape
-和 artifact 三字段同空/同非空。所有 FK 显式 `RESTRICT`。
+和 result artifact 三字段同空/同非空。Deployment、Artifact 与 Deployment digest 三字段也必须同空/同非空，
+并通过同 namespace 的 composite FK 固定。所有 FK 显式 `RESTRICT`。
 
 `source_ref` 只是启动时 display locator，不与 mutable Ref 建 FK。真正 binding 只认 exact
 `dataset_version`。
@@ -1060,6 +1071,19 @@ type EvaluationMetricV2 = {
 最多 10,000 项；strings/categories 有界；score finite。禁止 input、target、prediction、prompt、API key、
 header 或任意嵌套对象。模型配置只保存 allowlist 摘要。
 
+### 9.5 Manual 与 Deployment 两个 create identity profile
+
+- `evaluation-run-create-v1` 保留既有 manual model identity，`model_name` 必填且 Deployment 三字段为空；
+- `evaluation-run-create-v2` 用于 Databench Deployment：Workspace 从 active Deployment 读取 served model、
+  Artifact ID 与 Deployment create digest，忽略浏览器提供的 model material，并把三者加入 canonical
+  identity；
+- 同一个 `(namespace, provider, provider_task_id)` 不能在两个 profile 或两个 Deployment 之间漂移，
+  mismatch 稳定返回 409；
+- Deployment disable 后允许读取和重放已经存在的 Run；只拒绝新的 provider task admission，返回 422
+  `validation_error`，字段 `/model_deployment_id`，issue code `model_deployment_disabled`；
+- Dataset source 与 Model source 是独立维度。只有 exact Databench Dataset 才进入本表，所以
+  `Benchmark + Databench Deployment` 只产生 EvalScope task，不产生 source-less Evaluation Run。
+
 ## 10. Databench REST
 
 ### 10.1 复用 Dataset API
@@ -1087,7 +1111,7 @@ POST /v2/datasets/{exact_version}:export
 ```text
 POST /v2/evaluation-runs
 GET  /v2/evaluation-runs/{run_id}
-GET  /v2/evaluation-runs?dataset_version=<exact>&cursor=<cursor>
+GET  /v2/evaluation-runs?dataset_version=<exact>&model_deployment_id=<id>&cursor=<cursor>
 POST /v2/evaluation-runs/{run_id}:start
 POST /v2/evaluation-runs/{run_id}:complete
 POST /v2/evaluation-runs/{run_id}:fail
@@ -1106,8 +1130,34 @@ exact version 重新 inspect 并要求 normalized plan 完全匹配。`(namespac
 `evaluation-run-create-v1` domain 计算并保存 canonical create-request digest，同 digest 重放，mismatch
 返回 409。完整执行 config 的原子 claim 和 digest 由 §8.2 的 EvalScope task admission 负责。
 
+Deployment create 使用 `evaluation-run-create-v2`；Workspace 在一个 admission transaction 中验证
+Deployment 仍为 active，并以复合 FK 保存 exact Deployment/Artifact/create digest。列表 cursor 同时绑定
+Dataset、Deployment 和 status filter，避免翻页时切换 lineage 范围。
+
 Complete 接受 bounded metrics 和 provider report IDs，不接受 URL、filesystem path、完整 result 或日志。
 Fail/cancel 只接受 bounded phase/code/sanitized message。
+
+### 10.3 Model Deployment API 与 internal resolve
+
+```text
+POST /v2/model-deployments                         operator Bearer
+GET  /v2/model-deployments                         public projection
+GET  /v2/model-deployments/{deployment_id}         public projection
+POST /v2/model-deployments/{deployment_id}:check   operator Bearer
+POST /v2/model-deployments/{deployment_id}:disable operator Bearer
+
+GET  /internal/v1/model-deployments/{deployment_id}:resolve
+     service credential；不登记 OpenAPI
+```
+
+首个 contract 只支持 `openai_compatible + operator_attested + auth_mode=none`。public projection 不包含
+endpoint、create digest 或 base-model resolve material。internal resolver 只接受 active Deployment，返回
+served model、endpoint、Artifact/base-model binding 与 create digest；EvalScope client 的 origin 只能来自
+operator config，不能由 browser payload 覆盖。
+
+operator token 和 service credential 是两个角色，即使当前可信单 operator 环境也不得复用；配置为相同值
+时 fail closed。endpoint/served model 发生变化时必须新建 Deployment ID；disable 不删除历史 Run/Report；
+health 只是有时间戳的 `/models` observation，不自动改变 lifecycle。
 
 ## 11. 完整结果归档
 
@@ -1256,6 +1306,10 @@ Evaluation `api_url` 和 Performance `url` 是 server-side network destination�
 - error/log 只报告 stable policy code，不回显 credential、完整 URL query、解析出的敏感拓扑或 response
   body。
 
+Databench Deployment 不绕过本节：browser 只提交 opaque ID，EvalScope internal resolve 后仍对 resolved
+endpoint 执行同一 policy。resolved URL 不写入 task integration manifest；为了清洗 upstream report/log，
+只在当前进程的 task-bound 内存表保存到 terminal response 转换完成，输出前必须移除或替换。
+
 ### 12.5 Task admission、stop 与重启收敛
 
 - §8.2 task claim 覆盖 native evaluation、Databench-source evaluation 和 performance，不能只保护新增
@@ -1268,6 +1322,12 @@ Evaluation `api_url` 和 Performance `url` 是 server-side network destination�
 - prepared/running restart、callback response loss、terminal replay、stop/invoke failure race、malformed
   manifest 和 manual reconcile 都必须有 fault-injection test；
 - reconciliation 只确定性终结或重放，不重新运行模型调用，不构成 lease/scheduler/recovery engine。
+
+live admission 顺序固定为：先验证 payload 和 canonical config digest；若 task claim 已存在，直接进入
+`already_running`/terminal replay，不执行当前 disk、endpoint、Deployment resolve 或 lifecycle check；若为
+新 task，manual endpoint 在 claim 前完成 endpoint policy 与容量检查，Deployment 模式在容量检查和原子
+claim 后只 resolve 一次并执行 endpoint policy。resolve 或 provider 失败写入同一 typed terminal，不能留下
+无终态 claim。这样磁盘已满或 Deployment 后续 disable 不会破坏已完成 task 的幂等重放。
 
 ### 12.6 Blocking invoke 和资源
 
@@ -1593,6 +1653,8 @@ upstream patch/vendor 和 gateway manifest。实际落点变化必须同步更�
 - task claim race、same/mismatched digest、process overwrite rejection、terminal replay、stop/fail race；
 - prepared/running restart、callback loss、`provider_interrupted`、startup/manual reconcile；
 - model endpoint scheme/host/port/IP allowlist、dual-stack DNS rebinding、redirect 和 metadata negative tests；
+- opaque Deployment payload、operator/service credential separation、一次 internal resolve、disabled admission、
+  terminal replay 不依赖当前容量/endpoint、endpoint/report/log redaction；
 - malicious Markdown/HTML/Plotly spec corpus；raw active HTML 永不到浏览器；
 - WSGI concurrent invoke + polling。
 
@@ -1601,6 +1663,11 @@ upstream patch/vendor 和 gateway manifest。实际落点变化必须同步更�
 - same-origin exact proxy only，direct EvalScope root 和非允许 API 不可访问；
 - no CORS/EvalScope-SPA-iframe/postMessage dependency；generated document frame 无 `allow-same-origin`；
 - Dataset preselection；
+- Dataset source 与 Model source 独立；Deployment 模式 request body 只有
+  `databench_deployment_id + databench_source`，明确断言无 `model/api_url/api_key`；
+- Artifact detail 注册/check/disable/list Deployment，并展示 Deployment-bound Evaluation Runs 的 exact
+  Dataset、Artifact、task/report lineage；
+- `Benchmark + Deployment` 明确标为 source-less expert/untracked，不冒充 Databench Evaluation Run；
 - no credentials in URL/log/PG/archive；
 - persistent volume restart；
 - report/viewer 不能顶层打开 raw HTML；同页和新标签页都只打开 Databench viewer + opaque ID；

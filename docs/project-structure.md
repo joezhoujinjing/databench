@@ -9,7 +9,8 @@
 > ms-swift ADR 0018 已接受，S0 已完成；S1 的完整原生 Gradio、`/training`、GPU image、Provider 与
 > Gateway 已 code-complete，真实 Linux/NVIDIA LoRA + Infer gate 按 owner 决策后置且 capability 保持
 > unvalidated。S2 exact Dataset 与单 active Studio Session bridge、S3 LoRA immutable Model Artifact
-> import 均已完成 non-GPU gate；当前进入 S4 Deployment + EvalScope。
+> import 均已完成 non-GPU gate；S4 operator-attested Deployment + EvalScope opaque resolve/lineage 已完成
+> non-GPU contract，GPU 训练、推理部署与真实模型评测证据继续 deferred。
 
 ## 顶层目录
 
@@ -48,7 +49,7 @@ databench-ts/
 └─ docs/
    ├─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
    ├─ evalscope/         已接受的设计、E0 evidence、实施计划与状态
-   └─ swift/             已接受的原生 Gradio 集成方案、实施计划与状态；S4 current
+   └─ swift/             已接受的原生 Gradio 集成方案、实施计划与状态；S4 non-GPU green/GPU deferred
 ```
 
 `v2` 仍出现在 REST 路径、数据库表、对象 key、类型和测试名中。它是稳定协议/持久化命名，
@@ -201,10 +202,18 @@ Dockerfile、Compose 与部署说明。S3 沿同一边界增加 output discovery
 staging 与 immutable object publication；Python 只构建/上传候选归档，canonical verify、finalize、Catalog
 transaction 与 download 仍由 Workspace/Store 拥有。
 
+S4 沿既有 `schema → hashing/catalog/workspace → API/OpenAPI/generated Web` 边界增加
+`model_deployments_v2`、版本化 create identity、operator action 与 public projection。Deployment 源码属于
+领域/API/Web 的 `model-deployment`/`models` 目录，不放进 `deploy/`；`deploy/` 只保存部署资产。
+EvalScope 通过固定 internal REST + service credential resolve opaque Deployment ID，不直连 Catalog，也不把
+endpoint 写进浏览器、OpenAPI public projection 或 task integration manifest。只有 exact Databench Dataset
+与 Deployment 的组合进入 `evaluation_runs_v2` 并固定 Artifact/Deployment digest lineage。
+
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3、EvalScope E0-E7 与 Swift S0-S3 non-GPU gate 已完成。Swift S1-S3 的真实
-NVIDIA LoRA/Infer gate 按 owner 决策后置且尚未关闭；S4 Deployment + EvalScope 开始实施。runtime 保持
+产品切换 R0-R5、MCP M0-M3、EvalScope E0-E7 与 Swift S0-S4 non-GPU gate 已完成。Swift S1-S4 的真实
+NVIDIA LoRA/Infer/serving/evaluation gate 按 owner 决策后置且尚未关闭；S4 状态固定为
+`non-GPU contract green / GPU deferred`。runtime 保持
 disabled-by-default，`/training` 在未启用时显示明确 unavailable
 boundary。EvalScope runtime 仍 disabled-by-default；Web 已
 完成锁定 EvalScope React 基线的完整业务功能迁移，结果归档与最终离线集成仍分别属于 E8/E9。MCP 和单个

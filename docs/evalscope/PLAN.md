@@ -65,6 +65,8 @@ Databench Dataset 闭环：
     暴露相关 API 前完成，E9 只做最终复核。
 18. runtime disabled-by-default；安全/离线 gate 前不得扩大现有发布声明。
 19. 本计划不启动或完成 V16/V17，不解除公共云 D3 决策门。
+20. Swift S4 的 Databench Deployment model source 只提交 opaque ID；endpoint/model 只能由 EvalScope
+    service-side resolve。该扩展不改变 E8/E9 顺序，也不把 source-less Benchmark task 写成 Databench Run。
 
 ## 3. 里程碑
 
@@ -409,6 +411,25 @@ GE7 是“最新 UI 功能完整迁移”的唯一 gate。E4-E6 不得提前宣�
 > 零外部 asset request 的负面验证；全 parity、安全、容量、bundle、全仓 gates 和独立 review 无 blocker。
 
 GE9 只发布 ADR 0017 范围，不自动完成 V16/V17 或公共云 D3。
+
+### Swift S4 交叉扩展 — opaque Model Deployment
+
+该扩展在 Swift 分支中独立提交，不重开已关闭的 GE7 parity，也不冒充 E8/E9：
+
+- 增加 `evaluation-run-create-v2`，绑定 exact Dataset + Deployment + Artifact + Deployment digest；
+- Evaluation 表单把 Dataset source 与 Model source 分开，Deployment 模式 browser body 不含
+  `model/api_url/api_key`；
+- EvalScope 使用独立 service credential 调用不进入 OpenAPI 的 internal resolver，只对新 task resolve
+  一次，并继续执行既有 endpoint policy；
+- operator create/check/disable 与 service resolve 使用不同 credential；public Deployment projection 不泄漏
+  endpoint/create digest；
+- terminal replay 先于当前磁盘/endpoint live check；disable 后已有 Run/replay 保留，新 Run 返回稳定 typed
+  admission error；
+- 只有 Databench Dataset + Deployment 创建 Databench Run；Benchmark + Deployment 是 expert/untracked；
+- 真实 Postgres/MinIO、Python、API/OpenAPI、Web unit 与浏览器 request-body evidence 必须全绿。
+
+本 checkpoint 只允许声明 `S4 non-GPU contract green / GPU deferred`。真实 vLLM/transformers serving、
+`/chat/completions`、GPU training/inference/evaluation 仍属于 Swift deferred GPU gate。
 
 ## 5. UI parity 追踪规则
 

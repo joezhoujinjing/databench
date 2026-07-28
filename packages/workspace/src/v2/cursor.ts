@@ -5,6 +5,8 @@ import {
   EvaluationRunStatusV2Schema,
   ModelArtifactIdV2Schema,
   ModelArtifactKindV2Schema,
+  ModelDeploymentIdV2Schema,
+  ModelDeploymentStatusV2Schema,
   parseRawJsonV2,
   RefNameV2Schema,
   SwiftStudioSessionIdV2Schema,
@@ -70,6 +72,7 @@ export interface V2EvaluationRunCursorState {
   readonly created_at: string
   readonly id: string
   readonly dataset_version: string | null
+  readonly model_deployment_id: string | null
   readonly status: string | null
 }
 
@@ -104,6 +107,20 @@ export interface V2ModelArtifactCursorState {
 interface ModelArtifactCursorPayloadV2 extends V2ModelArtifactCursorState {
   readonly v: typeof CURSOR_VERSION
   readonly kind: 'model_artifacts'
+  readonly scope: string
+  readonly expires_at: number
+}
+
+export interface V2ModelDeploymentCursorState {
+  readonly created_at: string
+  readonly id: string
+  readonly artifact_id: string | null
+  readonly status: string | null
+}
+
+interface ModelDeploymentCursorPayloadV2 extends V2ModelDeploymentCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'model_deployments'
   readonly scope: string
   readonly expires_at: number
 }
@@ -220,6 +237,7 @@ export class V2CursorCodec {
     cursor: string,
     namespace: string,
     datasetVersion: string | null,
+    modelDeploymentId: string | null,
     status: string | null,
   ): Readonly<V2EvaluationRunCursorState> {
     try {
@@ -242,6 +260,7 @@ export class V2CursorCodec {
         !isEvaluationRunCursorPayload(value) ||
         value.scope !== this.#scope(namespace, 'evaluation_runs') ||
         value.dataset_version !== datasetVersion ||
+        value.model_deployment_id !== modelDeploymentId ||
         value.status !== status ||
         value.expires_at <= this.#now()
       ) {
@@ -358,6 +377,60 @@ export class V2CursorCodec {
       return validateModelArtifactState(value)
     } catch {
       throw new ValidationError('Invalid or expired V2 Model Artifact cursor', {
+        issues: [
+          { path: '/cursor', line: null, code: 'invalid_cursor', message: 'Invalid cursor' },
+        ],
+      })
+    }
+  }
+
+  encodeModelDeployment(namespace: string, stateInput: V2ModelDeploymentCursorState): string {
+    const state = validateModelDeploymentState(stateInput)
+    const payload: ModelDeploymentCursorPayloadV2 = {
+      v: CURSOR_VERSION,
+      kind: 'model_deployments',
+      scope: this.#scope(namespace, 'model_deployments'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    }
+    const bytes = encoder.encode(canonicalJsonV2(payload))
+    return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
+  }
+
+  decodeModelDeployment(
+    cursor: string,
+    namespace: string,
+    artifactId: string | null,
+    status: string | null,
+  ): Readonly<V2ModelDeploymentCursorState> {
+    try {
+      if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
+        throw new Error('cursor text size is invalid')
+      }
+      const parts = cursor.split('.')
+      if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('malformed cursor')
+      const bytes = decodeBase64Url(parts[0])
+      if (bytes.byteLength === 0 || bytes.byteLength > CURSOR_MAX_BYTES) {
+        throw new Error('cursor payload size is invalid')
+      }
+      const signature = decodeBase64Url(parts[1])
+      const expected = this.#sign(bytes)
+      if (signature.byteLength !== expected.byteLength || !timingSafeEqual(signature, expected)) {
+        throw new Error('cursor signature is invalid')
+      }
+      const value = parseRawJsonV2(bytes, { maxBytes: CURSOR_MAX_BYTES, maxDepth: 4 })
+      if (
+        !isModelDeploymentCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'model_deployments') ||
+        value.artifact_id !== artifactId ||
+        value.status !== status ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateModelDeploymentState(value)
+    } catch {
+      throw new ValidationError('Invalid or expired V2 Model Deployment cursor', {
         issues: [
           { path: '/cursor', line: null, code: 'invalid_cursor', message: 'Invalid cursor' },
         ],
@@ -483,7 +556,8 @@ export class V2CursorCodec {
       | 'transform_jobs'
       | 'evaluation_runs'
       | 'swift_studio_sessions'
-      | 'model_artifacts',
+      | 'model_artifacts'
+      | 'model_deployments',
   ): string {
     return createHmac('sha256', this.#key)
       .update(canonicalJsonV2({ kind: `databench-v2-${kind}-cursor-scope`, namespace }))
@@ -556,13 +630,14 @@ function isEvaluationRunCursorPayload(value: unknown): value is EvaluationRunCur
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return (
-    Object.keys(record).length === 8 &&
+    Object.keys(record).length === 9 &&
     record.v === CURSOR_VERSION &&
     record.kind === 'evaluation_runs' &&
     typeof record.scope === 'string' &&
     typeof record.created_at === 'string' &&
     typeof record.id === 'string' &&
     (record.dataset_version === null || typeof record.dataset_version === 'string') &&
+    (record.model_deployment_id === null || typeof record.model_deployment_id === 'string') &&
     (record.status === null || typeof record.status === 'string') &&
     typeof record.expires_at === 'number' &&
     Number.isSafeInteger(record.expires_at) &&
@@ -608,6 +683,24 @@ function isModelArtifactCursorPayload(value: unknown): value is ModelArtifactCur
   )
 }
 
+function isModelDeploymentCursorPayload(value: unknown): value is ModelDeploymentCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 8 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'model_deployments' &&
+    typeof record.scope === 'string' &&
+    typeof record.created_at === 'string' &&
+    typeof record.id === 'string' &&
+    (record.artifact_id === null || typeof record.artifact_id === 'string') &&
+    (record.status === null || typeof record.status === 'string') &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
 function validateTransformJobState(
   input: V2TransformJobCursorState,
 ): Readonly<V2TransformJobCursorState> {
@@ -638,10 +731,15 @@ function validateEvaluationRunState(
     throw new TypeError('V2 evaluation run cursor Dataset filter is invalid')
   }
   const status = input.status === null ? null : EvaluationRunStatusV2Schema.parse(input.status)
+  const modelDeploymentId =
+    input.model_deployment_id === null
+      ? null
+      : ModelDeploymentIdV2Schema.parse(input.model_deployment_id)
   return Object.freeze({
     created_at: timestamp.toISOString(),
     id: EvaluationRunIdV2Schema.parse(input.id),
     dataset_version: datasetVersion,
+    model_deployment_id: modelDeploymentId,
     status,
   })
 }
@@ -694,6 +792,22 @@ function validateModelArtifactState(
     id: ModelArtifactIdV2Schema.parse(input.id),
     dataset_version: datasetVersion,
     artifact_kind: artifactKind,
+  })
+}
+
+function validateModelDeploymentState(
+  input: V2ModelDeploymentCursorState,
+): Readonly<V2ModelDeploymentCursorState> {
+  const timestamp = new Date(input.created_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.created_at) {
+    throw new TypeError('V2 Model Deployment cursor timestamp is invalid')
+  }
+  return Object.freeze({
+    created_at: timestamp.toISOString(),
+    id: ModelDeploymentIdV2Schema.parse(input.id),
+    artifact_id:
+      input.artifact_id === null ? null : ModelArtifactIdV2Schema.parse(input.artifact_id),
+    status: input.status === null ? null : ModelDeploymentStatusV2Schema.parse(input.status),
   })
 }
 

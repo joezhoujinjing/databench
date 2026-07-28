@@ -151,8 +151,22 @@ owner 已明确首期是可信内部工具，不要求以多租户攻击模型�
 
 - 原生 Infer/Deploy/Eval 页面首期保持可用，但其任务仍只属于 Swift Studio；
 - Databench 完整 lineage 必须从已导入的 Model Artifact 开始；
-- 首期 Deployment bridge 可以注册 operator 确认的稳定 OpenAI-compatible endpoint，并绑定 Artifact；
-- EvalScope 只接收 Databench opaque Deployment ID，由服务端解析 endpoint；
+- 首期 Deployment bridge 固定为 `registration_mode=operator_attested`：operator 注册已经独立运行且确认
+  稳定的 OpenAI-compatible endpoint，并绑定一个 verified-base LoRA Artifact；Databench 不在 S4 自动
+  启动、停止或调度 serving 进程；
+- 首期 provider 只接受 `openai_compatible`，`auth_mode` 只接受 `none`。这是可信内部、单 operator MVP，
+  不是未来 provider/auth 扩展的通用终态；
+- 创建、健康检查和禁用属于 operator action，使用独立 Bearer；列表/详情只返回 public projection，隐藏
+  endpoint 与 create digest；EvalScope 使用独立 service credential 调用不进入 OpenAPI 的 internal
+  resolver；
+- Deployment identity 绑定 namespace、Artifact、provider、display/served model、规范化 endpoint 和 auth
+  mode。endpoint 或 served model 变化必须创建新 Deployment ID，不能原地改写；
+- `status=active|disabled` 是生命周期，`health_status=unknown|healthy|unhealthy` 是最近一次 `/models`
+  观察，两者独立。健康检查不自动 disable；disable 是 terminal admission fence，不删除历史 Deployment、
+  Artifact、Evaluation Run 或 Report；
+- EvalScope 浏览器 payload 只接收 Databench opaque Deployment ID，由服务端解析 endpoint/model。只有与
+  Databench exact Dataset 同时使用时才创建 Deployment-bound Evaluation Run；与原生 Benchmark 组合是
+  不创建 Databench Run 的 expert/untracked 模式；
 - 只有走通下列链路后，才声明完整“数据 → 训练 → 部署 → 评测”闭环：
 
 ```text
@@ -165,6 +179,10 @@ Dataset Version
 ```
 
 直接在原生 Swift Eval Tab 中完成一次评测，不自动形成 Databench Evaluation Run lineage。
+
+S4 当前只验收 non-GPU contract：operator-attested endpoint 可以由 fake/CPU OpenAI-compatible service
+验证 `/models`、opaque resolve、Evaluation Run identity 和浏览器 lineage。真实 vLLM/transformers LoRA
+serving、`/chat/completions` 质量 smoke 与 NVIDIA 证据继续 deferred；不得据此声明 GPU 训练或部署可用。
 
 ### 9. 后续产品化不反向破坏首期桥接契约
 

@@ -22,7 +22,7 @@ e7_gate: passed
 
 ## 当前检查点
 
-- **当前分支:** `feat/evalscope-integration-design`
+- **当前分支:** `feat/swift-studio-integration`（E7 complete 基线上增加 Swift S4 交叉扩展）
 - **当前 Step:** E8 完整结果归档与 retention
 - **已完成:** E0 决策/来源/能力基线；E1 `evalscope-general-qa@1.0.0` projection；E2 Evaluation Run
   控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环；E4 Databench Evaluation UI foundation；
@@ -32,6 +32,8 @@ e7_gate: passed
   lazy routes 已开放；锁定 React 基线的全部业务页面已按 Databench 风格迁入唯一 SPA，E7 完整复刻 gate 已关闭
 - **GE7:** `pnpm evalscope:parity:check:green` 通过；60 个 capability 全部 green，其中 58 个 target capability
   已实现、2 个为 Databench application/brand shell exclusion
+- **Swift S4 交叉扩展:** opaque Databench Deployment model source、server-side resolve 与
+  Dataset/Artifact/Deployment Evaluation lineage 已完成 non-GPU gate；不改变 E8/E9 状态
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
 
 ## Step 状态
@@ -298,3 +300,26 @@ Gate 通过：
 
 E7 只关闭锁定 EvalScope React UI 的完整功能迁移 gate。Runtime 仍 disabled-by-default；结果归档属于 E8，
 安全/容量/离线最终集成属于 E9；V16/V17 与公共云 D3 均未改变。
+
+## Swift S4 opaque Deployment 交叉扩展
+
+- [x] Evaluation Dataset source 与 Model source 独立；Model 可选 Manual endpoint 或 Databench Deployment
+- [x] Deployment 模式浏览器只提交 `databench_deployment_id`；单测与真实浏览器 request body 均确认无
+  `model/api_url/api_key`
+- [x] EvalScope 使用独立 service credential 调用固定 Databench internal resolver；只对新 task resolve 一次，
+  endpoint policy 仍适用
+- [x] task integration schema v2 只持久化 Deployment/Artifact/digest/served model，不持久化 endpoint；
+  report/log/document response 使用 task-bound endpoint redaction
+- [x] terminal replay 在当前磁盘容量耗尽时仍成功；已有 claim 先 replay，不重复 endpoint/Deployment live
+  admission
+- [x] Deployment disabled 后新的 Deployment-bound Evaluation Run 返回稳定 422 field error；已有 Run/replay
+  与 report lineage 保留
+- [x] `evaluation-run-create-v2` 保存 exact Dataset、Deployment、Artifact、Deployment digest；Deployment filter
+  cursor 与 Artifact detail lineage UI 已接通
+- [x] `Benchmark + Deployment` 明确为 source-less expert/untracked，不创建 Databench Evaluation Run
+- [x] Python 60/60、Web/API/Catalog/Workspace 常规 suites、真实 Postgres/MinIO lifecycle、OpenAPI 和浏览器
+  opaque payload gate 通过
+- [ ] 真实 GPU serving、`/chat/completions` 与模型质量 smoke（Swift GPU gate deferred）
+
+该扩展的唯一允许结论是 `S4 non-GPU contract green / GPU deferred`。E8 结果归档、E9 最终离线集成、
+V16/V17 和公共云 D3 均未被关闭。

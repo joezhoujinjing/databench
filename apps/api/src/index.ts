@@ -43,6 +43,12 @@ export function createAppFromConfig(config: ApiConfig) {
     corsOrigins: config.corsOrigins,
     ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
     mcp: config.mcp,
+    ...(config.modelDeploymentOperatorToken === undefined
+      ? {}
+      : { modelDeploymentOperatorToken: config.modelDeploymentOperatorToken }),
+    ...(config.modelDeploymentServiceCredential === undefined
+      ? {}
+      : { modelDeploymentServiceCredential: config.modelDeploymentServiceCredential }),
     storeConfig: config.storeConfig,
     ...(config.swiftStudio === undefined ? {} : { swiftStudio: config.swiftStudio }),
     v2CursorSecret: config.v2CursorSecret,
@@ -124,6 +130,12 @@ export async function startApiRuntime(
       corsOrigins: config.corsOrigins,
       ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
       mcp: mcpConfig,
+      ...(config.modelDeploymentOperatorToken === undefined
+        ? {}
+        : { modelDeploymentOperatorToken: config.modelDeploymentOperatorToken }),
+      ...(config.modelDeploymentServiceCredential === undefined
+        ? {}
+        : { modelDeploymentServiceCredential: config.modelDeploymentServiceCredential }),
       swiftStudio: swiftStudioConfig,
       version: config.version,
       workspaceRoot: config.workspaceRoot,

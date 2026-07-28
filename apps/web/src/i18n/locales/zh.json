@@ -107,6 +107,33 @@
       "closed": "Session 已关闭",
       "failed": "Session 失败"
     },
+    "deployments": {
+      "title": "模型 Deployment",
+      "description": "为这个不可变 Artifact 注册 OpenAI-compatible 服务。公开 UI 只保存和提交 opaque Deployment ID。",
+      "refresh": "刷新",
+      "name": "Deployment 名称",
+      "servedModel": "服务模型名称",
+      "endpoint": "Endpoint Base URL",
+      "endpointHint": "MVP 仅支持 auth_mode=none。注册、探活和停用时，请将浏览器的后端连接 Token 配置为 Deployment operator token。",
+      "register": "注册 Deployment",
+      "registering": "正在注册…",
+      "loading": "正在加载 Deployment…",
+      "empty": "这个 Artifact 还没有注册 Deployment。",
+      "check": "健康检查",
+      "disable": "停用",
+      "evaluationRuns": "评测 Run",
+      "loadingRuns": "正在加载与 Deployment 绑定的评测 Run…",
+      "noRuns": "当前还没有与该 Deployment 绑定的 Databench 评测 Run。",
+      "status": {
+        "active": "Active",
+        "disabled": "已停用"
+      },
+      "health": {
+        "unknown": "未知",
+        "healthy": "健康",
+        "unhealthy": "不健康"
+      }
+    },
     "artifacts": {
       "title": "模型产物",
       "description": "从当前 Session 的输出中选择 LoRA Adapter，确认基础模型后导入为 Databench 不可变产物。原生训练目录不会被自动删除。",

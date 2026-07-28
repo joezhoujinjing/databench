@@ -148,6 +148,16 @@ export interface EvaluationRunCreateIdentityV1 {
   readonly evalscope_commit: string | null
 }
 
+export const V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE = 'evaluation-run-create-v2' as const
+
+export interface EvaluationRunCreateIdentityV2
+  extends Omit<EvaluationRunCreateIdentityV1, 'evaluation_run_create_profile'> {
+  readonly evaluation_run_create_profile: typeof V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE
+  readonly model_deployment_id: string
+  readonly model_artifact_id: string
+  readonly model_deployment_digest: string
+}
+
 export const V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE = 'swift-studio-session-create-v1' as const
 
 export interface SwiftStudioSessionCreateIdentityV1 {
@@ -178,6 +188,19 @@ export interface ModelArtifactImportCreateIdentityV1 {
     readonly reference: string
     readonly revision: string | null
   }
+}
+
+export const V2_MODEL_DEPLOYMENT_CREATE_PROFILE = 'model-deployment-create-v1' as const
+
+export interface ModelDeploymentCreateIdentityV1 {
+  readonly model_deployment_create_profile: typeof V2_MODEL_DEPLOYMENT_CREATE_PROFILE
+  readonly namespace: string
+  readonly artifact_id: string
+  readonly provider: 'openai_compatible'
+  readonly display_name: string
+  readonly served_model_name: string
+  readonly endpoint_base_url: string
+  readonly auth_mode: 'none'
 }
 
 export type V2ConverterName =

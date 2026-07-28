@@ -7,6 +7,7 @@ import {
 } from './validation.js'
 
 export type EvaluationSourceKind = 'benchmark' | 'databench'
+export type EvaluationModelSourceKind = 'manual' | 'databench-deployment'
 export type DatabenchTargetSource = 'none' | 'selected-candidate' | 'verification-ground-truth'
 
 export interface EvaluationFormValues {
@@ -93,6 +94,10 @@ export interface DatabenchEvaluationBinding {
   readonly targetSource: DatabenchTargetSource
 }
 
+export type EvaluationModelBinding =
+  | { readonly kind: 'manual' }
+  | { readonly deploymentId: string; readonly kind: 'databench-deployment' }
+
 export type EvaluationValidation =
   | {
       readonly datasetArgs: Record<string, unknown> | undefined
@@ -110,11 +115,14 @@ export type EvaluationValidation =
 export function validateEvaluationForm(
   values: EvaluationFormValues,
   source: EvaluationSourceKind,
+  modelSource: EvaluationModelSourceKind = 'manual',
 ): EvaluationValidation {
   const errors: Record<string, string> = {}
-  if (values.model.trim() === '') errors[EVALUATION_FIELD_IDS.model] = TASK_FORM_MESSAGES.required
-  if (values.apiUrl.trim() === '') {
-    errors[EVALUATION_FIELD_IDS.apiUrl] = TASK_FORM_MESSAGES.required
+  if (modelSource === 'manual') {
+    if (values.model.trim() === '') errors[EVALUATION_FIELD_IDS.model] = TASK_FORM_MESSAGES.required
+    if (values.apiUrl.trim() === '') {
+      errors[EVALUATION_FIELD_IDS.apiUrl] = TASK_FORM_MESSAGES.required
+    }
   }
   if (source === 'benchmark' && values.datasets.trim() === '') {
     errors[EVALUATION_FIELD_IDS.datasets] = TASK_FORM_MESSAGES.required
@@ -160,16 +168,24 @@ export function buildEvaluationPayload(
   values: EvaluationFormValues,
   source: EvaluationSourceKind,
   binding?: DatabenchEvaluationBinding,
+  modelBinding: EvaluationModelBinding = { kind: 'manual' },
 ): Record<string, unknown> {
-  const validation = validateEvaluationForm(values, source)
+  const validation = validateEvaluationForm(values, source, modelBinding.kind)
   if (!validation.ok) throw new TypeError('Evaluation form is invalid')
   const payload: Record<string, unknown> = {
-    model: values.model,
-    api_url: values.apiUrl,
     limit: optionalNumber(values.limit),
     eval_batch_size: optionalNumber(values.evalBatchSize),
   }
-  if (values.apiKey !== '') payload.api_key = values.apiKey
+  if (modelBinding.kind === 'manual') {
+    payload.model = values.model
+    payload.api_url = values.apiUrl
+    if (values.apiKey !== '') payload.api_key = values.apiKey
+  } else {
+    if (modelBinding.deploymentId.trim() === '') {
+      throw new TypeError('Databench Model Deployment binding is required')
+    }
+    payload.databench_deployment_id = modelBinding.deploymentId
+  }
   if (source === 'benchmark') {
     payload.datasets = splitDatasets(values.datasets)
     if (validation.datasetArgs !== undefined) payload.dataset_args = validation.datasetArgs

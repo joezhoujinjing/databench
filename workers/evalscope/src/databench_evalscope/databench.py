@@ -11,6 +11,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -20,6 +21,7 @@ from .storage import TaskManifestStore
 
 _DIGEST = re.compile(r'^[0-9a-f]{64}$')
 _RUN_ID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+_UUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
 _REF = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$')
 _TARGET_SOURCES = {'selected-candidate', 'verification-ground-truth', 'none'}
 
@@ -110,6 +112,71 @@ class PreparedDatabenchEvaluation:
     input_file: Path
 
 
+@dataclass(frozen=True)
+class ResolvedModelDeployment:
+    deployment_id: str
+    artifact_id: str
+    create_digest: str
+    served_model_name: str
+    endpoint_base_url: str
+    base_model_reference: str
+    base_model_revision: str
+
+    @classmethod
+    def parse(cls, value: Any, expected_id: str) -> 'ResolvedModelDeployment':
+        expected_fields = {
+            'id',
+            'artifact_id',
+            'create_digest',
+            'provider',
+            'registration_mode',
+            'served_model_name',
+            'endpoint_base_url',
+            'auth_mode',
+            'base_model_reference',
+            'base_model_revision',
+        }
+        if not isinstance(value, dict) or set(value) != expected_fields:
+            raise UpstreamProtocolError('Databench returned an invalid Model Deployment')
+        if (
+            value.get('id') != expected_id
+            or not _UUID.fullmatch(expected_id)
+            or not isinstance(value.get('artifact_id'), str)
+            or not _UUID.fullmatch(value['artifact_id'])
+            or not isinstance(value.get('create_digest'), str)
+            or not _DIGEST.fullmatch(value['create_digest'])
+            or value.get('provider') != 'openai_compatible'
+            or value.get('registration_mode') != 'operator_attested'
+            or value.get('auth_mode') != 'none'
+        ):
+            raise UpstreamProtocolError('Databench returned an invalid Model Deployment')
+        served_model_name = _bounded_optional_string(value.get('served_model_name'), 'served_model_name')
+        endpoint_base_url = _bounded_optional_string(value.get('endpoint_base_url'), 'endpoint_base_url', 2_048)
+        base_model_reference = _bounded_optional_string(value.get('base_model_reference'), 'base_model_reference')
+        base_model_revision = _bounded_optional_string(value.get('base_model_revision'), 'base_model_revision')
+        if None in (served_model_name, endpoint_base_url, base_model_reference, base_model_revision):
+            raise UpstreamProtocolError('Databench returned an invalid Model Deployment')
+        parsed_endpoint = urlsplit(endpoint_base_url)
+        if (
+            parsed_endpoint.scheme not in {'http', 'https'}
+            or not parsed_endpoint.hostname
+            or parsed_endpoint.username is not None
+            or parsed_endpoint.password is not None
+            or parsed_endpoint.query
+            or parsed_endpoint.fragment
+        ):
+            raise UpstreamProtocolError('Databench returned an invalid Model Deployment endpoint')
+        return cls(
+            deployment_id=expected_id,
+            artifact_id=value['artifact_id'],
+            create_digest=value['create_digest'],
+            served_model_name=served_model_name,
+            endpoint_base_url=endpoint_base_url,
+            base_model_reference=base_model_reference,
+            base_model_revision=base_model_revision,
+        )
+
+
 class DatabenchClient:
     """Small internal client that never accepts a caller-provided origin or path."""
 
@@ -138,10 +205,15 @@ class DatabenchClient:
         task_id: str,
         payload: dict[str, Any],
         source: DatabenchSource,
+        deployment: ResolvedModelDeployment | None = None,
     ) -> PreparedDatabenchEvaluation:
-        model_name = _bounded_optional_string(payload.get('model'), 'model')
+        model_name = (
+            deployment.served_model_name
+            if deployment is not None
+            else _bounded_optional_string(payload.get('model'), 'model')
+        )
         integration = {
-            'schema_version': 1,
+            'schema_version': 2 if deployment is not None else 1,
             'task_id': task_id,
             'run_id': None,
             'source_ref': source.source_ref,
@@ -153,6 +225,12 @@ class DatabenchClient:
             'evalscope_commit': EVALSCOPE_COMMIT,
             'input_filename': 'databench.jsonl',
         }
+        if deployment is not None:
+            integration.update({
+                'model_deployment_id': deployment.deployment_id,
+                'model_artifact_id': deployment.artifact_id,
+                'model_deployment_digest': deployment.create_digest,
+            })
         self._manifests.write_integration(task_id, integration)
 
         described = self._json_request('GET', f'/v2/datasets/{source.dataset_version}')
@@ -171,31 +249,41 @@ class DatabenchClient:
         )
         self._validate_plan(plan, source)
 
+        create_body = {
+            'provider': 'evalscope',
+            'provider_task_id': task_id,
+            'dataset_version': source.dataset_version,
+            'source_ref': source.source_ref,
+            'converter': source.converter,
+            'converter_options': source.options,
+            'accepted_fidelity_digest': source.accepted_fidelity_digest,
+            'model_name': None if deployment is not None else model_name,
+            'evalscope_commit': EVALSCOPE_COMMIT,
+        }
+        if deployment is not None:
+            create_body['model_deployment_id'] = deployment.deployment_id
         run = self._json_request(
             'POST',
             '/v2/evaluation-runs',
-            {
-                'provider': 'evalscope',
-                'provider_task_id': task_id,
-                'dataset_version': source.dataset_version,
-                'source_ref': source.source_ref,
-                'converter': source.converter,
-                'converter_options': source.options,
-                'accepted_fidelity_digest': source.accepted_fidelity_digest,
-                'model_name': model_name,
-                'evalscope_commit': EVALSCOPE_COMMIT,
-            },
+            create_body,
             expected_status=201,
             retry_transport_once=True,
         )
         run_id = run.get('id')
         if not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id) or run.get('status') != 'prepared':
             raise UpstreamProtocolError('Databench returned an invalid evaluation run')
+        if deployment is not None and (
+            run.get('model_deployment_id') != deployment.deployment_id
+            or run.get('model_artifact_id') != deployment.artifact_id
+            or run.get('model_name') != deployment.served_model_name
+        ):
+            raise UpstreamProtocolError('Databench returned mismatched Model Deployment lineage')
         self._manifests.update_integration(task_id, {'run_id': run_id})
 
         input_file = self._export(task_id, source)
         injected = copy.deepcopy(payload)
         injected.pop('databench_source', None)
+        injected.pop('databench_deployment_id', None)
         injected['datasets'] = ['general_qa']
         injected['dataset_args'] = {
             'general_qa': {
@@ -204,6 +292,20 @@ class DatabenchClient:
             }
         }
         return PreparedDatabenchEvaluation(payload=injected, run_id=run_id, input_file=input_file)
+
+    def resolve_model_deployment(self, deployment_id: str) -> ResolvedModelDeployment:
+        if not isinstance(deployment_id, str) or not _UUID.fullmatch(deployment_id):
+            raise RuntimePolicyError(
+                'model_deployment_invalid',
+                'Databench Model Deployment ID is invalid',
+                422,
+                '/databench_deployment_id',
+            )
+        value = self._json_request(
+            'GET',
+            f'/internal/v1/model-deployments/{deployment_id}:resolve',
+        )
+        return ResolvedModelDeployment.parse(value, deployment_id)
 
     def start(self, run_id: str) -> bool:
         result = self._json_request('POST', f'/v2/evaluation-runs/{run_id}:start', {})
@@ -242,20 +344,23 @@ class DatabenchClient:
         task_id = integration.get('task_id')
         if not isinstance(task_id, str):
             raise RuntimePolicyError('task_integration_invalid', 'Task integration ID is invalid', 500)
+        create_body = {
+            'provider': 'evalscope',
+            'provider_task_id': task_id,
+            'dataset_version': integration.get('dataset_version'),
+            'source_ref': integration.get('source_ref'),
+            'converter': integration.get('converter'),
+            'converter_options': integration.get('options'),
+            'accepted_fidelity_digest': integration.get('accepted_fidelity_digest'),
+            'model_name': None if integration.get('schema_version') == 2 else integration.get('model_name'),
+            'evalscope_commit': integration.get('evalscope_commit'),
+        }
+        if integration.get('schema_version') == 2:
+            create_body['model_deployment_id'] = integration.get('model_deployment_id')
         run = self._json_request(
             'POST',
             '/v2/evaluation-runs',
-            {
-                'provider': 'evalscope',
-                'provider_task_id': task_id,
-                'dataset_version': integration.get('dataset_version'),
-                'source_ref': integration.get('source_ref'),
-                'converter': integration.get('converter'),
-                'converter_options': integration.get('options'),
-                'accepted_fidelity_digest': integration.get('accepted_fidelity_digest'),
-                'model_name': integration.get('model_name'),
-                'evalscope_commit': integration.get('evalscope_commit'),
-            },
+            create_body,
             expected_status=201,
             retry_transport_once=True,
         )
@@ -404,10 +509,10 @@ class DatabenchClient:
             )
 
 
-def _bounded_optional_string(value: Any, field: str) -> str | None:
+def _bounded_optional_string(value: Any, field: str, maximum: int = 512) -> str | None:
     if value is None:
         return None
-    if not isinstance(value, str) or not value or len(value.encode('utf-8')) > 512:
+    if not isinstance(value, str) or not value or len(value.encode('utf-8')) > maximum:
         raise RuntimePolicyError('task_config_invalid', f'{field} is invalid', 422, f'/{field}')
     return value
 

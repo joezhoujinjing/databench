@@ -1579,7 +1579,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
             base_model: {
               reference: input.base_model.reference,
               revision: input.base_model.revision,
-              binding_status: 'declared' as const,
+              binding_status: 'verified' as const,
             },
             training_summary: {
               train_stage: 'sft',
@@ -1643,7 +1643,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       output_handle: output.handle,
       artifact_kind: 'lora_adapter',
       display_name: 'integration-lora',
-      base_model: { reference: 'Qwen/Qwen3-0.6B', revision: null },
+      base_model: { reference: 'Qwen/Qwen3-0.6B', revision: '0123456789abcdef' },
     })
     expect(imported).toMatchObject({ status: 'completed', archive_digest: archiveDigest })
     expect(
@@ -1677,6 +1677,70 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       ],
     })
     await expect(studio.getModelArtifact(artifactId)).resolves.toMatchObject({ id: artifactId })
+
+    const checkedUrls: string[] = []
+    const deploymentWorkspace = createSwiftStudioWorkspace(
+      'model-deployment-lifecycle',
+      provider,
+      swiftStudioCatalog(),
+      async (input) => {
+        checkedUrls.push(String(input))
+        return new Response(
+          JSON.stringify({ data: [{ id: 'integration-lora-v1', object: 'model' }] }),
+          { headers: { 'Content-Type': 'application/json' }, status: 200 },
+        )
+      },
+    )
+    const deployment = await deploymentWorkspace.createModelDeployment({
+      artifact_id: artifactId,
+      display_name: 'integration-lora endpoint',
+      provider: 'openai_compatible',
+      served_model_name: 'integration-lora-v1',
+      endpoint_base_url: 'http://model.internal:8000/v1',
+      auth_mode: 'none',
+    })
+    expect(deployment).toMatchObject({
+      artifact_id: artifactId,
+      health_status: 'unknown',
+      status: 'active',
+    })
+    expect(deployment).not.toHaveProperty('endpoint_base_url')
+    expect(deployment).not.toHaveProperty('create_digest')
+    await expect(deploymentWorkspace.checkModelDeployment(deployment.id)).resolves.toMatchObject({
+      health_status: 'healthy',
+    })
+    expect(checkedUrls).toEqual(['http://model.internal:8000/v1/models'])
+
+    const evaluationPlan = await deploymentWorkspace.inspectExport(published.dataset_version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    const run = await deploymentWorkspace.createEvaluationRun({
+      provider: 'evalscope',
+      provider_task_id: `task-model-deployment-${randomUUID()}`,
+      dataset_version: published.dataset_version,
+      source_ref: null,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: evaluationPlan.fidelity_digest,
+      model_name: null,
+      model_deployment_id: deployment.id,
+      evalscope_commit: 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
+    })
+    expect(run).toMatchObject({
+      create_profile: 'evaluation-run-create-v2',
+      dataset_version: published.dataset_version,
+      model_artifact_id: artifactId,
+      model_deployment_id: deployment.id,
+      model_name: 'integration-lora-v1',
+    })
+    await expect(
+      deploymentWorkspace.listEvaluationRuns({
+        model_deployment_id: deployment.id,
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ items: [expect.objectContaining({ id: run.id })] })
   })
 
   test('production open composes Catalog, S3, and file-backed Store end to end', async () => {
@@ -1719,6 +1783,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     tempName: string,
     provider: SwiftStudioProviderV2,
     swiftCatalog: V2WorkspaceSwiftStudioCatalog = swiftStudioCatalog(),
+    modelDeploymentFetch?: typeof fetch,
   ): V2Workspace {
     return new V2Workspace({
       catalog,
@@ -1730,6 +1795,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         readConcurrency: 1,
       }),
       cursorSecret: 'swift-studio-integration-cursor-secret',
+      ...(modelDeploymentFetch === undefined ? {} : { modelDeploymentFetch }),
       swiftStudio: {
         catalog: swiftCatalog,
         provider,
@@ -1828,10 +1894,11 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
   }
 
   async function clearV2Catalog(): Promise<void> {
+    await prisma.v2EvaluationRun.deleteMany()
+    await prisma.v2ModelDeployment.deleteMany()
     await prisma.v2ModelArtifact.deleteMany()
     await prisma.v2ModelArtifactImport.deleteMany()
     await prisma.v2SwiftStudioSession.deleteMany()
-    await prisma.v2EvaluationRun.deleteMany()
     await prisma.v2RecordParentEdge.deleteMany()
     await prisma.v2RecordRevisionLocation.deleteMany()
     await prisma.v2TransformJob.deleteMany()

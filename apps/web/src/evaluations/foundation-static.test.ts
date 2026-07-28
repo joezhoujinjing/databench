@@ -84,6 +84,19 @@ describe('Evaluation UI foundation static boundaries', () => {
     expect(generatedFrame).toContain('sandbox="allow-scripts"')
     expect(generatedFrame).not.toContain('allow-same-origin')
   })
+
+  test('labels Benchmark plus Deployment as an untracked expert mode', async () => {
+    const [form, translations] = await Promise.all([
+      readFile(path.join(evaluationsRoot, 'features/tasks/EvaluationForm.tsx'), 'utf8'),
+      readFile(path.join(evaluationsRoot, 'i18n/translations/tasks.ts'), 'utf8'),
+    ])
+
+    expect(form).toContain("source === 'benchmark' && modelSource === 'databench-deployment'")
+    expect(form).toContain('deploymentBenchmarkExpertTitle')
+    expect(form).toContain('deploymentBenchmarkExpertHint')
+    expect(translations).toContain('untracked Benchmark run')
+    expect(translations).toContain('不会创建 Databench Evaluation Run')
+  })
 })
 
 async function sourceFiles(root: string): Promise<string[]> {

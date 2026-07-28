@@ -18,10 +18,12 @@ import {
   hashV2DatasetIdentity,
   hashV2DatasetIdentityFromSortedRecordDigests,
   hashV2EvaluationRunCreate,
+  hashV2EvaluationRunCreateWithDeployment,
   hashV2ExportFidelity,
   hashV2IdentityClaimKey,
   hashV2IdentityRequest,
   hashV2ModelArtifactImportCreate,
+  hashV2ModelDeploymentCreate,
   hashV2Record,
   hashV2SwiftStudioOutputHandle,
   hashV2SwiftStudioSessionCreate,
@@ -32,7 +34,9 @@ import {
   type SourceRootSeedV1,
   type TransformCacheIdentityV1,
   V2_EVALUATION_RUN_CREATE_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
   V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
+  V2_MODEL_DEPLOYMENT_CREATE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '../src/index.js'
 
@@ -286,6 +290,51 @@ describe('v2 identity and version fixed vectors', () => {
     expect(hashV2EvaluationRunCreate({ ...identity, provider_task_id: 'task-fixed-2' })).not.toBe(
       hashV2EvaluationRunCreate(identity),
     )
+  })
+
+  test('locks the Model Deployment create domain and deployment-bound evaluation identity', () => {
+    const deployment = {
+      model_deployment_create_profile: V2_MODEL_DEPLOYMENT_CREATE_PROFILE,
+      namespace: '11111111-1111-4111-8111-111111111111',
+      artifact_id: '22222222-2222-4222-8222-222222222222',
+      provider: 'openai_compatible' as const,
+      display_name: 'customer-service-lora',
+      served_model_name: 'customer-service-lora-v1',
+      endpoint_base_url: 'http://model.internal:8000/v1',
+      auth_mode: 'none' as const,
+    }
+    const deploymentCanonical =
+      '{"artifact_id":"22222222-2222-4222-8222-222222222222","auth_mode":"none","display_name":"customer-service-lora","endpoint_base_url":"http://model.internal:8000/v1","model_deployment_create_profile":"model-deployment-create-v1","namespace":"11111111-1111-4111-8111-111111111111","provider":"openai_compatible","served_model_name":"customer-service-lora-v1"}'
+    const deploymentDigest = 'b1947d1aa720c28bb75cd5e7140d33d8d84b6c8ea8c13479191472916ba814d7'
+    expect(canonicalJsonV2(deployment)).toBe(deploymentCanonical)
+    expect(hashV2ModelDeploymentCreate(deployment)).toBe(deploymentDigest)
+
+    const evaluation = {
+      evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+      provider: 'evalscope' as const,
+      provider_task_id: 'task-deployment-fixed-1',
+      dataset_version: 'a'.repeat(64),
+      source_ref: 'main',
+      converter: 'evalscope-general-qa' as const,
+      converter_version: '1.0.0',
+      normalized_options: { target_source: 'none' },
+      fidelity_digest: 'b'.repeat(64),
+      benchmark: 'general_qa',
+      model_name: 'customer-service-lora-v1',
+      model_deployment_id: '33333333-3333-4333-8333-333333333333',
+      model_artifact_id: deployment.artifact_id,
+      model_deployment_digest: deploymentDigest,
+      evalscope_commit: 'c'.repeat(40),
+    }
+    expect(hashV2EvaluationRunCreateWithDeployment(evaluation)).toBe(
+      'a4c9a0c9e5606a85b89b1933b39585a0b9b6e001a8d8a5d5768f6f4a7ba0cf7c',
+    )
+    expect(
+      hashV2EvaluationRunCreateWithDeployment({
+        ...evaluation,
+        model_deployment_digest: 'f'.repeat(64),
+      }),
+    ).not.toBe(hashV2EvaluationRunCreateWithDeployment(evaluation))
   })
 
   test('locks the canonical Swift Studio Session create domain and excludes display metadata', () => {

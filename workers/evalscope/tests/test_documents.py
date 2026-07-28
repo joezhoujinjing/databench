@@ -9,6 +9,7 @@ from databench_evalscope.documents import (
     media_locator,
     resolve_media,
     sanitize_active_html,
+    sanitize_deployment_json,
     sanitize_json,
 )
 from databench_evalscope.errors import RuntimePolicyError
@@ -156,6 +157,27 @@ def test_json_sanitizer_removes_credentials_paths_and_maps_media(tmp_path: Path)
 def test_json_sanitizer_normalizes_non_finite_numbers() -> None:
     value = sanitize_json({'nan': float('nan'), 'positive': float('inf'), 'negative': -float('inf')})
     assert value == {'nan': None, 'positive': None, 'negative': None}
+
+
+def test_deployment_sanitizer_drops_endpoint_fields_and_plain_text_occurrences() -> None:
+    endpoint = 'http://model.internal:8000/v1'
+    value = sanitize_deployment_json(
+        {
+            'api_url': endpoint,
+            'nested': {
+                'url': endpoint,
+                'endpoint': endpoint,
+                'api_key': 'not-configured',
+                'message': f'connected to {endpoint}',
+            },
+            'model': 'deployed-lora-v1',
+        },
+        endpoint_values=(endpoint,),
+    )
+    assert value == {
+        'nested': {'message': 'connected to [model-endpoint]'},
+        'model': 'deployed-lora-v1',
+    }
 
 
 def test_html_sanitizer_never_keeps_remote_images() -> None:

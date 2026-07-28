@@ -8,6 +8,7 @@ import {
   V2CatalogInputError,
   V2CatalogLineageCycleError,
   V2CatalogModelArtifactImportConflictError,
+  V2CatalogModelDeploymentAdmissionError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogSwiftStudioSessionConflictError,
@@ -38,6 +39,11 @@ import type {
   CatalogModelArtifactManifestV2,
   CatalogModelArtifactPageV2,
   CatalogModelArtifactRowV2,
+  CatalogModelDeploymentCursorV2,
+  CatalogModelDeploymentHealthV2,
+  CatalogModelDeploymentListFilterV2,
+  CatalogModelDeploymentPageV2,
+  CatalogModelDeploymentRowV2,
   CatalogRecordParentRowV2,
   CatalogRecordRevisionV2,
   CatalogRefPageV2,
@@ -68,6 +74,7 @@ import type {
   CompleteTransformJobV2,
   CreateEvaluationRunV2,
   CreateModelArtifactImportV2,
+  CreateModelDeploymentV2,
   CreateSwiftStudioSessionV2,
   CreateTransformJobV2,
   DeleteRefResultV2,
@@ -215,6 +222,7 @@ interface EvaluationRunSqlRow {
   readonly namespace_id: string
   readonly provider: string
   readonly provider_task_id: string
+  readonly create_profile: string
   readonly create_request_digest: string
   readonly provider_report_ids_json: Prisma.JsonValue | null
   readonly dataset_version: string
@@ -225,6 +233,9 @@ interface EvaluationRunSqlRow {
   readonly fidelity_digest: string
   readonly benchmark: string
   readonly model_name: string | null
+  readonly model_deployment_id: string | null
+  readonly model_artifact_id: string | null
+  readonly model_deployment_digest: string | null
   readonly evalscope_commit: string | null
   readonly status: string
   readonly metrics_json: Prisma.JsonValue | null
@@ -329,6 +340,25 @@ interface ModelArtifactSqlRow {
   readonly created_at: Date
 }
 
+interface ModelDeploymentSqlRow {
+  readonly id: string
+  readonly namespace_id: string
+  readonly create_digest: string
+  readonly artifact_id: string
+  readonly provider: string
+  readonly display_name: string
+  readonly served_model_name: string
+  readonly endpoint_base_url: string
+  readonly auth_mode: string
+  readonly status: string
+  readonly health_status: string
+  readonly health_checked_at: Date | null
+  readonly health_error: string | null
+  readonly created_at: Date
+  readonly disabled_at: Date | null
+  readonly updated_at: Date
+}
+
 const TRANSFORM_JOB_COLUMNS = Prisma.sql`
   "id", "cache_key", "op", "op_version", "params_json", "input_version",
   "capability_name", "capability_version", "status", "attempt", "lease_owner",
@@ -339,10 +369,12 @@ const TRANSFORM_JOB_COLUMNS = Prisma.sql`
 `
 
 const EVALUATION_RUN_COLUMNS = Prisma.sql`
-  "id", "namespace_id", "provider", "provider_task_id", "create_request_digest",
+  "id", "namespace_id", "provider", "provider_task_id", "create_profile",
+  "create_request_digest",
   "provider_report_ids_json", "dataset_version", "source_ref", "converter",
   "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
-  "model_name", "evalscope_commit", "status", "metrics_json", "error_json",
+  "model_name", "model_deployment_id", "model_artifact_id", "model_deployment_digest",
+  "evalscope_commit", "status", "metrics_json", "error_json",
   "archive_status", "archive_attempt", "result_artifact_key", "result_artifact_digest",
   "result_artifact_size_bytes", "archive_error_json", "created_at", "started_at",
   "finished_at", "updated_at"
@@ -375,6 +407,12 @@ const MODEL_ARTIFACT_COLUMNS = Prisma.sql`
   "source_import_id", "dataset_lineage_status", "dataset_version",
   "dataset_export_digest", "base_model_reference", "base_model_revision",
   "base_model_binding_status", "upstream_commit", "image_digest", "created_at"
+`
+
+const MODEL_DEPLOYMENT_COLUMNS = Prisma.sql`
+  "id", "namespace_id", "create_digest", "artifact_id", "provider", "display_name",
+  "served_model_name", "endpoint_base_url", "auth_mode", "status", "health_status",
+  "health_checked_at", "health_error", "created_at", "disabled_at", "updated_at"
 `
 
 export class V2Catalog {
@@ -624,45 +662,93 @@ export class V2Catalog {
     input: CreateEvaluationRunV2,
   ): Promise<CatalogEvaluationRunRowV2> {
     validateCreateEvaluationRun(input)
-    const id = randomUUID()
-    const converterOptionsJson = JSON.stringify(input.converterOptions)
-    const inserted = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
-      INSERT INTO "evaluation_runs_v2" (
-        "id", "namespace_id", "provider", "provider_task_id", "create_request_digest",
-        "dataset_version", "source_ref", "converter", "converter_version",
-        "converter_options_json", "fidelity_digest", "benchmark", "model_name",
-        "evalscope_commit", "status"
-      )
-      VALUES (
-        ${id}::uuid, ${input.namespaceId}::uuid, ${input.provider}, ${input.providerTaskId},
-        ${input.createRequestDigest}, ${input.datasetVersion}, ${input.sourceRef},
-        ${input.converter}, ${input.converterVersion}, ${converterOptionsJson}::jsonb,
-        ${input.fidelityDigest}, ${input.benchmark}, ${input.modelName},
-        ${input.evalscopeCommit}, 'prepared'
-      )
-      ON CONFLICT ("namespace_id", "provider", "provider_task_id") DO NOTHING
-      RETURNING ${EVALUATION_RUN_COLUMNS}
-    `)
-    if (inserted.length > 1) {
-      throw new V2CatalogConsistencyError('Evaluation run insert returned more than one row')
-    }
-    const created = inserted[0]
-    if (created) return sqlRowToEvaluationRun(created)
+    return await this.#client.$transaction(async (tx) => {
+      await acquireEvaluationRunAdmissionLock(tx, input)
+      const existing = await tx.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+        SELECT ${EVALUATION_RUN_COLUMNS}
+        FROM "evaluation_runs_v2"
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "provider" = ${input.provider} AND
+          "provider_task_id" = ${input.providerTaskId}
+      `)
+      if (existing.length > 1) {
+        throw new V2CatalogConsistencyError('Evaluation run replay lookup returned multiple rows')
+      }
+      if (existing[0]) return sqlRowToEvaluationRun(existing[0])
 
-    const existing = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
-      SELECT ${EVALUATION_RUN_COLUMNS}
-      FROM "evaluation_runs_v2"
-      WHERE
-        "namespace_id" = ${input.namespaceId}::uuid AND
-        "provider" = ${input.provider} AND
-        "provider_task_id" = ${input.providerTaskId}
-    `)
-    if (existing.length !== 1 || !existing[0]) {
-      throw new V2CatalogConsistencyError(
-        'Evaluation run insert conflicted but the winning row could not be read',
-      )
-    }
-    return sqlRowToEvaluationRun(existing[0])
+      if (input.createProfile === 'evaluation-run-create-v2') {
+        const deployments = await tx.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+          SELECT ${MODEL_DEPLOYMENT_COLUMNS}
+          FROM "model_deployments_v2"
+          WHERE
+            "namespace_id" = ${input.namespaceId}::uuid AND
+            "id" = ${input.modelDeploymentId}::uuid AND
+            "artifact_id" = ${input.modelArtifactId}::uuid AND
+            "create_digest" = ${input.modelDeploymentDigest}
+          FOR SHARE
+        `)
+        if (deployments.length > 1) {
+          throw new V2CatalogConsistencyError(
+            'Evaluation run admission locked multiple Model Deployments',
+          )
+        }
+        const deployment = deployments[0]
+        if (!deployment) {
+          throw new V2CatalogInputError('Evaluation run Model Deployment binding is not registered')
+        }
+        if (deployment.status !== 'active') {
+          throw new V2CatalogModelDeploymentAdmissionError('disabled', deployment.id)
+        }
+        if (deployment.served_model_name !== input.modelName) {
+          throw new V2CatalogInputError(
+            'Evaluation run model name must match its immutable Model Deployment',
+          )
+        }
+      }
+
+      const id = randomUUID()
+      const converterOptionsJson = JSON.stringify(input.converterOptions)
+      const inserted = await tx.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+        INSERT INTO "evaluation_runs_v2" (
+          "id", "namespace_id", "provider", "provider_task_id", "create_profile",
+          "create_request_digest", "dataset_version", "source_ref", "converter",
+          "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
+          "model_name", "model_deployment_id", "model_artifact_id",
+          "model_deployment_digest", "evalscope_commit", "status"
+        )
+        VALUES (
+          ${id}::uuid, ${input.namespaceId}::uuid, ${input.provider}, ${input.providerTaskId},
+          ${input.createProfile}, ${input.createRequestDigest}, ${input.datasetVersion},
+          ${input.sourceRef}, ${input.converter}, ${input.converterVersion},
+          ${converterOptionsJson}::jsonb, ${input.fidelityDigest}, ${input.benchmark},
+          ${input.modelName}, ${input.modelDeploymentId}::uuid, ${input.modelArtifactId}::uuid,
+          ${input.modelDeploymentDigest}, ${input.evalscopeCommit}, 'prepared'
+        )
+        ON CONFLICT ("namespace_id", "provider", "provider_task_id") DO NOTHING
+        RETURNING ${EVALUATION_RUN_COLUMNS}
+      `)
+      if (inserted.length > 1) {
+        throw new V2CatalogConsistencyError('Evaluation run insert returned more than one row')
+      }
+      const created = inserted[0]
+      if (created) return sqlRowToEvaluationRun(created)
+
+      const winner = await tx.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+        SELECT ${EVALUATION_RUN_COLUMNS}
+        FROM "evaluation_runs_v2"
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "provider" = ${input.provider} AND
+          "provider_task_id" = ${input.providerTaskId}
+      `)
+      if (winner.length !== 1 || !winner[0]) {
+        throw new V2CatalogConsistencyError(
+          'Evaluation run insert conflicted but the winning row could not be read',
+        )
+      }
+      return sqlRowToEvaluationRun(winner[0])
+    })
   }
 
   async getEvaluationRun(
@@ -701,6 +787,11 @@ export class V2Catalog {
           filter.datasetVersion === null
             ? Prisma.sql`TRUE`
             : Prisma.sql`"dataset_version" = ${filter.datasetVersion}`
+        } AND
+        ${
+          filter.modelDeploymentId === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`"model_deployment_id" = ${filter.modelDeploymentId}::uuid`
         } AND
         ${filter.status === null ? Prisma.sql`TRUE` : Prisma.sql`"status" = ${filter.status}`} AND
         ${
@@ -1742,6 +1833,173 @@ export class V2Catalog {
     })
   }
 
+  async createOrReadModelDeployment(
+    input: CreateModelDeploymentV2,
+  ): Promise<CatalogModelDeploymentRowV2> {
+    validateCreateModelDeployment(input)
+    const id = randomUUID()
+    const inserted = await this.#client.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+      INSERT INTO "model_deployments_v2" (
+        "id", "namespace_id", "create_digest", "artifact_id", "provider",
+        "display_name", "served_model_name", "endpoint_base_url", "auth_mode", "status"
+      )
+      VALUES (
+        ${id}::uuid, ${input.namespaceId}::uuid, ${input.createDigest},
+        ${input.artifactId}::uuid, ${input.provider}, ${input.displayName},
+        ${input.servedModelName}, ${input.endpointBaseUrl}, ${input.authMode}, 'active'
+      )
+      ON CONFLICT ("namespace_id", "create_digest") DO NOTHING
+      RETURNING ${MODEL_DEPLOYMENT_COLUMNS}
+    `)
+    if (inserted.length > 1) {
+      throw new V2CatalogConsistencyError('Model Deployment insert returned more than one row')
+    }
+    if (inserted[0]) return sqlRowToModelDeployment(inserted[0])
+    const rows = await this.#client.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+      SELECT ${MODEL_DEPLOYMENT_COLUMNS}
+      FROM "model_deployments_v2"
+      WHERE "namespace_id" = ${input.namespaceId}::uuid AND "create_digest" = ${input.createDigest}
+    `)
+    if (rows.length !== 1 || !rows[0]) {
+      throw new V2CatalogConsistencyError(
+        'Model Deployment insert conflicted but the winning row could not be read',
+      )
+    }
+    const deployment = sqlRowToModelDeployment(rows[0])
+    if (!sameModelDeploymentCreate(deployment, input)) {
+      throw new V2CatalogConsistencyError(
+        'Model Deployment create digest resolved to another request',
+      )
+    }
+    return deployment
+  }
+
+  async getModelDeployment(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogModelDeploymentRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateModelDeploymentId(id)
+    const rows = await this.#client.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+      SELECT ${MODEL_DEPLOYMENT_COLUMNS}
+      FROM "model_deployments_v2"
+      WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError('Model Deployment lookup returned more than one row')
+    }
+    return rows[0] ? sqlRowToModelDeployment(rows[0]) : null
+  }
+
+  async listModelDeployments(
+    namespaceId: string,
+    filter: CatalogModelDeploymentListFilterV2,
+    before: CatalogModelDeploymentCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelDeploymentPageV2> {
+    validateNamespaceId(namespaceId)
+    validateModelDeploymentListFilter(filter)
+    if (before !== null) validateModelDeploymentCursor(before)
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_CATALOG_PAGE_SIZE) {
+      throw new V2CatalogInputError('Model Deployment page limit is invalid')
+    }
+    const rows = await this.#client.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+      SELECT ${MODEL_DEPLOYMENT_COLUMNS}
+      FROM "model_deployments_v2"
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        (${filter.artifactId}::text IS NULL OR "artifact_id" = ${filter.artifactId}::uuid) AND
+        (${filter.status}::text IS NULL OR "status" = ${filter.status}) AND
+        ${
+          before === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`
+              (
+                date_trunc('milliseconds', "created_at") < ${before.createdAt} OR
+                (
+                  date_trunc('milliseconds', "created_at") = ${before.createdAt} AND
+                  "id"::text COLLATE "C" < ${before.id}
+                )
+              )
+            `
+        }
+      ORDER BY date_trunc('milliseconds', "created_at") DESC, "id"::text COLLATE "C" DESC
+      LIMIT ${limit + 1}
+    `)
+    const hasMore = rows.length > limit
+    const pageRows = rows.slice(0, limit).map(sqlRowToModelDeployment)
+    const last = hasMore ? pageRows.at(-1) : undefined
+    return Object.freeze({
+      rows: Object.freeze(pageRows),
+      nextCursor:
+        last === undefined
+          ? null
+          : Object.freeze({
+              createdAt: truncateDateToMilliseconds(last.createdAt),
+              id: last.id,
+            }),
+    })
+  }
+
+  async disableModelDeployment(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogModelDeploymentRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateModelDeploymentId(id)
+    return await this.#client.$transaction(async (transaction) => {
+      const rows = await transaction.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+        SELECT ${MODEL_DEPLOYMENT_COLUMNS}
+        FROM "model_deployments_v2"
+        WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+        FOR UPDATE
+      `)
+      if (rows.length > 1) {
+        throw new V2CatalogConsistencyError('Model Deployment disable locked multiple rows')
+      }
+      const current = rows[0]
+      if (!current) return null
+      if (current.status === 'disabled') return sqlRowToModelDeployment(current)
+      const updated = await transaction.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+        UPDATE "model_deployments_v2"
+        SET
+          "status" = 'disabled',
+          "disabled_at" = clock_timestamp(),
+          "updated_at" = clock_timestamp()
+        WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+        RETURNING ${MODEL_DEPLOYMENT_COLUMNS}
+      `)
+      if (updated.length !== 1 || !updated[0]) {
+        throw new V2CatalogConsistencyError('Model Deployment disable lost its locked row')
+      }
+      return sqlRowToModelDeployment(updated[0])
+    })
+  }
+
+  async updateModelDeploymentHealth(
+    namespaceId: string,
+    id: string,
+    health: CatalogModelDeploymentHealthV2,
+  ): Promise<CatalogModelDeploymentRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateModelDeploymentId(id)
+    validateModelDeploymentHealth(health)
+    const rows = await this.#client.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+      UPDATE "model_deployments_v2"
+      SET
+        "health_status" = ${health.status},
+        "health_checked_at" = clock_timestamp(),
+        "health_error" = ${health.error},
+        "updated_at" = clock_timestamp()
+      WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+      RETURNING ${MODEL_DEPLOYMENT_COLUMNS}
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError('Model Deployment health update affected multiple rows')
+    }
+    return rows[0] ? sqlRowToModelDeployment(rows[0]) : null
+  }
+
   async createOrReadTransformJob(input: CreateTransformJobV2): Promise<CatalogTransformJobRowV2> {
     validateCreateTransformJob(input)
     return await this.#client.$transaction(
@@ -2624,6 +2882,20 @@ async function acquireSwiftStudioSessionLock(tx: Prisma.TransactionClient): Prom
   `
 }
 
+async function acquireEvaluationRunAdmissionLock(
+  tx: Prisma.TransactionClient,
+  input: CreateEvaluationRunV2,
+): Promise<void> {
+  const locator = `${input.namespaceId}|${input.provider}|${input.providerTaskId}`
+  await tx.$queryRaw`
+    SELECT 1 AS "locked"
+    FROM pg_advisory_xact_lock(
+      hashtext('databench-evaluation-run-admission'),
+      hashtext(${locator})
+    )
+  `
+}
+
 async function registerLayoutInTransaction(
   tx: Prisma.TransactionClient,
   input: RegisterLayoutV2,
@@ -3120,6 +3392,7 @@ function prismaRowToRun(row: {
 }
 
 function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRowV2 {
+  const createProfile = parseEvaluationRunCreateProfile(row.create_profile)
   const status = parseEvaluationRunStatus(row.status)
   const providerReportIds = parseStoredProviderReportIds(row.provider_report_ids_json)
   const metrics = parseStoredEvaluationMetrics(row.metrics_json)
@@ -3161,6 +3434,7 @@ function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRo
     namespaceId: row.namespace_id,
     provider: row.provider,
     providerTaskId: row.provider_task_id,
+    createProfile,
     createRequestDigest: row.create_request_digest,
     providerReportIds,
     datasetVersion: row.dataset_version,
@@ -3174,6 +3448,9 @@ function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRo
     fidelityDigest: row.fidelity_digest,
     benchmark: row.benchmark,
     modelName: row.model_name,
+    modelDeploymentId: row.model_deployment_id,
+    modelArtifactId: row.model_artifact_id,
+    modelDeploymentDigest: row.model_deployment_digest,
     evalscopeCommit: row.evalscope_commit,
     status,
     metrics,
@@ -3351,6 +3628,55 @@ function sqlRowToModelArtifact(row: ModelArtifactSqlRow): CatalogModelArtifactRo
   return Object.freeze(result)
 }
 
+function sqlRowToModelDeployment(row: ModelDeploymentSqlRow): CatalogModelDeploymentRowV2 {
+  const result: CatalogModelDeploymentRowV2 = {
+    id: row.id,
+    namespaceId: row.namespace_id,
+    createDigest: row.create_digest,
+    artifactId: row.artifact_id,
+    provider: parseModelDeploymentProvider(row.provider),
+    displayName: row.display_name,
+    servedModelName: row.served_model_name,
+    endpointBaseUrl: row.endpoint_base_url,
+    authMode: parseModelDeploymentAuthMode(row.auth_mode),
+    status: parseModelDeploymentStatus(row.status),
+    healthStatus: parseModelDeploymentHealthStatus(row.health_status),
+    healthCheckedAt: row.health_checked_at,
+    healthError: row.health_error,
+    createdAt: row.created_at,
+    disabledAt: row.disabled_at,
+    updatedAt: row.updated_at,
+  }
+  try {
+    validateModelDeploymentId(result.id)
+    validateCreateModelDeployment(result)
+    if ((result.status === 'disabled') !== (result.disabledAt !== null)) {
+      throw new V2CatalogInputError('Model Deployment disabled timestamp is invalid')
+    }
+    if ((result.healthStatus === 'unknown') !== (result.healthCheckedAt === null)) {
+      throw new V2CatalogInputError('Model Deployment health timestamp is invalid')
+    }
+    if ((result.healthStatus === 'unhealthy') !== (result.healthError !== null)) {
+      throw new V2CatalogInputError('Model Deployment health error is invalid')
+    }
+    if (
+      !Number.isFinite(result.createdAt.getTime()) ||
+      !Number.isFinite(result.updatedAt.getTime()) ||
+      result.updatedAt < result.createdAt ||
+      (result.disabledAt !== null &&
+        (!Number.isFinite(result.disabledAt.getTime()) || result.disabledAt < result.createdAt)) ||
+      (result.healthCheckedAt !== null &&
+        (!Number.isFinite(result.healthCheckedAt.getTime()) ||
+          result.healthCheckedAt < result.createdAt))
+    ) {
+      throw new V2CatalogInputError('Model Deployment timestamps are invalid')
+    }
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored Model Deployment is invalid', { cause })
+  }
+  return Object.freeze(result)
+}
+
 function sqlRowToSwiftStudioSession(row: SwiftStudioSessionSqlRow): CatalogSwiftStudioSessionRowV2 {
   const status = parseSwiftStudioSessionStatus(row.status)
   const failure = parseStoredSwiftStudioSessionFailure(row.failure_json)
@@ -3468,6 +3794,15 @@ function parseStoredSwiftStudioSessionFailure(
     throw new V2CatalogConsistencyError('Stored Swift Studio Session failure is invalid', { cause })
   }
   return failure
+}
+
+function parseEvaluationRunCreateProfile(
+  value: string,
+): CatalogEvaluationRunRowV2['createProfile'] {
+  if (value === 'evaluation-run-create-v1' || value === 'evaluation-run-create-v2') {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored evaluation run create profile is invalid')
 }
 
 function parseEvaluationRunStatus(value: string): CatalogEvaluationRunStatusV2 {
@@ -4204,6 +4539,125 @@ function validateModelArtifactCursor(cursor: CatalogModelArtifactCursorV2): void
   validateModelArtifactId(cursor.id)
 }
 
+function validateCreateModelDeployment(input: CreateModelDeploymentV2): void {
+  validateNamespaceId(input.namespaceId)
+  validateModelDeploymentId(input.artifactId)
+  if (!EXACT_VERSION.test(input.createDigest)) {
+    throw new V2CatalogInputError('Model Deployment create digest is invalid')
+  }
+  if (input.provider !== 'openai_compatible' || input.authMode !== 'none') {
+    throw new V2CatalogInputError('Model Deployment provider profile is invalid')
+  }
+  validateEvaluationText(input.displayName, 256, 'Model Deployment display name')
+  validateEvaluationText(input.servedModelName, 512, 'Model Deployment served model name')
+  if (
+    Buffer.byteLength(input.endpointBaseUrl) > 2_048 ||
+    hasControlCharacter(input.endpointBaseUrl) ||
+    input.endpointBaseUrl.includes('@') ||
+    CREDENTIAL_VALUE.test(input.endpointBaseUrl) ||
+    normalizeCatalogModelDeploymentEndpoint(input.endpointBaseUrl) !== input.endpointBaseUrl
+  ) {
+    throw new V2CatalogInputError('Model Deployment endpoint base URL is invalid')
+  }
+}
+
+function normalizeCatalogModelDeploymentEndpoint(value: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    return null
+  }
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    parsed.hostname === '' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  ) {
+    return null
+  }
+  const pathname = parsed.pathname.replace(/\/+$/u, '')
+  parsed.pathname = pathname === '' ? '/' : pathname
+  const normalized = parsed.toString().replace(/\/$/u, '')
+  return normalized === parsed.origin ? parsed.origin : normalized
+}
+
+function validateModelDeploymentId(value: string): void {
+  if (!UUID.test(value)) throw new V2CatalogInputError('Model Deployment ID is invalid')
+}
+
+function parseModelDeploymentProvider(value: string): CatalogModelDeploymentRowV2['provider'] {
+  if (value === 'openai_compatible') return value
+  throw new V2CatalogConsistencyError('Stored Model Deployment provider is invalid')
+}
+
+function parseModelDeploymentAuthMode(value: string): CatalogModelDeploymentRowV2['authMode'] {
+  if (value === 'none') return value
+  throw new V2CatalogConsistencyError('Stored Model Deployment auth mode is invalid')
+}
+
+function parseModelDeploymentStatus(value: string): CatalogModelDeploymentRowV2['status'] {
+  if (value === 'active' || value === 'disabled') return value
+  throw new V2CatalogConsistencyError('Stored Model Deployment status is invalid')
+}
+
+function parseModelDeploymentHealthStatus(
+  value: string,
+): CatalogModelDeploymentRowV2['healthStatus'] {
+  if (value === 'unknown' || value === 'healthy' || value === 'unhealthy') return value
+  throw new V2CatalogConsistencyError('Stored Model Deployment health status is invalid')
+}
+
+function validateModelDeploymentListFilter(filter: CatalogModelDeploymentListFilterV2): void {
+  if (filter.artifactId !== null) validateModelDeploymentId(filter.artifactId)
+  if (filter.status !== null && filter.status !== 'active' && filter.status !== 'disabled') {
+    throw new V2CatalogInputError('Model Deployment status filter is invalid')
+  }
+}
+
+function validateModelDeploymentCursor(cursor: CatalogModelDeploymentCursorV2): void {
+  if (
+    !(cursor.createdAt instanceof Date) ||
+    !Number.isFinite(cursor.createdAt.getTime()) ||
+    cursor.createdAt.getTime() !== truncateDateToMilliseconds(cursor.createdAt).getTime()
+  ) {
+    throw new V2CatalogInputError(
+      'Model Deployment cursor timestamp must use millisecond precision',
+    )
+  }
+  validateModelDeploymentId(cursor.id)
+}
+
+function validateModelDeploymentHealth(health: CatalogModelDeploymentHealthV2): void {
+  if (health.status !== 'healthy' && health.status !== 'unhealthy') {
+    throw new V2CatalogInputError('Model Deployment health observation is invalid')
+  }
+  if ((health.status === 'unhealthy') !== (health.error !== null)) {
+    throw new V2CatalogInputError('Model Deployment health error shape is invalid')
+  }
+  if (health.error !== null) {
+    validateEvaluationText(health.error, 2_048, 'Model Deployment health error')
+  }
+}
+
+function sameModelDeploymentCreate(
+  row: CatalogModelDeploymentRowV2,
+  input: CreateModelDeploymentV2,
+): boolean {
+  return (
+    row.namespaceId === input.namespaceId &&
+    row.createDigest === input.createDigest &&
+    row.artifactId === input.artifactId &&
+    row.provider === input.provider &&
+    row.displayName === input.displayName &&
+    row.servedModelName === input.servedModelName &&
+    row.endpointBaseUrl === input.endpointBaseUrl &&
+    row.authMode === input.authMode
+  )
+}
+
 function sameModelArtifactImportCreate(
   row: CatalogModelArtifactImportRowV2,
   input: CreateModelArtifactImportV2,
@@ -4544,6 +4998,35 @@ function validateCreateEvaluationRun(input: CreateEvaluationRunV2): void {
   if (!EXACT_VERSION.test(input.createRequestDigest)) {
     throw new V2CatalogInputError('Evaluation create request digest is invalid')
   }
+  const deploymentFields = [
+    input.modelDeploymentId,
+    input.modelArtifactId,
+    input.modelDeploymentDigest,
+  ]
+  const hasDeployment = deploymentFields.every((value) => value !== null)
+  if (hasDeployment !== deploymentFields.some((value) => value !== null)) {
+    throw new V2CatalogInputError('Evaluation Model Deployment binding is incomplete')
+  }
+  if (
+    (input.createProfile === 'evaluation-run-create-v2') !== hasDeployment ||
+    (input.createProfile !== 'evaluation-run-create-v1' &&
+      input.createProfile !== 'evaluation-run-create-v2')
+  ) {
+    throw new V2CatalogInputError('Evaluation create profile does not match its Deployment binding')
+  }
+  if (hasDeployment) {
+    if (
+      input.modelDeploymentId === null ||
+      input.modelArtifactId === null ||
+      input.modelDeploymentDigest === null ||
+      !UUID.test(input.modelDeploymentId) ||
+      !UUID.test(input.modelArtifactId) ||
+      !EXACT_VERSION.test(input.modelDeploymentDigest) ||
+      input.modelName === null
+    ) {
+      throw new V2CatalogInputError('Evaluation Model Deployment identity is invalid')
+    }
+  }
   if (!EXACT_VERSION.test(input.datasetVersion)) {
     throw new V2CatalogInputError('Evaluation Dataset version is invalid')
   }
@@ -4589,6 +5072,9 @@ function validateEvaluationRunId(value: string): void {
 function validateEvaluationRunListFilter(filter: CatalogEvaluationRunListFilterV2): void {
   if (filter.datasetVersion !== null && !EXACT_VERSION.test(filter.datasetVersion)) {
     throw new V2CatalogInputError('Evaluation run Dataset filter is invalid')
+  }
+  if (filter.modelDeploymentId !== null && !UUID.test(filter.modelDeploymentId)) {
+    throw new V2CatalogInputError('Evaluation run Model Deployment filter is invalid')
   }
   if (filter.status !== null) parseEvaluationRunStatus(filter.status)
 }

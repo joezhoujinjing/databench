@@ -295,6 +295,7 @@ export interface CreateEvaluationRunV2 {
   readonly namespaceId: string
   readonly provider: 'evalscope'
   readonly providerTaskId: string
+  readonly createProfile: 'evaluation-run-create-v1' | 'evaluation-run-create-v2'
   readonly createRequestDigest: string
   readonly datasetVersion: string
   readonly sourceRef: string | null
@@ -304,6 +305,9 @@ export interface CreateEvaluationRunV2 {
   readonly fidelityDigest: string
   readonly benchmark: string
   readonly modelName: string | null
+  readonly modelDeploymentId: string | null
+  readonly modelArtifactId: string | null
+  readonly modelDeploymentDigest: string | null
   readonly evalscopeCommit: string | null
 }
 
@@ -337,6 +341,7 @@ export interface CatalogEvaluationRunPageV2 {
 
 export interface CatalogEvaluationRunListFilterV2 {
   readonly datasetVersion: string | null
+  readonly modelDeploymentId: string | null
   readonly status: CatalogEvaluationRunStatusV2 | null
 }
 
@@ -647,4 +652,51 @@ export interface CatalogModelArtifactPageV2 {
 export interface CatalogModelArtifactListFilterV2 {
   readonly datasetVersion: string | null
   readonly artifactKind: CatalogModelArtifactKindV2 | null
+}
+
+export type CatalogModelDeploymentProviderV2 = 'openai_compatible'
+export type CatalogModelDeploymentAuthModeV2 = 'none'
+export type CatalogModelDeploymentStatusV2 = 'active' | 'disabled'
+export type CatalogModelDeploymentHealthStatusV2 = 'unknown' | 'healthy' | 'unhealthy'
+
+export interface CreateModelDeploymentV2 {
+  readonly namespaceId: string
+  readonly createDigest: string
+  readonly artifactId: string
+  readonly provider: CatalogModelDeploymentProviderV2
+  readonly displayName: string
+  readonly servedModelName: string
+  readonly endpointBaseUrl: string
+  readonly authMode: CatalogModelDeploymentAuthModeV2
+}
+
+export interface CatalogModelDeploymentRowV2 extends CreateModelDeploymentV2 {
+  readonly id: string
+  readonly status: CatalogModelDeploymentStatusV2
+  readonly healthStatus: CatalogModelDeploymentHealthStatusV2
+  readonly healthCheckedAt: Date | null
+  readonly healthError: string | null
+  readonly createdAt: Date
+  readonly disabledAt: Date | null
+  readonly updatedAt: Date
+}
+
+export interface CatalogModelDeploymentCursorV2 {
+  readonly createdAt: Date
+  readonly id: string
+}
+
+export interface CatalogModelDeploymentListFilterV2 {
+  readonly artifactId: string | null
+  readonly status: CatalogModelDeploymentStatusV2 | null
+}
+
+export interface CatalogModelDeploymentPageV2 {
+  readonly rows: readonly CatalogModelDeploymentRowV2[]
+  readonly nextCursor: CatalogModelDeploymentCursorV2 | null
+}
+
+export interface CatalogModelDeploymentHealthV2 {
+  readonly status: Exclude<CatalogModelDeploymentHealthStatusV2, 'unknown'>
+  readonly error: string | null
 }

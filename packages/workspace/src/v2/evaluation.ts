@@ -1,5 +1,10 @@
 import type { CatalogEvaluationMetricV2, CatalogEvaluationRunRowV2 } from '@databench/catalog'
-import { hashV2EvaluationRunCreate, V2_EVALUATION_RUN_CREATE_PROFILE } from '@databench/hashing'
+import {
+  hashV2EvaluationRunCreate,
+  hashV2EvaluationRunCreateWithDeployment,
+  V2_EVALUATION_RUN_CREATE_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+} from '@databench/hashing'
 import {
   type ConverterNameV2,
   type EvaluationRunV2,
@@ -36,8 +41,7 @@ export function evaluationBenchmarkFromPlanV2(plan: ExportPlanV2): string {
 }
 
 export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): EvaluationRunV2 {
-  const recomputedDigest = hashV2EvaluationRunCreate({
-    evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
+  const baseIdentity = {
     provider: row.provider,
     provider_task_id: row.providerTaskId,
     dataset_version: row.datasetVersion,
@@ -49,7 +53,25 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
     benchmark: row.benchmark,
     model_name: row.modelName,
     evalscope_commit: row.evalscopeCommit,
-  })
+  }
+  const recomputedDigest =
+    row.createProfile === V2_EVALUATION_RUN_CREATE_PROFILE
+      ? hashV2EvaluationRunCreate({
+          evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
+          ...baseIdentity,
+        })
+      : row.createProfile === V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE &&
+          row.modelDeploymentId !== null &&
+          row.modelArtifactId !== null &&
+          row.modelDeploymentDigest !== null
+        ? hashV2EvaluationRunCreateWithDeployment({
+            evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+            ...baseIdentity,
+            model_deployment_id: row.modelDeploymentId,
+            model_artifact_id: row.modelArtifactId,
+            model_deployment_digest: row.modelDeploymentDigest,
+          })
+        : null
   if (recomputedDigest !== row.createRequestDigest) {
     throw new IntegrityError('Stored evaluation run create digest is inconsistent', {
       reason: 'evaluation_create_digest_mismatch',
@@ -60,6 +82,7 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
     id: row.id,
     provider: row.provider,
     provider_task_id: row.providerTaskId,
+    create_profile: row.createProfile,
     create_request_digest: row.createRequestDigest,
     provider_report_ids: row.providerReportIds,
     dataset_version: row.datasetVersion,
@@ -70,6 +93,8 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
     fidelity_digest: row.fidelityDigest,
     benchmark: row.benchmark,
     model_name: row.modelName,
+    model_deployment_id: row.modelDeploymentId,
+    model_artifact_id: row.modelArtifactId,
     evalscope_commit: row.evalscopeCommit,
     status: row.status,
     metrics: row.metrics?.map((metric) => metricFromCatalog(metric)) ?? null,

@@ -7,7 +7,7 @@
 > Dashboard、Compare、Performance、Benchmarks 与安全 Viewer 已实现，完整 UI 功能迁移 gate 已关闭。
 > ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
 > deferred GPU gate。S2 exact Dataset 与单 active Session bridge、S3 immutable LoRA Artifact 已完成
-> non-GPU gate；当前进入 S4 Deployment + EvalScope。
+> non-GPU gate；S4 Deployment + EvalScope opaque resolve/lineage 已完成 non-GPU contract，GPU gate deferred。
 
 ## `third_party/ms-swift`
 
@@ -105,6 +105,7 @@ apps/api/
 │  │  ├─ request.ts            请求 metadata / abort
 │  │  └─ v2-workspace.ts       惰性注入 Workspace
 │  ├─ routes/
+│  │  ├─ model-deployment-auth.ts operator/service Bearer 角色分离
 │  │  ├─ meta.ts               /health /version /capabilities
 │  │  └─ v2/
 │  │     ├─ index.ts            v2 route registry
@@ -115,12 +116,14 @@ apps/api/
 │  │     ├─ evaluations.ts       exact Dataset evaluation run create/list/show/transition
 │  │     ├─ swift-studio-sessions.ts exact Dataset Studio Session create/list/show/close
 │  │     ├─ model-artifacts.ts   output/import 与 immutable Artifact list/show/download
+│  │     ├─ model-deployments.ts public list/show、operator actions 与 internal resolve
 │  │     ├─ openapi.ts          route schema helpers
 │  │     └─ transport.ts        streaming/error transport helpers
 │  └─ v2/
 │     └─ multipart.ts           bounded multipart ingest
 ├─ test/
 │  ├─ app-support.test.ts
+│  ├─ model-deployments.test.ts
 │  ├─ evalscope-gateway.test.ts
 │  ├─ errors.test.ts
 │  ├─ mcp-config.test.ts · mcp-file-tokens.test.ts · mcp.test.ts
@@ -171,7 +174,7 @@ apps/web/
 │  ├─ main.tsx
 │  ├─ router.tsx                无版本产品 route tree
 │  ├─ routes/
-│  │  ├─ __root.tsx             单一产品 shell；四项主导航
+│  │  ├─ __root.tsx             单一产品 shell 与主导航
 │  │  ├─ index.tsx
 │  │  └─ not-found.tsx
 │  ├─ api/
@@ -198,11 +201,15 @@ apps/web/
 │  │  ├─ ui-capability-manifest.json
 │  │  ├─ implemented-capabilities.json
 │  │  └─ fixtures/benchmarks-five-categories.json
-│  ├─ training/                 ADR 0018 S3；不复刻 Gradio 字段
+│  ├─ training/                 ADR 0018 S3/S4；不复刻 Gradio 字段
 │  │  ├─ api/                   locked Provider runtime + generated Session/Artifact REST hooks
-│  │  ├─ components/            Dataset/Session、output import 与 Artifact library/detail/download
+│  │  ├─ components/            Dataset/Session、Artifact library/detail/download 与 Deployment panel
 │  │  ├─ domain/                fixed same-origin path 与 iframe boot contract
 │  │  └─ routes/studio.tsx      ready Session gate + loading/error/reconnect/fullscreen iframe shell
+│  ├─ models/                    共享 Model Artifact 后续领域；不属于 deploy 资产
+│  │  ├─ api/deployments.ts      generated OpenAPI Deployment operations
+│  │  ├─ api/hooks.ts            Deployment 与 bound Evaluation Run query/mutation
+│  │  └─ components/ModelDeploymentPanel.tsx
 │  ├─ v2/
 │  │  ├─ api/                   v2 client/hooks/query keys/stream export
 │  │  ├─ components/            gate、冲突恢复、records、fidelity review
@@ -277,6 +284,7 @@ src/
    ├─ evaluation.ts             E2 run、metric、error、pagination 与 transition wire contract
    ├─ swift-studio.ts           S2 exact Dataset Studio Session wire contract
    ├─ model-artifact.ts         S3 output/import/immutable Artifact wire contract
+   ├─ model-deployment.ts       S4 public/internal Deployment wire contract
    ├─ mcp.ts                    MCP tool/result contracts
    ├─ reader/raw-json/json-value verification
    ├─ contracts.type-test.ts
@@ -365,7 +373,8 @@ src/
 ```
 
 只依赖 Prisma/Postgres。v2 snapshots、layouts、identity claims、transform/evaluation runs、Swift Studio
-Sessions、Model Artifact imports/artifacts、record lineage 与 refs 的数据模型在根 `prisma/schema.prisma`。
+Sessions、Model Artifact imports/artifacts、Model Deployments、record lineage 与 refs 的数据模型在根
+`prisma/schema.prisma`。
 
 ## `packages/workspace`
 
@@ -379,7 +388,7 @@ src/
 └─ v2/
    ├─ workspace.ts · batch-transform.ts · evaluation.ts
    ├─ swift-studio.ts · swift-studio-provider.ts
-   ├─ model-artifact.ts
+   ├─ model-artifact.ts · model-deployment.ts
    ├─ identity-allocator.ts
    ├─ canonical-draft-identity.ts
    ├─ canonical-draft-materializer.ts
@@ -392,7 +401,8 @@ src/
 这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
 deterministic identity/materialize/import、persist、transform、CAS ref、record/dataset lineage、
 audit、converter inspect/export、evaluation run exact binding/状态机与取消语义，以及 Swift Studio Session、
-Model Artifact import/finalize/download 编排。
+Model Artifact import/finalize/download、Model Deployment registry/health/resolve 与 Deployment-bound
+Evaluation lineage 编排。
 
 ## Tooling 与根目录
 
@@ -422,7 +432,8 @@ prisma/
    ├─ 0009_transform_job_result_ref/
    ├─ 0010_evaluation_runs_v2/
    ├─ 0011_swift_studio_sessions_v2/
-   └─ 0012_model_artifacts_v2/
+   ├─ 0012_model_artifacts_v2/
+   └─ 0013_model_deployments_v2/
 ```
 
 EvalScope E0 另有：
@@ -551,7 +562,7 @@ MCP runtime 与真实 Excel fixture 已按上文实际落点登记。离线配�
 docs/swift/
 ├─ TECHNICAL-DESIGN.md   完整原生 Gradio、四桥、Session/Artifact 与演进边界
 ├─ PLAN.md               S0-S4 主计划，S5/S6 后续扩展
-└─ STATUS.md             当前真实状态；S4 current，S1-S3 GPU deferred
+└─ STATUS.md             当前真实状态；S4 non-GPU green，S1-S4 GPU deferred
 ```
 
 计划中的 Web/API/Provider/deploy/DB 文件只有在对应 Step 实现并过 gate 后，才能加入本文的当前文件级

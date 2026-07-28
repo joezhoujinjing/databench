@@ -16,6 +16,11 @@ import {
   type CatalogModelArtifactListFilterV2,
   type CatalogModelArtifactPageV2,
   type CatalogModelArtifactRowV2,
+  type CatalogModelDeploymentCursorV2,
+  type CatalogModelDeploymentHealthV2,
+  type CatalogModelDeploymentListFilterV2,
+  type CatalogModelDeploymentPageV2,
+  type CatalogModelDeploymentRowV2,
   type CatalogRefPageV2,
   type CatalogRefRowV2,
   type RestoreRefResultV2 as CatalogRestoreRefResultV2,
@@ -36,6 +41,7 @@ import {
   type CompleteTransformJobV2,
   type CreateEvaluationRunV2,
   type CreateModelArtifactImportV2,
+  type CreateModelDeploymentV2,
   type CreateSwiftStudioSessionV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
@@ -61,14 +67,18 @@ import {
   canonicalJsonV2,
   createArtifactHasher,
   hashV2EvaluationRunCreate,
+  hashV2EvaluationRunCreateWithDeployment,
   hashV2ModelArtifactImportCreate,
+  hashV2ModelDeploymentCreate,
   hashV2SwiftStudioOutputHandle,
   hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
   V2_EVALUATION_RUN_CREATE_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
   V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
+  V2_MODEL_DEPLOYMENT_CREATE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '@databench/hashing'
 import {
@@ -108,6 +118,8 @@ import {
   CreateEvaluationRunRequestV2Schema,
   type CreateModelArtifactImportRequestV2,
   CreateModelArtifactImportRequestV2Schema,
+  type CreateModelDeploymentRequestV2,
+  CreateModelDeploymentRequestV2Schema,
   type CreateSwiftStudioSessionRequestV2,
   CreateSwiftStudioSessionRequestV2Schema,
   type CursorPageRequestV2,
@@ -170,7 +182,14 @@ import {
   type ModelArtifactPageV2,
   ModelArtifactPageV2Schema,
   type ModelArtifactV2,
+  ModelDeploymentIdV2Schema,
+  type ModelDeploymentPageRequestV2,
+  ModelDeploymentPageRequestV2Schema,
+  type ModelDeploymentPageV2,
+  ModelDeploymentPageV2Schema,
+  type ModelDeploymentV2,
   NotFoundError,
+  normalizeModelDeploymentEndpointBaseUrlV2,
   type PostTrainingRecordV2,
   PostTrainingRecordV2Schema,
   type PostTrainingV2Capability,
@@ -191,6 +210,7 @@ import {
   RefOrVersionV2Schema,
   type RefPageV2,
   RefPageV2Schema,
+  type ResolvedModelDeploymentV2,
   ResourceLimitError,
   type RestoreRefRequestV2,
   RestoreRefRequestV2Schema,
@@ -291,6 +311,10 @@ import {
   modelArtifactManifestDigestV2,
 } from './model-artifact.js'
 import {
+  modelDeploymentFromCatalogV2,
+  resolvedModelDeploymentFromCatalogV2,
+} from './model-deployment.js'
+import {
   swiftStudioProviderArtifactImportIdForDigestV2,
   swiftStudioProviderSessionIdForDigestV2,
   swiftStudioSessionFromCatalogV2,
@@ -321,6 +345,8 @@ const SWIFT_STUDIO_RECONCILE_TIMEOUT_MS = 10_000
 const DEFAULT_SWIFT_STUDIO_ABANDON_GRACE_MS = 310_000
 const DEFAULT_SWIFT_ARTIFACT_SIGNED_URL_TTL_MS = 4 * 60 * 60 * 1_000
 const MODEL_ARTIFACT_STAGING_CLEANUP_ATTEMPTS = 3
+const DEFAULT_MODEL_DEPLOYMENT_HEALTH_TIMEOUT_MS = 5_000
+const MODEL_DEPLOYMENT_HEALTH_MAX_RESPONSE_BYTES = 1024 * 1024
 
 export interface V2WorkspaceCatalog {
   getOrCreateNamespace(scope: 'default'): Promise<string>
@@ -373,6 +399,24 @@ export interface V2WorkspaceCatalog {
   transitionEvaluationRun(
     input: TransitionEvaluationRunV2,
   ): Promise<CatalogEvaluationRunRowV2 | null>
+  getModelArtifact(namespaceId: string, id: string): Promise<CatalogModelArtifactRowV2 | null>
+  createOrReadModelDeployment(input: CreateModelDeploymentV2): Promise<CatalogModelDeploymentRowV2>
+  getModelDeployment(namespaceId: string, id: string): Promise<CatalogModelDeploymentRowV2 | null>
+  listModelDeployments(
+    namespaceId: string,
+    filter: CatalogModelDeploymentListFilterV2,
+    before: CatalogModelDeploymentCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelDeploymentPageV2>
+  disableModelDeployment(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogModelDeploymentRowV2 | null>
+  updateModelDeploymentHealth(
+    namespaceId: string,
+    id: string,
+    health: CatalogModelDeploymentHealthV2,
+  ): Promise<CatalogModelDeploymentRowV2 | null>
 }
 
 export interface V2WorkspaceSwiftStudioCatalog {
@@ -490,6 +534,8 @@ export interface V2WorkspaceOptions {
   readonly jsonlLimits?: Partial<V2JsonlLimits>
   readonly onCleanupError?: (error: unknown, primaryError: unknown | null) => void
   readonly swiftStudio?: V2SwiftStudioWorkspaceOptions
+  readonly modelDeploymentFetch?: typeof fetch
+  readonly modelDeploymentHealthTimeoutMs?: number
 }
 
 export interface V2SwiftStudioWorkspaceOptions {
@@ -575,6 +621,8 @@ export class V2Workspace {
   readonly #transformSemaphore: V2TransformSemaphore
   readonly #onCleanupError: ((error: unknown, primaryError: unknown | null) => void) | undefined
   readonly #swiftStudio: Readonly<ResolvedV2SwiftStudioWorkspaceOptions> | null
+  readonly #modelDeploymentFetch: typeof fetch
+  readonly #modelDeploymentHealthTimeoutMs: number
   #namespacePromise: Promise<string> | undefined
   #closeOwnedResources: (() => Promise<void>) | undefined
   #closePromise: Promise<void> | undefined
@@ -705,6 +753,11 @@ export class V2Workspace {
       options.swiftStudio === undefined
         ? null
         : snapshotSwiftStudioWorkspaceOptions(options.swiftStudio)
+    this.#modelDeploymentFetch = options.modelDeploymentFetch ?? globalThis.fetch
+    this.#modelDeploymentHealthTimeoutMs = positiveSafeInteger(
+      'Model Deployment health timeout',
+      options.modelDeploymentHealthTimeoutMs ?? DEFAULT_MODEL_DEPLOYMENT_HEALTH_TIMEOUT_MS,
+    )
     this.#runtimeCapability = postTrainingV2Capability({
       datasetLimits: this.#datasetLimits,
       jsonlLimits: this.#jsonlLimits,
@@ -1152,8 +1205,28 @@ export class V2Workspace {
     assertExportFidelityAcceptedV2(plan, request.accepted_fidelity_digest)
     const benchmark = evaluationBenchmarkFromPlanV2(plan)
     const namespaceId = await this.#namespace(context.signal)
-    const createRequestDigest = hashV2EvaluationRunCreate({
-      evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
+    const modelDeployment =
+      request.model_deployment_id === null
+        ? null
+        : await this.#readModelDeploymentRow(
+            namespaceId,
+            request.model_deployment_id,
+            context.signal,
+          )
+    if (request.model_deployment_id !== null && modelDeployment === null) {
+      throw new NotFoundError(`Model Deployment was not found: ${request.model_deployment_id}`, {
+        deployment_id: request.model_deployment_id,
+      })
+    }
+    const createProfile =
+      modelDeployment === null
+        ? V2_EVALUATION_RUN_CREATE_PROFILE
+        : V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE
+    const modelName = modelDeployment?.servedModelName ?? request.model_name
+    const modelDeploymentId = modelDeployment?.id ?? null
+    const modelArtifactId = modelDeployment?.artifactId ?? null
+    const modelDeploymentDigest = modelDeployment?.createDigest ?? null
+    const baseIdentity = {
       provider: request.provider,
       provider_task_id: request.provider_task_id,
       dataset_version: request.dataset_version,
@@ -1163,9 +1236,22 @@ export class V2Workspace {
       normalized_options: plan.normalized_options,
       fidelity_digest: plan.fidelity_digest,
       benchmark,
-      model_name: request.model_name,
+      model_name: modelName,
       evalscope_commit: request.evalscope_commit,
-    })
+    }
+    const createRequestDigest =
+      modelDeployment === null
+        ? hashV2EvaluationRunCreate({
+            evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
+            ...baseIdentity,
+          })
+        : hashV2EvaluationRunCreateWithDeployment({
+            evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+            ...baseIdentity,
+            model_deployment_id: modelDeployment.id,
+            model_artifact_id: modelDeployment.artifactId,
+            model_deployment_digest: modelDeployment.createDigest,
+          })
     let row: CatalogEvaluationRunRowV2
     try {
       row = await waitWithAbort(
@@ -1173,6 +1259,7 @@ export class V2Workspace {
           namespaceId,
           provider: request.provider,
           providerTaskId: request.provider_task_id,
+          createProfile,
           createRequestDigest,
           datasetVersion: request.dataset_version,
           sourceRef: request.source_ref,
@@ -1181,7 +1268,10 @@ export class V2Workspace {
           converterOptions: plan.normalized_options,
           fidelityDigest: plan.fidelity_digest,
           benchmark,
-          modelName: request.model_name,
+          modelName,
+          modelDeploymentId,
+          modelArtifactId,
+          modelDeploymentDigest,
           evalscopeCommit: request.evalscope_commit,
         }),
         context.signal,
@@ -1232,11 +1322,18 @@ export class V2Workspace {
     const request = EvaluationRunPageRequestV2Schema.parse(requestInput)
     const namespaceId = await this.#namespace(context.signal)
     const datasetVersion = request.dataset_version ?? null
+    const modelDeploymentId = request.model_deployment_id ?? null
     const status = request.status ?? null
     const cursorState =
       request.cursor === null
         ? null
-        : this.#cursor.decodeEvaluationRun(request.cursor, namespaceId, datasetVersion, status)
+        : this.#cursor.decodeEvaluationRun(
+            request.cursor,
+            namespaceId,
+            datasetVersion,
+            modelDeploymentId,
+            status,
+          )
     const before =
       cursorState === null
         ? null
@@ -1246,7 +1343,7 @@ export class V2Workspace {
       page = await waitWithAbort(
         this.#catalog.listEvaluationRuns(
           namespaceId,
-          { datasetVersion, status },
+          { datasetVersion, modelDeploymentId, status },
           before,
           request.limit,
         ),
@@ -1270,6 +1367,7 @@ export class V2Workspace {
               created_at: page.nextCursor.createdAt.toISOString(),
               id: page.nextCursor.id,
               dataset_version: datasetVersion,
+              model_deployment_id: modelDeploymentId,
               status,
             }),
     })
@@ -2034,6 +2132,230 @@ export class V2Workspace {
     })
   }
 
+  async createModelDeployment(
+    requestInput: CreateModelDeploymentRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const request = CreateModelDeploymentRequestV2Schema.parse(requestInput)
+    const endpointBaseUrl = normalizeModelDeploymentEndpointBaseUrlV2(request.endpoint_base_url)
+    if (endpointBaseUrl === null) {
+      throw new ValidationError('Model Deployment endpoint is invalid', {
+        issues: [
+          {
+            path: '/endpoint_base_url',
+            line: null,
+            code: 'invalid_endpoint',
+            message: 'Endpoint base URL is invalid',
+          },
+        ],
+      })
+    }
+    const namespaceId = await this.#namespace(context.signal)
+    const artifact = await this.#readModelArtifactRow(
+      namespaceId,
+      request.artifact_id,
+      context.signal,
+    )
+    if (artifact === null) {
+      throw new NotFoundError(`Model Artifact was not found: ${request.artifact_id}`, {
+        artifact_id: request.artifact_id,
+      })
+    }
+    if (
+      artifact.artifactKind !== 'lora_adapter' ||
+      artifact.baseModelBindingStatus !== 'verified' ||
+      artifact.baseModelRevision === null
+    ) {
+      throw new ValidationError('Model Artifact is not deployable', {
+        issues: [
+          {
+            path: '/artifact_id',
+            line: null,
+            code: 'artifact_not_deployable',
+            message: 'LoRA Deployment requires a verified exact base-model revision',
+          },
+        ],
+      })
+    }
+    const createDigest = hashV2ModelDeploymentCreate({
+      model_deployment_create_profile: V2_MODEL_DEPLOYMENT_CREATE_PROFILE,
+      namespace: namespaceId,
+      artifact_id: artifact.id,
+      provider: request.provider,
+      display_name: request.display_name,
+      served_model_name: request.served_model_name,
+      endpoint_base_url: endpointBaseUrl,
+      auth_mode: request.auth_mode,
+    })
+    let row: CatalogModelDeploymentRowV2
+    try {
+      row = await waitWithAbort(
+        this.#catalog.createOrReadModelDeployment({
+          namespaceId,
+          createDigest,
+          artifactId: artifact.id,
+          provider: request.provider,
+          displayName: request.display_name,
+          servedModelName: request.served_model_name,
+          endpointBaseUrl,
+          authMode: request.auth_mode,
+        }),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row.namespaceId !== namespaceId || row.createDigest !== createDigest) {
+      throw new IntegrityError('Catalog returned an inconsistent Model Deployment', {
+        reason: 'model_deployment_create_mismatch',
+        deployment_id: row.id,
+      })
+    }
+    return modelDeploymentFromCatalogV2(row)
+  }
+
+  async getModelDeployment(
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelDeploymentV2 | null> {
+    context.signal?.throwIfAborted()
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const row = await this.#readModelDeploymentRow(namespaceId, deploymentId, context.signal)
+    return row === null ? null : modelDeploymentFromCatalogV2(row)
+  }
+
+  async listModelDeployments(
+    requestInput: ModelDeploymentPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelDeploymentPageV2> {
+    context.signal?.throwIfAborted()
+    const request = ModelDeploymentPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const artifactId = request.artifact_id ?? null
+    const status = request.status ?? null
+    const state =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeModelDeployment(request.cursor, namespaceId, artifactId, status)
+    let page: CatalogModelDeploymentPageV2
+    try {
+      page = await waitWithAbort(
+        this.#catalog.listModelDeployments(
+          namespaceId,
+          { artifactId, status },
+          state === null ? null : { createdAt: new Date(state.created_at), id: state.id },
+          request.limit,
+        ),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    return ModelDeploymentPageV2Schema.parse({
+      items: page.rows.map(modelDeploymentFromCatalogV2),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeModelDeployment(namespaceId, {
+              created_at: page.nextCursor.createdAt.toISOString(),
+              id: page.nextCursor.id,
+              artifact_id: artifactId,
+              status,
+            }),
+    })
+  }
+
+  async disableModelDeployment(
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogModelDeploymentRowV2 | null
+    try {
+      row = await waitWithAbort(
+        this.#catalog.disableModelDeployment(namespaceId, deploymentId),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row === null) {
+      throw new NotFoundError(`Model Deployment was not found: ${deploymentId}`, {
+        deployment_id: deploymentId,
+      })
+    }
+    return modelDeploymentFromCatalogV2(row)
+  }
+
+  async resolveModelDeployment(
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ResolvedModelDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const row = await this.#readModelDeploymentRow(namespaceId, deploymentId, context.signal)
+    if (row === null) {
+      throw new NotFoundError(`Model Deployment was not found: ${deploymentId}`, {
+        deployment_id: deploymentId,
+      })
+    }
+    if (row.status !== 'active') {
+      throw new ConflictError('Model Deployment is disabled', {
+        deployment_id: deploymentId,
+        status: row.status,
+      })
+    }
+    const artifact = await this.#readModelArtifactRow(namespaceId, row.artifactId, context.signal)
+    if (artifact === null) {
+      throw new IntegrityError('Model Deployment Artifact disappeared', {
+        reason: 'model_deployment_artifact_missing',
+        deployment_id: row.id,
+        artifact_id: row.artifactId,
+      })
+    }
+    return resolvedModelDeploymentFromCatalogV2(row, artifact)
+  }
+
+  async checkModelDeployment(
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const row = await this.#readModelDeploymentRow(namespaceId, deploymentId, context.signal)
+    if (row === null) {
+      throw new NotFoundError(`Model Deployment was not found: ${deploymentId}`, {
+        deployment_id: deploymentId,
+      })
+    }
+    const observation = await this.#observeModelDeploymentHealth(row, context.signal)
+    let updated: CatalogModelDeploymentRowV2 | null
+    try {
+      updated = await waitWithAbort(
+        this.#catalog.updateModelDeploymentHealth(namespaceId, deploymentId, observation),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (updated === null) {
+      throw new NotFoundError(`Model Deployment was not found: ${deploymentId}`, {
+        deployment_id: deploymentId,
+      })
+    }
+    return modelDeploymentFromCatalogV2(updated)
+  }
+
   async #reconcileModelArtifactImport(
     observed: CatalogModelArtifactImportRowV2,
     session: SwiftStudioSessionV2,
@@ -2718,6 +3040,95 @@ export class V2Workspace {
     } catch (abandonError) {
       attachSuppressed(primaryError, abandonError)
       return null
+    }
+  }
+
+  async #readModelDeploymentRow(
+    namespaceId: string,
+    deploymentId: string,
+    signal?: AbortSignal,
+  ): Promise<CatalogModelDeploymentRowV2 | null> {
+    let row: CatalogModelDeploymentRowV2 | null
+    try {
+      row = await waitWithAbort(this.#catalog.getModelDeployment(namespaceId, deploymentId), signal)
+    } catch (error) {
+      if (signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row !== null && row.namespaceId !== namespaceId) {
+      throw new IntegrityError('Catalog returned a Model Deployment from another namespace', {
+        reason: 'model_deployment_namespace_mismatch',
+        deployment_id: row.id,
+      })
+    }
+    return row
+  }
+
+  async #readModelArtifactRow(
+    namespaceId: string,
+    artifactId: string,
+    signal?: AbortSignal,
+  ): Promise<CatalogModelArtifactRowV2 | null> {
+    let row: CatalogModelArtifactRowV2 | null
+    try {
+      row = await waitWithAbort(this.#catalog.getModelArtifact(namespaceId, artifactId), signal)
+    } catch (error) {
+      if (signal?.aborted) throw error
+      mapV2CatalogError(error, false)
+    }
+    if (row !== null && row.namespaceId !== namespaceId) {
+      throw new IntegrityError('Catalog returned a Model Artifact from another namespace', {
+        reason: 'model_artifact_namespace_mismatch',
+        artifact_id: row.id,
+      })
+    }
+    return row
+  }
+
+  async #observeModelDeploymentHealth(
+    row: CatalogModelDeploymentRowV2,
+    callerSignal?: AbortSignal,
+  ): Promise<CatalogModelDeploymentHealthV2> {
+    const timeoutSignal = AbortSignal.timeout(this.#modelDeploymentHealthTimeoutMs)
+    const signal =
+      callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal])
+    const modelsUrl = `${row.endpointBaseUrl.replace(/\/+$/u, '')}/models`
+    let response: Response
+    try {
+      response = await this.#modelDeploymentFetch(modelsUrl, {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+        redirect: 'manual',
+        signal,
+      })
+    } catch (error) {
+      if (callerSignal?.aborted) throw error
+      return Object.freeze({
+        status: 'unhealthy',
+        error: timeoutSignal.aborted ? 'timeout' : 'network_error',
+      })
+    }
+    if (!response.ok || (response.status >= 300 && response.status < 400)) {
+      await response.body?.cancel().catch(() => undefined)
+      return Object.freeze({ status: 'unhealthy', error: 'http_error' })
+    }
+    try {
+      const bytes = await readBoundedResponseBytes(
+        response,
+        MODEL_DEPLOYMENT_HEALTH_MAX_RESPONSE_BYTES,
+        signal,
+      )
+      const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown
+      if (!openAiModelsResponseContains(value, row.servedModelName)) {
+        return Object.freeze({ status: 'unhealthy', error: 'served_model_missing' })
+      }
+      return Object.freeze({ status: 'healthy', error: null })
+    } catch (error) {
+      if (callerSignal?.aborted) throw error
+      if (timeoutSignal.aborted) {
+        return Object.freeze({ status: 'unhealthy', error: 'timeout' })
+      }
+      return Object.freeze({ status: 'unhealthy', error: 'invalid_response' })
     }
   }
 
@@ -5379,6 +5790,62 @@ function checkedMultiply(left: number, right: number): number {
     throw new TypeError('V2 cache capacity exceeds the safe integer range')
   }
   return left * right
+}
+
+async function readBoundedResponseBytes(
+  response: Response,
+  maxBytes: number,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const declaredLength = response.headers.get('content-length')
+  if (
+    declaredLength !== null &&
+    (!/^(?:0|[1-9][0-9]*)$/u.test(declaredLength) || BigInt(declaredLength) > BigInt(maxBytes))
+  ) {
+    await response.body?.cancel().catch(() => undefined)
+    throw new Error('Model Deployment health response exceeds its byte limit')
+  }
+  if (response.body === null) return new Uint8Array()
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      signal.throwIfAborted()
+      const result = await reader.read()
+      if (result.done) break
+      total = checkedAddSafeInteger(total, result.value.byteLength, 'health response bytes')
+      if (total > maxBytes) {
+        throw new Error('Model Deployment health response exceeds its byte limit')
+      }
+      chunks.push(result.value)
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => undefined)
+    throw error
+  } finally {
+    reader.releaseLock()
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
+}
+
+function openAiModelsResponseContains(value: unknown, servedModelName: string): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const data = (value as { readonly data?: unknown }).data
+  if (!Array.isArray(data) || data.length > 10_000) return false
+  return data.some(
+    (item) =>
+      item !== null &&
+      typeof item === 'object' &&
+      !Array.isArray(item) &&
+      (item as { readonly id?: unknown }).id === servedModelName,
+  )
 }
 
 async function waitWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {

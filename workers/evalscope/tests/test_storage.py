@@ -17,6 +17,7 @@ def test_atomic_claim_race_replay_and_mismatch(tmp_path: Path) -> None:
     root.mkdir()
     store = TaskManifestStore(root)
     digest = config_digest({'secret': 'not-persisted', 'model': 'm'}, b'x' * 32)
+    assert store.has_claim(EVAL_ID) is False
     barrier = threading.Barrier(2)
     results: list[str] = []
 
@@ -30,6 +31,7 @@ def test_atomic_claim_race_replay_and_mismatch(tmp_path: Path) -> None:
     for thread in threads:
         thread.join()
     assert sorted(results) == ['already_running', 'created']
+    assert store.has_claim(EVAL_ID) is True
     assert 'not-persisted' not in (root / EVAL_ID / 'task-claim.json').read_text()
 
     with pytest.raises(RuntimePolicyError) as captured:
@@ -98,6 +100,23 @@ def test_manual_reconcile_preserves_callback_loss_for_retry(tmp_path: Path) -> N
     assert store.reconcile_one(EVAL_ID, lambda _manifest, _integration: True)['callback_confirmed'] is True
 
 
+def test_integration_manifest_accepts_v1_and_v2_without_endpoint_material(tmp_path: Path) -> None:
+    root = tmp_path / 'outputs'
+    root.mkdir()
+    store = TaskManifestStore(root)
+    store.claim(EVAL_ID, 'evaluation', config_digest({'one': 1}, b'x' * 32))
+    assert store.write_integration(EVAL_ID, _integration(EVAL_ID))['schema_version'] == 1
+
+    second = 'eval_123e4567-e89b-42d3-a456-426614174009'
+    store.claim(second, 'evaluation', config_digest({'two': 2}, b'x' * 32))
+    persisted = store.write_integration(second, _deployment_integration(second))
+    assert persisted['schema_version'] == 2
+    serialized = (root / second / 'databench-integration.json').read_text()
+    assert 'api_url' not in serialized
+    assert 'endpoint' not in serialized
+    assert '127.0.0.1' not in serialized
+
+
 def test_process_registry_never_overwrites() -> None:
     registry = ProcessRegistry()
     first = object()
@@ -147,4 +166,15 @@ def _integration(task_id: str) -> dict[str, object]:
         'model_name': 'model',
         'evalscope_commit': 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
         'input_filename': 'databench.jsonl',
+    }
+
+
+def _deployment_integration(task_id: str) -> dict[str, object]:
+    return {
+        **_integration(task_id),
+        'schema_version': 2,
+        'model_deployment_id': '223e4567-e89b-42d3-a456-426614174000',
+        'model_artifact_id': '323e4567-e89b-42d3-a456-426614174000',
+        'model_deployment_digest': 'd' * 64,
+        'model_name': 'deployed-lora-v1',
     }

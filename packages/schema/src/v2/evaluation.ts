@@ -8,6 +8,8 @@ import {
 } from './contracts.js'
 import { ConverterNameV2Schema, ConverterVersionV2Schema } from './converter.js'
 import { JsonObjectSchema } from './json-value.js'
+import { ModelArtifactIdV2Schema } from './model-artifact.js'
+import { ModelDeploymentIdV2Schema } from './model-deployment.js'
 
 export const V2_EVALUATION_RUN_PAGE_DEFAULT_LIMIT = 20
 export const V2_EVALUATION_RUN_PAGE_MAX_LIMIT = 100
@@ -66,6 +68,12 @@ export const EvaluationRunStatusV2Schema = z.enum([
   'cancelled',
 ])
 export type EvaluationRunStatusV2 = z.infer<typeof EvaluationRunStatusV2Schema>
+
+export const EvaluationRunCreateProfileV2Schema = z.enum([
+  'evaluation-run-create-v1',
+  'evaluation-run-create-v2',
+])
+export type EvaluationRunCreateProfileV2 = z.infer<typeof EvaluationRunCreateProfileV2Schema>
 
 export const EvaluationArchiveStatusV2Schema = z.enum([
   'not_requested',
@@ -142,7 +150,17 @@ export const CreateEvaluationRunRequestV2Schema = z
     converter_options: JsonObjectSchema,
     accepted_fidelity_digest: DigestHexSchema,
     model_name: utf8BoundedString(512).nullable(),
+    model_deployment_id: ModelDeploymentIdV2Schema.nullable().default(null),
     evalscope_commit: z.string().regex(GIT_COMMIT).nullable(),
+  })
+  .superRefine((request, context) => {
+    if (request.model_deployment_id !== null && request.model_name !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['model_name'],
+        message: 'Deployment-bound runs derive model_name from the registered Deployment',
+      })
+    }
   })
   .meta({ id: 'CreateEvaluationRunRequestV2' })
 export type CreateEvaluationRunRequestV2 = z.infer<typeof CreateEvaluationRunRequestV2Schema>
@@ -154,6 +172,7 @@ export const EvaluationRunParamsV2Schema = z
 export const EvaluationRunPageRequestV2Schema = z
   .strictObject({
     dataset_version: DigestHexSchema.optional(),
+    model_deployment_id: ModelDeploymentIdV2Schema.optional(),
     status: EvaluationRunStatusV2Schema.optional(),
     cursor: OpaqueCursorQueryV2Schema,
     limit: z.coerce
@@ -194,6 +213,7 @@ export const EvaluationRunV2Schema = z
     id: EvaluationRunIdV2Schema,
     provider: EvaluationProviderV2Schema,
     provider_task_id: EvaluationProviderTaskIdV2Schema,
+    create_profile: EvaluationRunCreateProfileV2Schema,
     create_request_digest: DigestHexSchema,
     provider_report_ids: EvaluationProviderReportIdsV2Schema.nullable(),
     dataset_version: DigestHexSchema,
@@ -204,6 +224,8 @@ export const EvaluationRunV2Schema = z
     fidelity_digest: DigestHexSchema,
     benchmark: z.string().regex(SAFE_TOKEN),
     model_name: utf8BoundedString(512).nullable(),
+    model_deployment_id: ModelDeploymentIdV2Schema.nullable(),
+    model_artifact_id: ModelArtifactIdV2Schema.nullable(),
     evalscope_commit: z.string().regex(GIT_COMMIT).nullable(),
     status: EvaluationRunStatusV2Schema,
     metrics: EvaluationMetricsV2Schema.nullable(),
@@ -220,6 +242,21 @@ export const EvaluationRunV2Schema = z
     updated_at: Rfc3339UtcSchema,
   })
   .superRefine((run, context) => {
+    const hasDeployment = run.model_deployment_id !== null
+    if (hasDeployment !== (run.model_artifact_id !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['model_artifact_id'],
+        message: 'Deployment-bound runs require both Deployment and Artifact IDs',
+      })
+    }
+    if ((run.create_profile === 'evaluation-run-create-v2') !== hasDeployment) {
+      context.addIssue({
+        code: 'custom',
+        path: ['create_profile'],
+        message: 'Only evaluation-run-create-v2 can bind a Model Deployment',
+      })
+    }
     const terminal =
       run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled'
     if (terminal !== (run.finished_at !== null)) {

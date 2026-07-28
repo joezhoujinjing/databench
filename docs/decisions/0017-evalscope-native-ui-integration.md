@@ -1,7 +1,7 @@
 # ADR 0017 — EvalScope 功能等价 UI 迁移与 Databench 集成
 
 - **状态:** Accepted——owner 于 2026-07-27 确认方案 review 问题修复并要求开始实施；2026-07-28
-  确认预构建镜像离线交付口径
+  确认预构建镜像离线交付口径，并接受 ms-swift S4 的 opaque Model Deployment 扩展
 - **日期:** 2026-07-27
 - **决策者:** owner
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
@@ -203,6 +203,26 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
   mirror；如果未来需要 air-gapped source build，应作为独立发布供应链决策实施；
 - 该澄清不放宽运行时断网、固定本地 Plotly、许可证、image digest、离线 bundle lifecycle 或目标机
   无外部 DNS/HTTP 请求的要求。
+
+### 11. Model source 与 Dataset source 独立，Databench Deployment 只以 opaque ID 进入浏览器契约
+
+- Evaluation 表单的 Dataset source 与 Model source 是两个独立维度。Dataset 继续支持原生 Benchmark 和
+  Databench exact Dataset；Model 继续支持手工 endpoint，并新增 Databench Model Deployment；
+- 浏览器选择 Databench Deployment 时只提交 `databench_deployment_id`，不得同时提交 `model`、
+  `api_url` 或 `api_key`。EvalScope 通过固定 Databench base URL 和 service credential 调用 internal
+  resolver，在服务端取得 served model 与 endpoint；
+- internal resolver 不进入 OpenAPI，也不复用 operator credential。operator 与 service credential
+  配置为相同值时启动配置必须 fail closed；
+- Deployment resolver 只接受 `active` Deployment。`disabled` 后的新 task/new Evaluation Run admission
+  必须稳定拒绝；已经原子 claim 的 terminal replay 和既有 Evaluation Run 仍按原 identity 重放，不依赖
+  当前 endpoint、磁盘容量或 Deployment 生命周期；
+- 只有 `Databench Dataset + Databench Deployment` 组合创建 `evaluation_runs_v2`，并保存 exact Dataset、
+  Deployment、Artifact 与 Deployment create digest。`Benchmark + Databench Deployment` 保留为
+  source-less expert/untracked 模式：可执行 EvalScope task，但不创建 Databench Evaluation Run，也不得
+  展示成完整 Databench lineage；
+- resolved endpoint 只存在于受控服务端执行 payload 和短期内存脱敏上下文，不进入浏览器 response、
+  task integration manifest、report HTML、日志或公开 Model Deployment projection；
+- 本扩展不改变 E8/E9、V16/V17 或公共云 D3 状态，也不证明 GPU 训练或 GPU inference/deployment。
 
 ## 非目标
 

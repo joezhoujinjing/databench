@@ -3,8 +3,8 @@
 > 每个 S Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- swift-status
-current_step: S4
-last_completed_step: S3-non-gpu-green-gpu-deferred
+current_step: S4-non-gpu-green-gpu-deferred
+last_completed_step: S4-non-gpu-contract-green-gpu-deferred
 runtime_enabled: false
 runtime_implemented: true
 ui_route_enabled: true
@@ -17,17 +17,19 @@ integration_mode: native-full-gradio
 
 - **当前分支:** `feat/swift-studio-integration`
 - **基线:** EvalScope E7 complete commit `25931d6`，不包含原工作树未提交的 E8 修改
-- **当前 Step:** S4 Model Deployment + EvalScope 闭环
+- **当前 Step:** S4 non-GPU contract green；GPU 训练、推理部署与真实模型评测证据 deferred
 - **已完成:** ADR/技术方案/实施计划、S0、S1 non-GPU runtime、S2 exact Dataset + 单 active Studio
   Session bridge，以及 S3 immutable LoRA Model Artifact import
 - **产品状态:** `/training` 已具备 Dataset selector、fidelity review、Session create/poll/close、output
-  discovery/import，以及独立于 ready Session 的 Artifact library/detail/download；只有 ready Session 才加载
-  完整原生 Gradio iframe
+  discovery/import，以及独立于 ready Session 的 Artifact library/detail/download；Artifact detail 已增加
+  operator-attested Deployment 注册、健康检查、禁用与 Evaluation lineage；`/evaluations/tasks` 已增加与
+  Dataset source 独立的 opaque Databench Deployment model source
 - **运行状态:** runtime 默认 disabled；S3 production image
   `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72` 已通过本机 CPU
   compatibility、Provider、动态 Gradio prefill、真实 ms-swift output import 与 non-GPU gate；owner 再次确认
   GPU 全部后置，GPU 状态保持 deferred，capability 不标 GPU green
-- **首期模式:** 完整原生 Gradio；Databench 只桥接 Session、Dataset、workspace、Artifact
+- **首期模式:** 完整原生 Gradio；Databench 桥接 Session、exact Dataset、workspace、immutable Artifact、
+  operator-attested Deployment 与 Evaluation lineage
 - **控制面状态:** 没有 Training Run/Attempt；原生任务仍由 ms-swift Gradio 管理
 - **发布声明:** 不改变 V16/V17、公共云 D3、ADR 0012 或 EvalScope E8/E9
 
@@ -42,7 +44,9 @@ integration_mode: native-full-gradio
 5. 从 EvalScope E7 已提交基线创建独立 Swift 分支，不基于缺少 Evaluation 产品面的原始 main，也不带入
    EvalScope E8 未提交文件；
 6. 真实 NVIDIA gate 后置，S1 以 `code-complete / gpu-deferred` 收口并继续 S2-S4；
-   deferred 不等于 green，最终闭环声明前必须补齐。
+   deferred 不等于 green，最终真实 GPU 闭环声明前必须补齐；
+7. S4 先关闭 non-GPU contract，最终状态只写
+   `S4 non-GPU contract green / GPU deferred`，不宣称 GPU training/inference/deployment 已验证。
 
 ## Step 状态
 
@@ -52,7 +56,7 @@ integration_mode: native-full-gradio
 | S1 | 完整原生 GPU Studio + iframe | 🟨 code complete | GS1 GPU deferred | 全七业务面；真实 LoRA + Infer 待补 |
 | S2 | exact Dataset + 单 Session bridge | ✅ non-GPU | GS2 GPU deferred | Session API、预填、真实 Dataset |
 | S3 | LoRA Model Artifact import | ✅ non-GPU | GS3 GPU deferred | deterministic archive、immutable finalize |
-| S4 | Deployment + EvalScope 闭环 | 🔄 当前 | GS4 non-GPU | opaque Deployment ID、真实 lineage |
+| S4 | Deployment + EvalScope 闭环 | ✅ non-GPU | GS4 non-GPU green；GPU deferred | opaque ID、exact lineage |
 | S5 | 多 Session/GPU allocator | ⬜ 后续 | 待 ADR | 不属于首期 |
 | S6 | Training control plane | ⬜ 后续 | 待 ADR | Run/Attempt/Worker/callback 接管 |
 
@@ -154,6 +158,46 @@ S3 关闭的是“Dataset → Studio Session → immutable LoRA Model Artifact�
 当前可信单操作者内网 MVP 的明确后置项：后台 import scanner/reconciler、Session input/output retention
 scheduler、Artifact runtime 与 Swift Provider config 完全解耦，以及多用户 Gateway access gate。当前 import
 会由 create/get REST 和 UI polling 持久化推进并在重试时收敛；这些后置项不得被描述为已完成。
+
+## S4 non-GPU 交付与 Gate
+
+- [x] `model_deployment_create_v1` RFC 8785/BLAKE3 identity、`model_deployments_v2` additive migration、
+  namespace + Artifact composite FK 与 exact endpoint-change/new-ID 语义
+- [x] 首个 profile 固定为 `openai_compatible + operator_attested + auth_mode=none`；只准入 verified-base
+  LoRA Artifact
+- [x] public projection 隐藏 endpoint/create digest；operator Bearer 保护 create/check/disable；service
+  credential 独占 internal resolve，且 internal route 不进入 OpenAPI
+- [x] operator/service token unset、wrong、cross-role、same-value fail-closed，以及 query smuggling、credential
+  text、URL normalization 和 public non-leak tests
+- [x] lifecycle `active|disabled` 与 health `unknown|healthy|unhealthy` 分离；有界 `/models` probe 不自动
+  disable；endpoint/served model 变化创建新 Deployment ID
+- [x] `evaluation-run-create-v2` 将 exact Dataset、Deployment、Artifact、Deployment digest 加入 canonical
+  identity，并以跨 namespace composite FK 固定 lineage
+- [x] disable 后新 Evaluation Run 返回稳定 422 `model_deployment_disabled`；已有 Run 与 terminal replay
+  保留；replay 不依赖当前 disk capacity、endpoint 或 Deployment live state
+- [x] EvalScope 只从固定 Databench internal resolver 取得 endpoint/model；integration manifest、公开
+  response、report/log 不保存或泄漏 resolved endpoint
+- [x] Evaluation 表单把 Dataset source 与 Model source 分开；浏览器 Deployment payload 只有 opaque ID，
+  明确无 `model/api_url/api_key`
+- [x] Artifact detail 支持 Deployment 注册/list/check/disable，并显示 Deployment-bound Run 的 exact Dataset、
+  Artifact、EvalScope task/report lineage
+- [x] 明确 `Databench Deployment + Benchmark` 是 source-less expert/untracked 模式；只有
+  `Databench Dataset + Databench Deployment` 创建完整 Databench Evaluation Run
+- [x] 真实 Postgres/MinIO lifecycle 覆盖 Artifact → Deployment → `/models` health → Deployment-bound
+  Evaluation Run → list by Deployment；浏览器完成 exact Dataset + opaque Deployment → report request-body
+  evidence，console 0 error/0 warning；分类证据与真实命令见
+  [`evidence/S4-NON-GPU-CONTRACT.md`](evidence/S4-NON-GPU-CONTRACT.md)
+- [ ] 真实 vLLM/transformers LoRA `/chat/completions` 与 NVIDIA serving（owner 后置，deferred）
+- [ ] 真实 Dataset → GPU SFT/LoRA → Adapter Infer → Deployment → Evaluation（owner 后置，deferred）
+
+S4 当前结论固定为：
+
+```text
+S4 non-GPU contract green / GPU deferred
+```
+
+它证明 Dataset/Session/Artifact/Deployment/Evaluation 的数据契约、服务端解析与 lineage 已接通；不证明
+GPU 训练、GPU 推理部署、真实模型输出质量或完整 Training Run 控制面。
 
 ## GS0 Gate 记录
 

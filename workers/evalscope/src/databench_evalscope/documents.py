@@ -30,6 +30,8 @@ _CREDENTIAL = re.compile(
 )
 _ABSOLUTE_PATH = re.compile(r'(?<![A-Za-z0-9])(?:/[A-Za-z0-9_.-]+){2,}')
 _SIGNED_QUERY = re.compile(r'([?&](?:x-amz-|x-oss-|signature|token)[^\s"\']*)', re.IGNORECASE)
+_HTTP_URL = re.compile(r'https?://[^\s<>"\']+', re.IGNORECASE)
+_DEPLOYMENT_SECRET_KEYS = {'apiurl', 'url', 'endpoint', 'apikey'}
 _SAFE_TAGS = {
     'a',
     'article',
@@ -126,6 +128,65 @@ def sanitize_json(value: Any, *, depth: int = 0, media_roots: tuple[Path, ...] =
     if value is None or isinstance(value, (bool, int, float)):
         return value
     raise RuntimePolicyError('upstream_response_invalid', 'Upstream response contains an invalid value', 502)
+
+
+def sanitize_deployment_json(
+    value: Any,
+    *,
+    endpoint_values: tuple[str, ...] = (),
+    redact_unmatched_urls: bool = False,
+    depth: int = 0,
+) -> Any:
+    """Remove resolved endpoint material only for Deployment-bound provider data."""
+
+    if depth > 64:
+        raise RuntimePolicyError('upstream_response_invalid', 'Upstream response is too deeply nested', 502)
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for key, child in value.items():
+            normalized = re.sub(r'[^a-z0-9]', '', str(key).lower())
+            if normalized in _DEPLOYMENT_SECRET_KEYS:
+                continue
+            result[str(key)] = sanitize_deployment_json(
+                child,
+                endpoint_values=endpoint_values,
+                redact_unmatched_urls=redact_unmatched_urls,
+                depth=depth + 1,
+            )
+        return result
+    if isinstance(value, list):
+        return [
+            sanitize_deployment_json(
+                child,
+                endpoint_values=endpoint_values,
+                redact_unmatched_urls=redact_unmatched_urls,
+                depth=depth + 1,
+            )
+            for child in value
+        ]
+    if isinstance(value, str):
+        return sanitize_deployment_text(
+            value,
+            endpoint_values=endpoint_values,
+            redact_unmatched_urls=redact_unmatched_urls,
+        )
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    raise RuntimePolicyError('upstream_response_invalid', 'Upstream response contains an invalid value', 502)
+
+
+def sanitize_deployment_text(
+    value: str,
+    *,
+    endpoint_values: tuple[str, ...] = (),
+    redact_unmatched_urls: bool = False,
+) -> str:
+    redacted = value
+    for endpoint in sorted(set(endpoint_values), key=len, reverse=True):
+        redacted = redacted.replace(endpoint, '[model-endpoint]')
+    if redact_unmatched_urls:
+        redacted = _HTTP_URL.sub('[model-endpoint]', redacted)
+    return redacted
 
 
 def _attribute_filter(tag: str, name: str, value: str) -> bool:

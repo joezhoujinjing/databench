@@ -64,6 +64,32 @@ describe('EvalScope task form domain', () => {
     })
   })
 
+  it('submits only an opaque Deployment ID for a Databench model binding', () => {
+    const payload = buildEvaluationPayload(
+      {
+        ...EVALUATION_FORM_DEFAULTS,
+        apiKey: 'must-not-leak',
+        apiUrl: 'http://must-not-leak.test/v1',
+        datasets: 'gsm8k',
+        model: 'must-not-leak',
+      },
+      'benchmark',
+      undefined,
+      {
+        deploymentId: '123e4567-e89b-42d3-a456-426614174099',
+        kind: 'databench-deployment',
+      },
+    )
+
+    expect(payload).toMatchObject({
+      databench_deployment_id: '123e4567-e89b-42d3-a456-426614174099',
+      datasets: ['gsm8k'],
+    })
+    expect(payload).not.toHaveProperty('model')
+    expect(payload).not.toHaveProperty('api_url')
+    expect(payload).not.toHaveProperty('api_key')
+  })
+
   it('requires model, policy-gated endpoint and native datasets while keeping Databench datasets external', () => {
     const native = validateEvaluationForm(EVALUATION_FORM_DEFAULTS, 'benchmark')
     expect(native.ok).toBe(false)
@@ -73,6 +99,9 @@ describe('EvalScope task form domain', () => {
       'databench',
     )
     expect(databench.ok).toBe(true)
+    expect(
+      validateEvaluationForm(EVALUATION_FORM_DEFAULTS, 'benchmark', 'databench-deployment').errors,
+    ).toEqual({ 'eval-datasets': 'evaluations.form.validation.required' })
   })
 
   it('preserves raw dataset args validation and rejects non-object JSON', () => {

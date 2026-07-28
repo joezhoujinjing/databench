@@ -39,6 +39,7 @@ export {
   V2CursorCodec,
   type V2CursorCodecOptions,
   type V2ModelArtifactCursorState,
+  type V2ModelDeploymentCursorState,
   type V2SwiftStudioSessionCursorState,
 } from './cursor.js'
 export { evaluationBenchmarkFromPlanV2, evaluationRunFromCatalogV2 } from './evaluation.js'
@@ -60,6 +61,10 @@ export {
   modelArtifactImportFromCatalogV2,
   modelArtifactManifestDigestV2,
 } from './model-artifact.js'
+export {
+  modelDeploymentFromCatalogV2,
+  resolvedModelDeploymentFromCatalogV2,
+} from './model-deployment.js'
 export {
   SWIFT_STUDIO_PATH_V2,
   swiftStudioProviderArtifactImportIdForDigestV2,

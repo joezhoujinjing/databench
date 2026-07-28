@@ -43,6 +43,10 @@ Postgres/MinIO/Provider/浏览器 gate 仍必须通过。未补齐 deferred 项�
 REST/Web/download 与 Session-independent retention 已验证。GPU gate 按 owner 决策继续 deferred。当前按
 accepted 顺序进入 S4，不在 S4 提前引入 Training Run/Attempt 或 GPU allocator。
 
+S4 owner checkpoint：GPU 训练、adapter inference 与 GPU serving 全部后置。S4 先关闭
+`operator_attested + openai_compatible + auth_mode=none` 的 non-GPU registry/resolve/lineage 契约；最终状态
+只允许写为 `S4 non-GPU contract green / GPU deferred`。
+
 ## S0 — 上游、能力与兼容性基线
 
 ### 目标
@@ -271,41 +275,58 @@ Artifact。
 
 ### 交付
 
-- accepted Deployment contract/ADR amendment（若届时没有既有真源）；
-- `model_deployments_v2` 或届时统一部署实体；
-- Artifact/base model deployability validation；
-- 首个 provider：operator-confirmed OpenAI-compatible endpoint 注册，或 owner 另行接受的 managed
-  `swift deploy` provider；
-- 浏览器只使用 opaque Deployment ID；
-- EvalScope model selector 支持 Databench Deployment；
-- Evaluation Run 绑定 Deployment/Artifact；
+- ADR 0017/0018 与 Swift/EvalScope technical design 固定 Deployment contract；
+- `model_deployments_v2`、`model-deployment-create-v1` identity 与 additive migration；
+- verified-base LoRA Artifact deployability validation 与跨 namespace composite FK；
+- 首个 provider 固定为 operator-confirmed OpenAI-compatible endpoint，
+  `registration_mode=operator_attested`、`auth_mode=none`；
+- public projection 隐藏 endpoint/create digest，operator Bearer 保护 create/check/disable，service credential
+  独占 internal resolve；
+- endpoint/served model 变化创建新 Deployment ID；disable terminal、health 与 lifecycle 独立；
+- 浏览器只使用 opaque Deployment ID；EvalScope 服务端 resolve endpoint/model；
+- Evaluation model selector 支持 Manual endpoint 与 Databench Deployment，且与 Dataset source 独立；
+- `evaluation-run-create-v2` 绑定 Deployment/Artifact/digest 与 exact Dataset；
 - Artifact → Deployment → Evaluation lineage UI；
-- 生命周期、健康、下线与 endpoint 变更规则；
-- 真实 vLLM/transformers deployment smoke。
+- terminal replay 不依赖当前磁盘、endpoint 或 Deployment live state；disable 后新 Run 返回稳定 typed
+  admission error；
+- 真实 vLLM/transformers deployment smoke 保持 GPU-deferred。
 
-### Gate GS4
+### Gate GS4 non-GPU
 
 - LoRA Deployment 显式绑定 base model + adapter；
 - endpoint 只由服务端/Provider 解析，浏览器不能用 Deployment ID 注入任意 URL；
-- OpenAI `/models` 与 `/chat/completions` smoke；
-- 同一 Deployment 的 EvalScope Dataset evaluation 完成；
+- operator/service role separation、unset/wrong/cross-role credential、public non-leak、internal non-OpenAPI、
+  query smuggling 与 endpoint normalization tests；
+- fake/CPU OpenAI-compatible `/models` health probe；
+- 同一 Deployment 的 EvalScope exact Databench Dataset evaluation contract 完成；
 - Evaluation Report 可追溯 exact Dataset、Artifact、Deployment；
-- Studio Session 关闭后 managed/registered Deployment 的定义与状态仍正确；
-- endpoint 不健康、下线、EvalScope callback loss 均有确定状态；
-- 真实 Dataset → Session → Artifact → Deployment → Evaluation → Report 浏览器 evidence；
-- 全仓、真实依赖、Provider、GPU、浏览器和离线边界 gates。
+- Studio Session 关闭后 registered Deployment 的定义与状态仍正确；
+- endpoint 不健康、disable、EvalScope callback loss/replay 均有确定状态；
+- 浏览器证据验证 Deployment + exact Dataset → completed report，并捕获 invoke body 只有 opaque
+  Deployment ID、无 `model/api_url/api_key`；
+- 真实 Postgres/MinIO lifecycle 与全仓、Provider、浏览器、OpenAPI/parity/offline 边界 gates。
+
+### Deferred GPU Gate
+
+- 真实 vLLM/transformers LoRA serving；
+- OpenAI `/chat/completions` smoke 与模型输出可用性；
+- 真实 Dataset → native SFT/LoRA → immutable Artifact → Deployment → Evaluation → Report；
+- Linux/NVIDIA、driver/CUDA、显存与 stop/cleanup 证据。
 
 ### S4 完成声明
 
-S4 通过后可以声明：
+GS4 non-GPU 通过后只可以声明：
 
 ```text
-Databench 已具备可信内部模式的
-Dataset → 原生 Swift Studio → Model Artifact → Deployment → EvalScope 闭环。
+S4 non-GPU contract green / GPU deferred。
+Databench 已具备可信内部模式的 Dataset/Session/Artifact/Deployment/Evaluation lineage 契约，
+浏览器只使用 opaque Deployment ID。
 ```
 
 不能声明：
 
+- GPU 训练、GPU 推理部署或真实模型输出已经验证；
+- 真实 Dataset → GPU Training → Evaluation 全链路已经 green；
 - Databench 已接管全部训练任务；
 - 多用户训练平台 production ready；
 - Swift 所有可选能力已验证；

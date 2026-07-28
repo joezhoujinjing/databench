@@ -97,6 +97,8 @@
 | `DATABENCH_OPENAPI_SERVER_URL` | 部署侧 OpenAPI server URL |
 | `DATABENCH_ROOT` | bounded local staging root |
 | `DATABENCH_V2_CURSOR_SECRET` | v2 cursor signing secret |
+| `DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN` | Deployment create/check/disable operator Bearer |
+| `DATABENCH_SERVICE_CREDENTIAL` | EvalScope → Databench internal Deployment resolve credential |
 | `PORT` | API 端口 |
 
 密钥不写入代码或仓库。本地 `.env` 必须忽略；CI/生产使用 secret store。

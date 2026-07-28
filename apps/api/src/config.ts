@@ -31,6 +31,8 @@ const EnvSchema = z
     DATABENCH_OPENAPI_SERVER_URL: z.string().trim().min(1).optional(),
     DATABENCH_ROOT: z.string().default('./bench'),
     DATABENCH_V2_CURSOR_SECRET: z.string().min(16),
+    DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN: optionalServiceToken(),
+    DATABENCH_SERVICE_CREDENTIAL: optionalServiceToken(),
     DATABENCH_WORKER_ENABLED: z.enum(['true', 'false']).default('false'),
     DATABENCH_WORKER_TARGET: z.string().default('127.0.0.1:50051'),
     DATABENCH_WORKER_JOB_DEADLINE_MS: z.coerce.number().int().positive().default(900_000),
@@ -42,6 +44,17 @@ const EnvSchema = z
     PORT: z.coerce.number().int().positive().default(8000),
   })
   .superRefine((value, context) => {
+    if (
+      value.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN !== undefined &&
+      value.DATABENCH_SERVICE_CREDENTIAL !== undefined &&
+      value.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN === value.DATABENCH_SERVICE_CREDENTIAL
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['DATABENCH_SERVICE_CREDENTIAL'],
+        message: 'Model Deployment operator and service credentials must be distinct',
+      })
+    }
     if (value.DATABENCH_WORKER_ENABLED !== 'true') return
     if (value.DATABENCH_WORKER_LEASE_MS <= 2 * value.DATABENCH_WORKER_HEARTBEAT_MS) {
       context.addIssue({
@@ -92,6 +105,8 @@ export interface ApiConfig {
   readonly databaseUrl?: string
   readonly evalscope?: EvalScopeGatewayConfig
   readonly mcp: McpRuntimeConfig
+  readonly modelDeploymentOperatorToken?: string
+  readonly modelDeploymentServiceCredential?: string
   readonly openApiServerUrl?: string
   readonly port: number
   readonly storeConfig: NonNullable<V2WorkspaceOpenOptions['storeConfig']>
@@ -111,6 +126,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       .filter(Boolean),
     evalscope: evalScopeGatewayConfigFromEnv(env),
     mcp: mcpConfigFromEnv(env),
+    ...(parsed.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN === undefined
+      ? {}
+      : {
+          modelDeploymentOperatorToken: parsed.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN,
+        }),
+    ...(parsed.DATABENCH_SERVICE_CREDENTIAL === undefined
+      ? {}
+      : { modelDeploymentServiceCredential: parsed.DATABENCH_SERVICE_CREDENTIAL }),
     port: parsed.PORT,
     storeConfig: v2ObjectStoreConfigFromEnv(env),
     swiftStudio: swiftStudioGatewayConfigFromEnv(env),
@@ -142,6 +165,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   }
 
   return configured
+}
+
+function optionalServiceToken() {
+  return z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .string()
+      .min(32)
+      .max(512)
+      .refine((value) => !/\s/u.test(value) && !hasControlCharacter(value), {
+        message: 'Service token must not contain whitespace or control characters',
+      })
+      .optional(),
+  )
+}
+
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)
+    if (codePoint !== undefined && (codePoint <= 31 || codePoint === 127)) return true
+  }
+  return false
 }
 
 function isPrivateWorkerTarget(value: string): boolean {

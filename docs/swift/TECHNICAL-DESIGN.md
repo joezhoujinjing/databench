@@ -1052,15 +1052,97 @@ S3 在 GS3 增加：
 
 ## 21. Deployment 与 EvalScope 扩展
 
-S4 增加独立 `model_deployments_v2` 或复用届时已接受的 Deployment contract。最低要求：
+S4 增加独立 `model_deployments_v2`。它是 Artifact 与 EvalScope 之间的稳定 registry，不是 serving
+scheduler，也不把原生 Gradio Deploy task 伪装成 Databench Deployment。
 
-- Deployment 绑定 immutable Model Artifact；
-- LoRA 必须绑定可解析的 base model；
-- endpoint 由 operator/provider 注册，浏览器只使用 opaque Deployment ID；
-- EvalScope provider 从 Databench 服务端解析 Deployment，不信任用户提交的内部 URL；
-- Evaluation Run 保存 Deployment/Artifact/Dataset lineage；
-- Studio Session 关闭不影响 managed Deployment；
-- 原生 Studio Deploy 只有显式注册后才成为 Databench Deployment。
+### 21.1 首个 Deployment profile
+
+```text
+provider          = openai_compatible
+registration_mode = operator_attested
+auth_mode         = none
+status            = active | disabled
+health_status     = unknown | healthy | unhealthy
+```
+
+- Deployment 必须绑定当前 namespace 中的 immutable `lora_adapter` Artifact；
+- Artifact 必须具有 `base_model_binding_status=verified` 与 exact base model revision；
+- operator attests 一个已经独立运行的稳定 OpenAI-compatible base URL 和 served model name；S4 不启动、
+  停止、重启或自动扩缩 serving 进程；
+- endpoint 规范化后与 namespace、Artifact、provider、display name、served model 和 auth mode 一起进入
+  `model-deployment-create-v1` RFC 8785/BLAKE3 identity；相同请求幂等 replay，endpoint/served model 变化
+  必须创建新 Deployment ID；
+- `model_deployments_v2` 以 namespace + Artifact composite FK 防止跨 namespace 绑定；历史 row、Artifact
+  与 Evaluation Run 全部 `RESTRICT`，disable 不删除 lineage；
+- `active|disabled` 是 operator lifecycle；`unknown|healthy|unhealthy` 是最近一次有界 `/models` probe。
+  health 不自动改变 lifecycle，disable 也不抹掉最后一次 health observation。
+
+`auth_mode=none` 只适用于当前可信内部、单 operator MVP。以后增加 API key、mTLS、managed runtime 或
+per-Deployment secret reference 时必须新增版本化 provider/auth contract，不能把 secret 写进当前表、
+create identity 的公开投影或浏览器 payload。
+
+### 21.2 public/operator/service 三个投影与权限面
+
+```text
+Browser/public
+  id, artifact_id, display_name, served_model_name,
+  provider, registration_mode, auth_mode, lifecycle/health timestamps
+
+Operator create/check/disable
+  Authorization: Bearer <model deployment operator token>
+
+EvalScope internal resolve
+  Authorization: Bearer <model deployment service credential>
+  → endpoint_base_url + served model + Artifact/base-model binding + create digest
+```
+
+- public list/show 与 Artifact detail 不返回 endpoint、create digest 或 base-model internal resolve material；
+- create/check/disable 使用 operator Bearer；token unset 返回 unavailable，错误/跨角色 token 返回 401；
+- internal resolve 不登记进 OpenAPI，只接受 service credential。operator token 与 service credential
+  配置成相同值时 API 启动配置 fail closed；
+- route 不接受 query smuggling；endpoint 拒绝 credentials、query、fragment 和 credential-like text；
+- internal resolver 只解析 `active` Deployment，并重新验证 Artifact/base-model composite binding。
+
+### 21.3 Evaluation identity、disable 与 replay
+
+Deployment 模式增加 `evaluation-run-create-v2`：在既有 exact Dataset、converter plan、fidelity、benchmark、
+served model 与 EvalScope commit identity 上，再绑定 `model_deployment_id`、`model_artifact_id` 和
+`model_deployment_digest`。数据库使用同一 namespace 下的复合 FK 固定这三者，不能通过后续 mutable
+lookup 改写历史 Run。
+
+- 浏览器在 Deployment model source 中只提交 `databench_deployment_id`；禁止携带 `model`、`api_url`
+  或 `api_key`；
+- EvalScope 对新 task 先原子 claim，再以固定 Databench origin/service credential resolve 一次，执行前将
+  server-resolved endpoint/model 注入 upstream payload；
+- 已有同 digest claim 先走 `already_running` 或 terminal replay，不重复当前磁盘、endpoint、resolve 或
+  Deployment lifecycle live check；terminal callback 尚未确认时继续 replay 原 Databench callback；
+- disable 后拒绝新的 Deployment resolve 和新的 Deployment-bound Evaluation Run admission；Catalog 将该
+  admission 映射为稳定 422 `model_deployment_disabled`，不误报 500 integrity；
+- 已存在的 Evaluation Run、report、Deployment/Artifact lineage 仍可读取，disable 不回滚或删除历史记录；
+- resolved endpoint 只在 server execution payload 和短期脱敏上下文中存在，不写入 integration manifest、
+  browser response、公开 report/log 或 OpenAPI Deployment schema。
+
+Dataset source 与 Model source 独立：
+
+| Dataset source | Model source | Databench Evaluation Run |
+|---|---|---|
+| Databench exact Dataset | Databench Deployment | 创建完整 Dataset/Artifact/Deployment lineage |
+| Databench exact Dataset | Manual endpoint | 保留 `evaluation-run-create-v1` |
+| EvalScope Benchmark | Databench Deployment | expert/untracked；执行 task，但不创建 Databench Run |
+| EvalScope Benchmark | Manual endpoint | 原生 EvalScope 行为 |
+
+### 21.4 产品面与当前 gate
+
+- Artifact detail 提供 Deployment 注册、list、health check、disable；
+- 展开 Deployment 可查看绑定的 Evaluation Runs、exact Dataset、Artifact、EvalScope task/report IDs；
+- Evaluation Tasks 将 Dataset source 和 Model source 分开选择；Deployment selector 读取 active public rows；
+- Studio Session 关闭不影响 Artifact 或 operator-attested Deployment；原生 Studio Deploy 只有 operator
+  显式登记后才成为 Databench Deployment。
+
+S4 当前只关闭 non-GPU contract：Schema/Hashing/Catalog/Workspace/API/OpenAPI/Web、EvalScope resolve、
+真实 Postgres/MinIO、浏览器 opaque payload 与 fake/CPU OpenAI-compatible `/models` probe 全绿即可。
+真实 vLLM/transformers LoRA `/chat/completions`、NVIDIA serving 和 Dataset → GPU training → adapter infer →
+evaluation evidence 继续 deferred。最终状态必须写为 `S4 non-GPU contract green / GPU deferred`。
 
 ## 22. 后续迁移到 Databench Training Control Plane
 
@@ -1096,11 +1178,15 @@ apps/web/src/training/
 apps/api/src/swift-studio/
 apps/api/src/routes/v2/swift-studio.ts
 apps/api/src/routes/v2/model-artifacts.ts
+apps/api/src/routes/v2/model-deployments.ts
+apps/api/src/routes/model-deployment-auth.ts
 packages/schema/src/v2/swift-studio.ts
 packages/schema/src/v2/model-artifact.ts
+packages/schema/src/v2/model-deployment.ts
 packages/catalog/src/v2/...
 packages/store/src/v2/model-artifact*.ts
 packages/workspace/src/v2/swift-studio.ts
+packages/workspace/src/v2/model-deployment.ts
 packages/workspace/src/internal/swift-studio/
 workers/swift-studio/
 third_party/ms-swift/

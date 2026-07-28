@@ -352,6 +352,7 @@ export {
   McpValidationPreviewResultSchema,
 } from './mcp.js'
 export * from './model-artifact.js'
+export * from './model-deployment.js'
 export {
   type CompatiblePartV2,
   FileDataPartSchema as FileDataPartV2Schema,

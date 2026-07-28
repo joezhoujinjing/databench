@@ -67,6 +67,33 @@ describe('api support', () => {
     expect(() => loadConfig({ ...base, DATABENCH_WORKER_SIGNED_URL_TTL_MS: '910000' })).toThrow()
   })
 
+  test('keeps Model Deployment operator and service credentials separated', () => {
+    const base = {
+      DATABENCH_OBJECT_STORE: 's3',
+      DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+      S3_BUCKET: 'v2-config-test',
+    }
+    const operator = 'operator-token-that-is-at-least-32-bytes'
+    const service = 'service-token-that-is-distinct-and-long-enough'
+    expect(
+      loadConfig({
+        ...base,
+        DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN: operator,
+        DATABENCH_SERVICE_CREDENTIAL: service,
+      }),
+    ).toMatchObject({
+      modelDeploymentOperatorToken: operator,
+      modelDeploymentServiceCredential: service,
+    })
+    expect(() =>
+      loadConfig({
+        ...base,
+        DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN: operator,
+        DATABENCH_SERVICE_CREDENTIAL: operator,
+      }),
+    ).toThrow('must be distinct')
+  })
+
   test('keeps EvalScope disabled by default and validates enabled internal routing', () => {
     const base = {
       DATABENCH_OBJECT_STORE: 's3',

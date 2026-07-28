@@ -107,6 +107,33 @@
       "closed": "Session closed",
       "failed": "Session failed"
     },
+    "deployments": {
+      "title": "Model Deployments",
+      "description": "Register an OpenAI-compatible service for this immutable Artifact. The public UI stores and submits only its opaque Deployment ID.",
+      "refresh": "Refresh",
+      "name": "Deployment name",
+      "servedModel": "Served model name",
+      "endpoint": "Endpoint base URL",
+      "endpointHint": "MVP supports auth_mode=none. Configure the browser backend token as the Deployment operator token for register, check, and disable actions.",
+      "register": "Register Deployment",
+      "registering": "Registering…",
+      "loading": "Loading Deployments…",
+      "empty": "No Deployment is registered for this Artifact.",
+      "check": "Check health",
+      "disable": "Disable",
+      "evaluationRuns": "Evaluation Runs",
+      "loadingRuns": "Loading Deployment-bound Evaluation Runs…",
+      "noRuns": "No Databench Evaluation Run is bound to this Deployment yet.",
+      "status": {
+        "active": "Active",
+        "disabled": "Disabled"
+      },
+      "health": {
+        "unknown": "Unknown",
+        "healthy": "Healthy",
+        "unhealthy": "Unhealthy"
+      }
+    },
     "artifacts": {
       "title": "Model artifacts",
       "description": "Select a LoRA Adapter from the current session, confirm its base model, and import it as an immutable Databench artifact. Native training output is not deleted automatically.",

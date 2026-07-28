@@ -8,6 +8,7 @@ import {
   V2CatalogImmutableConflictError,
   V2CatalogInputError,
   V2CatalogLineageCycleError,
+  V2CatalogModelDeploymentAdmissionError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
@@ -223,6 +224,18 @@ export function mapV2CatalogError(
           line: null,
           code: 'lineage_cycle',
           message: error.message,
+        },
+      ],
+    })
+  }
+  if (error instanceof V2CatalogModelDeploymentAdmissionError) {
+    throw new ValidationError('Model Deployment cannot admit a new Evaluation Run', {
+      issues: [
+        {
+          path: '/model_deployment_id',
+          line: null,
+          code: `model_deployment_${error.reason}`,
+          message: 'The selected Model Deployment is disabled',
         },
       ],
     })

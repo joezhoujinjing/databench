@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hmac
 import json
 import math
@@ -17,13 +18,27 @@ from werkzeug.wrappers import Response as WerkzeugResponse
 
 from .config import EVALSCOPE_COMMIT, RuntimeConfig
 from .databench import DatabenchClient, DatabenchSource
-from .documents import GeneratedDocumentStore, resolve_media, sanitize_active_html, sanitize_json, sanitize_text
+from .documents import (
+    GeneratedDocumentStore,
+    resolve_media,
+    sanitize_active_html,
+    sanitize_deployment_json,
+    sanitize_deployment_text,
+    sanitize_json,
+    sanitize_text,
+)
 from .errors import RuntimePolicyError, UpstreamProtocolError
 from .security import EndpointPolicy, validate_dataset_args, validate_task_id
 from .storage import TaskManifestStore, config_digest
 
 _PLOTLY_ASSET_ROUTE = '/generated-assets/plotly-6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603.min.js'
 _SAFE_RELATIVE = re.compile(r'^[^\x00-\x1f\x7f\\]{1,2048}$')
+_MODEL_DEPLOYMENT_ID = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+)
+_DEPLOYMENT_TASK_ID_IN_TEXT = re.compile(
+    r'eval_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+)
 _DOCUMENT_KINDS = {
     '/api/v1/eval/report': 'evaluation-report',
     '/api/v1/perf/report': 'performance-report',
@@ -123,6 +138,8 @@ def create_app(
     evaluation_slots = threading.BoundedSemaphore(runtime.max_concurrent_evals)
     performance_slots = threading.BoundedSemaphore(runtime.max_concurrent_perf)
     generation_lock = threading.Lock()
+    deployment_endpoint_lock = threading.Lock()
+    deployment_endpoints: dict[str, str] = {}
     report_generation = 0
 
     if reconcile_on_start:
@@ -191,6 +208,7 @@ def create_app(
                 'performance',
                 'reports',
                 'databench-dataset',
+                'databench-model-deployment',
                 'generated-documents',
             ],
             'reports_configured': True,
@@ -200,11 +218,31 @@ def create_app(
 
     @app.post('/api/v1/eval/invoke')
     def eval_invoke():
-        return _invoke('evaluation', evaluation_slots, runtime, manifests, databench, endpoint_policy, upstream)
+        return _invoke(
+            'evaluation',
+            evaluation_slots,
+            runtime,
+            manifests,
+            databench,
+            endpoint_policy,
+            upstream,
+            deployment_endpoints,
+            deployment_endpoint_lock,
+        )
 
     @app.post('/api/v1/perf/invoke')
     def perf_invoke():
-        return _invoke('performance', performance_slots, runtime, manifests, databench, endpoint_policy, upstream)
+        return _invoke(
+            'performance',
+            performance_slots,
+            runtime,
+            manifests,
+            databench,
+            endpoint_policy,
+            upstream,
+            deployment_endpoints,
+            deployment_endpoint_lock,
+        )
 
     def stop(kind: str):
         path = f'/api/v1/{"eval" if kind == "evaluation" else "perf"}/stop'
@@ -246,7 +284,14 @@ def create_app(
                         })
             response = _dispatch_upstream(upstream, 'GET', route_path, query=query)
             payload, status = _bounded_json_response(response, runtime.response_max_bytes)
-            safe = sanitize_json(payload, media_roots=runtime.allowed_media_roots)
+            safe = _sanitize_browser_json(
+                payload,
+                manifests,
+                deployment_endpoints,
+                deployment_endpoint_lock,
+                runtime.allowed_media_roots,
+                tuple(query.values()),
+            )
             if route_path == '/api/v1/reports/analysis' and isinstance(safe, dict):
                 analysis = safe.get('analysis')
                 if isinstance(analysis, str):
@@ -266,7 +311,14 @@ def create_app(
             response = _dispatch_upstream(upstream, 'GET', route_path, query=query)
             if response.status_code >= 300:
                 payload, status = _bounded_json_response(response, runtime.response_max_bytes)
-                return jsonify(sanitize_json(payload, media_roots=runtime.allowed_media_roots)), status
+                return jsonify(_sanitize_browser_json(
+                    payload,
+                    manifests,
+                    deployment_endpoints,
+                    deployment_endpoint_lock,
+                    runtime.allowed_media_roots,
+                    tuple(query.values()),
+                )), status
             raw = response.get_data()
             if len(raw) > runtime.document_max_bytes:
                 raise RuntimePolicyError('generated_document_too_large', 'Generated document exceeds its bound', 413)
@@ -277,6 +329,18 @@ def create_app(
                 html_source = raw.decode('utf-8')
             except UnicodeDecodeError as exc:
                 raise UpstreamProtocolError('EvalScope report is not valid UTF-8') from exc
+            endpoint_values, redact_unmatched_urls = _deployment_redaction_context(
+                manifests,
+                deployment_endpoints,
+                deployment_endpoint_lock,
+                tuple(query.values()),
+            )
+            if endpoint_values or redact_unmatched_urls:
+                html_source = sanitize_deployment_text(
+                    html_source,
+                    endpoint_values=endpoint_values,
+                    redact_unmatched_urls=redact_unmatched_urls,
+                )
             return jsonify(documents.create(html_source, kind=document_kind).to_dict())
 
         app.add_url_rule(path, f'document_{path.replace("/", "_")}', document_proxy, methods=['GET'])
@@ -345,6 +409,8 @@ def _invoke(
     databench: DatabenchClient,
     endpoint_policy: EndpointPolicy,
     upstream: Flask,
+    deployment_endpoints: dict[str, str],
+    deployment_endpoint_lock: threading.Lock,
 ):
     path = '/api/v1/eval/invoke' if kind == 'evaluation' else '/api/v1/perf/invoke'
     _reject_query(path, frozenset())
@@ -362,31 +428,64 @@ def _invoke(
             422,
             '/dataset_args',
         )
+    deployment_id = _model_deployment_id(payload, kind)
     endpoint_field = 'api_url' if kind == 'evaluation' else 'url'
     endpoint = payload.get(endpoint_field)
-    if not isinstance(endpoint, str):
-        raise RuntimePolicyError('model_endpoint_url_rejected', 'Model endpoint URL is required', 422, f'/{endpoint_field}')
-    endpoint_policy.authorize_connection(endpoint)
-    _assert_disk_capacity(runtime)
+    if deployment_id is None:
+        if not isinstance(endpoint, str):
+            raise RuntimePolicyError(
+                'model_endpoint_url_rejected',
+                'Model endpoint URL is required',
+                422,
+                f'/{endpoint_field}',
+            )
     digest = config_digest({'task_kind': kind, 'payload': payload}, runtime.task_hmac_key)
-    if not slots.acquire(blocking=False):
-        raise RuntimePolicyError('task_concurrency_exceeded', 'EvalScope task concurrency is exhausted', 503)
-    owns_claim = False
+    if not manifests.has_claim(task_id):
+        if deployment_id is None:
+            endpoint_policy.authorize_connection(endpoint)
+        _assert_disk_capacity(runtime)
+    claim = manifests.claim(task_id, kind, digest)
+    if claim.disposition == 'already_running':
+        return jsonify({
+            'error': {'code': 'already_running', 'message': 'Task is already active'},
+            'task_id': task_id,
+        }), 409
+    if claim.disposition == 'terminal_replay':
+        integration = manifests.read_integration(task_id)
+        if integration is not None and not claim.manifest['callback_confirmed']:
+            if databench.callback(claim.manifest, integration):
+                manifests.confirm_callback(task_id)
+        return jsonify({
+            'status': 'terminal_replay',
+            'task_id': task_id,
+            'terminal': claim.manifest['terminal'],
+        })
+    owns_claim = True
+    slot_acquired = slots.acquire(blocking=False)
     try:
-        claim = manifests.claim(task_id, kind, digest)
-        if claim.disposition == 'already_running':
-            return jsonify({'error': {'code': 'already_running', 'message': 'Task is already active'}, 'task_id': task_id}), 409
-        if claim.disposition == 'terminal_replay':
-            integration = manifests.read_integration(task_id)
-            if integration is not None and not claim.manifest['callback_confirmed']:
-                if databench.callback(claim.manifest, integration):
-                    manifests.confirm_callback(task_id)
-            return jsonify({'status': 'terminal_replay', 'task_id': task_id, 'terminal': claim.manifest['terminal']})
-        owns_claim = True
-
-        execution_payload = payload
+        if not slot_acquired:
+            raise RuntimePolicyError(
+                'task_concurrency_exceeded',
+                'EvalScope task concurrency is exhausted',
+                503,
+            )
+        deployment = None
+        execution_payload = copy.deepcopy(payload)
+        if deployment_id is not None:
+            deployment = databench.resolve_model_deployment(deployment_id)
+            endpoint_policy.authorize_connection(deployment.endpoint_base_url)
+            with deployment_endpoint_lock:
+                deployment_endpoints[task_id] = deployment.endpoint_base_url
+            execution_payload.pop('databench_deployment_id', None)
+            execution_payload['api_url'] = deployment.endpoint_base_url
+            execution_payload['model'] = deployment.served_model_name
         if source is not None:
-            prepared = databench.prepare_evaluation(task_id, payload, source)
+            prepared = databench.prepare_evaluation(
+                task_id,
+                execution_payload,
+                source,
+                deployment,
+            )
             execution_payload = prepared.payload
         _cancel_if_requested(manifests, task_id)
         manifests.mark_running(task_id)
@@ -423,7 +522,14 @@ def _invoke(
                 },
             )
         _confirm_callback(manifests, databench, task_id, manifest)
-        safe = sanitize_json(payload_response, media_roots=runtime.allowed_media_roots)
+        safe = _sanitize_browser_json(
+            payload_response,
+            manifests,
+            deployment_endpoints,
+            deployment_endpoint_lock,
+            runtime.allowed_media_roots,
+            (task_id,),
+        )
         safe['terminal'] = manifest['terminal']
         return jsonify(safe), 200
     except RuntimePolicyError as error:
@@ -475,7 +581,143 @@ def _invoke(
             'terminal': manifest['terminal'],
         }), 200
     finally:
-        slots.release()
+        if slot_acquired:
+            slots.release()
+
+
+def _model_deployment_id(payload: dict[str, Any], kind: str) -> str | None:
+    if 'databench_deployment_id' not in payload:
+        return None
+    if kind != 'evaluation':
+        raise RuntimePolicyError(
+            'model_deployment_unsupported',
+            'Databench Model Deployments are only supported for evaluation tasks',
+            422,
+            '/databench_deployment_id',
+        )
+    deployment_id = payload.get('databench_deployment_id')
+    if not isinstance(deployment_id, str) or not _MODEL_DEPLOYMENT_ID.fullmatch(deployment_id):
+        raise RuntimePolicyError(
+            'model_deployment_invalid',
+            'Databench Model Deployment ID is invalid',
+            422,
+            '/databench_deployment_id',
+        )
+    conflicting = next(
+        (field for field in ('api_url', 'api_key', 'model') if field in payload),
+        None,
+    )
+    if conflicting is not None:
+        raise RuntimePolicyError(
+            'model_source_conflict',
+            'Databench Deployment mode cannot include api_url, api_key, or model',
+            422,
+            f'/{conflicting}',
+        )
+    return deployment_id
+
+
+def _sanitize_browser_json(
+    value: Any,
+    manifests: TaskManifestStore,
+    deployment_endpoints: dict[str, str],
+    deployment_endpoint_lock: threading.Lock,
+    media_roots: tuple[Path, ...],
+    context_strings: tuple[str, ...] = (),
+) -> Any:
+    safe = sanitize_json(value, media_roots=media_roots)
+    endpoint_values, redact_unmatched_urls = _deployment_redaction_context(
+        manifests,
+        deployment_endpoints,
+        deployment_endpoint_lock,
+        context_strings,
+    )
+    if endpoint_values or redact_unmatched_urls:
+        return sanitize_deployment_json(
+            safe,
+            endpoint_values=endpoint_values,
+            redact_unmatched_urls=redact_unmatched_urls,
+        )
+    return _sanitize_detected_deployment_branches(
+        safe,
+        manifests,
+        deployment_endpoints,
+        deployment_endpoint_lock,
+    )
+
+
+def _sanitize_detected_deployment_branches(
+    value: Any,
+    manifests: TaskManifestStore,
+    deployment_endpoints: dict[str, str],
+    deployment_endpoint_lock: threading.Lock,
+) -> Any:
+    if isinstance(value, list):
+        return [
+            _sanitize_detected_deployment_branches(
+                item,
+                manifests,
+                deployment_endpoints,
+                deployment_endpoint_lock,
+            )
+            for item in value
+        ]
+    if not isinstance(value, dict):
+        return value
+    scalar_context = tuple(
+        str(item)
+        for item in (*value.keys(), *value.values())
+        if isinstance(item, str)
+    )
+    endpoint_values, redact_unmatched_urls = _deployment_redaction_context(
+        manifests,
+        deployment_endpoints,
+        deployment_endpoint_lock,
+        scalar_context,
+    )
+    if endpoint_values or redact_unmatched_urls:
+        return sanitize_deployment_json(
+            value,
+            endpoint_values=endpoint_values,
+            redact_unmatched_urls=redact_unmatched_urls,
+        )
+    return {
+        key: _sanitize_detected_deployment_branches(
+            child,
+            manifests,
+            deployment_endpoints,
+            deployment_endpoint_lock,
+        )
+        for key, child in value.items()
+    }
+
+
+def _deployment_redaction_context(
+    manifests: TaskManifestStore,
+    deployment_endpoints: dict[str, str],
+    deployment_endpoint_lock: threading.Lock,
+    values: tuple[str, ...],
+) -> tuple[tuple[str, ...], bool]:
+    task_ids = {
+        task_id
+        for value in values
+        for task_id in _DEPLOYMENT_TASK_ID_IN_TEXT.findall(value)
+    }
+    endpoints: set[str] = set()
+    redact_unmatched_urls = False
+    for task_id in task_ids:
+        with deployment_endpoint_lock:
+            endpoint = deployment_endpoints.get(task_id)
+        if endpoint is not None:
+            endpoints.add(endpoint)
+            continue
+        try:
+            integration = manifests.read_integration(task_id)
+        except RuntimePolicyError:
+            continue
+        if integration is not None and integration.get('schema_version') == 2:
+            redact_unmatched_urls = True
+    return tuple(sorted(endpoints)), redact_unmatched_urls
 
 
 def _cancel_if_requested(manifests: TaskManifestStore, task_id: str) -> None:

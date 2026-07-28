@@ -14,6 +14,12 @@ import {
   type CatalogIdentityClaimResultV2,
   type CatalogIdentityClaimRowV2,
   type CatalogLayoutRowV2,
+  type CatalogModelArtifactRowV2,
+  type CatalogModelDeploymentCursorV2,
+  type CatalogModelDeploymentHealthV2,
+  type CatalogModelDeploymentListFilterV2,
+  type CatalogModelDeploymentPageV2,
+  type CatalogModelDeploymentRowV2,
   type CatalogRefPageV2,
   type CatalogRefRowV2,
   type RestoreRefResultV2 as CatalogRestoreRefResultV2,
@@ -27,6 +33,7 @@ import {
   type CompareAndSetRefV2,
   type CompleteTransformJobV2,
   type CreateEvaluationRunV2,
+  type CreateModelDeploymentV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
   type RegisterLayoutV2,
@@ -35,6 +42,7 @@ import {
   type TransitionEvaluationRunV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
+  V2CatalogModelDeploymentAdmissionError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
@@ -2600,6 +2608,152 @@ describe('V2Workspace evaluation runs', () => {
   })
 })
 
+describe('V2Workspace Model Deployments', () => {
+  test('normalizes an operator registration and derives Evaluation lineage from its opaque ID', async () => {
+    const rig = createRig()
+    const dataset = makeDataset('a', 'Evaluate the deployed adapter.')
+    rig.seed(dataset)
+    const artifactId = '22222222-2222-4222-8222-222222222222'
+    rig.catalog.modelArtifacts.set(artifactId, {
+      id: artifactId,
+      namespaceId: NAMESPACE_ID,
+      displayName: 'deployable-lora',
+      artifactKind: 'lora_adapter',
+      artifactFormat: 'swift-lora-adapter-v1',
+      archiveFormat: 'deterministic-tar-zst-v1',
+      archiveDigest: '1'.repeat(64),
+      archiveSizeBytes: 1_024n,
+      objectLocator: `objects/v2/model-artifact-v1/11/${'1'.repeat(64)}.tar.zst`,
+      manifestDigest: '2'.repeat(64),
+      manifest: {
+        manifest_version: 'model-artifact-manifest-v1',
+        artifact_kind: 'lora_adapter',
+        artifact_format: 'swift-lora-adapter-v1',
+        archive_format: 'deterministic-tar-zst-v1',
+        archive_digest: '1'.repeat(64),
+        archive_size_bytes: 1_024,
+        output_snapshot_digest: '3'.repeat(64),
+        files: [
+          { path: 'adapter_config.json', digest: '4'.repeat(64), size_bytes: 128 },
+          { path: 'adapter_model.safetensors', digest: '5'.repeat(64), size_bytes: 896 },
+        ],
+        source: {
+          studio_session_id: '44444444-4444-4444-8444-444444444444',
+          upstream_commit: '6'.repeat(40),
+          image_digest: '7'.repeat(64),
+        },
+        dataset_lineage: {
+          status: 'verified',
+          dataset_version: dataset.version,
+          dataset_export_digest: '8'.repeat(64),
+        },
+        base_model: {
+          reference: 'Qwen/Qwen3-0.6B',
+          revision: '0123456789abcdef',
+          binding_status: 'verified',
+        },
+        training_summary: {
+          train_stage: 'sft',
+          tuner_type: 'lora',
+          lora_rank: 8,
+          lora_alpha: 16,
+          lora_dropout: 0.05,
+          num_train_epochs: null,
+          max_steps: 5,
+          learning_rate: 0.0001,
+          max_length: 128,
+          dtype: 'bfloat16',
+          seed: 42,
+          redacted_fields_count: 0,
+        },
+        created_at: NOW.toISOString(),
+        created_by: 'databench',
+      },
+      sourceKind: 'swift_studio_session',
+      sourceSessionId: '44444444-4444-4444-8444-444444444444',
+      sourceImportId: '55555555-5555-4555-8555-555555555555',
+      datasetLineageStatus: 'verified',
+      datasetVersion: dataset.version,
+      datasetExportDigest: '8'.repeat(64),
+      baseModelReference: 'Qwen/Qwen3-0.6B',
+      baseModelRevision: '0123456789abcdef',
+      baseModelBindingStatus: 'verified',
+      upstreamCommit: '6'.repeat(40),
+      imageDigest: '7'.repeat(64),
+      createdAt: NOW,
+    })
+    const deployment = await rig.workspace.createModelDeployment({
+      artifact_id: artifactId,
+      display_name: 'deployable-lora',
+      provider: 'openai_compatible',
+      served_model_name: 'deployable-lora-v1',
+      endpoint_base_url: 'HTTP://MODEL.INTERNAL:80/v1///',
+      auth_mode: 'none',
+    })
+    expect(deployment).toMatchObject({
+      artifact_id: artifactId,
+      served_model_name: 'deployable-lora-v1',
+      status: 'active',
+    })
+    expect(deployment).not.toHaveProperty('endpoint_base_url')
+    expect(deployment).not.toHaveProperty('create_digest')
+    await expect(rig.workspace.resolveModelDeployment(deployment.id)).resolves.toMatchObject({
+      artifact_id: artifactId,
+      served_model_name: 'deployable-lora-v1',
+      endpoint_base_url: 'http://model.internal/v1',
+      base_model_revision: '0123456789abcdef',
+    })
+
+    const inspected = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    const run = await rig.workspace.createEvaluationRun({
+      provider: 'evalscope',
+      provider_task_id: 'task-deployment-lineage',
+      dataset_version: dataset.version,
+      source_ref: null,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: inspected.fidelity_digest,
+      model_name: null,
+      model_deployment_id: deployment.id,
+      evalscope_commit: null,
+    })
+    expect(run).toMatchObject({
+      create_profile: 'evaluation-run-create-v2',
+      model_name: 'deployable-lora-v1',
+      model_deployment_id: deployment.id,
+      model_artifact_id: artifactId,
+    })
+    await expect(rig.workspace.disableModelDeployment(deployment.id)).resolves.toMatchObject({
+      status: 'disabled',
+    })
+    await expect(rig.workspace.resolveModelDeployment(deployment.id)).rejects.toMatchObject({
+      code: 'conflict',
+    })
+    await expect(
+      rig.workspace.createEvaluationRun({
+        provider: 'evalscope',
+        provider_task_id: 'task-after-deployment-disable',
+        dataset_version: dataset.version,
+        source_ref: null,
+        converter: 'evalscope-general-qa',
+        converter_options: { target_source: 'none' },
+        accepted_fidelity_digest: inspected.fidelity_digest,
+        model_name: null,
+        model_deployment_id: deployment.id,
+        evalscope_commit: null,
+      }),
+    ).rejects.toMatchObject({
+      code: 'validation_error',
+      detail: {
+        issues: [expect.objectContaining({ code: 'model_deployment_disabled' })],
+      },
+    })
+  })
+})
+
 class FakeStore implements V2Store {
   readonly readDatasetLimits: Readonly<V2DatasetLimits>
   readonly committed = new Map<string, V2Dataset>()
@@ -2726,6 +2880,8 @@ class FakeCatalog implements V2WorkspaceCatalog {
   readonly runs = new Map<string, CatalogRunRowV2>()
   readonly jobs = new Map<string, CatalogTransformJobRowV2>()
   readonly evaluationRuns = new Map<string, CatalogEvaluationRunRowV2>()
+  readonly modelArtifacts = new Map<string, CatalogModelArtifactRowV2>()
+  readonly modelDeployments = new Map<string, CatalogModelDeploymentRowV2>()
   readonly claims = new Map<string, CatalogIdentityClaimRowV2>()
   readonly listPages = new Map<string | null, CatalogRefPageV2>()
   readonly deletedListPages = new Map<string | null, CatalogRefPageV2>()
@@ -2966,6 +3122,12 @@ class FakeCatalog implements V2WorkspaceCatalog {
           row.providerTaskId === input.providerTaskId,
       )
       if (existing) return existing
+      if (input.createProfile === 'evaluation-run-create-v2') {
+        const deployment = this.modelDeployments.get(input.modelDeploymentId ?? '')
+        if (deployment?.status === 'disabled') {
+          throw new V2CatalogModelDeploymentAdmissionError('disabled', deployment.id)
+        }
+      }
       const serial = String(this.evaluationRuns.size + 1).padStart(12, '0')
       const row: CatalogEvaluationRunRowV2 = {
         ...input,
@@ -3009,6 +3171,8 @@ class FakeCatalog implements V2WorkspaceCatalog {
           (row) =>
             row.namespaceId === namespaceId &&
             (filter.datasetVersion === null || row.datasetVersion === filter.datasetVersion) &&
+            (filter.modelDeploymentId === null ||
+              row.modelDeploymentId === filter.modelDeploymentId) &&
             (filter.status === null || row.status === filter.status) &&
             (before === null ||
               row.createdAt < before.createdAt ||
@@ -3051,6 +3215,110 @@ class FakeCatalog implements V2WorkspaceCatalog {
       }
       this.evaluationRuns.set(next.id, next)
       return next
+    },
+  )
+
+  readonly getModelArtifact = vi.fn(
+    async (namespaceId: string, id: string): Promise<CatalogModelArtifactRowV2 | null> => {
+      const row = this.modelArtifacts.get(id)
+      return row?.namespaceId === namespaceId ? row : null
+    },
+  )
+
+  readonly createOrReadModelDeployment = vi.fn(
+    async (input: CreateModelDeploymentV2): Promise<CatalogModelDeploymentRowV2> => {
+      const existing = [...this.modelDeployments.values()].find(
+        (row) => row.namespaceId === input.namespaceId && row.createDigest === input.createDigest,
+      )
+      if (existing) return existing
+      const serial = String(this.modelDeployments.size + 1).padStart(12, '0')
+      const row: CatalogModelDeploymentRowV2 = {
+        ...input,
+        id: `33333333-3333-4333-8333-${serial}`,
+        status: 'active',
+        healthStatus: 'unknown',
+        healthCheckedAt: null,
+        healthError: null,
+        createdAt: NOW,
+        disabledAt: null,
+        updatedAt: NOW,
+      }
+      this.modelDeployments.set(row.id, row)
+      return row
+    },
+  )
+
+  readonly getModelDeployment = vi.fn(
+    async (namespaceId: string, id: string): Promise<CatalogModelDeploymentRowV2 | null> => {
+      const row = this.modelDeployments.get(id)
+      return row?.namespaceId === namespaceId ? row : null
+    },
+  )
+
+  readonly listModelDeployments = vi.fn(
+    async (
+      namespaceId: string,
+      filter: CatalogModelDeploymentListFilterV2,
+      before: CatalogModelDeploymentCursorV2 | null,
+      limit: number,
+    ): Promise<CatalogModelDeploymentPageV2> => {
+      const rows = [...this.modelDeployments.values()]
+        .filter(
+          (row) =>
+            row.namespaceId === namespaceId &&
+            (filter.artifactId === null || row.artifactId === filter.artifactId) &&
+            (filter.status === null || row.status === filter.status) &&
+            (before === null ||
+              row.createdAt < before.createdAt ||
+              (row.createdAt.getTime() === before.createdAt.getTime() && row.id < before.id)),
+        )
+        .sort((left, right) =>
+          left.createdAt.getTime() === right.createdAt.getTime()
+            ? right.id.localeCompare(left.id)
+            : right.createdAt.getTime() - left.createdAt.getTime(),
+        )
+      const visible = rows.slice(0, limit)
+      const last = rows.length > limit ? visible.at(-1) : undefined
+      return {
+        rows: visible,
+        nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null,
+      }
+    },
+  )
+
+  readonly disableModelDeployment = vi.fn(
+    async (namespaceId: string, id: string): Promise<CatalogModelDeploymentRowV2 | null> => {
+      const row = this.modelDeployments.get(id)
+      if (!row || row.namespaceId !== namespaceId) return null
+      if (row.status === 'disabled') return row
+      const disabled = {
+        ...row,
+        status: 'disabled' as const,
+        disabledAt: NOW,
+        updatedAt: NOW,
+      }
+      this.modelDeployments.set(id, disabled)
+      return disabled
+    },
+  )
+
+  readonly updateModelDeploymentHealth = vi.fn(
+    async (
+      namespaceId: string,
+      id: string,
+      health: CatalogModelDeploymentHealthV2,
+    ): Promise<CatalogModelDeploymentRowV2 | null> => {
+      const row = this.modelDeployments.get(id)
+      if (!row || row.namespaceId !== namespaceId) return null
+      const updated = {
+        ...row,
+        healthStatus: health.status,
+        healthCheckedAt: NOW,
+        healthError: health.error,
+        updatedAt: NOW,
+      }
+      this.modelDeployments.set(id, updated)
+      return updated
     },
   )
 

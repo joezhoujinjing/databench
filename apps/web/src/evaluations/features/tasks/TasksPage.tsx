@@ -13,10 +13,12 @@ import {
   buildEvaluationPayload,
   type DatabenchEvaluationBinding,
   type EvaluationFormValues,
+  type EvaluationModelSourceKind,
   type EvaluationSourceKind,
 } from '../../domain/form/evaluation.js'
 import { useTaskRunner } from '../../hooks/use-task-runner.js'
 import { DatabenchDatasetSource } from './DatabenchDatasetSource.js'
+import { DatabenchDeploymentSource } from './DatabenchDeploymentSource.js'
 import { EvaluationForm } from './EvaluationForm.js'
 import { PerformanceForm } from './PerformanceForm.js'
 import { TaskMonitor } from './TaskMonitor.js'
@@ -68,6 +70,8 @@ function EvaluationTaskPanel() {
   const navigate = routeApi.useNavigate()
   const source: EvaluationSourceKind = search.source === 'databench' ? 'databench' : 'benchmark'
   const [binding, setBinding] = useState<DatabenchEvaluationBinding | null>(null)
+  const [modelSource, setModelSource] = useState<EvaluationModelSourceKind>('manual')
+  const [deploymentId, setDeploymentId] = useState<string | null>(null)
   const onTaskIdChange = useCallback(
     (taskId: string) => {
       void navigate({ replace: true, search: (current) => ({ ...current, taskId }) })
@@ -95,7 +99,22 @@ function EvaluationTaskPanel() {
 
   const onSubmit = (values: EvaluationFormValues) => {
     if (source === 'databench' && binding === null) return
-    runner.start(buildEvaluationPayload(values, source, binding ?? undefined))
+    if (modelSource === 'databench-deployment' && deploymentId === null) return
+    runner.start(
+      buildEvaluationPayload(
+        values,
+        source,
+        binding ?? undefined,
+        modelSource === 'manual'
+          ? { kind: 'manual' }
+          : { deploymentId: deploymentId ?? '', kind: 'databench-deployment' },
+      ),
+    )
+  }
+
+  const onModelSourceChange = (nextSource: EvaluationModelSourceKind) => {
+    setModelSource(nextSource)
+    if (nextSource === 'manual') setDeploymentId(null)
   }
 
   return (
@@ -103,7 +122,10 @@ function EvaluationTaskPanel() {
       configTitle={t('evaluations.eval.config')}
       form={
         <EvaluationForm
-          canSubmit={source === 'benchmark' || binding !== null}
+          canSubmit={
+            (source === 'benchmark' || binding !== null) &&
+            (modelSource === 'manual' || deploymentId !== null)
+          }
           databenchSource={
             <DatabenchDatasetSource
               disabled={disabled}
@@ -111,8 +133,17 @@ function EvaluationTaskPanel() {
               onBindingChange={setBinding}
             />
           }
+          deploymentSource={
+            <DatabenchDeploymentSource
+              deploymentId={deploymentId}
+              disabled={disabled}
+              onChange={setDeploymentId}
+            />
+          }
           disabled={disabled}
           initialBenchmark={search.benchmark}
+          modelSource={modelSource}
+          onModelSourceChange={onModelSourceChange}
           onSourceChange={onSourceChange}
           onSubmit={onSubmit}
           serverError={runner.state.error}

@@ -8,6 +8,7 @@ import {
   V2CatalogImmutableConflictError,
   V2CatalogInputError,
   V2CatalogLineageCycleError,
+  V2CatalogModelDeploymentAdmissionError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   type V2CatalogSwiftStudioSessionConflictError,
@@ -74,10 +75,11 @@ beforeAll(() => {
 })
 
 beforeEach(async () => {
+  await prisma.v2EvaluationRun.deleteMany()
+  await prisma.v2ModelDeployment.deleteMany()
   await prisma.v2ModelArtifact.deleteMany()
   await prisma.v2ModelArtifactImport.deleteMany()
   await prisma.v2SwiftStudioSession.deleteMany()
-  await prisma.v2EvaluationRun.deleteMany()
   await prisma.v2RecordParentEdge.deleteMany()
   await prisma.v2RecordRevisionLocation.deleteMany()
   await prisma.v2TransformJob.deleteMany()
@@ -111,6 +113,7 @@ function evaluationRunInput(namespaceId: string, providerTaskId: string) {
     namespaceId,
     provider: 'evalscope' as const,
     providerTaskId,
+    createProfile: 'evaluation-run-create-v1' as const,
     createRequestDigest: '8'.repeat(64),
     datasetVersion: fixtureVersion('alpha'),
     sourceRef: 'main',
@@ -120,6 +123,9 @@ function evaluationRunInput(namespaceId: string, providerTaskId: string) {
     fidelityDigest: '9'.repeat(64),
     benchmark: 'general_qa',
     modelName: 'Qwen/Qwen3-8B',
+    modelDeploymentId: null,
+    modelArtifactId: null,
+    modelDeploymentDigest: null,
     evalscopeCommit: 'a'.repeat(40),
   }
 }
@@ -191,6 +197,97 @@ function modelArtifactManifest(studioSessionId: string) {
     },
     created_at: '2026-07-29T00:00:00.000Z',
     created_by: 'databench' as const,
+  }
+}
+
+async function finalizedModelArtifact() {
+  const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+  await v2Catalog.registerCommittedLayout(
+    registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+  )
+  const { row: preparing } = await v2Catalog.createOrReadSwiftStudioSession(
+    swiftStudioSessionInput(namespaceId),
+  )
+  const session = await v2Catalog.transitionSwiftStudioSession({
+    namespaceId,
+    id: preparing.id,
+    preparationOwnerToken: preparing.preparationOwnerToken,
+    status: 'ready',
+    exportDigest: 'f'.repeat(64),
+    exportSizeBytes: 4_096n,
+  })
+  if (session === null) throw new Error('Studio Session did not become ready')
+  const { row: artifactImport } = await v2Catalog.createOrReadModelArtifactImport({
+    namespaceId,
+    createDigest: '0'.repeat(64),
+    studioSessionId: session.id,
+    outputHandleDigest: '1'.repeat(64),
+    artifactKind: 'lora_adapter',
+    displayName: 'deployable-lora',
+    baseModelReference: 'Qwen/Qwen3-0.6B',
+    baseModelRevision: '0123456789abcdef',
+  })
+  await v2Catalog.transitionModelArtifactImport({
+    namespaceId,
+    id: artifactImport.id,
+    status: 'staging',
+    providerImportId: `swai_${'D'.repeat(32)}`,
+    outputSnapshotDigest: '3'.repeat(64),
+  })
+  await v2Catalog.transitionModelArtifactImport({
+    namespaceId,
+    id: artifactImport.id,
+    status: 'finalizing',
+    stagingObjectKey: `staging/swift-artifact/v1/${artifactImport.id}/archive.tar.zst`,
+    archiveDigest: '4'.repeat(64),
+    archiveSizeBytes: 1_024n,
+    manifestDigest: '5'.repeat(64),
+    manifest: modelArtifactManifest(session.id),
+    datasetLineageStatus: 'verified',
+    datasetVersion: fixtureVersion('alpha'),
+    datasetExportDigest: 'f'.repeat(64),
+    baseModelBindingStatus: 'verified',
+  })
+  const completed = await v2Catalog.finalizeModelArtifactImport({
+    namespaceId,
+    id: artifactImport.id,
+    objectLocator: `objects/v2/model-artifact-v1/44/${'4'.repeat(64)}.tar.zst`,
+  })
+  if (completed === null) throw new Error('Model Artifact did not finalize')
+  return { namespaceId, artifact: completed.artifact }
+}
+
+function modelDeploymentInput(namespaceId: string, artifactId: string, digest = '6'.repeat(64)) {
+  return {
+    namespaceId,
+    createDigest: digest,
+    artifactId,
+    provider: 'openai_compatible' as const,
+    displayName: 'deployable-lora',
+    servedModelName: 'deployable-lora-v1',
+    endpointBaseUrl: 'http://model.internal:8000/v1',
+    authMode: 'none' as const,
+  }
+}
+
+function deploymentEvaluationRunInput(
+  namespaceId: string,
+  deployment: {
+    readonly id: string
+    readonly artifactId: string
+    readonly createDigest: string
+    readonly servedModelName: string
+  },
+  providerTaskId: string,
+) {
+  return {
+    ...evaluationRunInput(namespaceId, providerTaskId),
+    createProfile: 'evaluation-run-create-v2' as const,
+    createRequestDigest: '7'.repeat(64),
+    modelName: deployment.servedModelName,
+    modelDeploymentId: deployment.id,
+    modelArtifactId: deployment.artifactId,
+    modelDeploymentDigest: deployment.createDigest,
   }
 }
 
@@ -1469,7 +1566,11 @@ describe('V2Catalog evaluation runs', () => {
 
     const page = await v2Catalog.listEvaluationRuns(
       namespaceId,
-      { datasetVersion: prepared.datasetVersion, status: 'completed' },
+      {
+        datasetVersion: prepared.datasetVersion,
+        modelDeploymentId: null,
+        status: 'completed',
+      },
       null,
       20,
     )
@@ -1916,7 +2017,7 @@ describe('V2Catalog Swift Studio Sessions', () => {
     )
     await prisma.$executeRaw`
       UPDATE "swift_studio_sessions_v2"
-      SET "preparation_expires_at" = clock_timestamp() - INTERVAL '1 millisecond'
+      SET "preparation_expires_at" = "created_at"
       WHERE "id" = ${prepared.id}::uuid
     `
     await expect(
@@ -1960,7 +2061,7 @@ describe('V2Catalog Swift Studio Sessions', () => {
     )
     await prisma.$executeRaw`
       UPDATE "swift_studio_sessions_v2"
-      SET "preparation_expires_at" = clock_timestamp() - INTERVAL '1 millisecond'
+      SET "preparation_expires_at" = "created_at"
       WHERE "id" = ${prepared.id}::uuid
     `
     const [renewed, claim] = await Promise.all([
@@ -2260,6 +2361,129 @@ describe('V2Catalog LoRA Model Artifacts', () => {
     expect(first?.artifact.objectLocator).toBe(second?.artifact.objectLocator)
     expect(first?.artifact.id).not.toBe(second?.artifact.id)
     expect(first?.artifact.sourceImportId).not.toBe(second?.artifact.sourceImportId)
+  })
+})
+
+describe('V2Catalog Model Deployments', () => {
+  test('requires an immutable Artifact FK and replays the exact create identity', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    await expect(
+      v2Catalog.createOrReadModelDeployment(
+        modelDeploymentInput(namespaceId, '99999999-9999-4999-8999-999999999999'),
+      ),
+    ).rejects.toThrow()
+
+    const { artifact } = await finalizedModelArtifact()
+    const input = modelDeploymentInput(namespaceId, artifact.id)
+    const deployments = await Promise.all(
+      Array.from({ length: 16 }, () => v2Catalog.createOrReadModelDeployment(input)),
+    )
+    expect(new Set(deployments.map((deployment) => deployment.id))).toHaveLength(1)
+    expect(await prisma.v2ModelDeployment.count()).toBe(1)
+    const deployment = deployments[0]
+    if (!deployment) throw new Error('Model Deployment was not created')
+    await expect(v2Catalog.getModelDeployment(namespaceId, deployment.id)).resolves.toMatchObject({
+      id: deployment.id,
+      artifactId: artifact.id,
+      status: 'active',
+      healthStatus: 'unknown',
+    })
+    await expect(
+      v2Catalog.listModelDeployments(
+        namespaceId,
+        { artifactId: artifact.id, status: 'active' },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({ rows: [{ id: deployment.id }], nextCursor: null })
+    await expect(
+      v2Catalog.createOrReadModelDeployment({
+        ...input,
+        servedModelName: 'different-model',
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogConsistencyError)
+    await expect(prisma.v2ModelArtifact.delete({ where: { id: artifact.id } })).rejects.toThrow()
+  })
+
+  test('records bounded health observations and disables idempotently', async () => {
+    const { namespaceId, artifact } = await finalizedModelArtifact()
+    const deployment = await v2Catalog.createOrReadModelDeployment(
+      modelDeploymentInput(namespaceId, artifact.id),
+    )
+    await expect(
+      v2Catalog.updateModelDeploymentHealth(namespaceId, deployment.id, {
+        status: 'healthy',
+        error: null,
+      }),
+    ).resolves.toMatchObject({ healthStatus: 'healthy', healthError: null })
+    await expect(
+      v2Catalog.updateModelDeploymentHealth(namespaceId, deployment.id, {
+        status: 'unhealthy',
+        error: 'served_model_missing',
+      }),
+    ).resolves.toMatchObject({
+      healthStatus: 'unhealthy',
+      healthError: 'served_model_missing',
+    })
+    await expect(
+      v2Catalog.updateModelDeploymentHealth(namespaceId, deployment.id, {
+        status: 'healthy',
+        error: 'unexpected',
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+
+    const first = await v2Catalog.disableModelDeployment(namespaceId, deployment.id)
+    const second = await v2Catalog.disableModelDeployment(namespaceId, deployment.id)
+    expect(first).toMatchObject({ status: 'disabled', disabledAt: expect.any(Date) })
+    expect(second).toMatchObject({ status: 'disabled', disabledAt: first?.disabledAt })
+  })
+
+  test('rejects new runs after disable but preserves provider-task replay', async () => {
+    const { namespaceId, artifact } = await finalizedModelArtifact()
+    const deployment = await v2Catalog.createOrReadModelDeployment(
+      modelDeploymentInput(namespaceId, artifact.id),
+    )
+    const firstInput = deploymentEvaluationRunInput(namespaceId, deployment, 'task-before-disable')
+    const first = await v2Catalog.createOrReadEvaluationRun(firstInput)
+    await v2Catalog.disableModelDeployment(namespaceId, deployment.id)
+    await expect(v2Catalog.createOrReadEvaluationRun(firstInput)).resolves.toMatchObject({
+      id: first.id,
+      modelDeploymentId: deployment.id,
+      modelArtifactId: artifact.id,
+    })
+    await expect(
+      v2Catalog.createOrReadEvaluationRun(
+        deploymentEvaluationRunInput(namespaceId, deployment, 'task-after-disable'),
+      ),
+    ).rejects.toBeInstanceOf(V2CatalogModelDeploymentAdmissionError)
+  })
+
+  test('serializes disable against deployment-bound run admission', async () => {
+    const { namespaceId, artifact } = await finalizedModelArtifact()
+    const deployment = await v2Catalog.createOrReadModelDeployment(
+      modelDeploymentInput(namespaceId, artifact.id),
+    )
+    const runInput = deploymentEvaluationRunInput(namespaceId, deployment, 'task-disable-race')
+    const [admission, disabled] = await Promise.allSettled([
+      v2Catalog.createOrReadEvaluationRun(runInput),
+      v2Catalog.disableModelDeployment(namespaceId, deployment.id),
+    ])
+    expect(disabled.status).toBe('fulfilled')
+    await expect(v2Catalog.getModelDeployment(namespaceId, deployment.id)).resolves.toMatchObject({
+      status: 'disabled',
+    })
+    const stored = await prisma.v2EvaluationRun.findFirst({
+      where: { providerTaskId: runInput.providerTaskId },
+    })
+    if (admission.status === 'fulfilled') {
+      expect(stored?.id).toBe(admission.value.id)
+      await expect(v2Catalog.createOrReadEvaluationRun(runInput)).resolves.toMatchObject({
+        id: admission.value.id,
+      })
+    } else {
+      expect(admission.reason).toBeInstanceOf(V2CatalogModelDeploymentAdmissionError)
+      expect(stored).toBeNull()
+    }
   })
 })
 

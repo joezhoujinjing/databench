@@ -27,7 +27,10 @@ function createRequest() {
 
 describe('V2 evaluation contracts', () => {
   test('accepts only an exact Dataset-bound EvalScope create request', () => {
-    expect(CreateEvaluationRunRequestV2Schema.parse(createRequest())).toEqual(createRequest())
+    expect(CreateEvaluationRunRequestV2Schema.parse(createRequest())).toEqual({
+      ...createRequest(),
+      model_deployment_id: null,
+    })
     for (const invalid of [
       { ...createRequest(), provider: 'other' },
       { ...createRequest(), dataset_version: 'main' },
@@ -127,6 +130,9 @@ describe('V2 evaluation contracts', () => {
       fidelity_digest: 'd'.repeat(64),
       benchmark: 'general_qa',
       model_name: null,
+      create_profile: 'evaluation-run-create-v1',
+      model_deployment_id: null,
+      model_artifact_id: null,
       evalscope_commit: null,
       status: 'prepared',
       metrics: null,

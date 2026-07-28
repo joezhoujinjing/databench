@@ -153,3 +153,14 @@ export class V2CatalogModelArtifactImportConflictError extends Error {
     super(`Model Artifact import conflict (${reason}) for ${importId}`)
   }
 }
+
+export class V2CatalogModelDeploymentAdmissionError extends Error {
+  override readonly name = 'V2CatalogModelDeploymentAdmissionError'
+
+  constructor(
+    readonly reason: 'disabled',
+    readonly deploymentId: string,
+  ) {
+    super(`Model Deployment admission rejected (${reason}) for ${deploymentId}`)
+  }
+}

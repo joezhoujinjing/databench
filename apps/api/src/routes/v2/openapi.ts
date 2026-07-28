@@ -257,6 +257,36 @@ export const V2_MODEL_ARTIFACT_LIST_ERROR_RESPONSES = {
   ...dataFailureResponses,
 } as const
 
+export const V2_MODEL_DEPLOYMENT_CREATE_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed Model Deployment request'),
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Model Artifact was not found'),
+  409: jsonResponseV2(ErrorResponse409V2Schema, 'Model Deployment create conflict'),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Model Deployment request is too large'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Model Artifact is not deployable'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_MODEL_DEPLOYMENT_LIST_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Model Deployment page request'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_MODEL_DEPLOYMENT_SHOW_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Model Deployment was not found'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Model Deployment identifier'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_MODEL_DEPLOYMENT_ACTION_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed Model Deployment action'),
+  ...V2_MODEL_DEPLOYMENT_SHOW_ERROR_RESPONSES,
+  409: jsonResponseV2(ErrorResponse409V2Schema, 'Model Deployment state conflict'),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Model Deployment action is too large'),
+} as const
+
 export const V2_REF_LIST_ERROR_RESPONSES = {
   ...commonAuthRateResponses,
   422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Ref page request'),

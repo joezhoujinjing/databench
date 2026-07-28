@@ -5,11 +5,13 @@ import type {
   CandidateSeedV1,
   DatasetIdentityEnvelopeV2,
   EvaluationRunCreateIdentityV1,
+  EvaluationRunCreateIdentityV2,
   EventSeedV1,
   ExportFidelityIdentityV1,
   IdentityClaimHashInputV1,
   IdentityRequestHashInputV1,
   ModelArtifactImportCreateIdentityV1,
+  ModelDeploymentCreateIdentityV1,
   RecordSeedV1,
   SwiftStudioSessionCreateIdentityV1,
   TransformCacheIdentityV1,
@@ -34,11 +36,13 @@ const DOMAIN = {
   identityRequest: 'databench.identity-request.databench-v2-jcs-1.v1\0',
   exportFidelity: 'databench.export-fidelity.databench-export-fidelity-1\0',
   evaluationRunCreate: 'databench.evaluation-run-create.evaluation-run-create-v1\0',
+  evaluationRunCreateV2: 'databench.evaluation-run-create.evaluation-run-create-v2\0',
   swiftStudioSessionCreate:
     'databench.swift-studio-session-create.swift-studio-session-create-v1\0',
   swiftStudioOutputHandle: 'databench.swift-studio-output-handle.v1\0',
   modelArtifactImportCreate:
     'databench.model-artifact-import-create.model-artifact-import-create-v1\0',
+  modelDeploymentCreate: 'databench.model-deployment-create.model-deployment-create-v1\0',
 } as const
 
 export function deriveV2RecordId(seed: RecordSeedV1): V2RecordId {
@@ -179,6 +183,28 @@ export function hashV2EvaluationRunCreate<const Identity extends EvaluationRunCr
   })
 }
 
+export function hashV2EvaluationRunCreateWithDeployment<
+  const Identity extends EvaluationRunCreateIdentityV2,
+>(identity: NoExtraKeys<EvaluationRunCreateIdentityV2, Identity>): string {
+  return hashDomain(DOMAIN.evaluationRunCreateV2, {
+    evaluation_run_create_profile: identity.evaluation_run_create_profile,
+    provider: identity.provider,
+    provider_task_id: identity.provider_task_id,
+    dataset_version: identity.dataset_version,
+    source_ref: identity.source_ref,
+    converter: identity.converter,
+    converter_version: identity.converter_version,
+    normalized_options: identity.normalized_options,
+    fidelity_digest: identity.fidelity_digest,
+    benchmark: identity.benchmark,
+    model_name: identity.model_name,
+    model_deployment_id: identity.model_deployment_id,
+    model_artifact_id: identity.model_artifact_id,
+    model_deployment_digest: identity.model_deployment_digest,
+    evalscope_commit: identity.evalscope_commit,
+  })
+}
+
 export function hashV2SwiftStudioSessionCreate<
   const Identity extends SwiftStudioSessionCreateIdentityV1,
 >(identity: NoExtraKeys<SwiftStudioSessionCreateIdentityV1, Identity>): string {
@@ -213,6 +239,21 @@ export function hashV2ModelArtifactImportCreate<
     artifact_kind: identity.artifact_kind,
     display_name: identity.display_name,
     base_model: identity.base_model,
+  })
+}
+
+export function hashV2ModelDeploymentCreate<const Identity extends ModelDeploymentCreateIdentityV1>(
+  identity: NoExtraKeys<ModelDeploymentCreateIdentityV1, Identity>,
+): string {
+  return hashDomain(DOMAIN.modelDeploymentCreate, {
+    model_deployment_create_profile: identity.model_deployment_create_profile,
+    namespace: identity.namespace,
+    artifact_id: identity.artifact_id,
+    provider: identity.provider,
+    display_name: identity.display_name,
+    served_model_name: identity.served_model_name,
+    endpoint_base_url: identity.endpoint_base_url,
+    auth_mode: identity.auth_mode,
   })
 }
 

@@ -8,6 +8,7 @@ import {
   EVALUATION_FIELD_IDS,
   EVALUATION_FORM_DEFAULTS,
   type EvaluationFormValues,
+  type EvaluationModelSourceKind,
   type EvaluationSourceKind,
   validateEvaluationForm,
 } from '../../domain/form/evaluation.js'
@@ -19,21 +20,27 @@ import { fieldAria, TaskFormField } from './TaskFormField.js'
 export function EvaluationForm({
   canSubmit = true,
   databenchSource,
+  deploymentSource,
   disabled,
   initialBenchmark,
   onSourceChange,
+  onModelSourceChange,
   onSubmit,
   serverError,
   source,
+  modelSource,
 }: {
   readonly canSubmit?: boolean
   readonly databenchSource: ReactNode
+  readonly deploymentSource: ReactNode
   readonly disabled: boolean
   readonly initialBenchmark?: string | undefined
   readonly onSourceChange: (source: EvaluationSourceKind) => void
+  readonly onModelSourceChange: (source: EvaluationModelSourceKind) => void
   readonly onSubmit: (values: EvaluationFormValues) => void
   readonly serverError: TaskRunnerError | null
   readonly source: EvaluationSourceKind
+  readonly modelSource: EvaluationModelSourceKind
 }) {
   const { t } = useTranslation()
   const [values, setValues] = useState<EvaluationFormValues>({
@@ -81,7 +88,7 @@ export function EvaluationForm({
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const validation = validateEvaluationForm(values, source)
+    const validation = validateEvaluationForm(values, source, modelSource)
     setErrors(validation.errors)
     if (!validation.ok) {
       if (EVALUATION_ADVANCED_FIELDS.has(validation.firstInvalid)) setAdvanced(true)
@@ -107,23 +114,56 @@ export function EvaluationForm({
         />
       </TaskFormField>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <TaskFormField
-          error={errors[EVALUATION_FIELD_IDS.model]}
-          id={EVALUATION_FIELD_IDS.model}
-          label={t('evaluations.eval.modelName')}
-          required
+      <TaskFormField id="eval-model-source" label={t('evaluations.tasks.modelSource')}>
+        <SelectInput
+          aria-label={t('evaluations.tasks.modelSource')}
+          disabled={disabled}
+          id="eval-model-source"
+          onValueChange={onModelSourceChange}
+          options={[
+            { label: t('evaluations.tasks.manualModelSource'), value: 'manual' },
+            {
+              label: t('evaluations.tasks.deploymentModelSource'),
+              value: 'databench-deployment',
+            },
+          ]}
+          value={modelSource}
+        />
+      </TaskFormField>
+
+      {source === 'benchmark' && modelSource === 'databench-deployment' ? (
+        <div
+          className="rounded-[5px] border border-warning/40 bg-warning/10 px-4 py-3 text-sm"
+          role="status"
         >
-          <TextInput
-            {...fieldAria(errors[EVALUATION_FIELD_IDS.model], EVALUATION_FIELD_IDS.model)}
-            autoComplete="off"
-            disabled={disabled}
+          <strong>{t('evaluations.tasks.deploymentBenchmarkExpertTitle')}</strong>
+          <p className="mt-1 text-dim-foreground text-xs leading-5">
+            {t('evaluations.tasks.deploymentBenchmarkExpertHint')}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {modelSource === 'manual' ? (
+          <TaskFormField
+            error={errors[EVALUATION_FIELD_IDS.model]}
             id={EVALUATION_FIELD_IDS.model}
-            onChange={(event) => change('model', event.currentTarget.value)}
-            placeholder="Qwen/Qwen3"
-            value={values.model}
-          />
-        </TaskFormField>
+            label={t('evaluations.eval.modelName')}
+            required
+          >
+            <TextInput
+              {...fieldAria(errors[EVALUATION_FIELD_IDS.model], EVALUATION_FIELD_IDS.model)}
+              autoComplete="off"
+              disabled={disabled}
+              id={EVALUATION_FIELD_IDS.model}
+              onChange={(event) => change('model', event.currentTarget.value)}
+              placeholder="Qwen/Qwen3"
+              value={values.model}
+            />
+          </TaskFormField>
+        ) : (
+          <div className="md:col-span-2">{deploymentSource}</div>
+        )}
 
         {source === 'benchmark' ? (
           <TaskFormField
@@ -144,34 +184,38 @@ export function EvaluationForm({
           <div className="md:col-span-2">{databenchSource}</div>
         )}
 
-        <TaskFormField
-          error={errors[EVALUATION_FIELD_IDS.apiUrl]}
-          id={EVALUATION_FIELD_IDS.apiUrl}
-          label={t('evaluations.eval.apiUrl')}
-          required
-        >
-          <TextInput
-            {...fieldAria(errors[EVALUATION_FIELD_IDS.apiUrl], EVALUATION_FIELD_IDS.apiUrl)}
-            autoComplete="url"
-            disabled={disabled}
-            id={EVALUATION_FIELD_IDS.apiUrl}
-            onChange={(event) => change('apiUrl', event.currentTarget.value)}
-            placeholder="http://model-service:8000/v1"
-            value={values.apiUrl}
-          />
-        </TaskFormField>
+        {modelSource === 'manual' ? (
+          <>
+            <TaskFormField
+              error={errors[EVALUATION_FIELD_IDS.apiUrl]}
+              id={EVALUATION_FIELD_IDS.apiUrl}
+              label={t('evaluations.eval.apiUrl')}
+              required
+            >
+              <TextInput
+                {...fieldAria(errors[EVALUATION_FIELD_IDS.apiUrl], EVALUATION_FIELD_IDS.apiUrl)}
+                autoComplete="url"
+                disabled={disabled}
+                id={EVALUATION_FIELD_IDS.apiUrl}
+                onChange={(event) => change('apiUrl', event.currentTarget.value)}
+                placeholder="http://model-service:8000/v1"
+                value={values.apiUrl}
+              />
+            </TaskFormField>
 
-        <TaskFormField id={EVALUATION_FIELD_IDS.apiKey} label={t('evaluations.eval.apiKey')}>
-          <TextInput
-            autoComplete="off"
-            disabled={disabled}
-            id={EVALUATION_FIELD_IDS.apiKey}
-            onChange={(event) => change('apiKey', event.currentTarget.value)}
-            placeholder="sk-..."
-            type="password"
-            value={values.apiKey}
-          />
-        </TaskFormField>
+            <TaskFormField id={EVALUATION_FIELD_IDS.apiKey} label={t('evaluations.eval.apiKey')}>
+              <TextInput
+                autoComplete="off"
+                disabled={disabled}
+                id={EVALUATION_FIELD_IDS.apiKey}
+                onChange={(event) => change('apiKey', event.currentTarget.value)}
+                placeholder="sk-..."
+                type="password"
+                value={values.apiKey}
+              />
+            </TaskFormField>
+          </>
+        ) : null}
 
         <NumberField
           disabled={disabled}

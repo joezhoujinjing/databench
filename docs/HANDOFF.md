@@ -56,8 +56,14 @@
   GPU 状态继续 deferred，runtime 保持 disabled-by-default。S3 已完成 output discovery、真实
   ms-swift/PEFT LoRA 布局与 safetensors 验证、deterministic tar.zst、signed staging、conditional immutable
   finalize、Artifact REST/Web/download，以及 Session close 后 retained Artifact；最终镜像为
-  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72`。当前进入 S4
-  Artifact → Deployment → EvalScope；owner 已再次确认 GPU 全部后置。证据与实时状态见
+  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72`。S4 non-GPU 已增加
+  `model_deployments_v2`、operator-attested OpenAI-compatible registry、public/internal projection、
+  operator/service credential 分离、`/models` health、disable admission、opaque Deployment selector、
+  `evaluation-run-create-v2` 与 Dataset/Artifact/Deployment/Report lineage。浏览器只提交 Deployment ID，
+  EvalScope 在服务端 resolve endpoint/model；`Benchmark + Deployment` 是 source-less expert/untracked，
+  只有 `Databench Dataset + Deployment` 创建 Databench Evaluation Run。真实 Postgres/MinIO、Python 和
+  浏览器 non-GPU contract 已验证；当前状态固定为
+  `S4 non-GPU contract green / GPU deferred`。owner 已再次确认 GPU 全部后置。证据与实时状态见
   `docs/swift/STATUS.md`，S1 GPU 证据模板见
   `docs/swift/evidence/S1-GPU-STUDIO.md`。
 
