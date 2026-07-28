@@ -9,6 +9,7 @@ import type {
   ExportFidelityIdentityV1,
   IdentityClaimHashInputV1,
   IdentityRequestHashInputV1,
+  ModelArtifactImportCreateIdentityV1,
   RecordSeedV1,
   SwiftStudioSessionCreateIdentityV1,
   TransformCacheIdentityV1,
@@ -35,6 +36,9 @@ const DOMAIN = {
   evaluationRunCreate: 'databench.evaluation-run-create.evaluation-run-create-v1\0',
   swiftStudioSessionCreate:
     'databench.swift-studio-session-create.swift-studio-session-create-v1\0',
+  swiftStudioOutputHandle: 'databench.swift-studio-output-handle.v1\0',
+  modelArtifactImportCreate:
+    'databench.model-artifact-import-create.model-artifact-import-create-v1\0',
 } as const
 
 export function deriveV2RecordId(seed: RecordSeedV1): V2RecordId {
@@ -191,6 +195,24 @@ export function hashV2SwiftStudioSessionCreate<
     upstream_commit: identity.upstream_commit,
     image_digest: identity.image_digest,
     runtime_capability_digest: identity.runtime_capability_digest,
+  })
+}
+
+export function hashV2SwiftStudioOutputHandle(handle: string): string {
+  return hashDomain(DOMAIN.swiftStudioOutputHandle, { handle })
+}
+
+export function hashV2ModelArtifactImportCreate<
+  const Identity extends ModelArtifactImportCreateIdentityV1,
+>(identity: NoExtraKeys<ModelArtifactImportCreateIdentityV1, Identity>): string {
+  return hashDomain(DOMAIN.modelArtifactImportCreate, {
+    model_artifact_import_create_profile: identity.model_artifact_import_create_profile,
+    namespace: identity.namespace,
+    studio_session_id: identity.studio_session_id,
+    output_handle_digest: identity.output_handle_digest,
+    artifact_kind: identity.artifact_kind,
+    display_name: identity.display_name,
+    base_model: identity.base_model,
   })
 }
 

@@ -21,6 +21,13 @@ export function swiftStudioProviderSessionIdForDigestV2(createDigest: string): s
   )
 }
 
+export function swiftStudioProviderArtifactImportIdForDigestV2(createDigest: string): string {
+  if (!/^[0-9a-f]{64}$/u.test(createDigest)) {
+    throw new TypeError('Model Artifact import create digest must be lowercase 64-hex')
+  }
+  return `swai_${Buffer.from(createDigest, 'hex').toString('base64url')}`
+}
+
 export function swiftStudioSessionFromCatalogV2(
   row: CatalogSwiftStudioSessionRowV2,
 ): SwiftStudioSessionV2 {

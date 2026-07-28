@@ -7,6 +7,7 @@ import {
   V2CatalogImmutableConflictError,
   V2CatalogInputError,
   V2CatalogLineageCycleError,
+  V2CatalogModelArtifactImportConflictError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogSwiftStudioSessionConflictError,
@@ -27,6 +28,16 @@ import type {
   CatalogJsonValueV2,
   CatalogLayoutInputV2,
   CatalogLayoutRowV2,
+  CatalogModelArtifactCursorV2,
+  CatalogModelArtifactFinalizeResultV2,
+  CatalogModelArtifactImportCreateResultV2,
+  CatalogModelArtifactImportFailureV2,
+  CatalogModelArtifactImportRowV2,
+  CatalogModelArtifactImportStatusV2,
+  CatalogModelArtifactListFilterV2,
+  CatalogModelArtifactManifestV2,
+  CatalogModelArtifactPageV2,
+  CatalogModelArtifactRowV2,
   CatalogRecordParentRowV2,
   CatalogRecordRevisionV2,
   CatalogRefPageV2,
@@ -56,11 +67,13 @@ import type {
   CompareAndSetRefV2,
   CompleteTransformJobV2,
   CreateEvaluationRunV2,
+  CreateModelArtifactImportV2,
   CreateSwiftStudioSessionV2,
   CreateTransformJobV2,
   DeleteRefResultV2,
   DeleteRefV2,
   FailTransformJobV2,
+  FinalizeModelArtifactImportV2,
   RegisterLayoutV2,
   RegisterTransformResultV2,
   RestoreRefResultV2,
@@ -68,6 +81,7 @@ import type {
   SetTransformJobStagingKeysV2,
   TransformJobLeaseV2,
   TransitionEvaluationRunV2,
+  TransitionModelArtifactImportV2,
   TransitionSwiftStudioSessionV2,
   UpdateTransformJobProgressV2,
 } from './types.js'
@@ -98,6 +112,16 @@ const MAX_PROVIDER_REPORT_IDS = 32
 const SWIFT_PROVIDER_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/
 const MAX_SWIFT_OPTIONS_BYTES = 64 * 1024
 const MAX_SWIFT_PREPARATION_ABANDON_GRACE_MS = 24 * 60 * 60 * 1_000
+const MODEL_ARTIFACT_PROVIDER_IMPORT_ID = /^swai_[A-Za-z0-9_-]{16,128}$/
+const MODEL_ARTIFACT_STAGING_KEY = /^staging\/swift-artifact\/v1\/[0-9a-f-]{36}\/archive\.tar\.zst$/
+const MODEL_ARTIFACT_OBJECT_LOCATOR =
+  /^objects\/v2\/model-artifact-v1\/[0-9a-f]{2}\/[0-9a-f]{64}\.tar\.zst$/
+const MODEL_REVISION = /^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$/
+const ABSOLUTE_PATH = /^(?:\/|\\|[A-Za-z]:[\\/]|file:|(?:\.\.?)[\\/]|(?:~)[\\/])/i
+const ALLOWED_ADAPTER_FILE =
+  /^(?:additional_config\.json|adapter_config\.json|adapter_model\.safetensors|adapter_model-\d{5}-of-\d{5}\.safetensors|adapter_model\.safetensors\.index\.json|tokenizer\.json|tokenizer_config\.json|special_tokens_map\.json|added_tokens\.json|merges\.txt|vocab\.json|preprocessor_config\.json|processor_config\.json|chat_template\.json)$/
+const MAX_MODEL_ARTIFACT_MANIFEST_BYTES = 256 * 1024
+const MAX_MODEL_ARTIFACT_FILES = 256
 
 export interface V2CatalogOptions {
   readonly databaseUrl?: string
@@ -246,6 +270,65 @@ interface SwiftStudioSessionSqlRow {
   readonly updated_at: Date
 }
 
+interface ModelArtifactImportSqlRow {
+  readonly id: string
+  readonly namespace_id: string
+  readonly create_digest: string
+  readonly status: string
+  readonly studio_session_id: string
+  readonly output_handle_digest: string
+  readonly artifact_kind: string
+  readonly display_name: string
+  readonly base_model_reference: string
+  readonly base_model_revision: string | null
+  readonly provider_import_id: string | null
+  readonly output_snapshot_digest: string | null
+  readonly staging_object_key: string | null
+  readonly archive_digest: string | null
+  readonly archive_size_bytes: bigint | null
+  readonly manifest_digest: string | null
+  readonly manifest_json: Prisma.JsonValue | null
+  readonly dataset_lineage_status: string | null
+  readonly dataset_version: string | null
+  readonly dataset_export_digest: string | null
+  readonly base_model_binding_status: string | null
+  readonly artifact_id: string | null
+  readonly failure_json: Prisma.JsonValue | null
+  readonly created_at: Date
+  readonly staging_at: Date | null
+  readonly finalizing_at: Date | null
+  readonly completed_at: Date | null
+  readonly failed_at: Date | null
+  readonly staging_cleaned_at: Date | null
+  readonly updated_at: Date
+}
+
+interface ModelArtifactSqlRow {
+  readonly id: string
+  readonly namespace_id: string
+  readonly display_name: string
+  readonly artifact_kind: string
+  readonly artifact_format: string
+  readonly archive_format: string
+  readonly archive_digest: string
+  readonly archive_size_bytes: bigint
+  readonly object_locator: string
+  readonly manifest_digest: string
+  readonly manifest_json: Prisma.JsonValue
+  readonly source_kind: string
+  readonly source_session_id: string
+  readonly source_import_id: string
+  readonly dataset_lineage_status: string
+  readonly dataset_version: string | null
+  readonly dataset_export_digest: string | null
+  readonly base_model_reference: string
+  readonly base_model_revision: string | null
+  readonly base_model_binding_status: string
+  readonly upstream_commit: string
+  readonly image_digest: string
+  readonly created_at: Date
+}
+
 const TRANSFORM_JOB_COLUMNS = Prisma.sql`
   "id", "cache_key", "op", "op_version", "params_json", "input_version",
   "capability_name", "capability_version", "status", "attempt", "lease_owner",
@@ -272,6 +355,26 @@ const SWIFT_STUDIO_SESSION_COLUMNS = Prisma.sql`
   "provider_session_id", "upstream_commit", "image_digest", "runtime_capability_digest",
   "failure_json", "preparation_owner_token", "preparation_abandoned_at",
   "preparation_expires_at", "created_at", "ready_at", "closed_at", "updated_at"
+`
+
+const MODEL_ARTIFACT_IMPORT_COLUMNS = Prisma.sql`
+  "id", "namespace_id", "create_digest", "status", "studio_session_id",
+  "output_handle_digest", "artifact_kind", "display_name", "base_model_reference",
+  "base_model_revision", "provider_import_id", "output_snapshot_digest",
+  "staging_object_key", "archive_digest", "archive_size_bytes", "manifest_digest",
+  "manifest_json", "dataset_lineage_status", "dataset_version",
+  "dataset_export_digest", "base_model_binding_status", "artifact_id", "failure_json",
+  "created_at", "staging_at", "finalizing_at", "completed_at", "failed_at",
+  "staging_cleaned_at", "updated_at"
+`
+
+const MODEL_ARTIFACT_COLUMNS = Prisma.sql`
+  "id", "namespace_id", "display_name", "artifact_kind", "artifact_format",
+  "archive_format", "archive_digest", "archive_size_bytes", "object_locator",
+  "manifest_digest", "manifest_json", "source_kind", "source_session_id",
+  "source_import_id", "dataset_lineage_status", "dataset_version",
+  "dataset_export_digest", "base_model_reference", "base_model_revision",
+  "base_model_binding_status", "upstream_commit", "image_digest", "created_at"
 `
 
 export class V2Catalog {
@@ -983,6 +1086,18 @@ export class V2Catalog {
         input.status === 'ready' || input.status === 'failed'
           ? Prisma.sql`AND "preparation_owner_token" = ${input.preparationOwnerToken}::uuid`
           : Prisma.empty
+      const closingImportFence =
+        input.status === 'closing'
+          ? Prisma.sql`
+              AND NOT EXISTS (
+                SELECT 1
+                FROM "model_artifact_imports_v2" AS "artifact_import"
+                WHERE
+                  "artifact_import"."studio_session_id" = "swift_studio_sessions_v2"."id" AND
+                  "artifact_import"."status" NOT IN ('completed', 'failed')
+              )
+            `
+          : Prisma.empty
       let assignments: Prisma.Sql
       if (input.status === 'ready') {
         assignments = Prisma.sql`
@@ -1015,6 +1130,7 @@ export class V2Catalog {
           "id" = ${input.id}::uuid AND
           "status" = ${fromStatus}
           ${preparationOwnerFence}
+          ${closingImportFence}
         RETURNING ${SWIFT_STUDIO_SESSION_COLUMNS}
       `)
       if (updatedRows.length > 1) {
@@ -1055,6 +1171,574 @@ export class V2Catalog {
         )
       }
       return existing
+    })
+  }
+
+  async reopenBusySwiftStudioSession(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogSwiftStudioSessionRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateSwiftStudioSessionId(id)
+    return await this.#client.$transaction(async (tx) => {
+      await acquireSwiftStudioSessionLock(tx)
+      const reopenedRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        UPDATE "swift_studio_sessions_v2"
+        SET "status" = 'ready', "updated_at" = clock_timestamp()
+        WHERE
+          "namespace_id" = ${namespaceId}::uuid AND
+          "id" = ${id}::uuid AND
+          "status" = 'closing'
+        RETURNING ${SWIFT_STUDIO_SESSION_COLUMNS}
+      `)
+      if (reopenedRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Swift Studio Session busy rollback returned more than one row',
+        )
+      }
+      if (reopenedRows[0]) return sqlRowToSwiftStudioSession(reopenedRows[0])
+
+      const existingRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+        FROM "swift_studio_sessions_v2"
+        WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+      `)
+      if (existingRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Swift Studio Session busy rollback lookup returned more than one row',
+        )
+      }
+      return existingRows[0] ? sqlRowToSwiftStudioSession(existingRows[0]) : null
+    })
+  }
+
+  async createOrReadModelArtifactImport(
+    input: CreateModelArtifactImportV2,
+  ): Promise<CatalogModelArtifactImportCreateResultV2> {
+    validateCreateModelArtifactImport(input)
+    return await this.#client.$transaction(async (tx) => {
+      const sessionRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+        FROM "swift_studio_sessions_v2"
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "id" = ${input.studioSessionId}::uuid
+        FOR SHARE
+      `)
+      if (sessionRows.length !== 1 || !sessionRows[0]) {
+        throw new V2CatalogInputError('Model Artifact import Studio Session is not registered')
+      }
+      const session = sqlRowToSwiftStudioSession(sessionRows[0])
+      const existingReplayRows = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+        SELECT ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+        FROM "model_artifact_imports_v2"
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "create_digest" = ${input.createDigest}
+      `)
+      if (existingReplayRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Model Artifact import replay lookup returned more than one row',
+        )
+      }
+      if (existingReplayRows[0]) {
+        const replay = sqlRowToModelArtifactImport(existingReplayRows[0])
+        if (!sameModelArtifactImportCreate(replay, input)) {
+          throw new V2CatalogModelArtifactImportConflictError(
+            'create_request_mismatch',
+            replay.id,
+            replay.status,
+            null,
+          )
+        }
+        return Object.freeze({ row: replay, created: false })
+      }
+      if (session.status !== 'ready') {
+        throw new V2CatalogInputError('Model Artifact import Studio Session has no ready output')
+      }
+
+      const id = randomUUID()
+      const inserted = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+        INSERT INTO "model_artifact_imports_v2" (
+          "id", "namespace_id", "create_digest", "status", "studio_session_id",
+          "output_handle_digest", "artifact_kind", "display_name",
+          "base_model_reference", "base_model_revision"
+        )
+        VALUES (
+          ${id}::uuid, ${input.namespaceId}::uuid, ${input.createDigest}, 'requested',
+          ${input.studioSessionId}::uuid, ${input.outputHandleDigest}, ${input.artifactKind},
+          ${input.displayName}, ${input.baseModelReference}, ${input.baseModelRevision}
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+      `)
+      if (inserted.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Model Artifact import insert returned more than one row',
+        )
+      }
+      if (inserted[0]) {
+        return Object.freeze({
+          row: sqlRowToModelArtifactImport(inserted[0]),
+          created: true,
+        })
+      }
+
+      const replayRows = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+        SELECT ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+        FROM "model_artifact_imports_v2"
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "create_digest" = ${input.createDigest}
+      `)
+      if (replayRows.length === 1 && replayRows[0]) {
+        const replay = sqlRowToModelArtifactImport(replayRows[0])
+        if (!sameModelArtifactImportCreate(replay, input)) {
+          throw new V2CatalogModelArtifactImportConflictError(
+            'create_request_mismatch',
+            replay.id,
+            replay.status,
+            null,
+          )
+        }
+        return Object.freeze({ row: replay, created: false })
+      }
+
+      const outputRows = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+        SELECT ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+        FROM "model_artifact_imports_v2"
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "studio_session_id" = ${input.studioSessionId}::uuid AND
+          "output_handle_digest" = ${input.outputHandleDigest} AND
+          "artifact_kind" = ${input.artifactKind}
+      `)
+      const existing = outputRows[0]
+      if (outputRows.length !== 1 || !existing) {
+        throw new V2CatalogConsistencyError(
+          'Model Artifact import conflicted but the winning row could not be read',
+        )
+      }
+      const row = sqlRowToModelArtifactImport(existing)
+      throw new V2CatalogModelArtifactImportConflictError(
+        'output_already_imported',
+        row.id,
+        row.status,
+        null,
+      )
+    })
+  }
+
+  async getModelArtifactImport(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogModelArtifactImportRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateModelArtifactImportId(id)
+    const rows = await this.#client.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+      SELECT ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+      FROM "model_artifact_imports_v2"
+      WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError('Model Artifact import lookup returned more than one row')
+    }
+    return rows[0] ? sqlRowToModelArtifactImport(rows[0]) : null
+  }
+
+  async markModelArtifactImportStagingCleaned(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogModelArtifactImportRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateModelArtifactImportId(id)
+    const rows = await this.#client.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+      UPDATE "model_artifact_imports_v2"
+      SET
+        "staging_cleaned_at" = COALESCE("staging_cleaned_at", clock_timestamp()),
+        "updated_at" = CASE
+          WHEN "staging_cleaned_at" IS NULL THEN clock_timestamp()
+          ELSE "updated_at"
+        END
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        "id" = ${id}::uuid AND
+        "status" IN ('completed', 'failed')
+      RETURNING ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError(
+        'Model Artifact staging cleanup returned more than one import',
+      )
+    }
+    return rows[0] ? sqlRowToModelArtifactImport(rows[0]) : null
+  }
+
+  async transitionModelArtifactImport(
+    input: TransitionModelArtifactImportV2,
+  ): Promise<CatalogModelArtifactImportRowV2 | null> {
+    validateModelArtifactImportTransition(input)
+    return await this.#client.$transaction(async (tx) => {
+      let assignments: Prisma.Sql
+      let fromStatuses: Prisma.Sql
+      if (input.status === 'staging') {
+        assignments = Prisma.sql`
+          "status" = 'staging',
+          "provider_import_id" = ${input.providerImportId},
+          "output_snapshot_digest" = ${input.outputSnapshotDigest},
+          "staging_at" = clock_timestamp()
+        `
+        fromStatuses = Prisma.sql`"status" = 'requested'`
+      } else if (input.status === 'finalizing') {
+        const manifestJson = JSON.stringify(input.manifest)
+        assignments = Prisma.sql`
+          "status" = 'finalizing',
+          "staging_object_key" = ${input.stagingObjectKey},
+          "archive_digest" = ${input.archiveDigest},
+          "archive_size_bytes" = ${input.archiveSizeBytes},
+          "manifest_digest" = ${input.manifestDigest},
+          "manifest_json" = ${manifestJson}::jsonb,
+          "dataset_lineage_status" = ${input.datasetLineageStatus},
+          "dataset_version" = ${input.datasetVersion},
+          "dataset_export_digest" = ${input.datasetExportDigest},
+          "base_model_binding_status" = ${input.baseModelBindingStatus},
+          "finalizing_at" = clock_timestamp()
+        `
+        fromStatuses = Prisma.sql`"status" = 'staging'`
+      } else {
+        const failureJson = JSON.stringify(input.failure)
+        assignments = Prisma.sql`
+          "status" = 'failed',
+          "failure_json" = ${failureJson}::jsonb,
+          "failed_at" = clock_timestamp()
+        `
+        fromStatuses = Prisma.sql`"status" IN ('requested', 'staging', 'finalizing')`
+      }
+
+      if (input.status === 'finalizing') {
+        const importRows = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+          SELECT ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+          FROM "model_artifact_imports_v2"
+          WHERE "namespace_id" = ${input.namespaceId}::uuid AND "id" = ${input.id}::uuid
+          FOR UPDATE
+        `)
+        const artifactImportSql = importRows[0]
+        if (importRows.length !== 1 || !artifactImportSql) {
+          return null
+        }
+        const artifactImport = sqlRowToModelArtifactImport(artifactImportSql)
+        const sessionRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+          SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+          FROM "swift_studio_sessions_v2"
+          WHERE
+            "namespace_id" = ${input.namespaceId}::uuid AND
+            "id" = ${artifactImport.studioSessionId}::uuid
+          FOR SHARE
+        `)
+        const sessionSql = sessionRows[0]
+        if (sessionRows.length !== 1 || !sessionSql) {
+          throw new V2CatalogConsistencyError(
+            'Model Artifact import source Session could not be read',
+          )
+        }
+        const session = sqlRowToSwiftStudioSession(sessionSql)
+        if (
+          input.manifest.output_snapshot_digest !== artifactImport.outputSnapshotDigest ||
+          input.manifest.source.studio_session_id !== artifactImport.studioSessionId ||
+          input.manifest.source.upstream_commit !== session.upstreamCommit ||
+          input.manifest.source.image_digest !== session.imageDigest ||
+          input.manifest.base_model.reference !== artifactImport.baseModelReference ||
+          input.manifest.base_model.revision !== artifactImport.baseModelRevision
+        ) {
+          throw new V2CatalogInputError(
+            'Model Artifact manifest does not match its immutable import source',
+          )
+        }
+        if (
+          input.datasetLineageStatus === 'verified' &&
+          (input.datasetVersion !== session.datasetVersion ||
+            input.datasetExportDigest !== session.exportDigest)
+        ) {
+          throw new V2CatalogInputError(
+            'Verified Model Artifact lineage must match the exact Session export',
+          )
+        }
+      }
+
+      const updatedRows = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+        UPDATE "model_artifact_imports_v2"
+        SET ${assignments}, "updated_at" = clock_timestamp()
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "id" = ${input.id}::uuid AND
+          ${fromStatuses}
+        RETURNING ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+      `)
+      if (updatedRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Model Artifact import transition returned more than one row',
+        )
+      }
+      if (updatedRows[0]) return sqlRowToModelArtifactImport(updatedRows[0])
+
+      const existingRows = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+        SELECT ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+        FROM "model_artifact_imports_v2"
+        WHERE "namespace_id" = ${input.namespaceId}::uuid AND "id" = ${input.id}::uuid
+      `)
+      if (existingRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Model Artifact import transition lookup returned more than one row',
+        )
+      }
+      if (!existingRows[0]) return null
+      const existing = sqlRowToModelArtifactImport(existingRows[0])
+      const replayable =
+        existing.status === input.status ||
+        (input.status === 'staging' &&
+          (existing.status === 'finalizing' || existing.status === 'completed')) ||
+        (input.status === 'finalizing' && existing.status === 'completed')
+      if (!replayable) {
+        throw new V2CatalogModelArtifactImportConflictError(
+          'invalid_transition',
+          existing.id,
+          existing.status,
+          input.status,
+        )
+      }
+      if (!sameModelArtifactImportTransitionBody(existing, input)) {
+        throw new V2CatalogModelArtifactImportConflictError(
+          'terminal_body_mismatch',
+          existing.id,
+          existing.status,
+          input.status,
+        )
+      }
+      return existing
+    })
+  }
+
+  async finalizeModelArtifactImport(
+    input: FinalizeModelArtifactImportV2,
+  ): Promise<CatalogModelArtifactFinalizeResultV2 | null> {
+    validateFinalizeModelArtifactImport(input)
+    return await this.#client.$transaction(async (tx) => {
+      const importRows = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+        SELECT ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+        FROM "model_artifact_imports_v2"
+        WHERE "namespace_id" = ${input.namespaceId}::uuid AND "id" = ${input.id}::uuid
+        FOR UPDATE
+      `)
+      if (importRows.length > 1) {
+        throw new V2CatalogConsistencyError(
+          'Model Artifact finalization lookup returned more than one import',
+        )
+      }
+      if (!importRows[0]) return null
+      const artifactImport = sqlRowToModelArtifactImport(importRows[0])
+      if (artifactImport.status === 'completed') {
+        const artifactRows = await tx.$queryRaw<ModelArtifactSqlRow[]>(Prisma.sql`
+          SELECT ${MODEL_ARTIFACT_COLUMNS}
+          FROM "model_artifacts_v2"
+          WHERE
+            "namespace_id" = ${input.namespaceId}::uuid AND
+            "id" = ${artifactImport.artifactId}::uuid
+        `)
+        if (artifactRows.length !== 1 || !artifactRows[0]) {
+          throw new V2CatalogConsistencyError(
+            'Completed Model Artifact import has no immutable Artifact',
+          )
+        }
+        const artifact = sqlRowToModelArtifact(artifactRows[0])
+        if (artifact.objectLocator !== input.objectLocator) {
+          throw new V2CatalogModelArtifactImportConflictError(
+            'terminal_body_mismatch',
+            artifactImport.id,
+            artifactImport.status,
+            'completed',
+          )
+        }
+        return Object.freeze({ artifactImport, artifact })
+      }
+      if (artifactImport.status !== 'finalizing') {
+        throw new V2CatalogModelArtifactImportConflictError(
+          'invalid_transition',
+          artifactImport.id,
+          artifactImport.status,
+          'completed',
+        )
+      }
+      if (
+        artifactImport.archiveDigest === null ||
+        artifactImport.archiveSizeBytes === null ||
+        artifactImport.manifestDigest === null ||
+        artifactImport.manifest === null ||
+        artifactImport.datasetLineageStatus === null ||
+        artifactImport.baseModelBindingStatus === null
+      ) {
+        throw new V2CatalogConsistencyError(
+          'Finalizing Model Artifact import is missing immutable metadata',
+        )
+      }
+      validateModelArtifactObjectLocator(input.objectLocator, artifactImport.archiveDigest)
+
+      const sessionRows = await tx.$queryRaw<SwiftStudioSessionSqlRow[]>(Prisma.sql`
+        SELECT ${SWIFT_STUDIO_SESSION_COLUMNS}
+        FROM "swift_studio_sessions_v2"
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "id" = ${artifactImport.studioSessionId}::uuid
+        FOR SHARE
+      `)
+      if (sessionRows.length !== 1 || !sessionRows[0]) {
+        throw new V2CatalogConsistencyError(
+          'Model Artifact finalization source Session could not be read',
+        )
+      }
+      const session = sqlRowToSwiftStudioSession(sessionRows[0])
+      const artifactId = randomUUID()
+      const manifestJson = JSON.stringify(artifactImport.manifest)
+      const inserted = await tx.$queryRaw<ModelArtifactSqlRow[]>(Prisma.sql`
+        INSERT INTO "model_artifacts_v2" (
+          "id", "namespace_id", "display_name", "artifact_kind", "artifact_format",
+          "archive_format", "archive_digest", "archive_size_bytes", "object_locator",
+          "manifest_digest", "manifest_json", "source_kind", "source_session_id",
+          "source_import_id", "dataset_lineage_status", "dataset_version",
+          "dataset_export_digest", "base_model_reference", "base_model_revision",
+          "base_model_binding_status", "upstream_commit", "image_digest"
+        )
+        VALUES (
+          ${artifactId}::uuid, ${artifactImport.namespaceId}::uuid,
+          ${artifactImport.displayName}, ${artifactImport.artifactKind},
+          'swift-lora-adapter-v1', 'deterministic-tar-zst-v1',
+          ${artifactImport.archiveDigest}, ${artifactImport.archiveSizeBytes},
+          ${input.objectLocator}, ${artifactImport.manifestDigest}, ${manifestJson}::jsonb,
+          'swift_studio_session', ${artifactImport.studioSessionId}::uuid,
+          ${artifactImport.id}::uuid, ${artifactImport.datasetLineageStatus},
+          ${artifactImport.datasetVersion}, ${artifactImport.datasetExportDigest},
+          ${artifactImport.baseModelReference}, ${artifactImport.baseModelRevision},
+          ${artifactImport.baseModelBindingStatus}, ${session.upstreamCommit},
+          ${session.imageDigest}
+        )
+        ON CONFLICT ("source_import_id") DO NOTHING
+        RETURNING ${MODEL_ARTIFACT_COLUMNS}
+      `)
+      let artifactSql = inserted[0]
+      if (!artifactSql) {
+        const existingRows = await tx.$queryRaw<ModelArtifactSqlRow[]>(Prisma.sql`
+          SELECT ${MODEL_ARTIFACT_COLUMNS}
+          FROM "model_artifacts_v2"
+          WHERE "source_import_id" = ${artifactImport.id}::uuid
+        `)
+        artifactSql = existingRows[0]
+        if (existingRows.length !== 1 || !artifactSql) {
+          throw new V2CatalogConsistencyError(
+            'Model Artifact source import conflicted but the immutable row could not be read',
+          )
+        }
+        const existing = sqlRowToModelArtifact(artifactSql)
+        if (
+          existing.sourceImportId !== artifactImport.id ||
+          !sameModelArtifactFinalizeBody(existing, artifactImport, input.objectLocator)
+        ) {
+          throw new V2CatalogModelArtifactImportConflictError(
+            'archive_identity_mismatch',
+            artifactImport.id,
+            artifactImport.status,
+            'completed',
+          )
+        }
+      }
+      const artifact = sqlRowToModelArtifact(artifactSql)
+      const completedRows = await tx.$queryRaw<ModelArtifactImportSqlRow[]>(Prisma.sql`
+        UPDATE "model_artifact_imports_v2"
+        SET
+          "status" = 'completed',
+          "artifact_id" = ${artifact.id}::uuid,
+          "completed_at" = clock_timestamp(),
+          "updated_at" = clock_timestamp()
+        WHERE
+          "namespace_id" = ${input.namespaceId}::uuid AND
+          "id" = ${input.id}::uuid AND
+          "status" = 'finalizing'
+        RETURNING ${MODEL_ARTIFACT_IMPORT_COLUMNS}
+      `)
+      if (completedRows.length !== 1 || !completedRows[0]) {
+        throw new V2CatalogConsistencyError(
+          'Model Artifact import completion lost its finalizing row',
+        )
+      }
+      return Object.freeze({
+        artifactImport: sqlRowToModelArtifactImport(completedRows[0]),
+        artifact,
+      })
+    })
+  }
+
+  async getModelArtifact(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogModelArtifactRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateModelArtifactId(id)
+    const rows = await this.#client.$queryRaw<ModelArtifactSqlRow[]>(Prisma.sql`
+      SELECT ${MODEL_ARTIFACT_COLUMNS}
+      FROM "model_artifacts_v2"
+      WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError('Model Artifact lookup returned more than one row')
+    }
+    return rows[0] ? sqlRowToModelArtifact(rows[0]) : null
+  }
+
+  async listModelArtifacts(
+    namespaceId: string,
+    filter: CatalogModelArtifactListFilterV2,
+    before: CatalogModelArtifactCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelArtifactPageV2> {
+    validateNamespaceId(namespaceId)
+    validateModelArtifactListFilter(filter)
+    if (before !== null) validateModelArtifactCursor(before)
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_CATALOG_PAGE_SIZE) {
+      throw new V2CatalogInputError('Model Artifact page limit is invalid')
+    }
+    const rows = await this.#client.$queryRaw<ModelArtifactSqlRow[]>(Prisma.sql`
+      SELECT ${MODEL_ARTIFACT_COLUMNS}
+      FROM "model_artifacts_v2"
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        (${filter.datasetVersion}::text IS NULL OR "dataset_version" = ${filter.datasetVersion}) AND
+        (${filter.artifactKind}::text IS NULL OR "artifact_kind" = ${filter.artifactKind}) AND
+        ${
+          before === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`
+              (
+                date_trunc('milliseconds', "created_at") < ${before.createdAt} OR
+                (
+                  date_trunc('milliseconds', "created_at") = ${before.createdAt} AND
+                  "id"::text COLLATE "C" < ${before.id}
+                )
+              )
+            `
+        }
+      ORDER BY date_trunc('milliseconds', "created_at") DESC, "id"::text COLLATE "C" DESC
+      LIMIT ${limit + 1}
+    `)
+    const hasMore = rows.length > limit
+    const pageRows = rows.slice(0, limit).map(sqlRowToModelArtifact)
+    const last = hasMore ? pageRows.at(-1) : undefined
+    return Object.freeze({
+      rows: Object.freeze(pageRows),
+      nextCursor:
+        last === undefined
+          ? null
+          : Object.freeze({
+              createdAt: truncateDateToMilliseconds(last.createdAt),
+              id: last.id,
+            }),
     })
   }
 
@@ -2525,6 +3209,148 @@ function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRo
   return result
 }
 
+function sqlRowToModelArtifactImport(
+  row: ModelArtifactImportSqlRow,
+): CatalogModelArtifactImportRowV2 {
+  const status = parseModelArtifactImportStatus(row.status)
+  const manifest =
+    row.manifest_json === null ? null : parseStoredModelArtifactManifest(row.manifest_json)
+  const failure = parseStoredModelArtifactImportFailure(row.failure_json)
+  const datasetLineageStatus =
+    row.dataset_lineage_status === null
+      ? null
+      : parseModelArtifactDatasetLineageStatus(row.dataset_lineage_status)
+  const baseModelBindingStatus =
+    row.base_model_binding_status === null
+      ? null
+      : parseModelArtifactBaseModelBindingStatus(row.base_model_binding_status)
+  if (row.artifact_kind !== 'lora_adapter') {
+    throw new V2CatalogConsistencyError('Stored Model Artifact import kind is invalid')
+  }
+  const result: CatalogModelArtifactImportRowV2 = {
+    id: row.id,
+    namespaceId: row.namespace_id,
+    createDigest: row.create_digest,
+    status,
+    studioSessionId: row.studio_session_id,
+    outputHandleDigest: row.output_handle_digest,
+    artifactKind: row.artifact_kind,
+    displayName: row.display_name,
+    baseModelReference: row.base_model_reference,
+    baseModelRevision: row.base_model_revision,
+    providerImportId: row.provider_import_id,
+    outputSnapshotDigest: row.output_snapshot_digest,
+    stagingObjectKey: row.staging_object_key,
+    archiveDigest: row.archive_digest,
+    archiveSizeBytes: row.archive_size_bytes,
+    manifestDigest: row.manifest_digest,
+    manifest,
+    datasetLineageStatus,
+    datasetVersion: row.dataset_version,
+    datasetExportDigest: row.dataset_export_digest,
+    baseModelBindingStatus,
+    artifactId: row.artifact_id,
+    failure,
+    createdAt: row.created_at,
+    stagingAt: row.staging_at,
+    finalizingAt: row.finalizing_at,
+    completedAt: row.completed_at,
+    failedAt: row.failed_at,
+    stagingCleanedAt: row.staging_cleaned_at,
+    updatedAt: row.updated_at,
+  }
+  try {
+    validateCreateModelArtifactImport(result)
+    validateModelArtifactImportId(result.id)
+    validateStoredModelArtifactImportShape(result)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored Model Artifact import is invalid', { cause })
+  }
+  return Object.freeze(result)
+}
+
+function sqlRowToModelArtifact(row: ModelArtifactSqlRow): CatalogModelArtifactRowV2 {
+  if (
+    row.artifact_kind !== 'lora_adapter' ||
+    row.artifact_format !== 'swift-lora-adapter-v1' ||
+    row.archive_format !== 'deterministic-tar-zst-v1' ||
+    row.source_kind !== 'swift_studio_session'
+  ) {
+    throw new V2CatalogConsistencyError('Stored Model Artifact fixed format is invalid')
+  }
+  const result: CatalogModelArtifactRowV2 = {
+    id: row.id,
+    namespaceId: row.namespace_id,
+    displayName: row.display_name,
+    artifactKind: row.artifact_kind,
+    artifactFormat: row.artifact_format,
+    archiveFormat: row.archive_format,
+    archiveDigest: row.archive_digest,
+    archiveSizeBytes: row.archive_size_bytes,
+    objectLocator: row.object_locator,
+    manifestDigest: row.manifest_digest,
+    manifest: parseStoredModelArtifactManifest(row.manifest_json),
+    sourceKind: row.source_kind,
+    sourceSessionId: row.source_session_id,
+    sourceImportId: row.source_import_id,
+    datasetLineageStatus: parseModelArtifactDatasetLineageStatus(row.dataset_lineage_status),
+    datasetVersion: row.dataset_version,
+    datasetExportDigest: row.dataset_export_digest,
+    baseModelReference: row.base_model_reference,
+    baseModelRevision: row.base_model_revision,
+    baseModelBindingStatus: parseModelArtifactBaseModelBindingStatus(row.base_model_binding_status),
+    upstreamCommit: row.upstream_commit,
+    imageDigest: row.image_digest,
+    createdAt: row.created_at,
+  }
+  try {
+    validateModelArtifactId(result.id)
+    validateNamespaceId(result.namespaceId)
+    validateModelArtifactDisplayName(result.displayName)
+    validateModelArtifactBaseModel(
+      result.baseModelReference,
+      result.baseModelRevision,
+      result.baseModelBindingStatus,
+    )
+    validateModelArtifactArchiveMetadata(
+      result.archiveDigest,
+      result.archiveSizeBytes,
+      result.manifestDigest,
+    )
+    validateModelArtifactObjectLocator(result.objectLocator, result.archiveDigest)
+    validateModelArtifactLineage(
+      result.datasetLineageStatus,
+      result.datasetVersion,
+      result.datasetExportDigest,
+    )
+    if (!GIT_COMMIT.test(result.upstreamCommit) || !EXACT_VERSION.test(result.imageDigest)) {
+      throw new V2CatalogInputError('Model Artifact runtime identity is invalid')
+    }
+    validateModelArtifactManifest(result.manifest)
+    if (
+      result.manifest.archive_digest !== result.archiveDigest ||
+      BigInt(result.manifest.archive_size_bytes) !== result.archiveSizeBytes ||
+      result.manifest.source.studio_session_id !== result.sourceSessionId ||
+      result.manifest.source.upstream_commit !== result.upstreamCommit ||
+      result.manifest.source.image_digest !== result.imageDigest ||
+      !sameModelArtifactManifestLineage(
+        result.manifest.dataset_lineage,
+        result.datasetLineageStatus,
+        result.datasetVersion,
+        result.datasetExportDigest,
+      ) ||
+      result.manifest.base_model.reference !== result.baseModelReference ||
+      result.manifest.base_model.revision !== result.baseModelRevision ||
+      result.manifest.base_model.binding_status !== result.baseModelBindingStatus
+    ) {
+      throw new V2CatalogInputError('Model Artifact manifest metadata is inconsistent')
+    }
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored Model Artifact is invalid', { cause })
+  }
+  return Object.freeze(result)
+}
+
 function sqlRowToSwiftStudioSession(row: SwiftStudioSessionSqlRow): CatalogSwiftStudioSessionRowV2 {
   const status = parseSwiftStudioSessionStatus(row.status)
   const failure = parseStoredSwiftStudioSessionFailure(row.failure_json)
@@ -3020,6 +3846,691 @@ function sameSwiftStudioSessionTransitionBody(
     )
   }
   return true
+}
+
+function validateCreateModelArtifactImport(input: CreateModelArtifactImportV2): void {
+  validateNamespaceId(input.namespaceId)
+  if (!EXACT_VERSION.test(input.createDigest)) {
+    throw new V2CatalogInputError('Model Artifact import create digest is invalid')
+  }
+  validateSwiftStudioSessionId(input.studioSessionId)
+  if (!EXACT_VERSION.test(input.outputHandleDigest)) {
+    throw new V2CatalogInputError('Model Artifact import output handle digest is invalid')
+  }
+  if (input.artifactKind !== 'lora_adapter') {
+    throw new V2CatalogInputError('Model Artifact import kind is invalid')
+  }
+  validateModelArtifactDisplayName(input.displayName)
+  validateModelArtifactBaseModel(
+    input.baseModelReference,
+    input.baseModelRevision,
+    input.baseModelRevision === null ? 'unresolved' : 'declared',
+  )
+}
+
+function validateModelArtifactDisplayName(value: string): void {
+  if (
+    Buffer.byteLength(value) < 1 ||
+    Buffer.byteLength(value) > 256 ||
+    hasControlCharacter(value) ||
+    CREDENTIAL_VALUE.test(value) ||
+    ABSOLUTE_PATH.test(value)
+  ) {
+    throw new V2CatalogInputError('Model Artifact display name is invalid')
+  }
+}
+
+function validateModelArtifactBaseModel(
+  reference: string,
+  revision: string | null,
+  bindingStatus: 'verified' | 'declared' | 'unresolved',
+): void {
+  if (
+    Buffer.byteLength(reference) < 1 ||
+    Buffer.byteLength(reference) > 512 ||
+    hasControlCharacter(reference) ||
+    CREDENTIAL_VALUE.test(reference) ||
+    ABSOLUTE_PATH.test(reference) ||
+    reference.includes('\\')
+  ) {
+    throw new V2CatalogInputError('Model Artifact base-model reference is invalid')
+  }
+  if (
+    revision !== null &&
+    (!MODEL_REVISION.test(revision) ||
+      Buffer.byteLength(revision) > 256 ||
+      CREDENTIAL_VALUE.test(revision) ||
+      ABSOLUTE_PATH.test(revision))
+  ) {
+    throw new V2CatalogInputError('Model Artifact base-model revision is invalid')
+  }
+  if (
+    (bindingStatus !== 'verified' &&
+      bindingStatus !== 'declared' &&
+      bindingStatus !== 'unresolved') ||
+    (bindingStatus === 'verified' && revision === null)
+  ) {
+    throw new V2CatalogInputError('Model Artifact base-model binding is invalid')
+  }
+}
+
+function validateModelArtifactImportId(value: string): void {
+  if (!UUID.test(value)) throw new V2CatalogInputError('Model Artifact import ID is invalid')
+}
+
+function validateModelArtifactId(value: string): void {
+  if (!UUID.test(value)) throw new V2CatalogInputError('Model Artifact ID is invalid')
+}
+
+function parseModelArtifactImportStatus(value: string): CatalogModelArtifactImportStatusV2 {
+  if (
+    value === 'requested' ||
+    value === 'staging' ||
+    value === 'finalizing' ||
+    value === 'completed' ||
+    value === 'failed'
+  ) {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored Model Artifact import status is invalid')
+}
+
+function parseModelArtifactDatasetLineageStatus(
+  value: string,
+): CatalogModelArtifactRowV2['datasetLineageStatus'] {
+  if (value === 'verified' || value === 'external_or_unverified' || value === 'not_applicable') {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored Model Artifact Dataset lineage status is invalid')
+}
+
+function parseModelArtifactBaseModelBindingStatus(
+  value: string,
+): CatalogModelArtifactRowV2['baseModelBindingStatus'] {
+  if (value === 'verified' || value === 'declared' || value === 'unresolved') return value
+  throw new V2CatalogConsistencyError('Stored Model Artifact base-model binding is invalid')
+}
+
+function validateModelArtifactImportTransition(input: TransitionModelArtifactImportV2): void {
+  validateNamespaceId(input.namespaceId)
+  validateModelArtifactImportId(input.id)
+  if (input.status === 'staging') {
+    if (!MODEL_ARTIFACT_PROVIDER_IMPORT_ID.test(input.providerImportId)) {
+      throw new V2CatalogInputError('Model Artifact Provider import ID is invalid')
+    }
+    if (!EXACT_VERSION.test(input.outputSnapshotDigest)) {
+      throw new V2CatalogInputError('Model Artifact output snapshot digest is invalid')
+    }
+    return
+  }
+  if (input.status === 'failed') {
+    validateModelArtifactImportFailure(input.failure)
+    return
+  }
+  if (
+    !MODEL_ARTIFACT_STAGING_KEY.test(input.stagingObjectKey) ||
+    input.stagingObjectKey !== `staging/swift-artifact/v1/${input.id}/archive.tar.zst`
+  ) {
+    throw new V2CatalogInputError('Model Artifact staging object key is invalid')
+  }
+  validateModelArtifactArchiveMetadata(
+    input.archiveDigest,
+    input.archiveSizeBytes,
+    input.manifestDigest,
+  )
+  validateModelArtifactLineage(
+    input.datasetLineageStatus,
+    input.datasetVersion,
+    input.datasetExportDigest,
+  )
+  validateModelArtifactManifest(input.manifest)
+  if (
+    input.manifest.archive_digest !== input.archiveDigest ||
+    BigInt(input.manifest.archive_size_bytes) !== input.archiveSizeBytes ||
+    !sameModelArtifactManifestLineage(
+      input.manifest.dataset_lineage,
+      input.datasetLineageStatus,
+      input.datasetVersion,
+      input.datasetExportDigest,
+    ) ||
+    input.manifest.base_model.binding_status !== input.baseModelBindingStatus
+  ) {
+    throw new V2CatalogInputError('Model Artifact finalization manifest is inconsistent')
+  }
+}
+
+function validateModelArtifactArchiveMetadata(
+  archiveDigest: string,
+  archiveSizeBytes: bigint,
+  manifestDigest: string,
+): void {
+  if (
+    !EXACT_VERSION.test(archiveDigest) ||
+    archiveSizeBytes < 0n ||
+    archiveSizeBytes > BigInt(Number.MAX_SAFE_INTEGER) ||
+    !EXACT_VERSION.test(manifestDigest)
+  ) {
+    throw new V2CatalogInputError('Model Artifact archive metadata is invalid')
+  }
+}
+
+function validateModelArtifactLineage(
+  status: CatalogModelArtifactRowV2['datasetLineageStatus'],
+  datasetVersion: string | null,
+  datasetExportDigest: string | null,
+): void {
+  if (status !== 'verified' && status !== 'external_or_unverified' && status !== 'not_applicable') {
+    throw new V2CatalogInputError('Model Artifact Dataset lineage status is invalid')
+  }
+  const hasDataset =
+    datasetVersion !== null &&
+    datasetExportDigest !== null &&
+    EXACT_VERSION.test(datasetVersion) &&
+    EXACT_VERSION.test(datasetExportDigest)
+  if ((datasetVersion === null) !== (datasetExportDigest === null)) {
+    throw new V2CatalogInputError('Model Artifact Dataset lineage shape is invalid')
+  }
+  if ((status === 'verified') !== hasDataset) {
+    throw new V2CatalogInputError('Only verified Model Artifacts bind an exact Dataset export')
+  }
+}
+
+function validateModelArtifactImportFailure(failure: CatalogModelArtifactImportFailureV2): void {
+  if (!SAFE_EVALUATION_NAME.test(failure.phase) || !SAFE_EVALUATION_NAME.test(failure.code)) {
+    throw new V2CatalogInputError('Model Artifact import failure phase or code is invalid')
+  }
+  if (
+    Buffer.byteLength(failure.message) < 1 ||
+    Buffer.byteLength(failure.message) > 2_048 ||
+    hasControlCharacter(failure.message) ||
+    CREDENTIAL_VALUE.test(failure.message)
+  ) {
+    throw new V2CatalogInputError('Model Artifact import failure message is invalid')
+  }
+}
+
+function parseStoredModelArtifactImportFailure(
+  value: Prisma.JsonValue | null,
+): CatalogModelArtifactImportFailureV2 | null {
+  if (value === null) return null
+  if (
+    !isPlainJsonObject(value) ||
+    !hasExactObjectKeys(value, ['phase', 'code', 'message']) ||
+    typeof value.phase !== 'string' ||
+    typeof value.code !== 'string' ||
+    typeof value.message !== 'string'
+  ) {
+    throw new V2CatalogConsistencyError('Stored Model Artifact import failure is invalid')
+  }
+  const failure = { phase: value.phase, code: value.code, message: value.message }
+  try {
+    validateModelArtifactImportFailure(failure)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored Model Artifact import failure is invalid', {
+      cause,
+    })
+  }
+  return Object.freeze(failure)
+}
+
+function validateStoredModelArtifactImportShape(row: CatalogModelArtifactImportRowV2): void {
+  const hasStaging = row.stagingAt !== null
+  if (
+    hasStaging !== (row.providerImportId !== null && row.outputSnapshotDigest !== null) ||
+    (row.providerImportId !== null &&
+      !MODEL_ARTIFACT_PROVIDER_IMPORT_ID.test(row.providerImportId)) ||
+    (row.outputSnapshotDigest !== null && !EXACT_VERSION.test(row.outputSnapshotDigest))
+  ) {
+    throw new V2CatalogInputError('Model Artifact import staging shape is invalid')
+  }
+  const finalFields = [
+    row.finalizingAt,
+    row.stagingObjectKey,
+    row.archiveDigest,
+    row.archiveSizeBytes,
+    row.manifestDigest,
+    row.manifest,
+    row.datasetLineageStatus,
+    row.baseModelBindingStatus,
+  ]
+  const hasFinalization = finalFields.every((value) => value !== null)
+  if (hasFinalization !== finalFields.some((value) => value !== null)) {
+    throw new V2CatalogInputError('Model Artifact import finalization shape is invalid')
+  }
+  if (hasFinalization) {
+    if (
+      row.stagingObjectKey === null ||
+      row.archiveDigest === null ||
+      row.archiveSizeBytes === null ||
+      row.manifestDigest === null ||
+      row.manifest === null ||
+      row.datasetLineageStatus === null ||
+      row.baseModelBindingStatus === null
+    ) {
+      throw new V2CatalogInputError('Model Artifact import finalization metadata is incomplete')
+    }
+    validateModelArtifactArchiveMetadata(
+      row.archiveDigest,
+      row.archiveSizeBytes,
+      row.manifestDigest,
+    )
+    if (row.stagingObjectKey !== `staging/swift-artifact/v1/${row.id}/archive.tar.zst`) {
+      throw new V2CatalogInputError('Model Artifact import staging object key is inconsistent')
+    }
+    validateModelArtifactLineage(
+      row.datasetLineageStatus,
+      row.datasetVersion,
+      row.datasetExportDigest,
+    )
+    validateModelArtifactBaseModel(
+      row.baseModelReference,
+      row.baseModelRevision,
+      row.baseModelBindingStatus,
+    )
+  }
+  if (
+    (row.status === 'requested' &&
+      (hasStaging ||
+        hasFinalization ||
+        row.artifactId !== null ||
+        row.failure !== null ||
+        row.completedAt !== null ||
+        row.failedAt !== null)) ||
+    (row.status === 'staging' &&
+      (!hasStaging ||
+        hasFinalization ||
+        row.artifactId !== null ||
+        row.failure !== null ||
+        row.completedAt !== null ||
+        row.failedAt !== null)) ||
+    (row.status === 'finalizing' &&
+      (!hasStaging ||
+        !hasFinalization ||
+        row.artifactId !== null ||
+        row.failure !== null ||
+        row.completedAt !== null ||
+        row.failedAt !== null)) ||
+    (row.status === 'completed' &&
+      (!hasFinalization ||
+        row.artifactId === null ||
+        row.failure !== null ||
+        row.completedAt === null ||
+        row.failedAt !== null)) ||
+    (row.status === 'failed' &&
+      (row.artifactId !== null ||
+        row.failure === null ||
+        row.completedAt !== null ||
+        row.failedAt === null)) ||
+    (row.stagingCleanedAt !== null && row.status !== 'completed' && row.status !== 'failed')
+  ) {
+    throw new V2CatalogInputError('Model Artifact import lifecycle is invalid')
+  }
+}
+
+function validateFinalizeModelArtifactImport(input: FinalizeModelArtifactImportV2): void {
+  validateNamespaceId(input.namespaceId)
+  validateModelArtifactImportId(input.id)
+  if (!MODEL_ARTIFACT_OBJECT_LOCATOR.test(input.objectLocator)) {
+    throw new V2CatalogInputError('Model Artifact object locator is invalid')
+  }
+}
+
+function validateModelArtifactObjectLocator(locator: string, archiveDigest: string): void {
+  if (
+    !MODEL_ARTIFACT_OBJECT_LOCATOR.test(locator) ||
+    locator !== `objects/v2/model-artifact-v1/${archiveDigest.slice(0, 2)}/${archiveDigest}.tar.zst`
+  ) {
+    throw new V2CatalogInputError('Model Artifact object locator does not match its archive')
+  }
+}
+
+function validateModelArtifactListFilter(filter: CatalogModelArtifactListFilterV2): void {
+  if (filter.datasetVersion !== null && !EXACT_VERSION.test(filter.datasetVersion)) {
+    throw new V2CatalogInputError('Model Artifact Dataset filter is invalid')
+  }
+  if (filter.artifactKind !== null && filter.artifactKind !== 'lora_adapter') {
+    throw new V2CatalogInputError('Model Artifact kind filter is invalid')
+  }
+}
+
+function validateModelArtifactCursor(cursor: CatalogModelArtifactCursorV2): void {
+  if (
+    !(cursor.createdAt instanceof Date) ||
+    !Number.isFinite(cursor.createdAt.getTime()) ||
+    cursor.createdAt.getTime() !== truncateDateToMilliseconds(cursor.createdAt).getTime()
+  ) {
+    throw new V2CatalogInputError('Model Artifact cursor timestamp must use millisecond precision')
+  }
+  validateModelArtifactId(cursor.id)
+}
+
+function sameModelArtifactImportCreate(
+  row: CatalogModelArtifactImportRowV2,
+  input: CreateModelArtifactImportV2,
+): boolean {
+  return (
+    row.namespaceId === input.namespaceId &&
+    row.createDigest === input.createDigest &&
+    row.studioSessionId === input.studioSessionId &&
+    row.outputHandleDigest === input.outputHandleDigest &&
+    row.artifactKind === input.artifactKind &&
+    row.displayName === input.displayName &&
+    row.baseModelReference === input.baseModelReference &&
+    row.baseModelRevision === input.baseModelRevision
+  )
+}
+
+function sameModelArtifactImportTransitionBody(
+  row: CatalogModelArtifactImportRowV2,
+  input: TransitionModelArtifactImportV2,
+): boolean {
+  if (input.status === 'staging') {
+    return (
+      row.providerImportId === input.providerImportId &&
+      row.outputSnapshotDigest === input.outputSnapshotDigest
+    )
+  }
+  if (input.status === 'failed') {
+    return (
+      row.failure?.phase === input.failure.phase &&
+      row.failure.code === input.failure.code &&
+      row.failure.message === input.failure.message
+    )
+  }
+  return (
+    row.stagingObjectKey === input.stagingObjectKey &&
+    row.archiveDigest === input.archiveDigest &&
+    row.archiveSizeBytes === input.archiveSizeBytes &&
+    row.manifestDigest === input.manifestDigest &&
+    row.datasetLineageStatus === input.datasetLineageStatus &&
+    row.datasetVersion === input.datasetVersion &&
+    row.datasetExportDigest === input.datasetExportDigest &&
+    row.baseModelBindingStatus === input.baseModelBindingStatus &&
+    row.manifest !== null &&
+    sameJsonValue(
+      row.manifest as unknown as Prisma.JsonValue,
+      input.manifest as unknown as CatalogJsonValueV2,
+    )
+  )
+}
+
+function sameModelArtifactFinalizeBody(
+  artifact: CatalogModelArtifactRowV2,
+  artifactImport: CatalogModelArtifactImportRowV2,
+  objectLocator: string,
+): boolean {
+  return (
+    artifact.namespaceId === artifactImport.namespaceId &&
+    artifact.displayName === artifactImport.displayName &&
+    artifact.artifactKind === artifactImport.artifactKind &&
+    artifact.archiveDigest === artifactImport.archiveDigest &&
+    artifact.archiveSizeBytes === artifactImport.archiveSizeBytes &&
+    artifact.objectLocator === objectLocator &&
+    artifact.manifestDigest === artifactImport.manifestDigest &&
+    artifact.sourceSessionId === artifactImport.studioSessionId &&
+    artifact.sourceImportId === artifactImport.id &&
+    artifact.datasetLineageStatus === artifactImport.datasetLineageStatus &&
+    artifact.datasetVersion === artifactImport.datasetVersion &&
+    artifact.datasetExportDigest === artifactImport.datasetExportDigest &&
+    artifact.baseModelReference === artifactImport.baseModelReference &&
+    artifact.baseModelRevision === artifactImport.baseModelRevision &&
+    artifact.baseModelBindingStatus === artifactImport.baseModelBindingStatus &&
+    artifactImport.manifest !== null &&
+    sameJsonValue(
+      artifact.manifest as unknown as Prisma.JsonValue,
+      artifactImport.manifest as unknown as CatalogJsonValueV2,
+    )
+  )
+}
+
+function parseStoredModelArtifactManifest(value: Prisma.JsonValue): CatalogModelArtifactManifestV2 {
+  try {
+    validateModelArtifactManifest(value)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored Model Artifact manifest is invalid', { cause })
+  }
+  return value as CatalogModelArtifactManifestV2
+}
+
+function validateModelArtifactManifest(
+  value: Prisma.JsonValue | CatalogModelArtifactManifestV2,
+): asserts value is CatalogModelArtifactManifestV2 {
+  if (
+    !isPlainJsonObject(value) ||
+    !hasExactObjectKeys(value, [
+      'manifest_version',
+      'artifact_kind',
+      'artifact_format',
+      'archive_format',
+      'archive_digest',
+      'archive_size_bytes',
+      'output_snapshot_digest',
+      'files',
+      'source',
+      'dataset_lineage',
+      'base_model',
+      'training_summary',
+      'created_at',
+      'created_by',
+    ])
+  ) {
+    throw new V2CatalogInputError('Model Artifact manifest root is invalid')
+  }
+  let encoded: string
+  try {
+    encoded = JSON.stringify(value)
+  } catch (cause) {
+    throw new V2CatalogInputError('Model Artifact manifest is not serializable', { cause })
+  }
+  if (
+    Buffer.byteLength(encoded) > MAX_MODEL_ARTIFACT_MANIFEST_BYTES ||
+    containsForbiddenManifestString(value)
+  ) {
+    throw new V2CatalogInputError('Model Artifact manifest exceeds its sanitized bound')
+  }
+  if (
+    value.manifest_version !== 'model-artifact-manifest-v1' ||
+    value.artifact_kind !== 'lora_adapter' ||
+    value.artifact_format !== 'swift-lora-adapter-v1' ||
+    value.archive_format !== 'deterministic-tar-zst-v1' ||
+    typeof value.archive_digest !== 'string' ||
+    !EXACT_VERSION.test(value.archive_digest) ||
+    typeof value.archive_size_bytes !== 'number' ||
+    !Number.isSafeInteger(value.archive_size_bytes) ||
+    value.archive_size_bytes < 0 ||
+    typeof value.output_snapshot_digest !== 'string' ||
+    !EXACT_VERSION.test(value.output_snapshot_digest) ||
+    value.created_by !== 'databench' ||
+    typeof value.created_at !== 'string' ||
+    !isRfc3339UtcMilliseconds(value.created_at)
+  ) {
+    throw new V2CatalogInputError('Model Artifact manifest identity is invalid')
+  }
+  validateModelArtifactManifestFiles(value.files)
+  if (
+    !isPlainJsonObject(value.source) ||
+    !hasExactObjectKeys(value.source, ['studio_session_id', 'upstream_commit', 'image_digest']) ||
+    typeof value.source.studio_session_id !== 'string' ||
+    !UUID.test(value.source.studio_session_id) ||
+    typeof value.source.upstream_commit !== 'string' ||
+    !GIT_COMMIT.test(value.source.upstream_commit) ||
+    typeof value.source.image_digest !== 'string' ||
+    !EXACT_VERSION.test(value.source.image_digest)
+  ) {
+    throw new V2CatalogInputError('Model Artifact manifest source is invalid')
+  }
+  validateModelArtifactManifestLineage(value.dataset_lineage)
+  validateModelArtifactManifestBaseModel(value.base_model)
+  validateModelArtifactTrainingSummary(value.training_summary)
+}
+
+function validateModelArtifactManifestFiles(value: Prisma.JsonValue | undefined): void {
+  if (!Array.isArray(value) || value.length < 2 || value.length > MAX_MODEL_ARTIFACT_FILES) {
+    throw new V2CatalogInputError('Model Artifact manifest file list is invalid')
+  }
+  const paths: string[] = []
+  for (const file of value) {
+    if (
+      !isPlainJsonObject(file) ||
+      !hasExactObjectKeys(file, ['path', 'digest', 'size_bytes']) ||
+      typeof file.path !== 'string' ||
+      !ALLOWED_ADAPTER_FILE.test(file.path) ||
+      typeof file.digest !== 'string' ||
+      !EXACT_VERSION.test(file.digest) ||
+      typeof file.size_bytes !== 'number' ||
+      !Number.isSafeInteger(file.size_bytes) ||
+      file.size_bytes < 0
+    ) {
+      throw new V2CatalogInputError('Model Artifact manifest file entry is invalid')
+    }
+    paths.push(file.path)
+  }
+  if (
+    new Set(paths).size !== paths.length ||
+    paths.some(
+      (path, index) =>
+        index > 0 && Buffer.compare(Buffer.from(paths[index - 1] ?? ''), Buffer.from(path)) >= 0,
+    ) ||
+    !paths.includes('adapter_config.json')
+  ) {
+    throw new V2CatalogInputError('Model Artifact manifest file ordering is invalid')
+  }
+  const hasSingle = paths.includes('adapter_model.safetensors')
+  const hasIndex = paths.includes('adapter_model.safetensors.index.json')
+  const hasShards = paths.some((path) => /^adapter_model-\d{5}-of-\d{5}\.safetensors$/u.test(path))
+  if (hasSingle === (hasIndex && hasShards) || hasIndex !== hasShards) {
+    throw new V2CatalogInputError('Model Artifact safetensors layout is invalid')
+  }
+}
+
+function validateModelArtifactManifestLineage(value: Prisma.JsonValue | undefined): void {
+  if (
+    !isPlainJsonObject(value) ||
+    !hasExactObjectKeys(value, ['status', 'dataset_version', 'dataset_export_digest']) ||
+    typeof value.status !== 'string' ||
+    (value.dataset_version !== null && typeof value.dataset_version !== 'string') ||
+    (value.dataset_export_digest !== null && typeof value.dataset_export_digest !== 'string')
+  ) {
+    throw new V2CatalogInputError('Model Artifact manifest Dataset lineage is invalid')
+  }
+  validateModelArtifactLineage(
+    parseModelArtifactDatasetLineageStatus(value.status),
+    value.dataset_version,
+    value.dataset_export_digest,
+  )
+}
+
+function validateModelArtifactManifestBaseModel(value: Prisma.JsonValue | undefined): void {
+  if (
+    !isPlainJsonObject(value) ||
+    !hasExactObjectKeys(value, ['reference', 'revision', 'binding_status']) ||
+    typeof value.reference !== 'string' ||
+    (value.revision !== null && typeof value.revision !== 'string') ||
+    typeof value.binding_status !== 'string'
+  ) {
+    throw new V2CatalogInputError('Model Artifact manifest base model is invalid')
+  }
+  validateModelArtifactBaseModel(
+    value.reference,
+    value.revision,
+    parseModelArtifactBaseModelBindingStatus(value.binding_status),
+  )
+}
+
+function validateModelArtifactTrainingSummary(value: Prisma.JsonValue | undefined): void {
+  const keys = [
+    'train_stage',
+    'tuner_type',
+    'lora_rank',
+    'lora_alpha',
+    'lora_dropout',
+    'num_train_epochs',
+    'max_steps',
+    'learning_rate',
+    'max_length',
+    'dtype',
+    'seed',
+    'redacted_fields_count',
+  ]
+  if (!isPlainJsonObject(value) || !hasExactObjectKeys(value, keys)) {
+    throw new V2CatalogInputError('Model Artifact training summary is invalid')
+  }
+  const optionalToken = (token: Prisma.JsonValue | undefined): boolean =>
+    token === null || (typeof token === 'string' && SAFE_EVALUATION_NAME.test(token))
+  const optionalFinite = (number: Prisma.JsonValue | undefined): boolean =>
+    number === null || (typeof number === 'number' && Number.isFinite(number))
+  const optionalInteger = (number: Prisma.JsonValue | undefined): boolean =>
+    number === null || (typeof number === 'number' && Number.isSafeInteger(number) && number > 0)
+  if (
+    !optionalToken(value.train_stage) ||
+    value.tuner_type !== 'lora' ||
+    !optionalInteger(value.lora_rank) ||
+    (typeof value.lora_rank === 'number' && value.lora_rank > 65_536) ||
+    !optionalFinite(value.lora_alpha) ||
+    (typeof value.lora_alpha === 'number' &&
+      (value.lora_alpha < 0 || value.lora_alpha > 1_000_000)) ||
+    !optionalFinite(value.lora_dropout) ||
+    (typeof value.lora_dropout === 'number' &&
+      (value.lora_dropout < 0 || value.lora_dropout > 1)) ||
+    !optionalFinite(value.num_train_epochs) ||
+    (typeof value.num_train_epochs === 'number' &&
+      (value.num_train_epochs <= 0 || value.num_train_epochs > 1_000_000)) ||
+    !optionalInteger(value.max_steps) ||
+    !optionalFinite(value.learning_rate) ||
+    (typeof value.learning_rate === 'number' &&
+      (value.learning_rate <= 0 || value.learning_rate > 1)) ||
+    !optionalInteger(value.max_length) ||
+    !optionalToken(value.dtype) ||
+    (value.seed !== null &&
+      (typeof value.seed !== 'number' || !Number.isSafeInteger(value.seed))) ||
+    typeof value.redacted_fields_count !== 'number' ||
+    !Number.isSafeInteger(value.redacted_fields_count) ||
+    value.redacted_fields_count < 0 ||
+    value.redacted_fields_count > 100_000
+  ) {
+    throw new V2CatalogInputError('Model Artifact training summary value is invalid')
+  }
+}
+
+function isPlainJsonObject(
+  value: Prisma.JsonValue | CatalogModelArtifactManifestV2 | undefined,
+): value is Record<string, Prisma.JsonValue> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function hasExactObjectKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value).sort()
+  const wanted = [...expected].sort()
+  return keys.length === wanted.length && keys.every((key, index) => key === wanted[index])
+}
+
+function containsForbiddenManifestString(value: Prisma.JsonValue | undefined): boolean {
+  if (typeof value === 'string') {
+    return hasControlCharacter(value) || CREDENTIAL_VALUE.test(value) || ABSOLUTE_PATH.test(value)
+  }
+  if (Array.isArray(value)) return value.some((item) => containsForbiddenManifestString(item))
+  if (value !== null && typeof value === 'object') {
+    return Object.values(value).some((item) => containsForbiddenManifestString(item))
+  }
+  return false
+}
+
+function isRfc3339UtcMilliseconds(value: string): boolean {
+  const time = Date.parse(value)
+  return Number.isFinite(time) && new Date(time).toISOString() === value
+}
+
+function sameModelArtifactManifestLineage(
+  manifest: CatalogModelArtifactManifestV2['dataset_lineage'],
+  status: CatalogModelArtifactRowV2['datasetLineageStatus'],
+  datasetVersion: string | null,
+  datasetExportDigest: string | null,
+): boolean {
+  return (
+    manifest.status === status &&
+    manifest.dataset_version === datasetVersion &&
+    manifest.dataset_export_digest === datasetExportDigest
+  )
 }
 
 function validateCreateEvaluationRun(input: CreateEvaluationRunV2): void {

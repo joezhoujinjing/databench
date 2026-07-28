@@ -225,6 +225,38 @@ export const V2_SWIFT_STUDIO_SESSION_ACTION_ERROR_RESPONSES = {
   413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Session action is too large'),
 } as const
 
+export const V2_SWIFT_STUDIO_OUTPUT_LIST_ERROR_RESPONSES = {
+  ...V2_SWIFT_STUDIO_SESSION_SHOW_ERROR_RESPONSES,
+  409: jsonResponseV2(ErrorResponse409V2Schema, 'Studio Session is not ready for output discovery'),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Studio output discovery is too large'),
+} as const
+
+export const V2_MODEL_ARTIFACT_IMPORT_CREATE_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed Model Artifact import request'),
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Studio Session was not found'),
+  409: jsonResponseV2(
+    ErrorResponse409V2Schema,
+    'Model Artifact import conflicts with existing state',
+  ),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Model Artifact import is too large'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Model Artifact import request'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_MODEL_ARTIFACT_SHOW_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Model Artifact or import was not found'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Model Artifact identifier'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_MODEL_ARTIFACT_LIST_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Model Artifact page request'),
+  ...dataFailureResponses,
+} as const
+
 export const V2_REF_LIST_ERROR_RESPONSES = {
   ...commonAuthRateResponses,
   422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Ref page request'),
@@ -292,6 +324,18 @@ export function binaryResponseV2(schema: z.ZodType, description: string) {
     headers: V2BinaryResponseHeadersSchema,
     content: {
       'application/x-ndjson': {
+        schema,
+      },
+    },
+  }
+}
+
+export function modelArtifactBinaryResponseV2(schema: z.ZodType, description: string) {
+  return {
+    description,
+    headers: V2BinaryResponseHeadersSchema,
+    content: {
+      'application/zstd': {
         schema,
       },
     },

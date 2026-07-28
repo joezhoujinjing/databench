@@ -4,10 +4,13 @@ import {
   hashV2DatasetIdentity,
   hashV2ExportFidelity,
   hashV2IdentityClaimKey,
+  hashV2ModelArtifactImportCreate,
   hashV2SwiftStudioSessionCreate,
+  type ModelArtifactImportCreateIdentityV1,
   type SwiftStudioSessionCreateIdentityV1,
   V2_IDENTITY_CLAIM_PROFILE,
   V2_IDENTITY_PROFILE,
+  V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '../index.js'
 
@@ -60,6 +63,20 @@ hashV2SwiftStudioSessionCreate(swiftStudioSessionIdentity)
 
 // @ts-expect-error Display-only Ref labels are not part of Session create identity.
 hashV2SwiftStudioSessionCreate({ ...swiftStudioSessionIdentity, display_ref: 'main' })
+
+const modelArtifactImportIdentity: ModelArtifactImportCreateIdentityV1 = {
+  model_artifact_import_create_profile: V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
+  namespace: '11111111-1111-4111-8111-111111111111',
+  studio_session_id: '22222222-2222-4222-8222-222222222222',
+  output_handle_digest: '0'.repeat(64),
+  artifact_kind: 'lora_adapter',
+  display_name: 'adapter',
+  base_model: { reference: 'Qwen/Qwen3-0.6B', revision: null },
+}
+hashV2ModelArtifactImportCreate(modelArtifactImportIdentity)
+
+// @ts-expect-error Mutable output paths are not part of the import identity.
+hashV2ModelArtifactImportCreate({ ...modelArtifactImportIdentity, output_path: '/workspace/out' })
 
 // @ts-expect-error Candidate claims cannot use a source-root profile and record seed.
 hashV2IdentityClaimKey({

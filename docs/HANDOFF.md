@@ -53,8 +53,12 @@
   REST/OpenAPI/Web 控制和 Train/RLHF/GRPO 动态 prefill；
   完整七业务面与全部原生 callback 保持不变。S2 production image 为
   `sha256:447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908`，non-GPU gate 已关闭，
-  GPU 状态继续 deferred，runtime 保持 disabled-by-default。当前进入 S3 LoRA immutable Model Artifact
-  import；证据与实时状态见 `docs/swift/STATUS.md`，S1 GPU 证据模板见
+  GPU 状态继续 deferred，runtime 保持 disabled-by-default。S3 已完成 output discovery、真实
+  ms-swift/PEFT LoRA 布局与 safetensors 验证、deterministic tar.zst、signed staging、conditional immutable
+  finalize、Artifact REST/Web/download，以及 Session close 后 retained Artifact；最终镜像为
+  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72`。当前进入 S4
+  Artifact → Deployment → EvalScope；owner 已再次确认 GPU 全部后置。证据与实时状态见
+  `docs/swift/STATUS.md`，S1 GPU 证据模板见
   `docs/swift/evidence/S1-GPU-STUDIO.md`。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。

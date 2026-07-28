@@ -6,8 +6,8 @@
 > 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports、Predictions、
 > Dashboard、Compare、Performance、Benchmarks 与安全 Viewer 已实现，完整 UI 功能迁移 gate 已关闭。
 > ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
-> deferred GPU gate。S2 exact Dataset 与单 active Session bridge 已完成 non-GPU gate；当前进入 S3
-> immutable LoRA Artifact，S4 Deployment 仍未实现。
+> deferred GPU gate。S2 exact Dataset 与单 active Session bridge、S3 immutable LoRA Artifact 已完成
+> non-GPU gate；当前进入 S4 Deployment + EvalScope。
 
 ## `third_party/ms-swift`
 
@@ -42,8 +42,10 @@ workers/swift-studio/
 │  ├─ config.py                 fixed root、ports、workspace、export limits 与版本契约
 │  ├─ errors.py                 bounded Provider error envelope
 │  ├─ sessions.py               exact export、atomic materialization、recovery 与 cleanup
+│  ├─ artifacts.py              LoRA discovery、safetensors 验证与 deterministic tar.zst
+│  ├─ artifact_imports.py       replayable exact staging upload 状态机
 │  └─ launcher.py               Provider + native Gradio PID 1 lifecycle
-└─ tests/                       config、readiness、surface/callback 与 45 个 Provider cases
+└─ tests/                       config、runtime、Session/Artifact 与 77 个 Provider cases
 
 deploy/swift-studio/
 ├─ Dockerfile                   digest/hash locked Linux/amd64 CUDA image
@@ -112,6 +114,7 @@ apps/api/
 │  │     ├─ transform-jobs.ts    fixed basic-clean submit/list/show/cancel/retry
 │  │     ├─ evaluations.ts       exact Dataset evaluation run create/list/show/transition
 │  │     ├─ swift-studio-sessions.ts exact Dataset Studio Session create/list/show/close
+│  │     ├─ model-artifacts.ts   output/import 与 immutable Artifact list/show/download
 │  │     ├─ openapi.ts          route schema helpers
 │  │     └─ transport.ts        streaming/error transport helpers
 │  └─ v2/
@@ -195,9 +198,9 @@ apps/web/
 │  │  ├─ ui-capability-manifest.json
 │  │  ├─ implemented-capabilities.json
 │  │  └─ fixtures/benchmarks-five-categories.json
-│  ├─ training/                 ADR 0018 S2；不复刻 Gradio 字段
-│  │  ├─ api/                   locked Provider runtime + generated Session REST adapters/hooks
-│  │  ├─ components/            Dataset/fidelity/Session create-poll-close 控制
+│  ├─ training/                 ADR 0018 S3；不复刻 Gradio 字段
+│  │  ├─ api/                   locked Provider runtime + generated Session/Artifact REST hooks
+│  │  ├─ components/            Dataset/Session、output import 与 Artifact library/detail/download
 │  │  ├─ domain/                fixed same-origin path 与 iframe boot contract
 │  │  └─ routes/studio.tsx      ready Session gate + loading/error/reconnect/fullscreen iframe shell
 │  ├─ v2/
@@ -272,6 +275,8 @@ src/
    ├─ revision/provenance/manifest/identity schemas
    ├─ transform/converter/projection contracts
    ├─ evaluation.ts             E2 run、metric、error、pagination 与 transition wire contract
+   ├─ swift-studio.ts           S2 exact Dataset Studio Session wire contract
+   ├─ model-artifact.ts         S3 output/import/immutable Artifact wire contract
    ├─ mcp.ts                    MCP tool/result contracts
    ├─ reader/raw-json/json-value verification
    ├─ contracts.type-test.ts
@@ -338,13 +343,14 @@ src/
    ├─ s3-adapter.ts
    ├─ temp-store.ts             shared bounded temp admission for canonical, draft and Worker spools
    ├─ worker-staging.ts · worker-staging-keys.ts
+   ├─ model-artifact-store.ts · model-artifact-keys.ts
    ├─ config.ts
    └─ index.ts
 ```
 
 管理 `objects/v2/` immutable artifacts/manifests，以及不进入 canonical identity 的
-`staging/worker/v1/` exact temporary objects。canonical 写入和 staging input 均 conditional
-create；staging 只允许 attempt-scoped exact read/delete，禁止 prefix delete。
+`staging/worker/v1/` 与 `staging/swift-artifact/v1/` exact temporary objects。canonical 写入和 staging
+input 均 conditional create；staging 只允许 attempt-scoped exact read/delete，禁止 prefix delete。
 
 ## `packages/catalog`
 
@@ -358,8 +364,8 @@ src/
    └─ index.ts
 ```
 
-只依赖 Prisma/Postgres。v2 snapshots、layouts、identity claims、transform runs、evaluation runs、record
-lineage 与 refs 的数据模型在根 `prisma/schema.prisma`。
+只依赖 Prisma/Postgres。v2 snapshots、layouts、identity claims、transform/evaluation runs、Swift Studio
+Sessions、Model Artifact imports/artifacts、record lineage 与 refs 的数据模型在根 `prisma/schema.prisma`。
 
 ## `packages/workspace`
 
@@ -372,6 +378,8 @@ src/
 │  └─ generated/
 └─ v2/
    ├─ workspace.ts · batch-transform.ts · evaluation.ts
+   ├─ swift-studio.ts · swift-studio-provider.ts
+   ├─ model-artifact.ts
    ├─ identity-allocator.ts
    ├─ canonical-draft-identity.ts
    ├─ canonical-draft-materializer.ts
@@ -383,7 +391,8 @@ src/
 
 这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
 deterministic identity/materialize/import、persist、transform、CAS ref、record/dataset lineage、
-audit、converter inspect/export、evaluation run exact binding/状态机与取消语义。
+audit、converter inspect/export、evaluation run exact binding/状态机与取消语义，以及 Swift Studio Session、
+Model Artifact import/finalize/download 编排。
 
 ## Tooling 与根目录
 
@@ -411,7 +420,9 @@ prisma/
    ├─ 0007_transform_jobs_v2/
    ├─ 0008_worker_staging_v1/
    ├─ 0009_transform_job_result_ref/
-   └─ 0010_evaluation_runs_v2/
+   ├─ 0010_evaluation_runs_v2/
+   ├─ 0011_swift_studio_sessions_v2/
+   └─ 0012_model_artifacts_v2/
 ```
 
 EvalScope E0 另有：
@@ -540,7 +551,7 @@ MCP runtime 与真实 Excel fixture 已按上文实际落点登记。离线配�
 docs/swift/
 ├─ TECHNICAL-DESIGN.md   完整原生 Gradio、四桥、Session/Artifact 与演进边界
 ├─ PLAN.md               S0-S4 主计划，S5/S6 后续扩展
-└─ STATUS.md             当前真实状态；S3 current，S1/S2 GPU deferred
+└─ STATUS.md             当前真实状态；S4 current，S1-S3 GPU deferred
 ```
 
 计划中的 Web/API/Provider/deploy/DB 文件只有在对应 Step 实现并过 gate 后，才能加入本文的当前文件级

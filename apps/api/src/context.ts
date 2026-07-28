@@ -11,6 +11,7 @@ export type ApiV2Workspace = Pick<
   | 'completeEvaluationRun'
   | 'createEvaluationRun'
   | 'createSwiftStudioSession'
+  | 'createModelArtifactImport'
   | 'createBasicCleanJob'
   | 'deleteRef'
   | 'describeDataset'
@@ -18,6 +19,8 @@ export type ApiV2Workspace = Pick<
   | 'getConverter'
   | 'getEvaluationRun'
   | 'getSwiftStudioSession'
+  | 'getModelArtifactImport'
+  | 'getModelArtifact'
   | 'getDeletedRef'
   | 'getRecordPage'
   | 'getRecordView'
@@ -29,6 +32,8 @@ export type ApiV2Workspace = Pick<
   | 'listDeletedRefs'
   | 'listEvaluationRuns'
   | 'listSwiftStudioSessions'
+  | 'listSwiftStudioOutputs'
+  | 'listModelArtifacts'
   | 'listRefs'
   | 'listTransforms'
   | 'listTransformJobs'
@@ -43,6 +48,7 @@ export type ApiV2Workspace = Pick<
   | 'retryTransformJob'
   | 'startEvaluationRun'
   | 'closeSwiftStudioSession'
+  | 'downloadModelArtifact'
 >
 
 export interface ApiVariables {

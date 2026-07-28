@@ -8,15 +8,20 @@ import {
   DeleteBucketCommand,
   DeleteObjectsCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   type PutObjectCommandInput,
   S3Client,
 } from '@aws-sdk/client-s3'
 import { V2Dataset } from '@databench/engine'
+import { createArtifactHasher } from '@databench/hashing'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import {
   FileBackedV2Store,
+  MODEL_ARTIFACT_ARCHIVE_MEDIA_TYPE,
+  ModelArtifactStoreV1,
   S3ConditionalObjectStoreV2,
   type S3ConditionalObjectStoreV2Config,
+  V2TempStore,
   v2ObjectKeys,
 } from '../src/index.js'
 
@@ -150,6 +155,85 @@ describe.runIf(runMinio)('V2 Store against real MinIO', () => {
       await Promise.allSettled([first.discard(firstPrepared), second.discard(secondPrepared)])
     }
   })
+
+  test('two Model Artifact imports race without replacing immutable archive bytes', async () => {
+    const firstClient = createRecordingClient('artifact-one', recordedPuts)
+    const secondClient = createRecordingClient('artifact-two', recordedPuts)
+    clients.push(firstClient, secondClient)
+    const firstAdapter = createAdapter(firstClient)
+    const secondAdapter = createAdapter(secondClient)
+    const first = new ModelArtifactStoreV1({
+      objectStore: firstAdapter,
+      tempStore: new V2TempStore({
+        tempRoot: join(temporaryParent, 'artifact-one'),
+        safetyMarginBytes: 0,
+      }),
+      signedUrlTtlMs: 60_000,
+      maxBytes: 1024 * 1024,
+    })
+    const second = new ModelArtifactStoreV1({
+      objectStore: secondAdapter,
+      tempStore: new V2TempStore({
+        tempRoot: join(temporaryParent, 'artifact-two'),
+        safetyMarginBytes: 0,
+      }),
+      signedUrlTtlMs: 60_000,
+      maxBytes: 1024 * 1024,
+    })
+    const firstImportId = randomUUID()
+    const secondImportId = randomUUID()
+    const [firstTarget, secondTarget] = await Promise.all([
+      first.createStagingTarget(firstImportId),
+      second.createStagingTarget(secondImportId),
+    ])
+    const archive = Buffer.from('same deterministic model artifact archive')
+    const identity = {
+      archiveDigest: artifactDigest(archive),
+      archiveSizeBytes: archive.byteLength,
+    }
+    await Promise.all([
+      admin.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: firstTarget.key,
+          Body: archive,
+          ContentLength: archive.byteLength,
+          ContentType: MODEL_ARTIFACT_ARCHIVE_MEDIA_TYPE,
+        }),
+      ),
+      admin.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: secondTarget.key,
+          Body: archive,
+          ContentLength: archive.byteLength,
+          ContentType: MODEL_ARTIFACT_ARCHIVE_MEDIA_TYPE,
+        }),
+      ),
+    ])
+
+    const publications = await Promise.all([
+      first.finalizeStaging(firstImportId, identity),
+      second.finalizeStaging(secondImportId, identity),
+    ])
+    expect(publications[0]?.objectKey).toBe(publications[1]?.objectKey)
+    expect(publications.filter((publication) => publication.created)).toHaveLength(1)
+    expect(publications.filter((publication) => !publication.created)).toHaveLength(1)
+
+    const destination = new CollectingWritable()
+    await expect(
+      firstAdapter.download({ key: publications[0]?.objectKey ?? '', destination }),
+    ).resolves.toBe('downloaded')
+    expect(destination.bytes()).toEqual(archive)
+    const artifactPuts = recordedPuts.filter(
+      (put) =>
+        (put.client === 'artifact-one' || put.client === 'artifact-two') &&
+        put.input.Key?.startsWith('objects/v2/model-artifact-v1/') === true,
+    )
+    expect(artifactPuts).toHaveLength(2)
+    expect(artifactPuts.every((put) => put.input.IfNoneMatch === '*')).toBe(true)
+    expect(artifactPuts.map((put) => put.status).sort()).toEqual([200, 412])
+  })
 })
 
 class CollectingWritable extends Writable {
@@ -259,6 +343,12 @@ function makeDataset(): V2Dataset {
 
 function recordJson(dataset: V2Dataset): string[] {
   return [...dataset.records()].map((revision) => revision.record_json)
+}
+
+function artifactDigest(bytes: Uint8Array): string {
+  const hasher = createArtifactHasher()
+  hasher.update(bytes)
+  return hasher.digestHex()
 }
 
 async function deleteAllObjects(client: S3Client, bucketName: string): Promise<void> {

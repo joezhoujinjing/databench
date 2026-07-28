@@ -451,3 +451,200 @@ export type TransitionSwiftStudioSessionV2 =
       readonly status: 'failed'
       readonly failure: CatalogSwiftStudioSessionFailureV2
     }
+
+export type CatalogModelArtifactKindV2 = 'lora_adapter'
+export type CatalogModelArtifactFormatV2 = 'swift-lora-adapter-v1'
+export type CatalogModelArtifactArchiveFormatV2 = 'deterministic-tar-zst-v1'
+export type CatalogModelArtifactDatasetLineageStatusV2 =
+  | 'verified'
+  | 'external_or_unverified'
+  | 'not_applicable'
+export type CatalogModelArtifactBaseModelBindingStatusV2 = 'verified' | 'declared' | 'unresolved'
+export type CatalogModelArtifactImportStatusV2 =
+  | 'requested'
+  | 'staging'
+  | 'finalizing'
+  | 'completed'
+  | 'failed'
+
+export interface CatalogModelArtifactImportFailureV2 {
+  readonly phase: string
+  readonly code: string
+  readonly message: string
+}
+
+export interface CatalogModelArtifactManifestFileV2 {
+  readonly path: string
+  readonly digest: string
+  readonly size_bytes: number
+}
+
+export interface CatalogModelArtifactDatasetLineageV2 {
+  readonly status: CatalogModelArtifactDatasetLineageStatusV2
+  readonly dataset_version: string | null
+  readonly dataset_export_digest: string | null
+}
+
+export interface CatalogModelArtifactBaseModelV2 {
+  readonly reference: string
+  readonly revision: string | null
+  readonly binding_status: CatalogModelArtifactBaseModelBindingStatusV2
+}
+
+export interface CatalogModelArtifactTrainingSummaryV2 {
+  readonly train_stage: string | null
+  readonly tuner_type: 'lora'
+  readonly lora_rank: number | null
+  readonly lora_alpha: number | null
+  readonly lora_dropout: number | null
+  readonly num_train_epochs: number | null
+  readonly max_steps: number | null
+  readonly learning_rate: number | null
+  readonly max_length: number | null
+  readonly dtype: string | null
+  readonly seed: number | null
+  readonly redacted_fields_count: number
+}
+
+export interface CatalogModelArtifactManifestV2 {
+  readonly manifest_version: 'model-artifact-manifest-v1'
+  readonly artifact_kind: CatalogModelArtifactKindV2
+  readonly artifact_format: CatalogModelArtifactFormatV2
+  readonly archive_format: CatalogModelArtifactArchiveFormatV2
+  readonly archive_digest: string
+  readonly archive_size_bytes: number
+  readonly output_snapshot_digest: string
+  readonly files: readonly CatalogModelArtifactManifestFileV2[]
+  readonly source: {
+    readonly studio_session_id: string
+    readonly upstream_commit: string
+    readonly image_digest: string
+  }
+  readonly dataset_lineage: CatalogModelArtifactDatasetLineageV2
+  readonly base_model: CatalogModelArtifactBaseModelV2
+  readonly training_summary: CatalogModelArtifactTrainingSummaryV2
+  readonly created_at: string
+  readonly created_by: 'databench'
+}
+
+export interface CreateModelArtifactImportV2 {
+  readonly namespaceId: string
+  readonly createDigest: string
+  readonly studioSessionId: string
+  readonly outputHandleDigest: string
+  readonly artifactKind: CatalogModelArtifactKindV2
+  readonly displayName: string
+  readonly baseModelReference: string
+  readonly baseModelRevision: string | null
+}
+
+export interface CatalogModelArtifactImportRowV2 extends CreateModelArtifactImportV2 {
+  readonly id: string
+  readonly status: CatalogModelArtifactImportStatusV2
+  readonly providerImportId: string | null
+  readonly outputSnapshotDigest: string | null
+  readonly stagingObjectKey: string | null
+  readonly archiveDigest: string | null
+  readonly archiveSizeBytes: bigint | null
+  readonly manifestDigest: string | null
+  readonly manifest: CatalogModelArtifactManifestV2 | null
+  readonly datasetLineageStatus: CatalogModelArtifactDatasetLineageStatusV2 | null
+  readonly datasetVersion: string | null
+  readonly datasetExportDigest: string | null
+  readonly baseModelBindingStatus: CatalogModelArtifactBaseModelBindingStatusV2 | null
+  readonly artifactId: string | null
+  readonly failure: CatalogModelArtifactImportFailureV2 | null
+  readonly createdAt: Date
+  readonly stagingAt: Date | null
+  readonly finalizingAt: Date | null
+  readonly completedAt: Date | null
+  readonly failedAt: Date | null
+  readonly stagingCleanedAt: Date | null
+  readonly updatedAt: Date
+}
+
+export interface CatalogModelArtifactImportCreateResultV2 {
+  readonly row: CatalogModelArtifactImportRowV2
+  readonly created: boolean
+}
+
+export type TransitionModelArtifactImportV2 =
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly status: 'staging'
+      readonly providerImportId: string
+      readonly outputSnapshotDigest: string
+    }
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly status: 'finalizing'
+      readonly stagingObjectKey: string
+      readonly archiveDigest: string
+      readonly archiveSizeBytes: bigint
+      readonly manifestDigest: string
+      readonly manifest: CatalogModelArtifactManifestV2
+      readonly datasetLineageStatus: CatalogModelArtifactDatasetLineageStatusV2
+      readonly datasetVersion: string | null
+      readonly datasetExportDigest: string | null
+      readonly baseModelBindingStatus: CatalogModelArtifactBaseModelBindingStatusV2
+    }
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly status: 'failed'
+      readonly failure: CatalogModelArtifactImportFailureV2
+    }
+
+export interface FinalizeModelArtifactImportV2 {
+  readonly namespaceId: string
+  readonly id: string
+  readonly objectLocator: string
+}
+
+export interface CatalogModelArtifactRowV2 {
+  readonly id: string
+  readonly namespaceId: string
+  readonly displayName: string
+  readonly artifactKind: CatalogModelArtifactKindV2
+  readonly artifactFormat: CatalogModelArtifactFormatV2
+  readonly archiveFormat: CatalogModelArtifactArchiveFormatV2
+  readonly archiveDigest: string
+  readonly archiveSizeBytes: bigint
+  readonly objectLocator: string
+  readonly manifestDigest: string
+  readonly manifest: CatalogModelArtifactManifestV2
+  readonly sourceKind: 'swift_studio_session'
+  readonly sourceSessionId: string
+  readonly sourceImportId: string
+  readonly datasetLineageStatus: CatalogModelArtifactDatasetLineageStatusV2
+  readonly datasetVersion: string | null
+  readonly datasetExportDigest: string | null
+  readonly baseModelReference: string
+  readonly baseModelRevision: string | null
+  readonly baseModelBindingStatus: CatalogModelArtifactBaseModelBindingStatusV2
+  readonly upstreamCommit: string
+  readonly imageDigest: string
+  readonly createdAt: Date
+}
+
+export interface CatalogModelArtifactFinalizeResultV2 {
+  readonly artifactImport: CatalogModelArtifactImportRowV2
+  readonly artifact: CatalogModelArtifactRowV2
+}
+
+export interface CatalogModelArtifactCursorV2 {
+  readonly createdAt: Date
+  readonly id: string
+}
+
+export interface CatalogModelArtifactPageV2 {
+  readonly rows: readonly CatalogModelArtifactRowV2[]
+  readonly nextCursor: CatalogModelArtifactCursorV2 | null
+}
+
+export interface CatalogModelArtifactListFilterV2 {
+  readonly datasetVersion: string | null
+  readonly artifactKind: CatalogModelArtifactKindV2 | null
+}

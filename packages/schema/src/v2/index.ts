@@ -351,6 +351,7 @@ export {
   type McpValidationPreviewResult,
   McpValidationPreviewResultSchema,
 } from './mcp.js'
+export * from './model-artifact.js'
 export {
   type CompatiblePartV2,
   FileDataPartSchema as FileDataPartV2Schema,

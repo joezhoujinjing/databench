@@ -3,6 +3,8 @@ import { canonicalJsonV2 } from '@databench/hashing'
 import {
   EvaluationRunIdV2Schema,
   EvaluationRunStatusV2Schema,
+  ModelArtifactIdV2Schema,
+  ModelArtifactKindV2Schema,
   parseRawJsonV2,
   RefNameV2Schema,
   SwiftStudioSessionIdV2Schema,
@@ -88,6 +90,20 @@ export interface V2SwiftStudioSessionCursorState {
 interface SwiftStudioSessionCursorPayloadV2 extends V2SwiftStudioSessionCursorState {
   readonly v: typeof CURSOR_VERSION
   readonly kind: 'swift_studio_sessions'
+  readonly scope: string
+  readonly expires_at: number
+}
+
+export interface V2ModelArtifactCursorState {
+  readonly created_at: string
+  readonly id: string
+  readonly dataset_version: string | null
+  readonly artifact_kind: string | null
+}
+
+interface ModelArtifactCursorPayloadV2 extends V2ModelArtifactCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'model_artifacts'
   readonly scope: string
   readonly expires_at: number
 }
@@ -295,6 +311,60 @@ export class V2CursorCodec {
     }
   }
 
+  encodeModelArtifact(namespace: string, stateInput: V2ModelArtifactCursorState): string {
+    const state = validateModelArtifactState(stateInput)
+    const payload: ModelArtifactCursorPayloadV2 = {
+      v: CURSOR_VERSION,
+      kind: 'model_artifacts',
+      scope: this.#scope(namespace, 'model_artifacts'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    }
+    const bytes = encoder.encode(canonicalJsonV2(payload))
+    return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
+  }
+
+  decodeModelArtifact(
+    cursor: string,
+    namespace: string,
+    datasetVersion: string | null,
+    artifactKind: string | null,
+  ): Readonly<V2ModelArtifactCursorState> {
+    try {
+      if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
+        throw new Error('cursor text size is invalid')
+      }
+      const parts = cursor.split('.')
+      if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('malformed cursor')
+      const bytes = decodeBase64Url(parts[0])
+      if (bytes.byteLength === 0 || bytes.byteLength > CURSOR_MAX_BYTES) {
+        throw new Error('cursor payload size is invalid')
+      }
+      const signature = decodeBase64Url(parts[1])
+      const expected = this.#sign(bytes)
+      if (signature.byteLength !== expected.byteLength || !timingSafeEqual(signature, expected)) {
+        throw new Error('cursor signature is invalid')
+      }
+      const value = parseRawJsonV2(bytes, { maxBytes: CURSOR_MAX_BYTES, maxDepth: 4 })
+      if (
+        !isModelArtifactCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'model_artifacts') ||
+        value.dataset_version !== datasetVersion ||
+        value.artifact_kind !== artifactKind ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateModelArtifactState(value)
+    } catch {
+      throw new ValidationError('Invalid or expired V2 Model Artifact cursor', {
+        issues: [
+          { path: '/cursor', line: null, code: 'invalid_cursor', message: 'Invalid cursor' },
+        ],
+      })
+    }
+  }
+
   #decodeRef(cursor: string, namespace: string, kind: RefCursorKindV2): string {
     try {
       if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
@@ -412,7 +482,8 @@ export class V2CursorCodec {
       | 'lineage'
       | 'transform_jobs'
       | 'evaluation_runs'
-      | 'swift_studio_sessions',
+      | 'swift_studio_sessions'
+      | 'model_artifacts',
   ): string {
     return createHmac('sha256', this.#key)
       .update(canonicalJsonV2({ kind: `databench-v2-${kind}-cursor-scope`, namespace }))
@@ -519,6 +590,24 @@ function isSwiftStudioSessionCursorPayload(
   )
 }
 
+function isModelArtifactCursorPayload(value: unknown): value is ModelArtifactCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 8 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'model_artifacts' &&
+    typeof record.scope === 'string' &&
+    typeof record.created_at === 'string' &&
+    typeof record.id === 'string' &&
+    (record.dataset_version === null || typeof record.dataset_version === 'string') &&
+    (record.artifact_kind === null || typeof record.artifact_kind === 'string') &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
 function validateTransformJobState(
   input: V2TransformJobCursorState,
 ): Readonly<V2TransformJobCursorState> {
@@ -579,6 +668,32 @@ function validateSwiftStudioSessionState(
     id: SwiftStudioSessionIdV2Schema.parse(input.id),
     dataset_version: datasetVersion,
     status,
+  })
+}
+
+function validateModelArtifactState(
+  input: V2ModelArtifactCursorState,
+): Readonly<V2ModelArtifactCursorState> {
+  const timestamp = new Date(input.created_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.created_at) {
+    throw new TypeError('V2 Model Artifact cursor timestamp is invalid')
+  }
+  const datasetVersion =
+    input.dataset_version === null
+      ? null
+      : DIGEST_HEX.test(input.dataset_version)
+        ? input.dataset_version
+        : null
+  if (input.dataset_version !== null && datasetVersion === null) {
+    throw new TypeError('V2 Model Artifact cursor Dataset filter is invalid')
+  }
+  const artifactKind =
+    input.artifact_kind === null ? null : ModelArtifactKindV2Schema.parse(input.artifact_kind)
+  return Object.freeze({
+    created_at: timestamp.toISOString(),
+    id: ModelArtifactIdV2Schema.parse(input.id),
+    dataset_version: datasetVersion,
+    artifact_kind: artifactKind,
   })
 }
 

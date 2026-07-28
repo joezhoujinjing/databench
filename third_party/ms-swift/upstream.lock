@@ -46,7 +46,7 @@
     },
     "image_repository": "databench/swift-studio",
     "image_tag": "4.4.2",
-    "image_id": "sha256:447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908",
+    "image_id": "sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72",
     "image_validation_status": "cpu-gateway-browser-green-gpu-pending",
     "python": "3.11",
     "cuda": "12.8.1",

@@ -5,6 +5,8 @@ export {
 } from './config.js'
 export * from './contracts.js'
 export { type V2ObjectKeys, v2ObjectKeys } from './keys.js'
+export * from './model-artifact-keys.js'
+export * from './model-artifact-store.js'
 export { createV2ObjectStore } from './object-store.js'
 export {
   DEFAULT_V2_OSS_REQUEST_TIMEOUT_MS,

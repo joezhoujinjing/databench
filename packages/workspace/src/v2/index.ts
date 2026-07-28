@@ -38,6 +38,7 @@ export {
   DEFAULT_V2_CURSOR_TTL_MS,
   V2CursorCodec,
   type V2CursorCodecOptions,
+  type V2ModelArtifactCursorState,
   type V2SwiftStudioSessionCursorState,
 } from './cursor.js'
 export { evaluationBenchmarkFromPlanV2, evaluationRunFromCatalogV2 } from './evaluation.js'
@@ -55,13 +56,20 @@ export {
   registrationFromCommittedDataset,
 } from './mappings.js'
 export {
+  modelArtifactFromCatalogV2,
+  modelArtifactImportFromCatalogV2,
+  modelArtifactManifestDigestV2,
+} from './model-artifact.js'
+export {
   SWIFT_STUDIO_PATH_V2,
+  swiftStudioProviderArtifactImportIdForDigestV2,
   swiftStudioProviderSessionIdForDigestV2,
   swiftStudioSessionFromCatalogV2,
 } from './swift-studio.js'
 export {
   HttpSwiftStudioProvider,
   type HttpSwiftStudioProviderOptions,
+  SwiftStudioProviderConflictError,
   type SwiftStudioProviderSessionV2,
   type SwiftStudioProviderV2,
 } from './swift-studio-provider.js'
@@ -73,6 +81,7 @@ export {
 } from './transform-semaphore.js'
 export {
   type ExportStreamV2,
+  type ModelArtifactDownloadV2,
   type PostTrainingV2CapabilityOptions,
   type PostTrainingV2RuntimeCapability,
   postTrainingV2Capability,

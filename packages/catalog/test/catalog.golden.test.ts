@@ -74,6 +74,8 @@ beforeAll(() => {
 })
 
 beforeEach(async () => {
+  await prisma.v2ModelArtifact.deleteMany()
+  await prisma.v2ModelArtifactImport.deleteMany()
   await prisma.v2SwiftStudioSession.deleteMany()
   await prisma.v2EvaluationRun.deleteMany()
   await prisma.v2RecordParentEdge.deleteMany()
@@ -142,6 +144,53 @@ function swiftStudioSessionInput(
     upstreamCommit: 'c'.repeat(40),
     imageDigest: 'd'.repeat(64),
     runtimeCapabilityDigest: 'e'.repeat(64),
+  }
+}
+
+function modelArtifactManifest(studioSessionId: string) {
+  return {
+    manifest_version: 'model-artifact-manifest-v1' as const,
+    artifact_kind: 'lora_adapter' as const,
+    artifact_format: 'swift-lora-adapter-v1' as const,
+    archive_format: 'deterministic-tar-zst-v1' as const,
+    archive_digest: '4'.repeat(64),
+    archive_size_bytes: 1_024,
+    output_snapshot_digest: '3'.repeat(64),
+    files: [
+      { path: 'adapter_config.json', digest: '1'.repeat(64), size_bytes: 128 },
+      { path: 'adapter_model.safetensors', digest: '2'.repeat(64), size_bytes: 896 },
+    ],
+    source: {
+      studio_session_id: studioSessionId,
+      upstream_commit: 'c'.repeat(40),
+      image_digest: 'd'.repeat(64),
+    },
+    dataset_lineage: {
+      status: 'verified' as const,
+      dataset_version: fixtureVersion('alpha'),
+      dataset_export_digest: 'f'.repeat(64),
+    },
+    base_model: {
+      reference: 'Qwen/Qwen3-0.6B',
+      revision: '0123456789abcdef',
+      binding_status: 'verified' as const,
+    },
+    training_summary: {
+      train_stage: 'sft',
+      tuner_type: 'lora' as const,
+      lora_rank: 8,
+      lora_alpha: 16,
+      lora_dropout: 0.05,
+      num_train_epochs: null,
+      max_steps: 5,
+      learning_rate: 0.0001,
+      max_length: 128,
+      dtype: 'bfloat16',
+      seed: 42,
+      redacted_fields_count: 3,
+    },
+    created_at: '2026-07-29T00:00:00.000Z',
+    created_by: 'databench' as const,
   }
 }
 
@@ -1934,6 +1983,283 @@ describe('V2Catalog Swift Studio Sessions', () => {
       4 * 60 * 60 * 1_000,
     )
     expect(current?.preparationOwnerToken === prepared.preparationOwnerToken).toBe(renewed)
+  })
+})
+
+describe('V2Catalog LoRA Model Artifacts', () => {
+  async function readyStudioSession() {
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const { row: preparing } = await v2Catalog.createOrReadSwiftStudioSession(
+      swiftStudioSessionInput(namespaceId),
+    )
+    const ready = await v2Catalog.transitionSwiftStudioSession({
+      namespaceId,
+      id: preparing.id,
+      preparationOwnerToken: preparing.preparationOwnerToken,
+      status: 'ready',
+      exportDigest: 'f'.repeat(64),
+      exportSizeBytes: 4_096n,
+    })
+    if (!ready) throw new Error('Studio Session did not become ready')
+    return { namespaceId, session: ready }
+  }
+
+  test('replays one import identity and atomically finalizes an immutable Artifact', async () => {
+    const { namespaceId, session } = await readyStudioSession()
+    const create = {
+      namespaceId,
+      createDigest: '0'.repeat(64),
+      studioSessionId: session.id,
+      outputHandleDigest: '1'.repeat(64),
+      artifactKind: 'lora_adapter' as const,
+      displayName: 'customer-service-lora',
+      baseModelReference: 'Qwen/Qwen3-0.6B',
+      baseModelRevision: '0123456789abcdef',
+    }
+    const creates = await Promise.all(
+      Array.from({ length: 16 }, () => v2Catalog.createOrReadModelArtifactImport(create)),
+    )
+    expect(new Set(creates.map((result) => result.row.id))).toHaveLength(1)
+    expect(creates.filter((result) => result.created)).toHaveLength(1)
+    const requested = creates[0]?.row
+    if (!requested) throw new Error('Model Artifact import was not created')
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: session.id,
+        status: 'closing',
+      }),
+    ).rejects.toMatchObject({ reason: 'invalid_transition', status: 'ready' })
+
+    const stagingInput = {
+      namespaceId,
+      id: requested.id,
+      status: 'staging' as const,
+      providerImportId: `swai_${'A'.repeat(32)}`,
+      outputSnapshotDigest: '3'.repeat(64),
+    }
+    await expect(v2Catalog.transitionModelArtifactImport(stagingInput)).resolves.toMatchObject({
+      status: 'staging',
+    })
+    await expect(v2Catalog.transitionModelArtifactImport(stagingInput)).resolves.toMatchObject({
+      status: 'staging',
+    })
+
+    const finalizingInput = {
+      namespaceId,
+      id: requested.id,
+      status: 'finalizing' as const,
+      stagingObjectKey: `staging/swift-artifact/v1/${requested.id}/archive.tar.zst`,
+      archiveDigest: '4'.repeat(64),
+      archiveSizeBytes: 1_024n,
+      manifestDigest: '5'.repeat(64),
+      manifest: modelArtifactManifest(session.id),
+      datasetLineageStatus: 'verified' as const,
+      datasetVersion: fixtureVersion('alpha'),
+      datasetExportDigest: 'f'.repeat(64),
+      baseModelBindingStatus: 'verified' as const,
+    }
+    await expect(v2Catalog.transitionModelArtifactImport(finalizingInput)).resolves.toMatchObject({
+      status: 'finalizing',
+      archiveDigest: '4'.repeat(64),
+    })
+    await expect(v2Catalog.transitionModelArtifactImport(stagingInput)).resolves.toMatchObject({
+      status: 'finalizing',
+    })
+    const objectLocator = `objects/v2/model-artifact-v1/44/${'4'.repeat(64)}.tar.zst`
+    const completed = await v2Catalog.finalizeModelArtifactImport({
+      namespaceId,
+      id: requested.id,
+      objectLocator,
+    })
+    expect(completed).toMatchObject({
+      artifactImport: { status: 'completed' },
+      artifact: {
+        artifactKind: 'lora_adapter',
+        artifactFormat: 'swift-lora-adapter-v1',
+        archiveFormat: 'deterministic-tar-zst-v1',
+        archiveDigest: '4'.repeat(64),
+        datasetLineageStatus: 'verified',
+        datasetVersion: fixtureVersion('alpha'),
+      },
+    })
+    await expect(
+      v2Catalog.finalizeModelArtifactImport({
+        namespaceId,
+        id: requested.id,
+        objectLocator,
+      }),
+    ).resolves.toMatchObject({
+      artifactImport: { id: requested.id, status: 'completed' },
+      artifact: { id: completed?.artifact.id },
+    })
+    const cleaned = await v2Catalog.markModelArtifactImportStagingCleaned(namespaceId, requested.id)
+    expect(cleaned).toMatchObject({ status: 'completed' })
+    expect(cleaned?.stagingCleanedAt).toBeInstanceOf(Date)
+    await expect(
+      v2Catalog.markModelArtifactImportStagingCleaned(namespaceId, requested.id),
+    ).resolves.toMatchObject({ stagingCleanedAt: cleaned?.stagingCleanedAt })
+    await expect(
+      v2Catalog.getModelArtifact(namespaceId, completed?.artifact.id ?? ''),
+    ).resolves.toMatchObject({ archiveDigest: '4'.repeat(64) })
+    await expect(
+      v2Catalog.listModelArtifacts(
+        namespaceId,
+        { datasetVersion: fixtureVersion('alpha'), artifactKind: 'lora_adapter' },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({ rows: [{ id: completed?.artifact.id }], nextCursor: null })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: session.id,
+        status: 'closing',
+      }),
+    ).resolves.toMatchObject({ status: 'closing' })
+    await expect(
+      v2Catalog.transitionSwiftStudioSession({
+        namespaceId,
+        id: session.id,
+        status: 'closed',
+      }),
+    ).resolves.toMatchObject({ status: 'closed' })
+    await expect(v2Catalog.createOrReadModelArtifactImport(create)).resolves.toMatchObject({
+      created: false,
+      row: { id: requested.id, status: 'completed' },
+    })
+    await expect(
+      v2Catalog.createOrReadModelArtifactImport({
+        ...create,
+        createDigest: 'a'.repeat(64),
+        outputHandleDigest: 'b'.repeat(64),
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+  })
+
+  test('keeps failed imports terminal and rejects unverified Dataset inheritance', async () => {
+    const { namespaceId, session } = await readyStudioSession()
+    const { row } = await v2Catalog.createOrReadModelArtifactImport({
+      namespaceId,
+      createDigest: '6'.repeat(64),
+      studioSessionId: session.id,
+      outputHandleDigest: '7'.repeat(64),
+      artifactKind: 'lora_adapter',
+      displayName: 'failed-lora',
+      baseModelReference: 'Qwen/Qwen3-0.6B',
+      baseModelRevision: null,
+    })
+    const failure = {
+      namespaceId,
+      id: row.id,
+      status: 'failed' as const,
+      failure: { phase: 'provider', code: 'archive_failed', message: 'archive failed safely' },
+    }
+    await expect(v2Catalog.transitionModelArtifactImport(failure)).resolves.toMatchObject({
+      status: 'failed',
+    })
+    await expect(
+      v2Catalog.markModelArtifactImportStagingCleaned(namespaceId, row.id),
+    ).resolves.toMatchObject({ status: 'failed', stagingCleanedAt: expect.any(Date) })
+    await expect(v2Catalog.transitionModelArtifactImport(failure)).resolves.toMatchObject({
+      status: 'failed',
+    })
+    await expect(
+      v2Catalog.transitionModelArtifactImport({
+        ...failure,
+        failure: { ...failure.failure, message: 'different terminal body' },
+      }),
+    ).rejects.toThrow()
+
+    const { row: another } = await v2Catalog.createOrReadModelArtifactImport({
+      namespaceId,
+      createDigest: '8'.repeat(64),
+      studioSessionId: session.id,
+      outputHandleDigest: '9'.repeat(64),
+      artifactKind: 'lora_adapter',
+      displayName: 'unverified-lora',
+      baseModelReference: 'Qwen/Qwen3-0.6B',
+      baseModelRevision: 'main',
+    })
+    await v2Catalog.transitionModelArtifactImport({
+      namespaceId,
+      id: another.id,
+      status: 'staging',
+      providerImportId: `swai_${'B'.repeat(32)}`,
+      outputSnapshotDigest: '3'.repeat(64),
+    })
+    await expect(
+      v2Catalog.transitionModelArtifactImport({
+        namespaceId,
+        id: another.id,
+        status: 'finalizing',
+        stagingObjectKey: `staging/swift-artifact/v1/${another.id}/archive.tar.zst`,
+        archiveDigest: '4'.repeat(64),
+        archiveSizeBytes: 1_024n,
+        manifestDigest: '5'.repeat(64),
+        manifest: modelArtifactManifest(session.id),
+        datasetLineageStatus: 'external_or_unverified',
+        datasetVersion: fixtureVersion('alpha'),
+        datasetExportDigest: 'f'.repeat(64),
+        baseModelBindingStatus: 'verified',
+      }),
+    ).rejects.toThrow()
+  })
+
+  test('preserves distinct provenance rows for imports with identical archive bytes', async () => {
+    const { namespaceId, session } = await readyStudioSession()
+    const objectLocator = `objects/v2/model-artifact-v1/44/${'4'.repeat(64)}.tar.zst`
+
+    const finalize = async (identityDigit: string, providerLetter: string) => {
+      const { row } = await v2Catalog.createOrReadModelArtifactImport({
+        namespaceId,
+        createDigest: identityDigit.repeat(64),
+        studioSessionId: session.id,
+        outputHandleDigest: (identityDigit === 'a' ? 'b' : 'd').repeat(64),
+        artifactKind: 'lora_adapter',
+        displayName: `shared-bytes-${identityDigit}`,
+        baseModelReference: 'Qwen/Qwen3-0.6B',
+        baseModelRevision: '0123456789abcdef',
+      })
+      await v2Catalog.transitionModelArtifactImport({
+        namespaceId,
+        id: row.id,
+        status: 'staging',
+        providerImportId: `swai_${providerLetter.repeat(32)}`,
+        outputSnapshotDigest: '3'.repeat(64),
+      })
+      await v2Catalog.transitionModelArtifactImport({
+        namespaceId,
+        id: row.id,
+        status: 'finalizing',
+        stagingObjectKey: `staging/swift-artifact/v1/${row.id}/archive.tar.zst`,
+        archiveDigest: '4'.repeat(64),
+        archiveSizeBytes: 1_024n,
+        manifestDigest: '5'.repeat(64),
+        manifest: modelArtifactManifest(session.id),
+        datasetLineageStatus: 'verified',
+        datasetVersion: fixtureVersion('alpha'),
+        datasetExportDigest: 'f'.repeat(64),
+        baseModelBindingStatus: 'verified',
+      })
+      return await v2Catalog.finalizeModelArtifactImport({
+        namespaceId,
+        id: row.id,
+        objectLocator,
+      })
+    }
+
+    const first = await finalize('a', 'C')
+    const second = await finalize('c', 'D')
+    expect(first?.artifactImport.status).toBe('completed')
+    expect(second?.artifactImport.status).toBe('completed')
+    expect(first?.artifact.archiveDigest).toBe(second?.artifact.archiveDigest)
+    expect(first?.artifact.objectLocator).toBe(second?.artifact.objectLocator)
+    expect(first?.artifact.id).not.toBe(second?.artifact.id)
+    expect(first?.artifact.sourceImportId).not.toBe(second?.artifact.sourceImportId)
   })
 })
 

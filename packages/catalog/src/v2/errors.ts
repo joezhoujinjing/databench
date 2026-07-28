@@ -133,3 +133,23 @@ export class V2CatalogSwiftStudioSessionConflictError extends Error {
     super(`Swift Studio Session conflict (${reason}) for ${sessionId}`)
   }
 }
+
+export type V2CatalogModelArtifactImportConflictReason =
+  | 'create_request_mismatch'
+  | 'output_already_imported'
+  | 'invalid_transition'
+  | 'terminal_body_mismatch'
+  | 'archive_identity_mismatch'
+
+export class V2CatalogModelArtifactImportConflictError extends Error {
+  override readonly name = 'V2CatalogModelArtifactImportConflictError'
+
+  constructor(
+    readonly reason: V2CatalogModelArtifactImportConflictReason,
+    readonly importId: string,
+    readonly status: 'requested' | 'staging' | 'finalizing' | 'completed' | 'failed',
+    readonly requestedStatus: 'staging' | 'finalizing' | 'completed' | 'failed' | null,
+  ) {
+    super(`Model Artifact import conflict (${reason}) for ${importId}`)
+  }
+}

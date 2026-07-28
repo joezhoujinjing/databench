@@ -629,6 +629,7 @@ adapter_model.safetensors 或 adapter_model-*.safetensors + index
 可选 allowlist：
 
 ```text
+additional_config.json
 tokenizer.json
 tokenizer_config.json
 special_tokens_map.json
@@ -643,6 +644,7 @@ chat_template.json
 排除：
 
 ```text
+README.md
 training_args.bin
 optimizer.pt
 scheduler.pt

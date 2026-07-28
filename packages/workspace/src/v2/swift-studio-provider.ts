@@ -1,4 +1,13 @@
-import { ServiceUnavailableError } from '@databench/schema'
+import {
+  ServiceUnavailableError,
+  SwiftStudioProviderArtifactImportIdV2Schema,
+  type SwiftStudioProviderArtifactImportRequestV2,
+  SwiftStudioProviderArtifactImportRequestV2Schema,
+  type SwiftStudioProviderArtifactImportV2,
+  SwiftStudioProviderArtifactImportV2Schema,
+  type SwiftStudioProviderOutputCandidatePageV2,
+  SwiftStudioProviderOutputCandidatePageV2Schema,
+} from '@databench/schema'
 import { z } from 'zod'
 
 const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u)
@@ -98,6 +107,18 @@ export interface SwiftStudioProviderV2 {
     requestId: string,
     options?: { readonly signal?: AbortSignal },
   ): Promise<Readonly<ClosedSwiftStudioProviderSessionV2>>
+  listOutputs(
+    providerSessionId: string,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<Readonly<SwiftStudioProviderOutputCandidatePageV2>>
+  startArtifactImport(
+    input: SwiftStudioProviderArtifactImportRequestV2,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<Readonly<SwiftStudioProviderArtifactImportV2>>
+  getArtifactImport(
+    providerImportId: string,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<Readonly<SwiftStudioProviderArtifactImportV2> | null>
 }
 
 export class SwiftStudioProviderConflictError extends Error {
@@ -245,6 +266,70 @@ export class HttpSwiftStudioProvider implements SwiftStudioProviderV2 {
     })
   }
 
+  async listOutputs(
+    providerSessionId: string,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<Readonly<SwiftStudioProviderOutputCandidatePageV2>> {
+    const locator = ProviderSessionIdSchema.parse(providerSessionId)
+    const response = await this.#request(
+      `/sessions/${encodeURIComponent(locator)}/outputs`,
+      undefined,
+      options.signal,
+      'GET',
+    )
+    if (response.status !== 200) {
+      throw providerContractError('list Session outputs', 'unexpected success status')
+    }
+    const parsed = SwiftStudioProviderOutputCandidatePageV2Schema.safeParse(response.body)
+    if (!parsed.success) throw providerContractError('list Session outputs', parsed.error)
+    return Object.freeze(parsed.data)
+  }
+
+  async startArtifactImport(
+    input: SwiftStudioProviderArtifactImportRequestV2,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<Readonly<SwiftStudioProviderArtifactImportV2>> {
+    const request = SwiftStudioProviderArtifactImportRequestV2Schema.parse(input)
+    const response = await this.#request(
+      `/sessions/${encodeURIComponent(request.provider_session_id)}/artifact-imports`,
+      request,
+      options.signal,
+    )
+    if (response.status !== 200 && response.status !== 202) {
+      throw providerContractError('start Artifact import', 'unexpected success status')
+    }
+    const parsed = SwiftStudioProviderArtifactImportV2Schema.safeParse(response.body)
+    if (!parsed.success) throw providerContractError('start Artifact import', parsed.error)
+    return Object.freeze(parsed.data)
+  }
+
+  async getArtifactImport(
+    providerImportId: string,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<Readonly<SwiftStudioProviderArtifactImportV2> | null> {
+    const id = SwiftStudioProviderArtifactImportIdV2Schema.parse(providerImportId)
+    const response = await this.#request(
+      `/artifact-imports/${encodeURIComponent(id)}`,
+      undefined,
+      options.signal,
+      'GET',
+      true,
+    )
+    if (response.status === 404) {
+      const notFound = ProviderErrorResponseSchema.safeParse(response.body)
+      if (!notFound.success || notFound.data.error.code !== 'artifact_import_not_found') {
+        throw providerContractError('read Artifact import', 'unexpected not-found response')
+      }
+      return null
+    }
+    if (response.status !== 200) {
+      throw providerContractError('read Artifact import', 'unexpected success status')
+    }
+    const parsed = SwiftStudioProviderArtifactImportV2Schema.safeParse(response.body)
+    if (!parsed.success) throw providerContractError('read Artifact import', parsed.error)
+    return Object.freeze(parsed.data)
+  }
+
   async #request(
     path: string,
     body: Readonly<Record<string, unknown>> | undefined,
@@ -298,7 +383,7 @@ export class HttpSwiftStudioProvider implements SwiftStudioProviderV2 {
 
 async function readBoundedJson(response: Response): Promise<unknown> {
   const bytes = new Uint8Array(await response.arrayBuffer())
-  if (bytes.byteLength === 0 || bytes.byteLength > 64 * 1024) {
+  if (bytes.byteLength === 0 || bytes.byteLength > 512 * 1024) {
     throw new ServiceUnavailableError('Swift Studio Provider response size is invalid', {
       dependency: 'swift_studio_provider',
     })

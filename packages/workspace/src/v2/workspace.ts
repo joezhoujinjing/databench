@@ -8,6 +8,14 @@ import {
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
   type CatalogLayoutRowV2,
+  type CatalogModelArtifactCursorV2,
+  type CatalogModelArtifactFinalizeResultV2,
+  type CatalogModelArtifactImportCreateResultV2,
+  type CatalogModelArtifactImportFailureV2,
+  type CatalogModelArtifactImportRowV2,
+  type CatalogModelArtifactListFilterV2,
+  type CatalogModelArtifactPageV2,
+  type CatalogModelArtifactRowV2,
   type CatalogRefPageV2,
   type CatalogRefRowV2,
   type RestoreRefResultV2 as CatalogRestoreRefResultV2,
@@ -27,6 +35,7 @@ import {
   type CompareAndSetRefV2,
   type CompleteTransformJobV2,
   type CreateEvaluationRunV2,
+  type CreateModelArtifactImportV2,
   type CreateSwiftStudioSessionV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
@@ -34,9 +43,11 @@ import {
   type RegisterTransformResultV2,
   type RestoreRefV2,
   type TransitionEvaluationRunV2,
+  type TransitionModelArtifactImportV2,
   type TransitionSwiftStudioSessionV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
+  V2CatalogModelArtifactImportConflictError,
   V2CatalogRefConflictError,
   V2CatalogSwiftStudioSessionConflictError,
 } from '@databench/catalog'
@@ -50,11 +61,14 @@ import {
   canonicalJsonV2,
   createArtifactHasher,
   hashV2EvaluationRunCreate,
+  hashV2ModelArtifactImportCreate,
+  hashV2SwiftStudioOutputHandle,
   hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
   V2_EVALUATION_RUN_CREATE_PROFILE,
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
+  V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '@databench/hashing'
 import {
@@ -82,6 +96,7 @@ import {
   CapacityExceededError,
   type CompleteEvaluationRunRequestV2,
   CompleteEvaluationRunRequestV2Schema,
+  ConflictError,
   type ConverterAnalysisV2,
   type ConverterDescriptorV2,
   ConverterDescriptorV2Schema,
@@ -91,6 +106,8 @@ import {
   CreateBasicCleanJobRequestV2Schema,
   type CreateEvaluationRunRequestV2,
   CreateEvaluationRunRequestV2Schema,
+  type CreateModelArtifactImportRequestV2,
+  CreateModelArtifactImportRequestV2Schema,
   type CreateSwiftStudioSessionRequestV2,
   CreateSwiftStudioSessionRequestV2Schema,
   type CursorPageRequestV2,
@@ -143,6 +160,16 @@ import {
   McpCanonicalDraftValidationPreviewResultSchema,
   type McpCanonicalValidationPreviewResult,
   McpCanonicalValidationPreviewResultSchema,
+  ModelArtifactIdV2Schema,
+  ModelArtifactImportIdV2Schema,
+  type ModelArtifactImportV2,
+  type ModelArtifactManifestV2,
+  ModelArtifactManifestV2Schema,
+  type ModelArtifactPageRequestV2,
+  ModelArtifactPageRequestV2Schema,
+  type ModelArtifactPageV2,
+  ModelArtifactPageV2Schema,
+  type ModelArtifactV2,
   NotFoundError,
   type PostTrainingRecordV2,
   PostTrainingRecordV2Schema,
@@ -177,6 +204,10 @@ import {
   RunTransformResultV2Schema,
   ServiceUnavailableError,
   StartEvaluationRunRequestV2Schema,
+  type SwiftStudioOutputCandidatePageV2,
+  SwiftStudioOutputCandidatePageV2Schema,
+  type SwiftStudioProviderArtifactImportV2,
+  type SwiftStudioProviderArtifactMetadataV2,
   SwiftStudioSessionIdV2Schema,
   type SwiftStudioSessionPageRequestV2,
   SwiftStudioSessionPageRequestV2Schema,
@@ -203,6 +234,8 @@ import {
 import {
   createV2ObjectStore,
   FileBackedV2Store,
+  type ModelArtifactPublicationV1,
+  ModelArtifactStoreV1,
   type PreparedArtifactV2,
   type V2ObjectStoreConfig,
   type V2OperationContext,
@@ -253,6 +286,12 @@ import {
   transformJobFromCatalog,
 } from './mappings.js'
 import {
+  modelArtifactFromCatalogV2,
+  modelArtifactImportFromCatalogV2,
+  modelArtifactManifestDigestV2,
+} from './model-artifact.js'
+import {
+  swiftStudioProviderArtifactImportIdForDigestV2,
   swiftStudioProviderSessionIdForDigestV2,
   swiftStudioSessionFromCatalogV2,
 } from './swift-studio.js'
@@ -280,6 +319,8 @@ const V2_WORKSPACE_TEMP_DIRECTORY = '.databench-v2-temp'
 const NO_ASYNC_OPTIONS_FAILURE = Symbol('no async V2 ingest options failure')
 const SWIFT_STUDIO_RECONCILE_TIMEOUT_MS = 10_000
 const DEFAULT_SWIFT_STUDIO_ABANDON_GRACE_MS = 310_000
+const DEFAULT_SWIFT_ARTIFACT_SIGNED_URL_TTL_MS = 4 * 60 * 60 * 1_000
+const MODEL_ARTIFACT_STAGING_CLEANUP_ATTEMPTS = 3
 
 export interface V2WorkspaceCatalog {
   getOrCreateNamespace(scope: 'default'): Promise<string>
@@ -370,6 +411,36 @@ export interface V2WorkspaceSwiftStudioCatalog {
   transitionSwiftStudioSession(
     input: TransitionSwiftStudioSessionV2,
   ): Promise<CatalogSwiftStudioSessionRowV2 | null>
+  reopenBusySwiftStudioSession(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogSwiftStudioSessionRowV2 | null>
+  createOrReadModelArtifactImport(
+    input: CreateModelArtifactImportV2,
+  ): Promise<CatalogModelArtifactImportCreateResultV2>
+  getModelArtifactImport(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogModelArtifactImportRowV2 | null>
+  markModelArtifactImportStagingCleaned(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogModelArtifactImportRowV2 | null>
+  transitionModelArtifactImport(
+    input: TransitionModelArtifactImportV2,
+  ): Promise<CatalogModelArtifactImportRowV2 | null>
+  finalizeModelArtifactImport(input: {
+    readonly namespaceId: string
+    readonly id: string
+    readonly objectLocator: string
+  }): Promise<CatalogModelArtifactFinalizeResultV2 | null>
+  getModelArtifact(namespaceId: string, id: string): Promise<CatalogModelArtifactRowV2 | null>
+  listModelArtifacts(
+    namespaceId: string,
+    filter: CatalogModelArtifactListFilterV2,
+    before: CatalogModelArtifactCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelArtifactPageV2>
 }
 
 export interface V2WorkspaceOperationOptions extends V2OperationContext {}
@@ -428,14 +499,16 @@ export interface V2SwiftStudioWorkspaceOptions {
   readonly upstreamCommit: string
   readonly imageDigest: string
   readonly runtimeCapabilityDigest: string
+  readonly modelArtifactStore?: ModelArtifactStoreV1
   readonly preparationAbandonGraceMs?: number
 }
 
 type ResolvedV2SwiftStudioWorkspaceOptions = Omit<
   V2SwiftStudioWorkspaceOptions,
-  'preparationAbandonGraceMs'
+  'preparationAbandonGraceMs' | 'modelArtifactStore'
 > & {
   readonly preparationAbandonGraceMs: number
+  readonly modelArtifactStore: ModelArtifactStoreV1 | null
 }
 
 export interface V2SwiftStudioWorkspaceOpenOptions
@@ -445,6 +518,8 @@ export interface V2SwiftStudioWorkspaceOpenOptions
   readonly upstreamCommit: string
   readonly imageDigest: string
   readonly runtimeCapabilityDigest: string
+  readonly artifactMaxBytes?: number
+  readonly artifactSignedUrlTtlMs?: number
 }
 
 export interface V2WorkspaceOpenOptions {
@@ -466,6 +541,11 @@ interface ResolvedLayoutV2 {
 
 export interface ExportStreamV2 {
   readonly plan: Readonly<ExportPlanV2>
+  readonly bytes: AsyncIterable<Uint8Array>
+}
+
+export interface ModelArtifactDownloadV2 {
+  readonly artifact: Readonly<ModelArtifactV2>
   readonly bytes: AsyncIterable<Uint8Array>
 }
 
@@ -545,6 +625,16 @@ export class V2Workspace {
                 upstreamCommit: options.swiftStudio.upstreamCommit,
                 imageDigest: options.swiftStudio.imageDigest,
                 runtimeCapabilityDigest: options.swiftStudio.runtimeCapabilityDigest,
+                modelArtifactStore: new ModelArtifactStoreV1({
+                  objectStore,
+                  tempStore,
+                  signedUrlTtlMs:
+                    options.swiftStudio.artifactSignedUrlTtlMs ??
+                    DEFAULT_SWIFT_ARTIFACT_SIGNED_URL_TTL_MS,
+                  ...(options.swiftStudio.artifactMaxBytes === undefined
+                    ? {}
+                    : { maxBytes: options.swiftStudio.artifactMaxBytes }),
+                }),
                 preparationAbandonGraceMs:
                   (options.swiftStudio.timeoutMs ?? 300_000) + SWIFT_STUDIO_RECONCILE_TIMEOUT_MS,
               },
@@ -1661,6 +1751,26 @@ export class V2Workspace {
         requested_status: 'closing',
       })
     }
+    if (row.status === 'ready') {
+      try {
+        const closing = await runtime.catalog.transitionSwiftStudioSession({
+          namespaceId,
+          id,
+          status: 'closing',
+        })
+        if (closing === null) {
+          throw new NotFoundError(`Swift Studio Session was not found: ${id}`, { session_id: id })
+        }
+        if (closing.status !== 'closing') {
+          throw new IntegrityError('Swift Studio Session did not enter closing state', {
+            reason: 'swift_studio_session_close_transition',
+            session_id: id,
+          })
+        }
+      } catch (error) {
+        throw mapSwiftStudioCatalogError(error)
+      }
+    }
     const providerSessionId = swiftStudioProviderSessionIdForDigestV2(row.create_digest)
     let closedProvider: Readonly<ClosedSwiftStudioProviderSessionV2>
     try {
@@ -1672,12 +1782,30 @@ export class V2Workspace {
     } catch (error) {
       if (
         error instanceof SwiftStudioProviderConflictError &&
-        error.providerCode === 'session_has_active_tasks'
+        (error.providerCode === 'session_has_active_tasks' ||
+          error.providerCode === 'session_has_active_artifact_import')
       ) {
+        let reopened: CatalogSwiftStudioSessionRowV2 | null
+        try {
+          reopened = await runtime.catalog.reopenBusySwiftStudioSession(namespaceId, id)
+        } catch (rollbackError) {
+          throw mapSwiftStudioCatalogError(rollbackError)
+        }
+        if (reopened === null) {
+          throw new NotFoundError(`Swift Studio Session was not found: ${id}`, { session_id: id })
+        }
+        if (reopened.status === 'closed') return swiftStudioSessionFromCatalogV2(reopened)
+        if (reopened.status !== 'ready') {
+          throw new IntegrityError('Busy Swift Studio Session did not return to ready state', {
+            reason: 'swift_studio_session_busy_rollback',
+            session_id: id,
+            status: reopened.status,
+          })
+        }
         throw new SwiftStudioSessionStateConflictErrorV2({
           reason: 'provider_session_busy',
           session_id: row.id,
-          status: row.status,
+          status: reopened.status,
           requested_status: 'closing',
         })
       }
@@ -1701,6 +1829,527 @@ export class V2Workspace {
     }
     const closed = await this.#convergeClosedSwiftStudioSession(namespaceId, id)
     return swiftStudioSessionFromCatalogV2(closed)
+  }
+
+  async listSwiftStudioOutputs(
+    sessionIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<SwiftStudioOutputCandidatePageV2> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudio()
+    const sessionId = SwiftStudioSessionIdV2Schema.parse(sessionIdInput)
+    const session = await this.getSwiftStudioSession(sessionId, context)
+    if (session === null) {
+      throw new NotFoundError('Swift Studio Session was not found', { session_id: sessionId })
+    }
+    if (session.status !== 'ready') {
+      throw new ConflictError('Swift Studio output discovery requires a ready Session', {
+        session_id: sessionId,
+        status: session.status,
+      })
+    }
+    const providerSessionId = swiftStudioProviderSessionIdForDigestV2(session.create_digest)
+    const page = await runtime.provider.listOutputs(
+      providerSessionId,
+      operationContext(context.signal),
+    )
+    if (page.provider_session_id !== providerSessionId) {
+      throw new IntegrityError('Swift Studio Provider listed another Session output', {
+        reason: 'swift_studio_output_session_mismatch',
+        session_id: sessionId,
+      })
+    }
+    for (const item of page.items) {
+      if (item.provider_generation !== page.provider_generation) {
+        throw new IntegrityError('Swift Studio output generation is inconsistent', {
+          reason: 'swift_studio_output_generation_mismatch',
+          session_id: sessionId,
+        })
+      }
+    }
+    return SwiftStudioOutputCandidatePageV2Schema.parse({
+      items: page.items.map(
+        ({ provider_generation: _generation, output_snapshot_digest: _digest, ...item }) => item,
+      ),
+    })
+  }
+
+  async createModelArtifactImport(
+    requestInput: CreateModelArtifactImportRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelArtifactImportV2> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudioArtifactRuntime()
+    const request = CreateModelArtifactImportRequestV2Schema.parse(requestInput)
+    const session = await this.getSwiftStudioSession(request.studio_session_id, context)
+    if (session === null) {
+      throw new NotFoundError('Swift Studio Session was not found', {
+        session_id: request.studio_session_id,
+      })
+    }
+    if (session.status !== 'ready') {
+      throw new ConflictError('Model Artifact import requires a ready Studio Session', {
+        session_id: session.id,
+        status: session.status,
+      })
+    }
+    const namespaceId = await this.#namespace(context.signal)
+    const outputHandleDigest = hashV2SwiftStudioOutputHandle(request.output_handle)
+    const createDigest = hashV2ModelArtifactImportCreate({
+      model_artifact_import_create_profile: V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
+      namespace: namespaceId,
+      studio_session_id: request.studio_session_id,
+      output_handle_digest: outputHandleDigest,
+      artifact_kind: request.artifact_kind,
+      display_name: request.display_name,
+      base_model: request.base_model,
+    })
+    let admitted: CatalogModelArtifactImportCreateResultV2
+    try {
+      admitted = await runtime.catalog.createOrReadModelArtifactImport({
+        namespaceId,
+        createDigest,
+        studioSessionId: request.studio_session_id,
+        outputHandleDigest,
+        artifactKind: request.artifact_kind,
+        displayName: request.display_name,
+        baseModelReference: request.base_model.reference,
+        baseModelRevision: request.base_model.revision,
+      })
+    } catch (error) {
+      throw mapModelArtifactCatalogError(error)
+    }
+    return modelArtifactImportFromCatalogV2(
+      await this.#reconcileModelArtifactImport(admitted.row, session, request, context.signal),
+    )
+  }
+
+  async getModelArtifactImport(
+    importIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelArtifactImportV2 | null> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudioArtifactRuntime()
+    const importId = ModelArtifactImportIdV2Schema.parse(importIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogModelArtifactImportRowV2 | null
+    try {
+      row = await runtime.catalog.getModelArtifactImport(namespaceId, importId)
+    } catch (error) {
+      throw mapModelArtifactCatalogError(error)
+    }
+    if (row === null) return null
+    const session = await this.getSwiftStudioSession(row.studioSessionId, context)
+    if (session === null) {
+      throw new IntegrityError('Model Artifact import source Session disappeared', {
+        reason: 'model_artifact_import_session_missing',
+        import_id: row.id,
+      })
+    }
+    row = await this.#reconcileModelArtifactImport(row, session, null, context.signal)
+    return modelArtifactImportFromCatalogV2(row)
+  }
+
+  async getModelArtifact(
+    artifactIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelArtifactV2 | null> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudioArtifactRuntime()
+    const artifactId = ModelArtifactIdV2Schema.parse(artifactIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogModelArtifactRowV2 | null
+    try {
+      row = await runtime.catalog.getModelArtifact(namespaceId, artifactId)
+    } catch (error) {
+      throw mapModelArtifactCatalogError(error)
+    }
+    return row === null ? null : modelArtifactFromCatalogV2(row)
+  }
+
+  async listModelArtifacts(
+    requestInput: ModelArtifactPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelArtifactPageV2> {
+    context.signal?.throwIfAborted()
+    const runtime = this.#requireSwiftStudioArtifactRuntime()
+    const request = ModelArtifactPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const datasetVersion = request.dataset_version ?? null
+    const artifactKind = request.artifact_kind ?? null
+    const state =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeModelArtifact(
+            request.cursor,
+            namespaceId,
+            datasetVersion,
+            artifactKind,
+          )
+    let page: CatalogModelArtifactPageV2
+    try {
+      page = await runtime.catalog.listModelArtifacts(
+        namespaceId,
+        { datasetVersion, artifactKind },
+        state === null ? null : { createdAt: new Date(state.created_at), id: state.id },
+        request.limit,
+      )
+    } catch (error) {
+      throw mapModelArtifactCatalogError(error)
+    }
+    return ModelArtifactPageV2Schema.parse({
+      items: page.rows.map(modelArtifactFromCatalogV2),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeModelArtifact(namespaceId, {
+              created_at: page.nextCursor.createdAt.toISOString(),
+              id: page.nextCursor.id,
+              dataset_version: datasetVersion,
+              artifact_kind: artifactKind,
+            }),
+    })
+  }
+
+  async downloadModelArtifact(
+    artifactIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelArtifactDownloadV2> {
+    const runtime = this.#requireSwiftStudioArtifactRuntime()
+    const artifact = await this.getModelArtifact(artifactIdInput, context)
+    if (artifact === null) {
+      throw new NotFoundError('Model Artifact was not found', {
+        artifact_id: artifactIdInput,
+      })
+    }
+    return Object.freeze({
+      artifact,
+      bytes: runtime.modelArtifactStore.read(
+        {
+          archiveDigest: artifact.archive_digest,
+          archiveSizeBytes: artifact.archive_size_bytes,
+        },
+        operationContext(context.signal),
+      ),
+    })
+  }
+
+  async #reconcileModelArtifactImport(
+    observed: CatalogModelArtifactImportRowV2,
+    session: SwiftStudioSessionV2,
+    request: CreateModelArtifactImportRequestV2 | null,
+    signal?: AbortSignal,
+  ): Promise<CatalogModelArtifactImportRowV2> {
+    const runtime = this.#requireSwiftStudioArtifactRuntime()
+    let row = observed
+    if (row.status === 'completed' || row.status === 'failed') {
+      return await this.#cleanupTerminalModelArtifactImport(row)
+    }
+    const providerSessionId = swiftStudioProviderSessionIdForDigestV2(session.create_digest)
+    let providerImport: Readonly<SwiftStudioProviderArtifactImportV2> | null = null
+
+    if (row.status === 'requested') {
+      const providerImportId = swiftStudioProviderArtifactImportIdForDigestV2(row.createDigest)
+      providerImport = await runtime.provider.getArtifactImport(
+        providerImportId,
+        operationContext(signal),
+      )
+      if (providerImport === null && request !== null) {
+        const target = await runtime.modelArtifactStore.createStagingTarget(
+          row.id,
+          undefined,
+          operationContext(signal),
+        )
+        try {
+          providerImport = await runtime.provider.startArtifactImport(
+            {
+              request_id: row.createDigest,
+              provider_session_id: providerSessionId,
+              output_handle: request.output_handle,
+              artifact_kind: row.artifactKind,
+              display_name: row.displayName,
+              base_model: {
+                reference: row.baseModelReference,
+                revision: row.baseModelRevision,
+              },
+              staging_object_key: target.key,
+              staging_max_size_bytes: target.maxSizeBytes,
+              staging_upload_url: target.writeUrl,
+              staging_upload_expires_at: target.expiresAt,
+            },
+            operationContext(signal),
+          )
+        } catch (error) {
+          const recovered = await runtime.provider
+            .getArtifactImport(providerImportId, operationContext(signal))
+            .catch(() => null)
+          if (recovered === null) {
+            await runtime.modelArtifactStore
+              .cleanupStaging(row.id, operationContext(signal))
+              .catch(() => undefined)
+            throw error
+          }
+          providerImport = recovered
+        }
+      }
+      if (providerImport === null) return row
+      this.#assertProviderArtifactImport(providerImport, row, providerSessionId)
+      try {
+        row =
+          (await runtime.catalog.transitionModelArtifactImport({
+            namespaceId: row.namespaceId,
+            id: row.id,
+            status: 'staging',
+            providerImportId: providerImport.provider_import_id,
+            outputSnapshotDigest: providerImport.output_snapshot_digest,
+          })) ?? row
+      } catch (error) {
+        throw mapModelArtifactCatalogError(error)
+      }
+    }
+
+    if (row.status === 'staging') {
+      providerImport ??= await runtime.provider.getArtifactImport(
+        requireProviderImportId(row),
+        operationContext(signal),
+      )
+      if (providerImport === null) return row
+      this.#assertProviderArtifactImport(providerImport, row, providerSessionId)
+      if (providerImport.status === 'failed') {
+        return await this.#failModelArtifactImport(
+          row,
+          providerImport.failure ?? {
+            phase: 'provider',
+            code: 'artifact_import_failed',
+            message: 'Swift Studio Provider could not stage the Model Artifact',
+          },
+        )
+      }
+      if (providerImport.status === 'staging') return row
+      let manifest: ModelArtifactManifestV2
+      try {
+        manifest = this.#createModelArtifactManifest(row, session, providerImport)
+      } catch {
+        return await this.#failModelArtifactImport(row, {
+          phase: 'verification',
+          code: 'artifact_metadata_rejected',
+          message: 'Staged Adapter metadata did not match the immutable import request',
+        })
+      }
+      try {
+        row =
+          (await runtime.catalog.transitionModelArtifactImport({
+            namespaceId: row.namespaceId,
+            id: row.id,
+            status: 'finalizing',
+            stagingObjectKey: providerImport.staging_object_key,
+            archiveDigest: requireProviderArchiveDigest(providerImport),
+            archiveSizeBytes: BigInt(requireProviderArchiveSize(providerImport)),
+            manifestDigest: modelArtifactManifestDigestV2(manifest),
+            manifest,
+            datasetLineageStatus: manifest.dataset_lineage.status,
+            datasetVersion: manifest.dataset_lineage.dataset_version,
+            datasetExportDigest: manifest.dataset_lineage.dataset_export_digest,
+            baseModelBindingStatus: manifest.base_model.binding_status,
+          })) ?? row
+      } catch (error) {
+        throw mapModelArtifactCatalogError(error)
+      }
+    }
+
+    if (row.status !== 'finalizing') return row
+    let publication: Readonly<ModelArtifactPublicationV1>
+    try {
+      publication = await runtime.modelArtifactStore.finalizeStaging(
+        row.id,
+        {
+          archiveDigest: requireCatalogArchiveDigest(row),
+          archiveSizeBytes: requireCatalogArchiveSize(row),
+        },
+        operationContext(signal),
+      )
+    } catch (error) {
+      const current = await runtime.catalog.getModelArtifactImport(row.namespaceId, row.id)
+      if (current?.status === 'completed' || current?.status === 'failed') {
+        return await this.#cleanupTerminalModelArtifactImport(current)
+      }
+      throw error
+    }
+    let finalized: CatalogModelArtifactFinalizeResultV2 | null
+    try {
+      finalized = await runtime.catalog.finalizeModelArtifactImport({
+        namespaceId: row.namespaceId,
+        id: row.id,
+        objectLocator: publication.objectKey,
+      })
+    } catch (error) {
+      throw mapModelArtifactCatalogError(error)
+    }
+    if (finalized === null) {
+      throw new IntegrityError('Model Artifact import disappeared during finalization', {
+        reason: 'model_artifact_import_disappeared',
+        import_id: row.id,
+      })
+    }
+    return await this.#cleanupTerminalModelArtifactImport(finalized.artifactImport)
+  }
+
+  async #failModelArtifactImport(
+    row: CatalogModelArtifactImportRowV2,
+    failure: CatalogModelArtifactImportFailureV2,
+  ): Promise<CatalogModelArtifactImportRowV2> {
+    const runtime = this.#requireSwiftStudioArtifactRuntime()
+    try {
+      const failed = await runtime.catalog.transitionModelArtifactImport({
+        namespaceId: row.namespaceId,
+        id: row.id,
+        status: 'failed',
+        failure,
+      })
+      if (failed === null) {
+        throw new IntegrityError('Model Artifact import disappeared while becoming terminal', {
+          reason: 'model_artifact_import_disappeared_during_failure',
+          import_id: row.id,
+        })
+      }
+      return await this.#cleanupTerminalModelArtifactImport(failed)
+    } catch (error) {
+      const current = await runtime.catalog.getModelArtifactImport(row.namespaceId, row.id)
+      if (current?.status === 'completed' || current?.status === 'failed') {
+        return await this.#cleanupTerminalModelArtifactImport(current)
+      }
+      throw mapModelArtifactCatalogError(error)
+    }
+  }
+
+  async #cleanupTerminalModelArtifactImport(
+    row: CatalogModelArtifactImportRowV2,
+  ): Promise<CatalogModelArtifactImportRowV2> {
+    if ((row.status !== 'completed' && row.status !== 'failed') || row.stagingCleanedAt !== null) {
+      return row
+    }
+    const runtime = this.#requireSwiftStudioArtifactRuntime()
+    let lastError: unknown
+    for (let attempt = 0; attempt < MODEL_ARTIFACT_STAGING_CLEANUP_ATTEMPTS; attempt += 1) {
+      try {
+        await runtime.modelArtifactStore.cleanupStaging(row.id)
+        const cleaned = await runtime.catalog.markModelArtifactImportStagingCleaned(
+          row.namespaceId,
+          row.id,
+        )
+        if (cleaned === null) {
+          throw new IntegrityError('Model Artifact import disappeared after staging cleanup', {
+            reason: 'model_artifact_import_disappeared_after_cleanup',
+            import_id: row.id,
+          })
+        }
+        return cleaned
+      } catch (error) {
+        lastError = error
+      }
+    }
+    this.#onCleanupError?.(lastError, null)
+    return row
+  }
+
+  #assertProviderArtifactImport(
+    providerImport: Readonly<SwiftStudioProviderArtifactImportV2>,
+    row: CatalogModelArtifactImportRowV2,
+    providerSessionId: string,
+  ): void {
+    if (
+      providerImport.provider_import_id !==
+        swiftStudioProviderArtifactImportIdForDigestV2(row.createDigest) ||
+      providerImport.request_id !== row.createDigest ||
+      providerImport.provider_session_id !== providerSessionId ||
+      providerImport.staging_object_key !== `staging/swift-artifact/v1/${row.id}/archive.tar.zst` ||
+      (row.outputSnapshotDigest !== null &&
+        providerImport.output_snapshot_digest !== row.outputSnapshotDigest)
+    ) {
+      throw new IntegrityError('Swift Studio Provider Artifact import identity is inconsistent', {
+        reason: 'swift_studio_artifact_import_mismatch',
+        import_id: row.id,
+      })
+    }
+  }
+
+  #createModelArtifactManifest(
+    row: CatalogModelArtifactImportRowV2,
+    session: SwiftStudioSessionV2,
+    providerImport: Readonly<SwiftStudioProviderArtifactImportV2>,
+  ): ModelArtifactManifestV2 {
+    const metadata = requireProviderMetadata(providerImport)
+    if (
+      metadata.source.provider_session_id !== providerImport.provider_session_id ||
+      metadata.source.provider_generation !== providerImport.provider_generation ||
+      metadata.output_snapshot_digest !== providerImport.output_snapshot_digest ||
+      metadata.archive_digest !== providerImport.archive_digest ||
+      metadata.archive_size_bytes !== providerImport.archive_size_bytes
+    ) {
+      throw new IntegrityError('Swift Studio Provider Artifact metadata is inconsistent', {
+        reason: 'swift_studio_artifact_metadata_mismatch',
+        import_id: row.id,
+      })
+    }
+    const extracted = metadata.base_model
+    if (
+      (extracted.reference !== null && extracted.reference !== row.baseModelReference) ||
+      (extracted.revision !== null &&
+        row.baseModelRevision !== null &&
+        extracted.revision !== row.baseModelRevision) ||
+      extracted.binding_status === 'unresolved'
+    ) {
+      throw new ConflictError('Confirmed base model does not match the LoRA Adapter metadata', {
+        import_id: row.id,
+      })
+    }
+    const bindingStatus =
+      extracted.reference === row.baseModelReference &&
+      extracted.revision !== null &&
+      extracted.revision === row.baseModelRevision
+        ? 'verified'
+        : 'declared'
+    if (
+      metadata.dataset_lineage.status === 'verified' &&
+      (metadata.dataset_lineage.dataset_version !== session.dataset_version ||
+        metadata.dataset_lineage.dataset_export_digest !== session.export_digest)
+    ) {
+      throw new IntegrityError('Verified Adapter lineage does not match the exact Session export', {
+        reason: 'model_artifact_dataset_lineage_mismatch',
+        import_id: row.id,
+      })
+    }
+    const createdAt = row.stagingAt
+    if (createdAt === null) {
+      throw new IntegrityError('Staging Model Artifact import has no stable timestamp', {
+        reason: 'model_artifact_staging_timestamp_missing',
+        import_id: row.id,
+      })
+    }
+    return ModelArtifactManifestV2Schema.parse({
+      manifest_version: 'model-artifact-manifest-v1',
+      artifact_kind: 'lora_adapter',
+      artifact_format: 'swift-lora-adapter-v1',
+      archive_format: 'deterministic-tar-zst-v1',
+      archive_digest: requireProviderArchiveDigest(providerImport),
+      archive_size_bytes: requireProviderArchiveSize(providerImport),
+      output_snapshot_digest: providerImport.output_snapshot_digest,
+      files: metadata.files.map(({ digest_algorithm: _algorithm, ...file }) => file),
+      source: {
+        studio_session_id: session.id,
+        upstream_commit: session.upstream_commit,
+        image_digest: session.image_digest,
+      },
+      dataset_lineage: metadata.dataset_lineage,
+      base_model: {
+        reference: row.baseModelReference,
+        revision: row.baseModelRevision,
+        binding_status: bindingStatus,
+      },
+      training_summary: metadata.training_summary,
+      created_at: createdAt.toISOString(),
+      created_by: 'databench',
+    })
   }
 
   async #measureSwiftStudioExport(
@@ -2079,6 +2728,20 @@ export class V2Workspace {
       })
     }
     return this.#swiftStudio
+  }
+
+  #requireSwiftStudioArtifactRuntime(): Readonly<
+    ResolvedV2SwiftStudioWorkspaceOptions & { readonly modelArtifactStore: ModelArtifactStoreV1 }
+  > {
+    const runtime = this.#requireSwiftStudio()
+    if (runtime.modelArtifactStore === null) {
+      throw new ServiceUnavailableError('Swift Studio Model Artifact bridge is disabled', {
+        dependency: 'swift_studio_model_artifact_store',
+      })
+    }
+    return runtime as Readonly<
+      ResolvedV2SwiftStudioWorkspaceOptions & { readonly modelArtifactStore: ModelArtifactStoreV1 }
+    >
   }
 
   #assertSwiftStudioNamespace(row: CatalogSwiftStudioSessionRowV2, namespaceId: string): void {
@@ -4207,6 +4870,22 @@ function snapshotSwiftStudioWorkspaceOpenOptions(
     ...(input.credential === undefined ? {} : { credential: input.credential }),
     ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
     ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+    ...(input.artifactMaxBytes === undefined
+      ? {}
+      : {
+          artifactMaxBytes: positiveSafeInteger(
+            'Swift Model Artifact max bytes',
+            input.artifactMaxBytes,
+          ),
+        }),
+    ...(input.artifactSignedUrlTtlMs === undefined
+      ? {}
+      : {
+          artifactSignedUrlTtlMs: positiveSafeInteger(
+            'Swift Model Artifact signed URL TTL',
+            input.artifactSignedUrlTtlMs,
+          ),
+        }),
   })
 }
 
@@ -4222,9 +4901,16 @@ function snapshotSwiftStudioWorkspaceOptions(
   if (input.provider === null || typeof input.provider !== 'object') {
     throw new TypeError('Swift Studio Provider is required')
   }
+  if (
+    input.modelArtifactStore !== undefined &&
+    !(input.modelArtifactStore instanceof ModelArtifactStoreV1)
+  ) {
+    throw new TypeError('Swift Model Artifact Store is required')
+  }
   return Object.freeze({
     catalog: input.catalog,
     provider: input.provider,
+    modelArtifactStore: input.modelArtifactStore ?? null,
     datasetExportBaseUrl: requireHttpOrigin(
       'Swift Studio Dataset export base URL',
       input.datasetExportBaseUrl,
@@ -4490,6 +5176,85 @@ function mapSwiftStudioCatalogError(error: unknown): Error {
     })
   }
   return mapV2CatalogError(error, false)
+}
+
+function mapModelArtifactCatalogError(error: unknown): Error {
+  if (error instanceof V2CatalogModelArtifactImportConflictError) {
+    return new ConflictError('Model Artifact import state conflicts with the request', {
+      reason: error.reason,
+      import_id: error.importId,
+      status: error.status,
+      requested_status: error.requestedStatus,
+    })
+  }
+  return mapV2CatalogError(error, false)
+}
+
+function requireProviderImportId(row: CatalogModelArtifactImportRowV2): string {
+  if (row.providerImportId === null) {
+    throw new IntegrityError('Staging Model Artifact import has no Provider locator', {
+      reason: 'model_artifact_provider_import_missing',
+      import_id: row.id,
+    })
+  }
+  return row.providerImportId
+}
+
+function requireProviderArchiveDigest(
+  providerImport: Readonly<SwiftStudioProviderArtifactImportV2>,
+): string {
+  if (providerImport.archive_digest === null) {
+    throw new IntegrityError('Staged Provider import has no archive digest', {
+      reason: 'provider_artifact_archive_digest_missing',
+    })
+  }
+  return providerImport.archive_digest
+}
+
+function requireProviderArchiveSize(
+  providerImport: Readonly<SwiftStudioProviderArtifactImportV2>,
+): number {
+  if (providerImport.archive_size_bytes === null) {
+    throw new IntegrityError('Staged Provider import has no archive size', {
+      reason: 'provider_artifact_archive_size_missing',
+    })
+  }
+  return providerImport.archive_size_bytes
+}
+
+function requireProviderMetadata(
+  providerImport: Readonly<SwiftStudioProviderArtifactImportV2>,
+): Readonly<SwiftStudioProviderArtifactMetadataV2> {
+  if (providerImport.provider_metadata === null) {
+    throw new IntegrityError('Staged Provider import has no sanitized metadata', {
+      reason: 'provider_artifact_metadata_missing',
+    })
+  }
+  return providerImport.provider_metadata
+}
+
+function requireCatalogArchiveDigest(row: CatalogModelArtifactImportRowV2): string {
+  if (row.archiveDigest === null) {
+    throw new IntegrityError('Finalizing Model Artifact import has no archive digest', {
+      reason: 'model_artifact_archive_digest_missing',
+      import_id: row.id,
+    })
+  }
+  return row.archiveDigest
+}
+
+function requireCatalogArchiveSize(row: CatalogModelArtifactImportRowV2): number {
+  if (
+    row.archiveSizeBytes === null ||
+    row.archiveSizeBytes < 0n ||
+    row.archiveSizeBytes > BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new IntegrityError('Finalizing Model Artifact import has an invalid archive size', {
+      reason: 'model_artifact_archive_size_invalid',
+      import_id: row.id,
+    })
+  }
+  return Number(row.archiveSizeBytes)
 }
 
 function swiftStudioExportUrl(baseUrl: string, datasetVersion: string): string {

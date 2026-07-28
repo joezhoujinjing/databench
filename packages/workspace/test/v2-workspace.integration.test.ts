@@ -11,6 +11,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { createPrismaClient, V2Catalog } from '@databench/catalog'
 import { V2Dataset } from '@databench/engine'
+import { hashArtifactBytes } from '@databench/hashing'
 import { defineV2Transform, SubsetV2ParamsSchema, V2TransformRegistry } from '@databench/ops'
 import type { DatasetLayoutIdentityV2, DatasetManifestV2 } from '@databench/schema'
 import {
@@ -18,6 +19,7 @@ import {
   type ConditionalCreateResult,
   type ConditionalObjectStoreV2,
   FileBackedV2Store,
+  ModelArtifactStoreV1,
   type ObjectDownloadInputV2,
   type ObjectHeadV2,
   type PreparedArtifactV2,
@@ -26,7 +28,11 @@ import {
   type AuditResultV2 as StoreAuditResultV2,
   type V2OperationContext,
   type V2Store,
+  V2TempStore,
   WORKER_STAGING_JSONL_MEDIA_TYPE,
+  type WorkerStagingHeadV1,
+  type WorkerStagingObjectStoreV1,
+  type WorkerStagingPresignInputV1,
   WorkerStagingStoreV1,
 } from '@databench/store'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
@@ -682,7 +688,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         provider,
         datasetExportBaseUrl: 'http://api:8000',
         upstreamCommit: 'f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d',
-        imageDigest: '447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908',
+        imageDigest: 'd3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72',
         runtimeCapabilityDigest: '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4',
         preparationAbandonGraceMs: 0,
       },
@@ -1486,6 +1492,193 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     ).resolves.toMatchObject({ status: 'closed' })
   })
 
+  test('imports, publishes, cleans, downloads, and retains a LoRA Artifact after Session close', async () => {
+    const published = await workspace.addRecords(
+      [
+        trainerRecord(
+          `rec_${'d'.repeat(64)}`,
+          `cand_${'e'.repeat(64)}`,
+          'Publish an immutable Adapter through real MinIO staging.',
+        ),
+      ],
+      noRefOptions(),
+    )
+    const archive = new TextEncoder().encode('deterministic-tar-zst-integration-fixture')
+    const archiveDigest = hashArtifactBytes(archive)
+    const outputSnapshotDigest = '6'.repeat(64)
+    const outputHandle = `swo_${'A'.repeat(43)}`
+    const adapterConfig = new TextEncoder().encode('{"peft_type":"LORA"}')
+    const adapterWeights = new TextEncoder().encode('SAFETENSORS-INTEGRATION')
+    let current: Awaited<ReturnType<SwiftStudioProviderV2['createSession']>> | null = null
+    const imports = new Map<
+      string,
+      Awaited<ReturnType<SwiftStudioProviderV2['startArtifactImport']>>
+    >()
+    const provider: SwiftStudioProviderV2 = {
+      async createSession(input) {
+        current = readyProviderSession(input)
+        return current
+      },
+      async getCurrentSession() {
+        return current
+      },
+      async closeSession(providerSessionId) {
+        current = null
+        return closedProviderSession(providerSessionId)
+      },
+      async listOutputs(providerSessionId) {
+        return {
+          provider_session_id: providerSessionId,
+          provider_generation: 'integration-test',
+          items: [
+            {
+              handle: outputHandle,
+              output_snapshot_digest: outputSnapshotDigest,
+              display_name: 'checkpoint-3',
+              candidate_kinds: ['lora_adapter'],
+              size_bytes: adapterConfig.byteLength + adapterWeights.byteLength,
+              modified_at: '2026-07-28T00:00:00.000Z',
+              importable: true,
+              reason: null,
+              provider_generation: 'integration-test',
+            },
+          ],
+        }
+      },
+      async startArtifactImport(input) {
+        const uploaded = await fetch(input.staging_upload_url, {
+          method: 'PUT',
+          headers: {
+            'Content-Length': String(archive.byteLength),
+            'Content-Type': 'application/zstd',
+          },
+          body: Buffer.from(archive),
+        })
+        if (!uploaded.ok) throw new Error(`signed staging upload failed: ${uploaded.status}`)
+        const providerImportId = `swai_${Buffer.from(input.request_id, 'hex').toString('base64url')}`
+        const staged = {
+          provider_import_id: providerImportId,
+          request_id: input.request_id,
+          provider_session_id: input.provider_session_id,
+          provider_generation: 'integration-test',
+          status: 'staged' as const,
+          output_snapshot_digest: outputSnapshotDigest,
+          staging_object_key: input.staging_object_key,
+          archive_digest: archiveDigest,
+          archive_size_bytes: archive.byteLength,
+          provider_metadata: {
+            provider_metadata_version: 'swift-lora-snapshot-v1' as const,
+            artifact_kind: 'lora_adapter' as const,
+            artifact_format: 'swift-lora-adapter-v1' as const,
+            archive_format: 'deterministic-tar-zst-v1' as const,
+            source: {
+              provider_generation: 'integration-test',
+              provider_session_id: input.provider_session_id,
+            },
+            adapter: { peft_type: 'LORA', rank: 8 },
+            base_model: {
+              reference: input.base_model.reference,
+              revision: input.base_model.revision,
+              binding_status: 'declared' as const,
+            },
+            training_summary: {
+              train_stage: 'sft',
+              tuner_type: 'lora' as const,
+              lora_rank: 8,
+              lora_alpha: null,
+              lora_dropout: null,
+              num_train_epochs: 1,
+              max_steps: null,
+              learning_rate: null,
+              max_length: null,
+              dtype: null,
+              seed: null,
+              redacted_fields_count: 0,
+            },
+            dataset_lineage: {
+              status: 'verified' as const,
+              dataset_version: published.dataset_version,
+              dataset_export_digest: current?.exportDigest ?? null,
+            },
+            archive_digest_algorithm: 'blake3' as const,
+            archive_digest: archiveDigest,
+            archive_size_bytes: archive.byteLength,
+            output_snapshot_digest: outputSnapshotDigest,
+            files: [
+              {
+                path: 'adapter_config.json',
+                digest_algorithm: 'blake3' as const,
+                digest: hashArtifactBytes(adapterConfig),
+                size_bytes: adapterConfig.byteLength,
+              },
+              {
+                path: 'adapter_model.safetensors',
+                digest_algorithm: 'blake3' as const,
+                digest: hashArtifactBytes(adapterWeights),
+                size_bytes: adapterWeights.byteLength,
+              },
+            ],
+          },
+          failure: null,
+          replayed: false,
+        }
+        imports.set(providerImportId, staged)
+        return staged
+      },
+      async getArtifactImport(providerImportId) {
+        return imports.get(providerImportId) ?? null
+      },
+    }
+    const studio = createSwiftStudioWorkspace('model-artifact-lifecycle', provider)
+    const request = await swiftStudioRequest(studio, published.dataset_version)
+    const session = await studio.createSwiftStudioSession(request)
+    const output = (await studio.listSwiftStudioOutputs(session.id)).items[0]
+    if (output?.handle === null || output?.handle === undefined) {
+      throw new Error('integration output did not expose an opaque handle')
+    }
+
+    objects.failStagingDelete = true
+    const imported = await studio.createModelArtifactImport({
+      studio_session_id: session.id,
+      output_handle: output.handle,
+      artifact_kind: 'lora_adapter',
+      display_name: 'integration-lora',
+      base_model: { reference: 'Qwen/Qwen3-0.6B', revision: null },
+    })
+    expect(imported).toMatchObject({ status: 'completed', archive_digest: archiveDigest })
+    expect(
+      await prisma.v2ModelArtifactImport.findUnique({ where: { id: imported.id } }),
+    ).toMatchObject({ stagingCleanedAt: null })
+
+    objects.failStagingDelete = false
+    await expect(studio.getModelArtifactImport(imported.id)).resolves.toMatchObject({
+      status: 'completed',
+    })
+    expect(
+      await prisma.v2ModelArtifactImport.findUnique({ where: { id: imported.id } }),
+    ).toMatchObject({ stagingCleanedAt: expect.any(Date) })
+
+    const artifactId = imported.artifact_id
+    if (artifactId === null) throw new Error('completed import did not publish an Artifact')
+    const download = await studio.downloadModelArtifact(artifactId)
+    const chunks: Uint8Array[] = []
+    for await (const chunk of download.bytes) chunks.push(chunk)
+    expect(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))).toEqual(Buffer.from(archive))
+    await expect(studio.closeSwiftStudioSession(session.id)).resolves.toMatchObject({
+      status: 'closed',
+    })
+    await expect(studio.listModelArtifacts({ cursor: null, limit: 20 })).resolves.toMatchObject({
+      items: [
+        {
+          id: artifactId,
+          archive_digest: archiveDigest,
+          dataset_lineage: { status: 'verified', dataset_version: published.dataset_version },
+        },
+      ],
+    })
+    await expect(studio.getModelArtifact(artifactId)).resolves.toMatchObject({ id: artifactId })
+  })
+
   test('production open composes Catalog, S3, and file-backed Store end to end', async () => {
     const runtime = await V2Workspace.open({
       root: join(temporaryRoot, 'production-factory'),
@@ -1542,8 +1735,15 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         provider,
         datasetExportBaseUrl: 'http://api:8000',
         upstreamCommit: 'f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d',
-        imageDigest: '447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908',
+        imageDigest: 'd3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72',
         runtimeCapabilityDigest: '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4',
+        modelArtifactStore: new ModelArtifactStoreV1({
+          objectStore: objects,
+          tempStore: new V2TempStore({
+            tempRoot: join(temporaryRoot, `${tempName}-model-artifacts`),
+          }),
+          signedUrlTtlMs: 60_000,
+        }),
         preparationAbandonGraceMs: 0,
       },
     })
@@ -1574,6 +1774,17 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       listSwiftStudioSessions: (namespaceId, filter, before, limit) =>
         catalog.listSwiftStudioSessions(namespaceId, filter, before, limit),
       transitionSwiftStudioSession: (input) => catalog.transitionSwiftStudioSession(input),
+      reopenBusySwiftStudioSession: (namespaceId, id) =>
+        catalog.reopenBusySwiftStudioSession(namespaceId, id),
+      createOrReadModelArtifactImport: (input) => catalog.createOrReadModelArtifactImport(input),
+      getModelArtifactImport: (namespaceId, id) => catalog.getModelArtifactImport(namespaceId, id),
+      markModelArtifactImportStagingCleaned: (namespaceId, id) =>
+        catalog.markModelArtifactImportStagingCleaned(namespaceId, id),
+      transitionModelArtifactImport: (input) => catalog.transitionModelArtifactImport(input),
+      finalizeModelArtifactImport: (input) => catalog.finalizeModelArtifactImport(input),
+      getModelArtifact: (namespaceId, id) => catalog.getModelArtifact(namespaceId, id),
+      listModelArtifacts: (namespaceId, filter, before, limit) =>
+        catalog.listModelArtifacts(namespaceId, filter, before, limit),
       ...overrides,
     }
   }
@@ -1617,6 +1828,8 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
   }
 
   async function clearV2Catalog(): Promise<void> {
+    await prisma.v2ModelArtifact.deleteMany()
+    await prisma.v2ModelArtifactImport.deleteMany()
     await prisma.v2SwiftStudioSession.deleteMany()
     await prisma.v2EvaluationRun.deleteMany()
     await prisma.v2RecordParentEdge.deleteMany()
@@ -1652,10 +1865,11 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
   }
 })
 
-class CountingObjectStore implements ConditionalObjectStoreV2 {
+class CountingObjectStore implements ConditionalObjectStoreV2, WorkerStagingObjectStoreV1 {
   artifactDownloads = 0
+  failStagingDelete = false
 
-  constructor(private readonly delegate: ConditionalObjectStoreV2) {}
+  constructor(private readonly delegate: ConditionalObjectStoreV2 & WorkerStagingObjectStoreV1) {}
 
   async conditionalCreate(input: ConditionalCreateInput): Promise<ConditionalCreateResult> {
     return await this.delegate.conditionalCreate(input)
@@ -1671,6 +1885,22 @@ class CountingObjectStore implements ConditionalObjectStoreV2 {
   async download(input: ObjectDownloadInputV2): Promise<'downloaded' | 'not_found'> {
     if (input.key.endsWith('.parquet')) this.artifactDownloads += 1
     return await this.delegate.download(input)
+  }
+
+  async headStaging(
+    key: string,
+    context: V2OperationContext = {},
+  ): Promise<Readonly<WorkerStagingHeadV1> | null> {
+    return await this.delegate.headStaging(key, context)
+  }
+
+  async presignStaging(input: WorkerStagingPresignInputV1): Promise<string> {
+    return await this.delegate.presignStaging(input)
+  }
+
+  async deleteStaging(key: string, context: V2OperationContext = {}): Promise<void> {
+    if (this.failStagingDelete) throw new Error('simulated staging delete failure')
+    await this.delegate.deleteStaging(key, context)
   }
 
   async ping(context: V2OperationContext = {}): Promise<void> {

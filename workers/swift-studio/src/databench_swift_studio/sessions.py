@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 import httpx
 from blake3 import blake3
 
+from .artifacts import ArtifactSessionContext
 from .config import MS_SWIFT_COMMIT, RuntimeConfig
 from .errors import ProviderError
 
@@ -555,6 +556,27 @@ class SessionStore:
                 'logging_dir': str(root / 'logs'),
                 'provider_generation': self._generation,
             }
+
+    def artifact_context(self, locator: str) -> ArtifactSessionContext:
+        locator = validate_locator(locator)
+        with self._lock:
+            manifest = self._read_current_manifest(required=True)
+            assert manifest is not None
+            if manifest.get('provider_session_id') != locator:
+                raise ProviderError(
+                    'provider_session_not_current',
+                    'Swift Studio Provider Session is not the current exact Session',
+                    409,
+                )
+            return ArtifactSessionContext(
+                provider_generation=self._generation,
+                provider_session_id=locator,
+                session_root=self._session_root(locator),
+                dataset_version=manifest['dataset_version'],
+                export_digest=manifest['export_digest'],
+                export_size_bytes=manifest['export_size_bytes'],
+                output_count=manifest['output_count'],
+            )
 
     def close(
         self,

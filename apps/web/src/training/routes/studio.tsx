@@ -10,6 +10,7 @@ import { StatusDot } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
 import { getSwiftStudioRuntime, SwiftStudioRuntimeContractError } from '../api/client.js'
 import type { SwiftStudioSessionV2 } from '../api/sessions.js'
+import { ArtifactImportPanel, ModelArtifactLibrary } from '../components/ArtifactImportPanel.js'
 import { StudioSessionControl } from '../components/StudioSessionControl.js'
 import {
   isSwiftStudioFrameBooted,
@@ -22,6 +23,7 @@ export function TrainingRoute() {
   const { t } = useTranslation()
   const { base, connectionScope, token } = useBackend()
   const [readySession, setReadySession] = useState<SwiftStudioSessionV2 | null>(null)
+  const [artifactImportActive, setArtifactImportActive] = useState(false)
   const onReadySessionChange = useCallback(
     (session: SwiftStudioSessionV2 | null) => setReadySession(session),
     [],
@@ -81,7 +83,19 @@ export function TrainingRoute() {
       {runtimeQuery.isSuccess && !runtimeQuery.data.ready ? (
         <StartingState retry={() => void runtimeQuery.refetch()} />
       ) : null}
-      {runtimeReady ? <StudioSessionControl onReadySessionChange={onReadySessionChange} /> : null}
+      {runtimeReady ? (
+        <StudioSessionControl
+          closeDisabled={artifactImportActive}
+          onReadySessionChange={onReadySessionChange}
+        />
+      ) : null}
+      {runtimeReady && readySession !== null ? (
+        <ArtifactImportPanel
+          onImportActiveChange={setArtifactImportActive}
+          session={readySession}
+        />
+      ) : null}
+      {runtimeQuery.isSuccess ? <ModelArtifactLibrary /> : null}
       {runtimeReady && !frameLocation.supported ? (
         <Alert className="border-danger/35 bg-danger/10 text-danger">
           <strong className="block">

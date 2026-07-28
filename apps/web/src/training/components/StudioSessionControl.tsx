@@ -25,8 +25,10 @@ interface ExactDatasetSelection {
 }
 
 export function StudioSessionControl({
+  closeDisabled = false,
   onReadySessionChange,
 }: {
+  readonly closeDisabled?: boolean
   readonly onReadySessionChange: (session: SwiftStudioSessionV2 | null) => void
 }) {
   const { t } = useTranslation()
@@ -107,6 +109,7 @@ export function StudioSessionControl({
         {sessions.isError ? <V2MutationError error={sessions.error} /> : null}
         {active !== null ? (
           <ActiveSession
+            closeDisabled={closeDisabled}
             closePending={close.isPending}
             onClose={() => close.mutate(active.id)}
             session={active}
@@ -200,10 +203,12 @@ export function StudioSessionControl({
 }
 
 function ActiveSession({
+  closeDisabled,
   closePending,
   onClose,
   session,
 }: {
+  readonly closeDisabled: boolean
   readonly closePending: boolean
   readonly onClose: () => void
   readonly session: SwiftStudioSessionV2
@@ -225,7 +230,7 @@ function ActiveSession({
           </p>
         </div>
         <Button
-          disabled={closePending || session.status === 'preparing'}
+          disabled={closeDisabled || closePending || session.status === 'preparing'}
           onClick={onClose}
           size="sm"
           type="button"
@@ -240,6 +245,11 @@ function ActiveSession({
           {session.status === 'preparing'
             ? t('training.preparingNotice')
             : t('training.closingNotice')}
+        </Alert>
+      ) : null}
+      {closeDisabled ? (
+        <Alert className="border-warning/35 bg-warning/10">
+          {t('training.artifacts.closeBlocked')}
         </Alert>
       ) : null}
     </div>

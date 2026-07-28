@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -29,6 +30,8 @@ from .config import (
     TOP_LEVEL_SURFACES,
     RuntimeConfig,
 )
+from .artifact_imports import ArtifactImportManager, ArtifactImportRequest
+from .artifacts import ArtifactCore
 from .errors import ProviderError
 from .sessions import (
     CreateSessionRequest,
@@ -515,12 +518,19 @@ def create_app(
     *,
     probe: Probe | None = None,
     session_store: SessionStore | None = None,
+    artifact_core: ArtifactCore | None = None,
+    artifact_imports: ArtifactImportManager | None = None,
 ) -> FastAPI:
     runtime = RuntimeConfig.from_env() if config is None else config
     runtime.prepare()
     capability_manifest = _load_capability_manifest(runtime.capability_manifest_path)
     readiness_probe = probe or (lambda: _probe_gradio(runtime, capability_manifest))
     sessions = session_store or SessionStore(runtime)
+    artifacts = artifact_core or ArtifactCore(sessions)
+    imports = artifact_imports or ArtifactImportManager(
+        artifacts,
+        state_root=runtime.workspace_root / 'artifact-imports',
+    )
     app = FastAPI(
         title='Databench Swift Studio Provider',
         docs_url=None,
@@ -528,6 +538,8 @@ def create_app(
         openapi_url=None,
     )
     app.state.session_store = sessions
+    app.state.artifact_core = artifacts
+    app.state.artifact_imports = imports
 
     @app.middleware('http')
     async def private_response(request, call_next):
@@ -628,6 +640,12 @@ def create_app(
         _reject_query(request)
         payload = await _strict_json_body(request, runtime.session_request_max_bytes)
         parsed = SessionActionRequest.parse(payload)
+        if await asyncio.to_thread(imports.has_active_session_import, provider_session_id):
+            raise ProviderError(
+                'session_has_active_artifact_import',
+                'Studio Session still has an active Artifact import',
+                409,
+            )
         response, replayed = await asyncio.to_thread(
             sessions.close,
             provider_session_id,
@@ -647,5 +665,48 @@ def create_app(
             parsed,
         )
         return JSONResponse(response, status_code=200 if replayed else 202)
+
+    @app.get('/sessions/{provider_session_id}/outputs')
+    async def session_outputs(provider_session_id: str, request: Request):
+        _authorize_session_control(request, runtime)
+        _reject_query(request)
+        candidates = await asyncio.to_thread(artifacts.discover, provider_session_id)
+        generation = sessions.provider_generation
+        return {
+            'provider_session_id': provider_session_id,
+            'provider_generation': generation,
+            'items': [
+                {
+                    'handle': candidate.handle,
+                    'display_name': candidate.display_name,
+                    'candidate_kinds': list(candidate.candidate_kinds),
+                    'size_bytes': candidate.size_bytes,
+                    'modified_at': datetime.fromtimestamp(
+                        candidate.modified_at_ns / 1_000_000_000,
+                        UTC,
+                    ).isoformat().replace('+00:00', 'Z'),
+                    'importable': candidate.importable,
+                    'reason': candidate.reason,
+                    'provider_generation': generation,
+                    'output_snapshot_digest': candidate.output_snapshot_digest,
+                }
+                for candidate in candidates
+            ],
+        }
+
+    @app.post('/sessions/{provider_session_id}/artifact-imports')
+    async def create_artifact_import(provider_session_id: str, request: Request):
+        _authorize_session_control(request, runtime)
+        _reject_query(request)
+        payload = await _strict_json_body(request, runtime.session_request_max_bytes)
+        parsed = ArtifactImportRequest.parse(payload, provider_session_id)
+        response, replayed = await asyncio.to_thread(imports.start, parsed)
+        return JSONResponse(response, status_code=200 if replayed else 202)
+
+    @app.get('/artifact-imports/{provider_import_id}')
+    async def get_artifact_import(provider_import_id: str, request: Request):
+        _authorize_session_control(request, runtime)
+        _reject_query(request)
+        return await asyncio.to_thread(imports.get, provider_import_id)
 
     return app

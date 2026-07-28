@@ -165,6 +165,21 @@ export interface SwiftStudioSessionCreateIdentityV1 {
   readonly runtime_capability_digest: string
 }
 
+export const V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE = 'model-artifact-import-create-v1' as const
+
+export interface ModelArtifactImportCreateIdentityV1 {
+  readonly model_artifact_import_create_profile: typeof V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE
+  readonly namespace: string
+  readonly studio_session_id: string
+  readonly output_handle_digest: string
+  readonly artifact_kind: 'lora_adapter'
+  readonly display_name: string
+  readonly base_model: {
+    readonly reference: string
+    readonly revision: string | null
+  }
+}
+
 export type V2ConverterName =
   | 'canonical-jsonl'
   | 'evalscope-general-qa'

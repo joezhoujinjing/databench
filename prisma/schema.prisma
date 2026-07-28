@@ -17,6 +17,8 @@ model V2IdentityNamespace {
   resultRefTransformJobs V2TransformJob[]  @relation("V2TransformJobResultRefNamespace")
   evaluationRuns         V2EvaluationRun[]
   swiftStudioSessions    V2SwiftStudioSession[]
+  modelArtifactImports   V2ModelArtifactImport[]
+  modelArtifacts         V2ModelArtifact[]
 
   @@map("identity_namespaces_v2")
 }
@@ -56,6 +58,8 @@ model V2DatasetSnapshot {
   resultRefTransformJobs  V2TransformJob[]           @relation("V2TransformJobResultRefVersion")
   evaluationRuns          V2EvaluationRun[]
   swiftStudioSessions     V2SwiftStudioSession[]
+  modelArtifactImports    V2ModelArtifactImport[]
+  modelArtifacts          V2ModelArtifact[]
 
   @@map("dataset_snapshots_v2")
 }
@@ -260,10 +264,92 @@ model V2SwiftStudioSession {
 
   namespace V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   dataset   V2DatasetSnapshot   @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  modelArtifactImports V2ModelArtifactImport[]
+  modelArtifacts       V2ModelArtifact[]
 
   @@unique([namespaceId, createDigest], map: "uq_swift_studio_sessions_v2_create_digest")
   @@unique([provider, providerSessionId], map: "uq_swift_studio_sessions_v2_provider_locator")
   @@index([namespaceId, datasetVersion, createdAt, id], map: "idx_swift_studio_sessions_v2_dataset")
   @@index([namespaceId, status, createdAt, id], map: "idx_swift_studio_sessions_v2_status")
   @@map("swift_studio_sessions_v2")
+}
+
+model V2ModelArtifactImport {
+  id                       String    @id @db.Uuid
+  namespaceId              String    @map("namespace_id") @db.Uuid
+  createDigest             String    @map("create_digest") @db.Char(64)
+  status                   String
+  studioSessionId          String    @map("studio_session_id") @db.Uuid
+  outputHandleDigest       String    @map("output_handle_digest") @db.Char(64)
+  artifactKind             String    @map("artifact_kind")
+  displayName              String    @map("display_name")
+  baseModelReference       String    @map("base_model_reference")
+  baseModelRevision        String?   @map("base_model_revision")
+  providerImportId         String?   @unique(map: "uq_model_artifact_imports_v2_provider_import") @map("provider_import_id")
+  outputSnapshotDigest     String?   @map("output_snapshot_digest") @db.Char(64)
+  stagingObjectKey         String?   @map("staging_object_key")
+  archiveDigest            String?   @map("archive_digest") @db.Char(64)
+  archiveSizeBytes         BigInt?   @map("archive_size_bytes")
+  manifestDigest           String?   @map("manifest_digest") @db.Char(64)
+  manifest                 Json?     @map("manifest_json")
+  datasetLineageStatus     String?   @map("dataset_lineage_status")
+  datasetVersion           String?   @map("dataset_version") @db.Char(64)
+  datasetExportDigest      String?   @map("dataset_export_digest") @db.Char(64)
+  baseModelBindingStatus   String?   @map("base_model_binding_status")
+  artifactId               String?   @unique(map: "uq_model_artifact_imports_v2_artifact") @map("artifact_id") @db.Uuid
+  failure                  Json?     @map("failure_json")
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  stagingAt                DateTime? @map("staging_at") @db.Timestamptz(6)
+  finalizingAt             DateTime? @map("finalizing_at") @db.Timestamptz(6)
+  completedAt              DateTime? @map("completed_at") @db.Timestamptz(6)
+  failedAt                 DateTime? @map("failed_at") @db.Timestamptz(6)
+  stagingCleanedAt         DateTime? @map("staging_cleaned_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  namespace         V2IdentityNamespace  @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  studioSession     V2SwiftStudioSession @relation(fields: [studioSessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dataset           V2DatasetSnapshot?   @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  publishedArtifact V2ModelArtifact?     @relation("SourceModelArtifactImport")
+
+  @@unique([namespaceId, createDigest], map: "uq_model_artifact_imports_v2_create_digest")
+  @@unique([namespaceId, studioSessionId, outputHandleDigest, artifactKind], map: "uq_model_artifact_imports_v2_output")
+  @@index([namespaceId, status, createdAt, id], map: "idx_model_artifact_imports_v2_status")
+  @@index([studioSessionId, createdAt, id], map: "idx_model_artifact_imports_v2_session")
+  @@map("model_artifact_imports_v2")
+}
+
+model V2ModelArtifact {
+  id                     String   @id @db.Uuid
+  namespaceId            String   @map("namespace_id") @db.Uuid
+  displayName            String   @map("display_name")
+  artifactKind           String   @map("artifact_kind")
+  artifactFormat         String   @map("artifact_format")
+  archiveFormat          String   @map("archive_format")
+  archiveDigest          String   @map("archive_digest") @db.Char(64)
+  archiveSizeBytes       BigInt   @map("archive_size_bytes")
+  objectLocator          String   @map("object_locator")
+  manifestDigest         String   @map("manifest_digest") @db.Char(64)
+  manifest               Json     @map("manifest_json")
+  sourceKind             String   @map("source_kind")
+  sourceSessionId        String   @map("source_session_id") @db.Uuid
+  sourceImportId         String   @unique(map: "uq_model_artifacts_v2_source_import") @map("source_import_id") @db.Uuid
+  datasetLineageStatus   String   @map("dataset_lineage_status")
+  datasetVersion         String?  @map("dataset_version") @db.Char(64)
+  datasetExportDigest    String?  @map("dataset_export_digest") @db.Char(64)
+  baseModelReference     String   @map("base_model_reference")
+  baseModelRevision      String?  @map("base_model_revision")
+  baseModelBindingStatus String   @map("base_model_binding_status")
+  upstreamCommit         String   @map("upstream_commit") @db.Char(40)
+  imageDigest            String   @map("image_digest") @db.Char(64)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  namespace        V2IdentityNamespace    @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceSession    V2SwiftStudioSession   @relation(fields: [sourceSessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceImport     V2ModelArtifactImport  @relation("SourceModelArtifactImport", fields: [sourceImportId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dataset          V2DatasetSnapshot?     @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([namespaceId, archiveDigest], map: "idx_model_artifacts_v2_archive_digest")
+  @@index([namespaceId, createdAt, id], map: "idx_model_artifacts_v2_created")
+  @@index([namespaceId, datasetVersion, createdAt, id], map: "idx_model_artifacts_v2_dataset")
+  @@map("model_artifacts_v2")
 }

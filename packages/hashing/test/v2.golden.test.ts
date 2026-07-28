@@ -21,7 +21,9 @@ import {
   hashV2ExportFidelity,
   hashV2IdentityClaimKey,
   hashV2IdentityRequest,
+  hashV2ModelArtifactImportCreate,
   hashV2Record,
+  hashV2SwiftStudioOutputHandle,
   hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
   type IdentityClaimHashInputV1,
@@ -30,6 +32,7 @@ import {
   type SourceRootSeedV1,
   type TransformCacheIdentityV1,
   V2_EVALUATION_RUN_CREATE_PROFILE,
+  V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '../src/index.js'
 
@@ -322,6 +325,36 @@ describe('v2 identity and version fixed vectors', () => {
     expect(hashV2SwiftStudioSessionCreate(widenedIdentity)).toBe(
       hashV2SwiftStudioSessionCreate(identity),
     )
+  })
+
+  test('locks the Model Artifact import identity without storing the opaque output handle', () => {
+    const outputHandleDigest = hashV2SwiftStudioOutputHandle(
+      'swo_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
+    )
+    expect(outputHandleDigest).toBe(
+      'c46de776e3cc6776ebfc31ce4f8d89784af9f243704ee03e28b7d7d9ac92368b',
+    )
+    const identity = {
+      model_artifact_import_create_profile: V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
+      namespace: '11111111-1111-4111-8111-111111111111',
+      studio_session_id: '22222222-2222-4222-8222-222222222222',
+      output_handle_digest: outputHandleDigest,
+      artifact_kind: 'lora_adapter' as const,
+      display_name: 'customer-service-lora',
+      base_model: {
+        reference: 'Qwen/Qwen3-0.6B',
+        revision: '0123456789abcdef',
+      },
+    }
+    expect(hashV2ModelArtifactImportCreate(identity)).toBe(
+      '2b06972781ca71726fa6a44240bde2e080edab4d2a23a5bcb9348e9ae4524c81',
+    )
+    expect(
+      hashV2ModelArtifactImportCreate({
+        ...identity,
+        base_model: { ...identity.base_model, revision: null },
+      }),
+    ).not.toBe(hashV2ModelArtifactImportCreate(identity))
   })
 
   test('matches all record seed profiles and four public entity prefixes', () => {

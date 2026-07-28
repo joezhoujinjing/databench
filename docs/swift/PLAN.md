@@ -38,10 +38,10 @@ S0-S4 构成当前 accepted 主计划。S5/S6 是保留扩展点，不属于首�
 GPU 后置只改变实施顺序：每个 Step 的 GPU 项标记 deferred，非 GPU 契约与真实
 Postgres/MinIO/Provider/浏览器 gate 仍必须通过。未补齐 deferred 项前不声明完整闭环。
 
-2026-07-28 implementation checkpoint：S2 non-GPU gate 已关闭，exact Dataset、单 active Session、动态
-Train/RLHF/GRPO prefill 与 close/cleanup 均已验证；preparation owner token/lease、DB-clock recovery claim、
-ready/failed CAS 与终态 read-back 已覆盖并发/响应丢失。GPU gate 保持 deferred。当前按 accepted 顺序进入
-S3，不在 S3 提前引入 Training Run/Attempt 或 GPU allocator。
+2026-07-28 implementation checkpoint：S3 non-GPU gate 已关闭，output discovery、真实 ms-swift/PEFT LoRA
+布局、safetensors 结构、deterministic tar.zst、signed staging、conditional immutable publication、Artifact
+REST/Web/download 与 Session-independent retention 已验证。GPU gate 按 owner 决策继续 deferred。当前按
+accepted 顺序进入 S4，不在 S4 提前引入 Training Run/Attempt 或 GPU allocator。
 
 ## S0 — 上游、能力与兼容性基线
 

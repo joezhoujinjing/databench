@@ -3,8 +3,8 @@
 > 每个 S Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- swift-status
-current_step: S3
-last_completed_step: S2-non-gpu-green-gpu-deferred
+current_step: S4
+last_completed_step: S3-non-gpu-green-gpu-deferred
 runtime_enabled: false
 runtime_implemented: true
 ui_route_enabled: true
@@ -17,15 +17,16 @@ integration_mode: native-full-gradio
 
 - **当前分支:** `feat/swift-studio-integration`
 - **基线:** EvalScope E7 complete commit `25931d6`，不包含原工作树未提交的 E8 修改
-- **当前 Step:** S3 LoRA Model Artifact import
-- **已完成:** ADR/技术方案/实施计划、S0、S1 non-GPU runtime，以及 S2 exact Dataset + 单 active
-  Studio Session bridge
-- **产品状态:** `/training` 已具备 Dataset selector、fidelity review、Session create/poll/close；只有 ready
-  Session 才加载完整原生 Gradio iframe
-- **运行状态:** runtime 默认 disabled；S2 production image
-  `sha256:447eaea386367126efa833ea4e6b9f00546be7240cb2f3ec698ae45a58152908` 已通过本机 CPU
-  compatibility、Provider、动态 Gradio prefill 与 non-GPU gate；真实 NVIDIA gate 按 owner 决策后置，
-  GPU 状态保持 deferred，capability 不标 GPU green
+- **当前 Step:** S4 Model Deployment + EvalScope 闭环
+- **已完成:** ADR/技术方案/实施计划、S0、S1 non-GPU runtime、S2 exact Dataset + 单 active Studio
+  Session bridge，以及 S3 immutable LoRA Model Artifact import
+- **产品状态:** `/training` 已具备 Dataset selector、fidelity review、Session create/poll/close、output
+  discovery/import，以及独立于 ready Session 的 Artifact library/detail/download；只有 ready Session 才加载
+  完整原生 Gradio iframe
+- **运行状态:** runtime 默认 disabled；S3 production image
+  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72` 已通过本机 CPU
+  compatibility、Provider、动态 Gradio prefill、真实 ms-swift output import 与 non-GPU gate；owner 再次确认
+  GPU 全部后置，GPU 状态保持 deferred，capability 不标 GPU green
 - **首期模式:** 完整原生 Gradio；Databench 只桥接 Session、Dataset、workspace、Artifact
 - **控制面状态:** 没有 Training Run/Attempt；原生任务仍由 ms-swift Gradio 管理
 - **发布声明:** 不改变 V16/V17、公共云 D3、ADR 0012 或 EvalScope E8/E9
@@ -50,8 +51,8 @@ integration_mode: native-full-gradio
 | S0 | 上游、能力与兼容性基线 | ✅ | GS0 | digest-pinned image + 195-package hash lock |
 | S1 | 完整原生 GPU Studio + iframe | 🟨 code complete | GS1 GPU deferred | 全七业务面；真实 LoRA + Infer 待补 |
 | S2 | exact Dataset + 单 Session bridge | ✅ non-GPU | GS2 GPU deferred | Session API、预填、真实 Dataset |
-| S3 | LoRA Model Artifact import | 🔄 当前 | GS3 non-GPU | deterministic archive、immutable finalize |
-| S4 | Deployment + EvalScope 闭环 | ⬜ | GS4 | opaque Deployment ID、真实 lineage |
+| S3 | LoRA Model Artifact import | ✅ non-GPU | GS3 GPU deferred | deterministic archive、immutable finalize |
+| S4 | Deployment + EvalScope 闭环 | 🔄 当前 | GS4 non-GPU | opaque Deployment ID、真实 lineage |
 | S5 | 多 Session/GPU allocator | ⬜ 后续 | 待 ADR | 不属于首期 |
 | S6 | Training control plane | ⬜ 后续 | 待 ADR | Run/Attempt/Worker/callback 接管 |
 
@@ -117,6 +118,42 @@ owner 已明确允许以 code-complete/gpu-deferred 状态进入 S2。
 
 S2 CPU smoke 同时验证了无 Session 空态、exact Session 动态预填、close/cleanup 后恢复空态。该结果只关闭
 GS2 non-GPU gate，不将任何 GPU 训练或推理能力标记为 green。
+
+## S3 交付与 Gate
+
+- [x] output candidate、Artifact import、immutable Model Artifact、lineage/base-model binding Schema 与
+  `swift-model-artifact-import-v1` RFC 8785 + BLAKE3 fixed vector
+- [x] additive migration `0012_model_artifacts_v2`；durable import 状态机、同 archive 多 provenance row、
+  immutable Artifact 与 Session retention 分离
+- [x] bounded output discovery，只返回绑定 Session/generation/snapshot 的 opaque handle，不返回原生路径
+- [x] strict LoRA allowlist/denylist、realpath/type/size/symlink 检查，以及真实 PEFT 0.19.1
+  `adapter_config.json`、`additional_config.json` 与完整 ms-swift v4.4.2 checkpoint fixture
+- [x] safetensors header/range/dtype/shape/连续覆盖验证，以及 sharded index tensor-to-shard exact mapping
+  与 `total_size` 校验
+- [x] deterministic tar.zst、Linux golden
+  `7509051c2def2efcfedfeb81b284c78fa22a6d0e63d25b9586b8618e6f9100a7`
+- [x] exact signed staging PUT、Workspace digest/size/manifest read-back、conditional immutable finalize、
+  concurrent finalizer/read-back 收敛与 terminal exact cleanup retry
+- [x] exact Dataset export digest/bytes/count 重新测量；只有完全一致才登记 verified lineage
+- [x] REST/OpenAPI/generated client；Web output discovery/import polling、Artifact library/detail 与
+  authenticated streaming download（Blob fallback 上限 256 MiB）
+- [x] Session close 后 Artifact 仍可列出、查看和下载；真实 MinIO lifecycle 已覆盖
+  Dataset → Session → staging PUT → immutable publish → cleanup retry → download → Session close
+- [x] 最终 Linux/amd64 image
+  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72` 内 synthetic
+  full-checkpoint importer smoke；归档只包含 adapter config/model/additional config
+- [x] Provider 77 tests、Schema 225 tests、Catalog 46 tests、API 111 tests（4 skipped）、Web 153 tests、
+  真实 Postgres/MinIO Workspace 175 tests（10 skipped），以及 build/test/lint/typecheck/OpenAPI/status/peer/
+  offline/baseline gates
+- [ ] 全新目录 explicit base + adapter GPU Infer（owner 后置，deferred）
+
+S3 关闭的是“Dataset → Studio Session → immutable LoRA Model Artifact”的 non-GPU 数据与产物闭环。
+它不证明 GPU 训练/推理，不创建 Databench Training Run，也不构成 Artifact → Deployment → EvalScope
+评测闭环；后者从 S4 开始。
+
+当前可信单操作者内网 MVP 的明确后置项：后台 import scanner/reconciler、Session input/output retention
+scheduler、Artifact runtime 与 Swift Provider config 完全解耦，以及多用户 Gateway access gate。当前 import
+会由 create/get REST 和 UI polling 持久化推进并在重试时收敛；这些后置项不得被描述为已完成。
 
 ## GS0 Gate 记录
 
