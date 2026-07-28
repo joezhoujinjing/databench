@@ -6,6 +6,7 @@
 current_step: E9
 last_completed_step: E8
 runtime_enabled: false
+offline_runtime_enabled: true
 ui_routes_enabled: true
 upstream_commit: b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
 e3_implementation: complete
@@ -20,6 +21,8 @@ e7_implementation: complete
 e7_gate: passed
 e8_implementation: complete
 e8_gate: passed
+e9_implementation: complete
+e9_gate: pending_target
 -->
 
 ## 当前检查点
@@ -35,6 +38,12 @@ e8_gate: passed
   lazy routes 已开放；锁定 React 基线的全部业务页面已按 Databench 风格迁入唯一 SPA，E7 完整复刻 gate 已关闭
 - **GE8:** deterministic archive、secret/oversize/wrong digest/expired URL、replay/PG failure/exact cleanup、
   真实 MinIO/Postgres、OSS contract 和 Web 状态 gate 已通过
+- **E9 本地实现:** runtime drain/capacity/timeout、七镜像离线 bundle、EvalScope stable config、
+  backup/restore、upgrade/rollback、operator 与 upstream upgrade runbook 已完成；本地测试和
+  `linux/amd64` backend-only 镜像验证已通过
+- **GE9 待验收:** 仍需在真实 Ubuntu 22.04 amd64 目标机断网执行 install → Dataset evaluation →
+  native report/compare/performance → callback/archive → restart/reconcile → upgrade → rollback；本机
+  Docker 验证不替代该目标 gate
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
 
 ## Step 状态
@@ -50,7 +59,7 @@ e8_gate: passed
 | E6 | Reports、Details 与 Predictions | ✅ | GE6 | catalogue、overview/details、逐样本与富内容 |
 | E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ✅ | GE7 | 完整 UI 复刻唯一 gate 已通过 |
 | E8 | 结果归档与 retention | ✅ | GE8 | deterministic archive、immutable object、exact cleanup |
-| E9 | 安全、容量、离线与最终集成 gate | ⬜ 当前 | GE9 | |
+| E9 | 安全、容量、离线与最终集成 gate | 🔄 目标机待验收 | GE9 | 本地实现完成；真实断网目标 gate pending |
 
 ## E0 交付
 
@@ -334,3 +343,24 @@ Gate 通过：
 
 E8 不启用 runtime，也不改变 UI parity、V16/V17 或公共云 D3。下一步 E9 只关闭 ADR 0017 的安全、容量、
 离线、升级/回滚和最终集成 gate。
+
+## E9 本地交付与待完成 Gate
+
+- EvalScope 增加 authenticated operator status/drain/resume；drain 拒绝新 invoke，但不阻断已有任务的
+  progress、log、stop 和 report，离线维护默认等待 300 秒，超时会恢复 admission 并取消维护；
+- evaluation/performance 使用独立并发槽，并增加 task runtime、sample/batch/repeat、performance
+  parallel/request/rate、model token 和 request timeout 上限；所有可配置值另受编译期 ceiling 约束；
+- ADR 0012 离线包扩为七镜像，EvalScope 使用 pinned backend-only `linux/amd64` image、Compose 私网
+  `evalscope:9000`、无宿主机端口、无 GPU、只读根、4 CPU、12 GiB 和 1024 PIDs；通用部署继续
+  disabled-by-default，只有可信内网离线 profile 设置 `offline_runtime_enabled: true`；
+- install/backup/restore/restart/upgrade/rollback 纳入稳定 `evalscope.env`、HMAC/operator secrets、
+  PostgreSQL + MinIO + EvalScope outputs/inputs 一致备份，以及旧五/六镜像 release 回滚兼容；备份拒绝
+  symlink、hardlink 和特殊文件，恢复前拒绝 traversal、重复路径、links、错误根与非普通成员；
+- exact browser gateway 继续阻断 operator route、EvalScope root/static SPA、resume/scan 和未知 upstream
+  endpoint；public config 保持 path-free，Plotly 继续使用本地固定 digest；
+- operator、故障处理、容量、断网部署和 upstream source/API/UI compatibility matrix 已形成 runbook。
+
+本地验证结果与目标机缺口见
+[E9-SECURITY-CAPACITY-RELEASE.md](evidence/E9-SECURITY-CAPACITY-RELEASE.md)。当前 E9
+`implementation=complete`，但 GE9 必须保持 `pending_target`，不得标记为通过。该状态不完成 V16/V17，
+也不解除公共云 D3。

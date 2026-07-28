@@ -47,6 +47,7 @@ describe('EvalScope same-origin gateway', () => {
       ['POST', '/evalscope-api/api/v1/eval/resume/invoke'],
       ['GET', '/evalscope-api/api/v1/reports/scan'],
       ['GET', '/evalscope-api/api/v1/synthetic-new-endpoint'],
+      ['GET', '/evalscope-api/internal/v1/operator/status'],
       ['POST', '/evalscope-api/health'],
     ]) {
       expect((await app.fetch(request(path, { method }))).status).toBe(404)

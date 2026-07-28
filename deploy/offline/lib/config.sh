@@ -162,6 +162,121 @@ ensure_mcp_config() {
   log "wrote anonymous trusted-network MCP configuration to $DATABENCH_MCP_CONFIG_FILE"
 }
 
+validate_evalscope_positive_bound() {
+  local key="$1" maximum="$2" value
+  value="$(grep -E "^${key}=" "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
+  [[ "$value" =~ ^[1-9][0-9]*$ ]] && [ "${#value}" -le 11 ] &&
+    [ "$((10#$value))" -le "$maximum" ] ||
+    die "$key must be a positive integer no greater than $maximum"
+}
+
+validate_evalscope_config() {
+  local key count task_key operator_token origin model_allowlist dataset_allowlist public_base
+  [ -f "$DATABENCH_EVALSCOPE_CONFIG_FILE" ] ||
+    die "EvalScope configuration is missing: $DATABENCH_EVALSCOPE_CONFIG_FILE"
+  validate_mcp_config
+  for key in EVALSCOPE_TASK_CONFIG_HMAC_KEY EVALSCOPE_OPERATOR_TOKEN DATABENCH_ORIGIN \
+    EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST \
+    EVALSCOPE_INPUT_MAX_BYTES EVALSCOPE_OUTPUT_MAX_BYTES EVALSCOPE_ARCHIVE_MAX_BYTES \
+    EVALSCOPE_REQUEST_MAX_BYTES EVALSCOPE_RESPONSE_MAX_BYTES EVALSCOPE_DOCUMENT_MAX_BYTES \
+    EVALSCOPE_DOCUMENT_TTL_SECONDS EVALSCOPE_MAX_CONCURRENT_EVALS \
+    EVALSCOPE_MAX_CONCURRENT_PERF EVALSCOPE_MAX_TASKS EVALSCOPE_TASK_RUNTIME_SECONDS \
+    EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX EVALSCOPE_EVALUATION_BATCH_SIZE_MAX \
+    EVALSCOPE_EVALUATION_REPEATS_MAX EVALSCOPE_PERFORMANCE_PARALLEL_MAX \
+    EVALSCOPE_PERFORMANCE_REQUESTS_MAX EVALSCOPE_PERFORMANCE_RATE_MAX \
+    EVALSCOPE_MODEL_TOKENS_MAX EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX; do
+    count="$(grep -Ec "^${key}=" "$DATABENCH_EVALSCOPE_CONFIG_FILE" || true)"
+    [ "$count" -eq 1 ] || die "EvalScope configuration must contain exactly one $key"
+  done
+  task_key="$(grep -E '^EVALSCOPE_TASK_CONFIG_HMAC_KEY=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
+  operator_token="$(grep -E '^EVALSCOPE_OPERATOR_TOKEN=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
+  [[ "$task_key" =~ ^[0-9a-f]{64}$ ]] || die "EvalScope task HMAC key must be 32 random bytes in hex"
+  [[ "$operator_token" =~ ^[0-9a-f]{64}$ ]] || die "EvalScope operator token must be 32 random bytes in hex"
+  origin="$(grep -E '^DATABENCH_ORIGIN=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
+  validate_mcp_public_base_url "${origin}/api" 'DATABENCH_ORIGIN'
+  public_base="$(grep -E '^DATABENCH_MCP_PUBLIC_BASE_URL=' "$DATABENCH_MCP_CONFIG_FILE" | cut -d= -f2-)"
+  [ "$origin" = "${public_base%/api}" ] ||
+    die "DATABENCH_ORIGIN must match the configured offline public base origin"
+  model_allowlist="$(grep -E '^EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
+  dataset_allowlist="$(grep -E '^EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
+  [[ "$model_allowlist" =~ ^[A-Za-z0-9.,\|:/_-]*$ ]] ||
+    die "EvalScope model endpoint allowlist contains unsupported characters"
+  [ -z "$dataset_allowlist" ] || die "offline EvalScope Dataset endpoint allowlist must remain empty"
+  validate_evalscope_positive_bound EVALSCOPE_INPUT_MAX_BYTES 4294967296
+  validate_evalscope_positive_bound EVALSCOPE_OUTPUT_MAX_BYTES 17179869184
+  validate_evalscope_positive_bound EVALSCOPE_ARCHIVE_MAX_BYTES 1073741824
+  validate_evalscope_positive_bound EVALSCOPE_REQUEST_MAX_BYTES 16777216
+  validate_evalscope_positive_bound EVALSCOPE_RESPONSE_MAX_BYTES 67108864
+  validate_evalscope_positive_bound EVALSCOPE_DOCUMENT_MAX_BYTES 67108864
+  validate_evalscope_positive_bound EVALSCOPE_DOCUMENT_TTL_SECONDS 86400
+  validate_evalscope_positive_bound EVALSCOPE_MAX_CONCURRENT_EVALS 16
+  validate_evalscope_positive_bound EVALSCOPE_MAX_CONCURRENT_PERF 16
+  validate_evalscope_positive_bound EVALSCOPE_MAX_TASKS 100000
+  validate_evalscope_positive_bound EVALSCOPE_TASK_RUNTIME_SECONDS 86400
+  validate_evalscope_positive_bound EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX 1000000
+  validate_evalscope_positive_bound EVALSCOPE_EVALUATION_BATCH_SIZE_MAX 1024
+  validate_evalscope_positive_bound EVALSCOPE_EVALUATION_REPEATS_MAX 100
+  validate_evalscope_positive_bound EVALSCOPE_PERFORMANCE_PARALLEL_MAX 1024
+  validate_evalscope_positive_bound EVALSCOPE_PERFORMANCE_REQUESTS_MAX 10000000
+  validate_evalscope_positive_bound EVALSCOPE_PERFORMANCE_RATE_MAX 100000
+  validate_evalscope_positive_bound EVALSCOPE_MODEL_TOKENS_MAX 131072
+  validate_evalscope_positive_bound EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX 86400
+  [ "$(stat -c '%a' "$DATABENCH_EVALSCOPE_CONFIG_FILE")" = '600' ] ||
+    die "EvalScope configuration permissions must be 0600: $DATABENCH_EVALSCOPE_CONFIG_FILE"
+  [ "$(stat -c '%U:%G' "$DATABENCH_EVALSCOPE_CONFIG_FILE")" = 'root:root' ] ||
+    die "EvalScope configuration owner must be root:root: $DATABENCH_EVALSCOPE_CONFIG_FILE"
+}
+
+ensure_evalscope_config() {
+  local public_base origin task_key operator_token model_allowlist temp
+  if [ -e "$DATABENCH_EVALSCOPE_CONFIG_FILE" ]; then
+    validate_evalscope_config
+    log "reusing EvalScope configuration from $DATABENCH_EVALSCOPE_CONFIG_FILE"
+    return
+  fi
+  validate_mcp_config
+  public_base="$(grep -E '^DATABENCH_MCP_PUBLIC_BASE_URL=' "$DATABENCH_MCP_CONFIG_FILE" | cut -d= -f2-)"
+  origin="${public_base%/api}"
+  task_key="$(random_secret)"
+  operator_token="$(random_secret)"
+  model_allowlist="${DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST:-}"
+  [[ "$model_allowlist" =~ ^[A-Za-z0-9.,\|:/_-]*$ ]] ||
+    die "DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST contains unsupported characters"
+  temp="${DATABENCH_EVALSCOPE_CONFIG_FILE}.tmp.$$"
+  umask 077
+  {
+    printf 'EVALSCOPE_TASK_CONFIG_HMAC_KEY=%s\n' "$task_key"
+    printf 'EVALSCOPE_OPERATOR_TOKEN=%s\n' "$operator_token"
+    printf 'DATABENCH_ORIGIN=%s\n' "$origin"
+    printf 'EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=%s\n' "$model_allowlist"
+    printf 'EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=\n'
+    printf 'EVALSCOPE_INPUT_MAX_BYTES=1073741824\n'
+    printf 'EVALSCOPE_OUTPUT_MAX_BYTES=4294967296\n'
+    printf 'EVALSCOPE_ARCHIVE_MAX_BYTES=1073741824\n'
+    printf 'EVALSCOPE_REQUEST_MAX_BYTES=1048576\n'
+    printf 'EVALSCOPE_RESPONSE_MAX_BYTES=16777216\n'
+    printf 'EVALSCOPE_DOCUMENT_MAX_BYTES=16777216\n'
+    printf 'EVALSCOPE_DOCUMENT_TTL_SECONDS=900\n'
+    printf 'EVALSCOPE_MAX_CONCURRENT_EVALS=2\n'
+    printf 'EVALSCOPE_MAX_CONCURRENT_PERF=2\n'
+    printf 'EVALSCOPE_MAX_TASKS=10000\n'
+    printf 'EVALSCOPE_TASK_RUNTIME_SECONDS=86400\n'
+    printf 'EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX=100000\n'
+    printf 'EVALSCOPE_EVALUATION_BATCH_SIZE_MAX=256\n'
+    printf 'EVALSCOPE_EVALUATION_REPEATS_MAX=10\n'
+    printf 'EVALSCOPE_PERFORMANCE_PARALLEL_MAX=256\n'
+    printf 'EVALSCOPE_PERFORMANCE_REQUESTS_MAX=1000000\n'
+    printf 'EVALSCOPE_PERFORMANCE_RATE_MAX=10000\n'
+    printf 'EVALSCOPE_MODEL_TOKENS_MAX=32768\n'
+    printf 'EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX=3600\n'
+  } > "$temp"
+  chown root:root "$temp"
+  chmod 0600 "$temp"
+  mv -f "$temp" "$DATABENCH_EVALSCOPE_CONFIG_FILE"
+  validate_evalscope_config
+  log "wrote EvalScope runtime configuration to $DATABENCH_EVALSCOPE_CONFIG_FILE"
+}
+
 release_requires_mcp_config() {
   local release_dir="$1"
   [ -f "${release_dir}/compose.yml" ] || die "release is missing compose.yml: $release_dir"

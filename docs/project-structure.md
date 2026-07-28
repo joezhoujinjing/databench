@@ -3,10 +3,12 @@
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
-> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E8 已完成：backend-only runtime、disabled-by-default
+> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E8 gate 已完成，E9 本地实现已完成：backend-only
+> runtime、disabled-by-default
 > gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports、逐样本、Dashboard、
 > 比较、Performance、Benchmark、安全 Viewer 和完整结果归档已实现；锁定 React 基线的完整 UI 功能迁移
-> gate 与结果归档 gate 已关闭。
+> gate 与结果归档 gate 已关闭。七镜像离线生命周期、安全和容量实现已落地，真实 Ubuntu 22.04 amd64
+> 断网目标机 GE9 仍待验收。
 
 ## 顶层目录
 
@@ -176,17 +178,19 @@ packages/<name>/
 - 托管对象存储：Aliyun OSS；本地及离线单机使用 S3-compatible MinIO adapter。
 - 离线 MCP：`/etc/databench/mcp.env` 独立保存匿名模式、agent 可达 `/api` public base 与可选
   origins；旧 release 不读取该文件。
-- 离线 Worker：作为第六张镜像随 bundle 交付，使用 4 GiB tmpfs；备份仍只覆盖 PostgreSQL、
-  MinIO、release/config escrow。
+- 离线 Worker：作为第六张镜像随 bundle 交付，使用 4 GiB tmpfs。
+- 离线 EvalScope：作为第七张 pinned backend-only 镜像随 bundle 交付，使用私网 HTTP、持久化
+  output/input volume、稳定 operator/HMAC 配置、drain 生命周期与 4 CPU / 12 GiB 容量边界；备份覆盖
+  PostgreSQL、MinIO、EvalScope volume 和三份加密配置 escrow。
 - OpenAPI：API Zod route → `openapi/openapi.json` →
   `apps/web/src/api/generated/schema.ts`。
 - Node 版本：`.nvmrc`，当前 Node 22 LTS。
 
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E8 已完成。EvalScope runtime 仍 disabled-by-default；Web 已
-完成锁定 EvalScope React 基线的完整业务功能迁移，结果归档已完成，最终离线集成仍属于 E9。MCP 和单个
-CPU-only Worker只获
+产品切换 R0-R5、MCP M0-M3 与 EvalScope E0-E8 gate 已完成，E9 本地实现完成、目标机 gate pending。
+EvalScope runtime 在通用部署仍 disabled-by-default；Web 已完成锁定 EvalScope React 基线的完整业务功能
+迁移，结果归档与七镜像离线接线已完成。MCP、CPU-only Worker 和 backend-only EvalScope 只获
 授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台

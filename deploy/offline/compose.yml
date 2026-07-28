@@ -109,6 +109,49 @@ services:
       retries: 12
       start_period: 30s
 
+  evalscope:
+    <<: *service-defaults
+    image: ${DATABENCH_EVALSCOPE_IMAGE:?missing DATABENCH_EVALSCOPE_IMAGE}
+    container_name: databench-offline-evalscope
+    restart: unless-stopped
+    env_file:
+      - /etc/databench/evalscope.env
+    environment:
+      CUDA_VISIBLE_DEVICES: ""
+      NVIDIA_VISIBLE_DEVICES: "void"
+      HOME: /var/lib/evalscope/home
+      EVALSCOPE_SERVE_WEB: "false"
+      EVALSCOPE_OUTPUT_DIR: /var/lib/evalscope/outputs
+      EVALSCOPE_INPUT_DIR: /var/lib/evalscope/inputs
+      EVALSCOPE_ALLOWED_MEDIA_ROOTS: /var/lib/evalscope/outputs,/var/lib/evalscope/inputs
+      EVALSCOPE_MODEL_REDIRECT_MAX_HOPS: "0"
+      EVALSCOPE_PLOTLY_ASSET_PATH: /opt/vendor/plotly-2.35.2.min.js
+      EVALSCOPE_PLOTLY_ASSET_SHA256: 6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603
+      DATABENCH_BASE_URL: http://api:8000
+    volumes:
+      - /srv/databench/evalscope/outputs:/var/lib/evalscope/outputs
+      - /srv/databench/evalscope/inputs:/var/lib/evalscope/inputs
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+      - /var/lib/evalscope/home:size=512m,uid=10001,gid=10001,mode=0700
+    read_only: true
+    mem_limit: 12g
+    cpus: 4.0
+    pids_limit: 1024
+    stop_grace_period: 60s
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/app/.venv/bin/python -c \"import json,urllib.request; body=json.load(urllib.request.urlopen('http://127.0.0.1:9000/health',timeout=3)); raise SystemExit(0 if body.get('ready') is True else 1)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   api:
     <<: *service-defaults
     image: ${DATABENCH_API_IMAGE:?missing DATABENCH_API_IMAGE}
@@ -119,7 +162,9 @@ services:
       - /etc/databench/mcp.env
     environment:
       DATABENCH_OPENAPI_SERVER_URL: "/api"
-      DATABENCH_EVALSCOPE_ENABLED: "false"
+      DATABENCH_EVALSCOPE_ENABLED: "true"
+      DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: "http://evalscope:9000"
+      DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: "/app/evalscope-api-routes.json"
       DATABENCH_WORKER_ENABLED: "true"
       DATABENCH_WORKER_TARGET: "worker:50051"
       NODE_ENV: production

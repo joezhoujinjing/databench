@@ -13,10 +13,10 @@
   `docs/mcp/STATUS.md`。通用 runtime 仍
   disabled-by-default；ADR 0012 离线包会在 operator 显式提供稳定、agent 可达的 `/api` public
   base 后，以 `auth_mode=none` 在可信内网启用。该 scoped gate 不授权公网部署，也不改变 V16/V17。
-- ADR 0012 的 2026-07-27 窄修订要求完整离线包包含 CPU-only Python Worker；六镜像构建、
-  Worker → API → Web 生命周期、`basic-clean@1` smoke 和旧五镜像回滚兼容已在
-  `feat/offline-worker` 实现并通过本地 `linux/amd64` Compose gate，仍待真实 Ubuntu 22.04
-  amd64 断网验收。
+- ADR 0012 的 2026-07-27 窄修订要求完整离线包包含 CPU-only Python Worker；2026-07-28 的
+  EvalScope E9 修订进一步加入 pinned backend-only EvalScope，当前为七镜像、
+  Worker → API → EvalScope → Web 生命周期、drain、三数据面备份和旧五/六镜像回滚兼容。目标机只
+  `docker load` 预构建镜像；真实 Ubuntu 22.04 amd64 断网 install/eval/report/upgrade/rollback 仍待验收。
 - ADR 0017 EvalScope 原生 UI 集成已接受并开始实施。E0 已固定 upstream commit、183 个 Web source
   文件、60 个能力、default-deny API 路由、五类 Benchmark fixture 和 Plotly 证据；E1 已完成
   `evalscope-general-qa@1.0.0` 三种 reference profile、确定性 JSONL、eligibility/fidelity 与真实 exact
@@ -139,7 +139,7 @@ R4 manifest 在本机 ignored maintenance 目录中。标准操作仍以
 - `git diff --check`
 - 真实 Postgres + MinIO Store/Workspace/API/CLI suites
 - 浏览器 v2-only 全主流程、直接刷新、404、console、窄屏
-- 离线静态检查和实际 lifecycle smoke；当前 Worker 修订还需重新执行六镜像 gate
+- 离线静态检查和实际 lifecycle smoke；当前 EvalScope 七镜像修订仍需真实 Ubuntu 目标机断网 gate
 
 R5 已完成并只更新了产品切换状态，没有改变 V16/V17。
 

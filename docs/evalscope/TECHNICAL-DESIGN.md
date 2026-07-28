@@ -1304,7 +1304,17 @@ EVALSCOPE_INPUT_MAX_BYTES
 EVALSCOPE_OUTPUT_MAX_BYTES
 EVALSCOPE_MAX_CONCURRENT_EVALS
 EVALSCOPE_MAX_CONCURRENT_PERF
+EVALSCOPE_TASK_RUNTIME_SECONDS
+EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX
+EVALSCOPE_EVALUATION_BATCH_SIZE_MAX
+EVALSCOPE_EVALUATION_REPEATS_MAX
+EVALSCOPE_PERFORMANCE_PARALLEL_MAX
+EVALSCOPE_PERFORMANCE_REQUESTS_MAX
+EVALSCOPE_PERFORMANCE_RATE_MAX
+EVALSCOPE_MODEL_TOKENS_MAX
+EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX
 EVALSCOPE_TASK_CONFIG_HMAC_KEY
+EVALSCOPE_OPERATOR_TOKEN
 EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST
 EVALSCOPE_MODEL_REDIRECT_MAX_HOPS=0
 EVALSCOPE_PLOTLY_ASSET_PATH
@@ -1335,7 +1345,7 @@ DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES=1073741824
 
 ### 13.3 离线包
 
-完成集成后离线包新增固定 EvalScope image 和 volume，必须更新：
+E9 本地实现将固定 EvalScope image 和 volume 纳入离线包，并更新：
 
 - bundle manifest、镜像计数和 digest；
 - Compose、Caddy、health/dependency order；
@@ -1346,7 +1356,8 @@ DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES=1073741824
 - 断网 lifecycle smoke；
 - 旧包回滚对 evaluation table/objects 的兼容。
 
-对应 gate 完成前，现有离线发布声明不变。
+仓库 static/Compose/bundle contract 完成不等于 GE9：只有真实 Ubuntu 22.04 amd64 目标机断网跑完
+install → eval/report/archive → restart → upgrade → rollback 后，才能关闭离线目标 gate。
 
 Owner 于 2026-07-28 明确：offline source build 不是本集成的交付边界。fresh image build 可以联网获取
 `uv.lock`/digest 固定的 Python inputs 和 base OS packages；离线 bundle 必须携带已构建且记录 digest 的

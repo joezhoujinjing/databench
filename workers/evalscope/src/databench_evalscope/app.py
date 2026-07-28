@@ -86,6 +86,52 @@ _GET_ROUTES = frozenset({
 })
 
 
+class RuntimeAdmission:
+    """Process-local drain fence for the single-worker Gunicorn runtime."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._draining = False
+        self._active_tasks = 0
+
+    def begin_task(self) -> None:
+        with self._lock:
+            if self._draining:
+                raise RuntimePolicyError(
+                    'runtime_draining',
+                    'EvalScope is draining and does not accept new tasks',
+                    503,
+                )
+            self._active_tasks += 1
+
+    def finish_task(self) -> None:
+        with self._lock:
+            if self._active_tasks <= 0:
+                raise RuntimeError('EvalScope active task accounting underflow')
+            self._active_tasks -= 1
+
+    def drain(self) -> dict[str, int | bool]:
+        with self._lock:
+            self._draining = True
+            return self._snapshot_unlocked()
+
+    def resume(self) -> dict[str, int | bool]:
+        with self._lock:
+            self._draining = False
+            return self._snapshot_unlocked()
+
+    def snapshot(self) -> dict[str, int | bool]:
+        with self._lock:
+            return self._snapshot_unlocked()
+
+    def _snapshot_unlocked(self) -> dict[str, int | bool]:
+        return {
+            'draining': self._draining,
+            'active_tasks': self._active_tasks,
+            'ready': not self._draining,
+        }
+
+
 def create_app(
     config: RuntimeConfig | None = None,
     *,
@@ -122,6 +168,8 @@ def create_app(
     }
     evaluation_slots = threading.BoundedSemaphore(runtime.max_concurrent_evals)
     performance_slots = threading.BoundedSemaphore(runtime.max_concurrent_perf)
+    admission = RuntimeAdmission()
+    app.extensions['databench_evalscope']['admission'] = admission
     generation_lock = threading.Lock()
     report_generation = 0
 
@@ -200,11 +248,15 @@ def create_app(
 
     @app.post('/api/v1/eval/invoke')
     def eval_invoke():
-        return _invoke('evaluation', evaluation_slots, runtime, manifests, databench, endpoint_policy, upstream)
+        return _invoke(
+            'evaluation', evaluation_slots, admission, runtime, manifests, databench, endpoint_policy, upstream
+        )
 
     @app.post('/api/v1/perf/invoke')
     def perf_invoke():
-        return _invoke('performance', performance_slots, runtime, manifests, databench, endpoint_policy, upstream)
+        return _invoke(
+            'performance', performance_slots, admission, runtime, manifests, databench, endpoint_policy, upstream
+        )
 
     def stop(kind: str):
         path = f'/api/v1/{"eval" if kind == "evaluation" else "perf"}/stop'
@@ -314,23 +366,47 @@ def create_app(
 
     @app.post('/internal/v1/databench/tasks/<task_id>:reconcile')
     def manual_reconcile(task_id: str):
-        expected = b'Bearer ' + runtime.operator_token
-        provided = request.headers.get('Authorization', '').encode('utf-8')
-        if not hmac.compare_digest(expected, provided):
-            raise RuntimePolicyError('operator_auth_required', 'Operator authentication is required', 401)
+        _require_operator(runtime)
         _reject_query(request.path, frozenset())
+        _reject_request_body()
         manifest = manifests.reconcile_one(task_id, databench.callback)
         app.logger.info('operator reconciliation completed for task %s', task_id)
         return jsonify({'task_id': task_id, 'phase': manifest['phase'], 'callback_confirmed': manifest['callback_confirmed']})
+
+    @app.post('/internal/v1/operator/drain')
+    def operator_drain():
+        _require_operator(runtime)
+        _reject_query(request.path, frozenset())
+        _reject_request_body()
+        return jsonify(admission.drain())
+
+    @app.post('/internal/v1/operator/resume')
+    def operator_resume():
+        _require_operator(runtime)
+        _reject_query(request.path, frozenset())
+        _reject_request_body()
+        return jsonify(admission.resume())
+
+    @app.get('/internal/v1/operator/status')
+    def operator_status():
+        _require_operator(runtime)
+        _reject_query(request.path, frozenset())
+        _reject_request_body()
+        return jsonify(admission.snapshot())
 
     return app
 
 
 def _expected_method(path: str) -> str | None:
-    if path in _POST_ROUTES or re.fullmatch(r'/internal/v1/databench/tasks/[^/]+:reconcile', path):
+    if (
+        path in _POST_ROUTES
+        or path in {'/internal/v1/operator/drain', '/internal/v1/operator/resume'}
+        or re.fullmatch(r'/internal/v1/databench/tasks/[^/]+:reconcile', path)
+    ):
         return 'POST'
     if (
         path in _GET_ROUTES
+        or path == '/internal/v1/operator/status'
         or re.fullmatch(r'/generated-documents/[A-Za-z0-9_-]+', path)
     ):
         return 'GET'
@@ -340,6 +416,7 @@ def _expected_method(path: str) -> str | None:
 def _invoke(
     kind: str,
     slots: threading.BoundedSemaphore,
+    admission: RuntimeAdmission,
     runtime: RuntimeConfig,
     manifests: TaskManifestStore,
     databench: DatabenchClient,
@@ -367,12 +444,16 @@ def _invoke(
     if not isinstance(endpoint, str):
         raise RuntimePolicyError('model_endpoint_url_rejected', 'Model endpoint URL is required', 422, f'/{endpoint_field}')
     endpoint_policy.authorize_connection(endpoint)
+    _validate_task_capacity(kind, payload, runtime)
     _assert_disk_capacity(runtime)
     digest = config_digest({'task_kind': kind, 'payload': payload}, runtime.task_hmac_key)
     if not slots.acquire(blocking=False):
         raise RuntimePolicyError('task_concurrency_exceeded', 'EvalScope task concurrency is exhausted', 503)
+    admitted = False
     owns_claim = False
     try:
+        admission.begin_task()
+        admitted = True
         claim = manifests.claim(task_id, kind, digest)
         if claim.disposition == 'already_running':
             return jsonify({'error': {'code': 'already_running', 'message': 'Task is already active'}, 'task_id': task_id}), 409
@@ -395,10 +476,11 @@ def _invoke(
             if integration is None or not isinstance(integration.get('run_id'), str) or not databench.start(integration['run_id']):
                 raise RuntimePolicyError('databench_callback_unavailable', 'Databench run could not start', 503)
         _cancel_if_requested(manifests, task_id)
-        response = _dispatch_upstream(
+        response = _dispatch_task_upstream(
             upstream,
-            'POST',
             path,
+            task_id,
+            runtime.task_runtime_seconds,
             body=execution_payload,
             headers={'EvalScope-Task-Id': task_id},
         )
@@ -434,11 +516,12 @@ def _invoke(
         except RuntimePolicyError:
             raise error
         if current['phase'] not in {'completed', 'failed', 'cancelled'}:
+            phase = 'provider_run' if current['phase'] == 'running' else 'provider_prepare'
             manifest = manifests.record_terminal(
                 task_id,
                 'failed',
                 error={
-                    'phase': 'provider_prepare',
+                    'phase': phase,
                     'code': _safe_error_code(error.code),
                     'message': sanitize_text(error.message)[:2048],
                 },
@@ -475,6 +558,8 @@ def _invoke(
             'terminal': manifest['terminal'],
         }), 200
     finally:
+        if admitted:
+            admission.finish_task()
         slots.release()
 
 
@@ -497,6 +582,249 @@ def _confirm_callback(
         manifests.confirm_callback(task_id)
 
 
+def _require_operator(runtime: RuntimeConfig) -> None:
+    expected = b'Bearer ' + runtime.operator_token
+    provided = request.headers.get('Authorization', '').encode('utf-8')
+    if not hmac.compare_digest(expected, provided):
+        raise RuntimePolicyError('operator_auth_required', 'Operator authentication is required', 401)
+
+
+def _reject_request_body() -> None:
+    if request.content_length not in {None, 0} or request.get_data(cache=False):
+        raise RuntimePolicyError(
+            'unexpected_request_body',
+            'This operator endpoint does not accept a request body',
+            400,
+        )
+
+
+def _validate_task_capacity(kind: str, payload: dict[str, Any], runtime: RuntimeConfig) -> None:
+    model = payload.get('model')
+    if not isinstance(model, str) or not model.strip() or len(model.encode('utf-8')) > 512:
+        raise RuntimePolicyError(
+            'task_capacity_invalid',
+            'Model identifier is missing or exceeds its byte limit',
+            422,
+            '/model',
+        )
+    datasets = payload.get('datasets')
+    if datasets is not None:
+        if (
+            not isinstance(datasets, list)
+            or not datasets
+            or len(datasets) > 64
+            or any(
+                not isinstance(item, str)
+                or not item.strip()
+                or len(item.encode('utf-8')) > 256
+                for item in datasets
+            )
+        ):
+            raise RuntimePolicyError(
+                'task_capacity_invalid',
+                'Dataset selection exceeds its configured bound',
+                422,
+                '/datasets',
+            )
+    if kind == 'evaluation':
+        _optional_bounded_integer(
+            payload,
+            'limit',
+            1,
+            runtime.evaluation_sample_limit_max,
+            '/limit',
+        )
+        _optional_bounded_integer(
+            payload,
+            'eval_batch_size',
+            1,
+            runtime.evaluation_batch_size_max,
+            '/eval_batch_size',
+        )
+        _optional_bounded_integer(
+            payload,
+            'repeats',
+            1,
+            runtime.evaluation_repeats_max,
+            '/repeats',
+        )
+        _optional_bounded_number(
+            payload,
+            'timeout',
+            0,
+            runtime.request_timeout_seconds_max,
+            '/timeout',
+        )
+        generation = payload.get('generation_config')
+        if generation is not None and not isinstance(generation, dict):
+            raise RuntimePolicyError(
+                'task_capacity_invalid',
+                'Generation config must be an object',
+                422,
+                '/generation_config',
+            )
+        if isinstance(generation, dict):
+            _optional_bounded_integer(
+                generation,
+                'max_tokens',
+                1,
+                runtime.model_tokens_max,
+                '/generation_config/max_tokens',
+            )
+            _optional_bounded_integer(
+                generation,
+                'top_k',
+                1,
+                runtime.model_tokens_max,
+                '/generation_config/top_k',
+            )
+            _optional_bounded_number(
+                generation,
+                'top_p',
+                0,
+                1,
+                '/generation_config/top_p',
+            )
+            _optional_bounded_number(
+                generation,
+                'temperature',
+                0,
+                2,
+                '/generation_config/temperature',
+            )
+        return
+
+    parallel = _positive_integer_list(
+        payload.get('parallel'),
+        runtime.performance_parallel_max,
+        '/parallel',
+    )
+    requests = _positive_integer_list(
+        payload.get('number'),
+        runtime.performance_requests_max,
+        '/number',
+    )
+    if sum(requests) > runtime.performance_requests_max:
+        raise RuntimePolicyError(
+            'task_capacity_invalid',
+            'Total performance requests exceed the configured bound',
+            422,
+            '/number',
+        )
+    if max(parallel) > runtime.performance_parallel_max:
+        raise RuntimePolicyError(
+            'task_capacity_invalid',
+            'Performance parallelism exceeds the configured bound',
+            422,
+            '/parallel',
+        )
+    _optional_bounded_integer(payload, 'max_tokens', 1, runtime.model_tokens_max, '/max_tokens')
+    _optional_bounded_integer(
+        payload,
+        'max_prompt_length',
+        0,
+        runtime.model_tokens_max,
+        '/max_prompt_length',
+    )
+    for field in ('min_tokens', 'min_prompt_length'):
+        _optional_bounded_integer(payload, field, 0, runtime.model_tokens_max, f'/{field}')
+    _optional_bounded_number(
+        payload,
+        'rate',
+        0,
+        runtime.performance_rate_max,
+        '/rate',
+    )
+    _validate_minimum_maximum(payload, 'min_tokens', 'max_tokens')
+    _validate_minimum_maximum(payload, 'min_prompt_length', 'max_prompt_length')
+
+
+def _positive_integer_list(value: Any, maximum: int, field: str) -> list[int]:
+    values = value if isinstance(value, list) else [value]
+    if not values or len(values) > 16:
+        raise RuntimePolicyError(
+            'task_capacity_invalid',
+            'Performance sweep exceeds its configured bound',
+            422,
+            field,
+        )
+    if any(
+        isinstance(item, bool)
+        or not isinstance(item, int)
+        or item <= 0
+        or item > maximum
+        for item in values
+    ):
+        raise RuntimePolicyError(
+            'task_capacity_invalid',
+            'Performance sweep contains an out-of-range value',
+            422,
+            field,
+        )
+    return values
+
+
+def _optional_bounded_integer(
+    value: Mapping[str, Any],
+    key: str,
+    minimum: int,
+    maximum: int,
+    field: str,
+) -> None:
+    if key not in value or value[key] is None:
+        return
+    candidate = value[key]
+    if (
+        isinstance(candidate, bool)
+        or not isinstance(candidate, int)
+        or candidate < minimum
+        or candidate > maximum
+    ):
+        raise RuntimePolicyError(
+            'task_capacity_invalid',
+            f'{key} exceeds its configured bound',
+            422,
+            field,
+        )
+
+
+def _optional_bounded_number(
+    value: Mapping[str, Any],
+    key: str,
+    minimum: float,
+    maximum: float,
+    field: str,
+) -> None:
+    if key not in value or value[key] is None:
+        return
+    candidate = value[key]
+    valid_number = (
+        not isinstance(candidate, bool)
+        and isinstance(candidate, (int, float))
+        and (not isinstance(candidate, float) or math.isfinite(candidate))
+    )
+    below_minimum = candidate < minimum if valid_number else True
+    if not valid_number or below_minimum or candidate > maximum:
+        raise RuntimePolicyError(
+            'task_capacity_invalid',
+            f'{key} exceeds its configured bound',
+            422,
+            field,
+        )
+
+
+def _validate_minimum_maximum(value: Mapping[str, Any], minimum_key: str, maximum_key: str) -> None:
+    minimum = value.get(minimum_key)
+    maximum = value.get(maximum_key)
+    if isinstance(minimum, int) and isinstance(maximum, int) and minimum > maximum:
+        raise RuntimePolicyError(
+            'task_capacity_invalid',
+            f'{minimum_key} cannot exceed {maximum_key}',
+            422,
+            f'/{minimum_key}',
+        )
+
+
 def _load_upstream(runtime: RuntimeConfig) -> Flask:
     os.environ['EVALSCOPE_OUTPUT_DIR'] = str(runtime.output_dir)
     os.environ['EVALSCOPE_SERVE_WEB'] = 'false'
@@ -508,6 +836,50 @@ def _load_upstream(runtime: RuntimeConfig) -> Flask:
     from evalscope.service.app import create_app as create_upstream_app
 
     return create_upstream_app(outputs=str(runtime.output_dir))
+
+
+def _dispatch_task_upstream(
+    app: Flask,
+    path: str,
+    task_id: str,
+    timeout_seconds: int,
+    *,
+    body: dict[str, Any],
+    headers: Mapping[str, str],
+) -> WerkzeugResponse:
+    timed_out = threading.Event()
+
+    def terminate_task() -> None:
+        timed_out.set()
+        try:
+            from evalscope.service.utils.process import stop_process
+
+            stop_process(task_id)
+        except Exception:
+            # The stable terminal envelope is recorded by the caller. Never
+            # expose an upstream process-registry failure to the response.
+            return
+
+    timer = threading.Timer(timeout_seconds, terminate_task)
+    timer.daemon = True
+    timer.start()
+    try:
+        response = _dispatch_upstream(
+            app,
+            'POST',
+            path,
+            body=body,
+            headers=headers,
+        )
+    finally:
+        timer.cancel()
+    if timed_out.is_set():
+        raise RuntimePolicyError(
+            'task_runtime_exceeded',
+            'EvalScope task exceeded its configured runtime',
+            503,
+        )
+    return response
 
 
 def _dispatch_upstream(

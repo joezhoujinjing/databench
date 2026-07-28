@@ -14,17 +14,23 @@ from .errors import RuntimePolicyError
 EVALSCOPE_COMMIT = 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60'
 PLOTLY_SHA256 = '6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603'
 MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
-
-
-def _positive_int(env: Mapping[str, str], name: str, default: int) -> int:
-    raw = env.get(name, str(default))
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise RuntimePolicyError('invalid_runtime_config', f'{name} must be an integer', 500) from exc
-    if value <= 0:
-        raise RuntimePolicyError('invalid_runtime_config', f'{name} must be positive', 500)
-    return value
+MAX_INPUT_BYTES = 4 * 1024 * 1024 * 1024
+MAX_OUTPUT_BYTES = 16 * 1024 * 1024 * 1024
+MAX_REQUEST_BYTES = 16 * 1024 * 1024
+MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
+MAX_DOCUMENT_TTL_SECONDS = 24 * 60 * 60
+MAX_CONCURRENT_TASKS_PER_KIND = 16
+MAX_TASK_DIRECTORIES = 100_000
+MAX_TASK_RUNTIME_SECONDS = 24 * 60 * 60
+MAX_EVALUATION_SAMPLES = 1_000_000
+MAX_EVALUATION_BATCH_SIZE = 1024
+MAX_EVALUATION_REPEATS = 100
+MAX_PERFORMANCE_PARALLEL = 1024
+MAX_PERFORMANCE_REQUESTS = 10_000_000
+MAX_PERFORMANCE_RATE = 100_000
+MAX_MODEL_TOKENS = 131_072
+MAX_REQUEST_TIMEOUT_SECONDS = 24 * 60 * 60
 
 
 def _bounded_nonnegative_int(env: Mapping[str, str], name: str, default: int, maximum: int) -> int:
@@ -144,6 +150,15 @@ class RuntimeConfig:
     max_concurrent_perf: int
     max_tasks: int
     archive_max_bytes: int
+    task_runtime_seconds: int
+    evaluation_sample_limit_max: int
+    evaluation_batch_size_max: int
+    evaluation_repeats_max: int
+    performance_parallel_max: int
+    performance_requests_max: int
+    performance_rate_max: int
+    model_tokens_max: int
+    request_timeout_seconds_max: int
 
     @classmethod
     def from_env(cls, source: Mapping[str, str] | None = None) -> 'RuntimeConfig':
@@ -228,20 +243,119 @@ class RuntimeConfig:
             endpoint_allowlist=endpoint_allowlist,
             dataset_endpoint_allowlist=dataset_endpoint_allowlist,
             model_redirect_max_hops=redirect_max_hops,
-            input_max_bytes=_positive_int(env, 'EVALSCOPE_INPUT_MAX_BYTES', 1_073_741_824),
-            output_max_bytes=_positive_int(env, 'EVALSCOPE_OUTPUT_MAX_BYTES', 4_294_967_296),
-            request_max_bytes=_positive_int(env, 'EVALSCOPE_REQUEST_MAX_BYTES', 1_048_576),
-            response_max_bytes=_positive_int(env, 'EVALSCOPE_RESPONSE_MAX_BYTES', 16_777_216),
-            document_max_bytes=_positive_int(env, 'EVALSCOPE_DOCUMENT_MAX_BYTES', 16_777_216),
-            document_ttl_seconds=_positive_int(env, 'EVALSCOPE_DOCUMENT_TTL_SECONDS', 900),
-            max_concurrent_evals=_positive_int(env, 'EVALSCOPE_MAX_CONCURRENT_EVALS', 2),
-            max_concurrent_perf=_positive_int(env, 'EVALSCOPE_MAX_CONCURRENT_PERF', 2),
-            max_tasks=_positive_int(env, 'EVALSCOPE_MAX_TASKS', 10_000),
+            input_max_bytes=_bounded_positive_int(
+                env,
+                'EVALSCOPE_INPUT_MAX_BYTES',
+                1_073_741_824,
+                MAX_INPUT_BYTES,
+            ),
+            output_max_bytes=_bounded_positive_int(
+                env,
+                'EVALSCOPE_OUTPUT_MAX_BYTES',
+                4_294_967_296,
+                MAX_OUTPUT_BYTES,
+            ),
+            request_max_bytes=_bounded_positive_int(
+                env,
+                'EVALSCOPE_REQUEST_MAX_BYTES',
+                1_048_576,
+                MAX_REQUEST_BYTES,
+            ),
+            response_max_bytes=_bounded_positive_int(
+                env,
+                'EVALSCOPE_RESPONSE_MAX_BYTES',
+                16_777_216,
+                MAX_RESPONSE_BYTES,
+            ),
+            document_max_bytes=_bounded_positive_int(
+                env,
+                'EVALSCOPE_DOCUMENT_MAX_BYTES',
+                16_777_216,
+                MAX_DOCUMENT_BYTES,
+            ),
+            document_ttl_seconds=_bounded_positive_int(
+                env,
+                'EVALSCOPE_DOCUMENT_TTL_SECONDS',
+                900,
+                MAX_DOCUMENT_TTL_SECONDS,
+            ),
+            max_concurrent_evals=_bounded_positive_int(
+                env,
+                'EVALSCOPE_MAX_CONCURRENT_EVALS',
+                2,
+                MAX_CONCURRENT_TASKS_PER_KIND,
+            ),
+            max_concurrent_perf=_bounded_positive_int(
+                env,
+                'EVALSCOPE_MAX_CONCURRENT_PERF',
+                2,
+                MAX_CONCURRENT_TASKS_PER_KIND,
+            ),
+            max_tasks=_bounded_positive_int(
+                env,
+                'EVALSCOPE_MAX_TASKS',
+                10_000,
+                MAX_TASK_DIRECTORIES,
+            ),
             archive_max_bytes=_bounded_positive_int(
                 env,
                 'EVALSCOPE_ARCHIVE_MAX_BYTES',
                 MAX_ARCHIVE_BYTES,
                 MAX_ARCHIVE_BYTES,
+            ),
+            task_runtime_seconds=_bounded_positive_int(
+                env,
+                'EVALSCOPE_TASK_RUNTIME_SECONDS',
+                MAX_TASK_RUNTIME_SECONDS,
+                MAX_TASK_RUNTIME_SECONDS,
+            ),
+            evaluation_sample_limit_max=_bounded_positive_int(
+                env,
+                'EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX',
+                100_000,
+                MAX_EVALUATION_SAMPLES,
+            ),
+            evaluation_batch_size_max=_bounded_positive_int(
+                env,
+                'EVALSCOPE_EVALUATION_BATCH_SIZE_MAX',
+                256,
+                MAX_EVALUATION_BATCH_SIZE,
+            ),
+            evaluation_repeats_max=_bounded_positive_int(
+                env,
+                'EVALSCOPE_EVALUATION_REPEATS_MAX',
+                10,
+                MAX_EVALUATION_REPEATS,
+            ),
+            performance_parallel_max=_bounded_positive_int(
+                env,
+                'EVALSCOPE_PERFORMANCE_PARALLEL_MAX',
+                256,
+                MAX_PERFORMANCE_PARALLEL,
+            ),
+            performance_requests_max=_bounded_positive_int(
+                env,
+                'EVALSCOPE_PERFORMANCE_REQUESTS_MAX',
+                1_000_000,
+                MAX_PERFORMANCE_REQUESTS,
+            ),
+            performance_rate_max=_bounded_positive_int(
+                env,
+                'EVALSCOPE_PERFORMANCE_RATE_MAX',
+                10_000,
+                MAX_PERFORMANCE_RATE,
+            ),
+            model_tokens_max=_bounded_positive_int(
+                env,
+                'EVALSCOPE_MODEL_TOKENS_MAX',
+                32_768,
+                MAX_MODEL_TOKENS,
+            ),
+            request_timeout_seconds_max=_bounded_positive_int(
+                env,
+                'EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX',
+                3_600,
+                MAX_REQUEST_TIMEOUT_SECONDS,
             ),
         )
         return config

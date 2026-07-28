@@ -34,6 +34,7 @@ copy_release_assets "$SCRIPT_DIR" "$RELEASE_DIR"
 record_bundle_identity "$SCRIPT_DIR" "$RELEASE_DIR"
 ensure_secret_config
 ensure_mcp_config
+ensure_evalscope_config
 
 log "loading offline images"
 docker load --input "${SCRIPT_DIR}/images.tar" >/dev/null
@@ -51,7 +52,7 @@ compose_for_release "$RELEASE_DIR" run --rm minio-init
 log "applying Prisma migrations"
 compose_for_release "$RELEASE_DIR" run --rm migrate
 
-log "starting Worker, API and Web"
+log "starting Worker, API, EvalScope and Web"
 start_application_services "$RELEASE_DIR" || die "application services did not start"
 wait_application_services "$RELEASE_DIR" || die "application services did not become healthy"
 wait_gateway "$RELEASE_DIR" 120 || die "Caddy did not proxy API health"

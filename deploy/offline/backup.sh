@@ -25,6 +25,9 @@ validate_existing_config
 validate_backup_key
 RELEASE_DIR="$(current_release_dir)"
 validate_release_contract "$RELEASE_DIR"
+if release_has_evalscope "$RELEASE_DIR"; then
+  validate_evalscope_config
+fi
 
 GENERATION="$(date -u '+%Y%m%dT%H%M%SZ')-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
 FINAL_DIR="${DATABENCH_DATA_ROOT}/backups/${GENERATION}"
@@ -77,10 +80,30 @@ compose_for_release "$RELEASE_DIR" run --rm --no-deps \
     mc mirror --overwrite --remove "local/$S3_BUCKET" /backup
   '
 
+if release_has_evalscope "$RELEASE_DIR"; then
+  log "capturing the persistent EvalScope output and input volume"
+  require_command tar
+  assert_evalscope_volume_tree_safe
+  tar --numeric-owner --format=posix \
+    -C "${DATABENCH_DATA_ROOT}/evalscope" \
+    -cpf "${TEMP_DIR}/evalscope-volume.tar" outputs inputs
+  validate_evalscope_volume_archive "$RELEASE_DIR" "${TEMP_DIR}/evalscope-volume.tar"
+fi
+
 openssl enc -aes-256-cbc -pbkdf2 -salt \
   -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \
   -in "$DATABENCH_CONFIG_FILE" \
   -out "${TEMP_DIR}/databench.env.enc"
+openssl enc -aes-256-cbc -pbkdf2 -salt \
+  -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \
+  -in "$DATABENCH_MCP_CONFIG_FILE" \
+  -out "${TEMP_DIR}/mcp.env.enc"
+if release_has_evalscope "$RELEASE_DIR"; then
+  openssl enc -aes-256-cbc -pbkdf2 -salt \
+    -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \
+    -in "$DATABENCH_EVALSCOPE_CONFIG_FILE" \
+    -out "${TEMP_DIR}/evalscope.env.enc"
+fi
 
 BUNDLE_NAME="$(sed -n '1p' "${RELEASE_DIR}/release-bundle.name")"
 BUNDLE_SHA256="$(sed -n '1p' "${RELEASE_DIR}/release-bundle.sha256")"

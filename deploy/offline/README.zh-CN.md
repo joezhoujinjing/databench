@@ -8,6 +8,7 @@
   回滚和恢复的逐步操作；
 - [故障排查手册](TROUBLESHOOTING.zh-CN.md)：按错误现象定位并安全恢复；
 - [内网 Agent 接入指南](MCP-AGENT-GUIDE.zh-CN.md)：配置 MCP、Excel 三种意图与重试规则；
+- [EvalScope 运维指南](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md)：模型 allowlist、容量、drain、备份和断网验收；
 - [技术方案](docs/offline-single-host-plan.zh-CN.md)：部署架构、发布契约和设计边界；
 - [ADR 0012](docs/ADR-0012.md)：Ubuntu 单机离线部署的正式决策记录。
 
@@ -30,8 +31,9 @@ databench-offline-1.0.0-linux-amd64.tar.gz
 databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 ```
 
-脚本固定构建 `linux/amd64` 的 API、Web 和 CPU-only Python Worker，拉取精确版本的
-PostgreSQL 17、MinIO 和 MinIO Client，检查六张镜像的平台和内容 ID，并写入 `images.lock`。
+脚本固定构建 `linux/amd64` 的 API、Web、CPU-only Python Worker 和 pinned backend-only EvalScope，
+拉取精确版本的 PostgreSQL 17、MinIO 和 MinIO Client，检查七张镜像的平台和内容 ID，并写入
+`images.lock`。
 如果数据库迁移不再向后兼容，构建时必须显式改变两个配套属性：
 
 ```bash
@@ -43,7 +45,8 @@ deploy/offline/build-bundle.sh 2.0.0
 ## 首次安装
 
 目标机前置条件：Ubuntu 22.04 LTS amd64、Docker Engine 24+、Compose plugin 2.20+、至少
-8 logical CPUs、30 GiB 可见 RAM 和 40 GiB 系统盘可用空间。Docker 的安装和升级不属于本发布包。
+12 logical CPUs、40 GiB 可见 RAM、60 GiB 系统盘和 12 GiB Databench 数据文件系统可用空间。
+Docker 的安装和升级不属于本发布包。
 
 将 `.tar.gz` 和 `.sha256` 一起复制到服务器。服务器必须位于不暴露公网的可信内网；当前没有
 应用层认证，任何能访问 TCP 80 的主体都有完整权限。企业内网本身已经封闭时，不需要额外配置
@@ -56,20 +59,31 @@ cd databench-offline-1.0.0-linux-amd64
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./install.sh
 ```
 
+若可信内网已有模型端点，同时提供 exact allowlist，例如：
+
+```bash
+sudo -E env \
+  DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api \
+  DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST='http|10.10.0.15/32|8000' \
+  ./install.sh
+```
+
 安装器还会再次验证外层归档和包内 `SHA256SUMS`，不会访问公网。首次安装自动生成数据库、
 MinIO 和 v2 cursor secret，直接写入 `/etc/databench/databench.env`，权限为 `0600`；重跑或
 升级不会覆盖它们。备份 escrow key 会单独写入 `/etc/databench/backup.key`，同样为 `0600`。
 
-历史五镜像包的 `.tar.gz` 约 409 MiB。当前 CPU-only Worker 单镜像实测约 499 MiB；2026-07-27
-六镜像 amd64 测试构建的 `images.tar` 为 925,142,528 bytes（约 882 MiB），gzip 后为
-919,433,062 bytes（约 877 MiB），因此完整发布包按 **约 0.9 GiB** 传输。正式交付仍以当次
-`ls -lh` 和 `.sha256` 为准。业务数据、备份和 Docker 已有缓存不包含在包体积中；服务器仍须
-满足安装器的 40 GiB 系统盘可用空间检查。
+历史五/六镜像包只用于旧版回滚兼容，不能作为当前包体积估算。当前七镜像包新增 pinned EvalScope；正式
+交付以当次 `ls -lh`、`RELEASE.txt` 和 `.sha256` 为准。业务数据、EvalScope 在线结果、备份和 Docker 已有
+缓存不包含在包体积中；服务器仍须满足安装器的 60 GiB 系统盘可用空间检查。
 
 `DATABENCH_MCP_PUBLIC_BASE_URL` 必须是目标 agent 实际能访问的稳定地址，path 精确为 `/api`，
 不能使用容器名、自动猜测的首个网卡地址或尾随 `/`；DNS 使用小写，默认 HTTP(S) 端口必须省略，
 非默认端口使用无前导零的十进制。安装器把匿名 MCP 配置单独写入 `/etc/databench/mcp.env`，
 后续升级复用，不会把它混进 secret 文件。
+
+安装器另生成 `/etc/databench/evalscope.env`，保存稳定 task HMAC/operator secret、浏览器 origin、模型
+allowlist 和容量上限。该文件同样是 `root:root 0600`；native Benchmark 的远程 Dataset allowlist 在离线
+通道中固定为空。
 
 `DATABENCH_MCP_PUBLIC_BASE_URL=...` 只在首次创建 `/etc/databench/mcp.env` 时需要提供。文件一旦
 存在，重跑安装和正常升级都不需要再次传入。需要重跑安装时：
@@ -101,12 +115,13 @@ sudo ./upgrade.sh
 sudo databenchctl status
 sudo databenchctl logs api
 sudo databenchctl doctor
+sudo databenchctl evalscope-status
 sudo databenchctl restart
 sudo databenchctl backup
 ```
 
-备份位于 `/srv/databench/backups/<generation>`。每次备份会停写，包含 PostgreSQL dump、MinIO
-bucket mirror、版本信息、校验值和加密的配置 escrow。必须把备份、匹配 SHA-256 的离线发布
+备份位于 `/srv/databench/backups/<generation>`。每次备份会先 drain，包含 PostgreSQL dump、MinIO
+bucket mirror、EvalScope output/input volume、版本信息、校验值和三份加密配置 escrow。必须把备份、匹配 SHA-256 的离线发布
 包以及 `/etc/databench/backup.key` 分开复制到 NAS/异机；只保存在本机不算备份。
 
 ## 离线升级与回滚
@@ -125,9 +140,10 @@ sudo ./upgrade.sh
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./upgrade.sh
 ```
 
-升级会依次停止 Web/API/Worker、创建一致性备份、导入镜像、迁移数据库，再按
-Worker → API → Web 启动并运行 doctor、固定数据集、MCP 和 `basic-clean@1` 生命周期冒烟。
-任一步失败会自动恢复 previous release；回滚到旧五镜像版本时 Worker 会保持停止。普通向后
+升级会停止 Web admission、drain EvalScope、创建一致性备份、导入镜像、迁移数据库，再按
+Worker → API → EvalScope → Web 启动并运行 doctor、gateway、固定数据集、MCP 和 `basic-clean@1`
+生命周期冒烟。任一步失败会自动恢复 previous release；回滚到旧五/六镜像版本时该旧 release 不启动
+EvalScope，但不会隐式删除 EvalScope 数据。普通向后
 兼容迁移可以直接回滚应用镜像：
 
 ```bash

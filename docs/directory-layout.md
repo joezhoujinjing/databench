@@ -2,10 +2,11 @@
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
-> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E8 已
-> 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports、Predictions、
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E8 gate
+> 已完成，E9 本地实现完成、真实目标 gate pending：backend-only runtime、gateway、Evaluation 路由、
+> Tasks、Databench Dataset、Reports、Predictions、
 > Dashboard、Compare、Performance、Benchmarks、安全 Viewer 与完整结果归档已实现，完整 UI 功能迁移和
-> 归档 gate 已关闭。
+> 归档 gate 已关闭；七镜像离线生命周期、安全和容量实现已落地。
 
 ## `apps/api`
 
@@ -359,6 +360,7 @@ docs/evalscope/evidence/E5-TASKS-DATASET.md
 docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md
 docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md
 docs/evalscope/evidence/E8-RESULT-ARCHIVE.md
+docs/evalscope/evidence/E9-SECURITY-CAPACITY-RELEASE.md
 THIRD_PARTY_NOTICES.md
 ```
 
@@ -370,7 +372,7 @@ workers/evalscope/
 ├─ src/databench_evalscope/
 │  ├─ app.py · wsgi.py · config.py
 │  ├─ databench.py · archive.py · storage.py
-│  └─ security.py · documents.py · errors.py
+│  └─ security.py · documents.py · volume_backup.py · errors.py
 └─ tests/                      Python runtime/security tests
 
 deploy/evalscope/
@@ -448,15 +450,17 @@ docs/mcp/
 
 ```text
 deploy/offline/
-├─ compose.yml                    API 加载 MCP 配置；私网 Worker → API → Web 生命周期
+├─ compose.yml                    私网 Worker → API → EvalScope → Web 生命周期
 ├─ mcp.env.example                匿名可信内网 MCP 配置示例
+├─ evalscope.env.example          EvalScope stable secret、allowlist 与容量示例
 ├─ MCP-AGENT-GUIDE.zh-CN.md       agent endpoint、三种意图与恢复规则
+├─ EVALSCOPE-OPERATOR-GUIDE.zh-CN.md  EvalScope drain、容量、备份与断网验收
 ├─ README.zh-CN.md
 ├─ DEPLOYMENT-GUIDE.zh-CN.md
 ├─ TROUBLESHOOTING.zh-CN.md
-├─ install.sh · upgrade.sh        显式创建或复用 MCP 配置
-├─ rollback.sh                    停服务前校验 current/target 所需 MCP 配置
-├─ lib/config.sh                  public base 校验与原子配置
+├─ install.sh · upgrade.sh        显式创建或复用 MCP/EvalScope 配置
+├─ rollback.sh                    停服务前校验 current/target 所需配置
+├─ lib/config.sh                  public base、EvalScope stable secret 与原子配置
 ├─ lib/preflight.sh               CPU/RAM、根盘与 Databench 数据盘容量检查
 └─ smoke/
    ├─ mcp.mjs                     官方 SDK + companion lifecycle smoke

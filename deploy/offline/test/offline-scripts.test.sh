@@ -55,6 +55,25 @@ grep -Fq 'DATABENCH_WORKER_TARGET: "worker:50051"' "${SCRIPT_DIR}/compose.yml" |
   fail 'offline API does not use the private Compose Worker target'
 grep -Fq 'image: ${DATABENCH_WORKER_IMAGE:?missing DATABENCH_WORKER_IMAGE}' \
   "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the Worker image'
+grep -Fq 'image: ${DATABENCH_EVALSCOPE_IMAGE:?missing DATABENCH_EVALSCOPE_IMAGE}' \
+  "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the EvalScope image'
+grep -Fq 'DATABENCH_EVALSCOPE_ENABLED: "true"' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline API does not enable the scoped EvalScope gateway'
+grep -Fq 'DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: "http://evalscope:9000"' \
+  "${SCRIPT_DIR}/compose.yml" || fail 'offline API does not use the private EvalScope origin'
+grep -Fq '/srv/databench/evalscope/outputs:/var/lib/evalscope/outputs' \
+  "${SCRIPT_DIR}/compose.yml" || fail 'EvalScope outputs are not persistent'
+grep -Fq '/srv/databench/evalscope/inputs:/var/lib/evalscope/inputs' \
+  "${SCRIPT_DIR}/compose.yml" || fail 'EvalScope inputs are not persistent'
+grep -Fq 'NVIDIA_VISIBLE_DEVICES: "void"' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline EvalScope does not disable GPU device admission'
+grep -Fq 'mem_limit: 12g' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline EvalScope memory is not bounded'
+grep -Fq 'cpus: 4.0' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline EvalScope CPU is not bounded'
+if sed -n '/^  evalscope:/,/^  api:/p' "${SCRIPT_DIR}/compose.yml" | grep -Eq '^[[:space:]]+ports:'; then
+  fail 'offline EvalScope publishes a host port'
+fi
 if rg -n 'ipv4_address:|subnet:' "${SCRIPT_DIR}/compose.yml"; then
   fail 'offline Worker must use Compose DNS so upgrades do not depend on a fixed subnet'
 fi
@@ -67,12 +86,14 @@ if sed -n '/^  worker:/,/^  api:/p' "${SCRIPT_DIR}/compose.yml" | grep -Eq '^[[:
 fi
 grep -Fq 'workers/python/Dockerfile' "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not build the Worker image'
+grep -Fq 'deploy/evalscope/Dockerfile' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not build the pinned EvalScope image'
 grep -Fq 'torch.version.cuda is None' "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not reject a CUDA-enabled Worker image'
 grep -Fq 'name.startswith("nvidia-")' "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not reject NVIDIA Worker packages'
-grep -Fq 'saving six images' "${SCRIPT_DIR}/build-bundle.sh" ||
-  fail 'offline bundle builder does not save the six-image release set'
+grep -Fq 'saving seven images' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not save the seven-image release set'
 [ "$(grep -Ec '^[[:space:]]*log([[:space:]]|$)' "${SCRIPT_DIR}/Caddyfile")" -eq 1 ] ||
   fail 'Caddy must configure exactly one redacted runtime logger and no access logger'
 grep -Fq 'format filter' "${SCRIPT_DIR}/Caddyfile" ||
@@ -87,8 +108,16 @@ grep -Fq "document.servers[0]?.url !== '/api'" "${SCRIPT_DIR}/smoke/gateway.mjs"
   fail 'offline smoke does not verify the external OpenAPI server URL'
 grep -Fq '/api/mcp' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
   fail 'offline gateway smoke does not cover the MCP route'
-grep -Fq 'logs web api worker' "${SCRIPT_DIR}/smoke.sh" ||
-  fail 'offline smoke does not check API/Caddy/Worker logs for bearer token leakage'
+grep -Fq 'logs web api worker evalscope' "${SCRIPT_DIR}/smoke.sh" ||
+  fail 'offline smoke does not check API/Caddy/Worker/EvalScope logs for bearer token leakage'
+grep -Fq '/evalscope-api/api/v1/config' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
+  fail 'offline smoke does not verify the path-free EvalScope public config'
+grep -Fq '/evalscope-api/api/v1/eval/resume/invoke' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
+  fail 'offline smoke does not verify blocked EvalScope endpoints'
+grep -Fq "createHash('sha256')" "${SCRIPT_DIR}/smoke/gateway.mjs" ||
+  fail 'offline smoke does not verify the local Plotly digest'
+grep -Fq '/internal/v1/operator/drain' "${SCRIPT_DIR}/smoke.sh" ||
+  fail 'offline smoke does not verify EvalScope drain'
 grep -Fq 'upstream-failure.mjs' "${SCRIPT_DIR}/smoke.sh" ||
   fail 'offline smoke does not probe Caddy logging while the API is unavailable'
 smoke_stopped_flag_line="$(grep -nF 'API_STOPPED=true' "${SCRIPT_DIR}/smoke.sh" | cut -d: -f1)"
@@ -126,7 +155,7 @@ install_doctor_line="$(grep -nF 'run_doctor "$RELEASE_DIR"' "${SCRIPT_DIR}/insta
 [ "$install_smoke_line" -lt "$install_doctor_line" ] ||
   fail 'first install must create the retained smoke dataset before running doctor'
 if rg -n \
-  'databench v2|databench dataset add|/api/v1/|system-offline-smoke-v1|smoke/v1\.jsonl|v1/v2' \
+  'databench v2|databench dataset add|http://web/api/v1/|/api/v1/(datasets|refs|converters|transforms)|system-offline-smoke-v1|smoke/v1\.jsonl|v1/v2' \
   "${SCRIPT_DIR}/smoke.sh" \
   "${SCRIPT_DIR}/smoke/gateway.mjs" \
   "${SCRIPT_DIR}/README.zh-CN.md" \
@@ -136,7 +165,7 @@ if rg -n \
 fi
 
 for document in README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
-  MCP-AGENT-GUIDE.zh-CN.md; do
+  MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md; do
   [ -f "${SCRIPT_DIR}/${document}" ] || fail "offline document is missing: $document"
 done
 if rg -n 'http://127\.0\.0\.1/(health|version|capabilities|openapi\.json|v1/)' \
@@ -155,7 +184,9 @@ for bundle_asset in \
   deploy/offline/DEPLOYMENT-GUIDE.zh-CN.md \
   deploy/offline/TROUBLESHOOTING.zh-CN.md \
   deploy/offline/MCP-AGENT-GUIDE.zh-CN.md \
+  deploy/offline/EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
   deploy/offline/mcp.env.example \
+  deploy/offline/evalscope.env.example \
   docs/deployment/offline-single-host-plan.zh-CN.md \
   docs/decisions/0012-offline-single-host-deployment.md \
   'docs/ADR-0012.md'; do
@@ -163,7 +194,8 @@ for bundle_asset in \
     fail "bundle builder does not include: $bundle_asset"
 done
 for release_asset in DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
-  MCP-AGENT-GUIDE.zh-CN.md mcp.env.example docs; do
+  MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md mcp.env.example \
+  evalscope.env.example docs; do
   grep -Fq "$release_asset" "${SCRIPT_DIR}/lib/common.sh" ||
     fail "installed release does not preserve: $release_asset"
 done
@@ -174,6 +206,7 @@ DATABENCH_VERSION=1.2.3
 DATABENCH_API_IMAGE=databench-api:1.2.3
 DATABENCH_WEB_IMAGE=databench-web:1.2.3
 DATABENCH_WORKER_IMAGE=databench-worker:1.2.3
+DATABENCH_EVALSCOPE_IMAGE=databench-evalscope:1.2.3
 DATABENCH_POSTGRES_IMAGE=databench-offline/postgres:1111111111111111
 DATABENCH_MINIO_IMAGE=databench-offline/minio:2222222222222222
 DATABENCH_MINIO_MC_IMAGE=databench-offline/minio-mc:3333333333333333
@@ -184,9 +217,10 @@ cat > "${TEMP_DIR}/release/images.lock" <<'EOF'
 databench-api:1.2.3|sha256:1111111111111111111111111111111111111111111111111111111111111111|linux/amd64|git:1111111111111111111111111111111111111111
 databench-web:1.2.3|sha256:2222222222222222222222222222222222222222222222222222222222222222|linux/amd64|git:1111111111111111111111111111111111111111
 databench-worker:1.2.3|sha256:3333333333333333333333333333333333333333333333333333333333333333|linux/amd64|git:1111111111111111111111111111111111111111
-databench-offline/postgres:1111111111111111|sha256:4444444444444444444444444444444444444444444444444444444444444444|linux/amd64|postgres:17.6-alpine
-databench-offline/minio:2222222222222222|sha256:5555555555555555555555555555555555555555555555555555555555555555|linux/amd64|minio/minio:RELEASE.2025-09-07T16-13-09Z
-databench-offline/minio-mc:3333333333333333|sha256:6666666666666666666666666666666666666666666666666666666666666666|linux/amd64|minio/mc:RELEASE.2025-08-13T08-35-41Z
+databench-evalscope:1.2.3|sha256:4444444444444444444444444444444444444444444444444444444444444444|linux/amd64|evalscope:b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
+databench-offline/postgres:1111111111111111|sha256:5555555555555555555555555555555555555555555555555555555555555555|linux/amd64|postgres:17.6-alpine
+databench-offline/minio:2222222222222222|sha256:6666666666666666666666666666666666666666666666666666666666666666|linux/amd64|minio/minio:RELEASE.2025-09-07T16-13-09Z
+databench-offline/minio-mc:3333333333333333|sha256:7777777777777777777777777777777777777777777777777777777777777777|linux/amd64|minio/mc:RELEASE.2025-08-13T08-35-41Z
 EOF
 
 if command -v sha256sum >/dev/null 2>&1; then
@@ -199,6 +233,26 @@ grep -Fq 'ensure_mcp_config' "${SCRIPT_DIR}/install.sh" ||
   fail 'offline install does not create the explicit MCP configuration'
 grep -Fq 'ensure_mcp_config' "${SCRIPT_DIR}/upgrade.sh" ||
   fail 'offline upgrade does not preserve or create the MCP configuration'
+grep -Fq 'ensure_evalscope_config' "${SCRIPT_DIR}/install.sh" ||
+  fail 'offline install does not create the stable EvalScope configuration'
+grep -Fq 'ensure_evalscope_config' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade does not preserve or create the EvalScope configuration'
+grep -Fq 'evalscope-volume.tar' "${SCRIPT_DIR}/backup.sh" ||
+  fail 'offline backup does not capture the EvalScope persistent volume'
+grep -Fq 'evalscope-volume.tar' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not restore the EvalScope persistent volume'
+grep -Fq 'assert_evalscope_volume_tree_safe' "${SCRIPT_DIR}/backup.sh" ||
+  fail 'offline backup does not reject unsafe EvalScope volume members'
+grep -Fq 'validate_evalscope_volume_archive' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not validate the EvalScope archive member allowlist'
+grep -Fq 'chown -R 10001:10001' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not normalize EvalScope volume ownership'
+grep -Fq -- '-type f -exec chmod 0640' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not normalize EvalScope file permissions'
+grep -Fq 'evalscope.env.enc' "${SCRIPT_DIR}/backup.sh" ||
+  fail 'offline backup does not escrow the EvalScope stable secrets'
+grep -Fq 'drain_evalscope' "${SCRIPT_DIR}/lib/common.sh" ||
+  fail 'offline service stop does not drain EvalScope'
 grep -Fq "stat -c '%U:%G'" "${SCRIPT_DIR}/lib/config.sh" ||
   fail 'offline MCP configuration does not enforce root ownership'
 grep -Fq 'DATABENCH_MCP_ENABLED=true' "${SCRIPT_DIR}/mcp.env.example" ||
@@ -207,11 +261,11 @@ grep -Fq 'DATABENCH_MCP_AUTH_MODE=none' "${SCRIPT_DIR}/mcp.env.example" ||
   fail 'offline MCP example does not declare anonymous mode'
 grep -Fq 'DATABENCH_MIN_WORKSPACE_FREE_GB' "${SCRIPT_DIR}/lib/preflight.sh" ||
   fail 'offline preflight does not check the Databench data filesystem'
-grep -Fq 'DATABENCH_MIN_CPUS:-8' "${SCRIPT_DIR}/lib/preflight.sh" ||
-  fail 'offline preflight does not enforce the Worker CPU floor'
-grep -Fq 'DATABENCH_MIN_MEMORY_GB:-30' "${SCRIPT_DIR}/lib/preflight.sh" ||
-  fail 'offline preflight does not enforce the Worker memory floor'
-grep -Fq 'DATABENCH_MIN_FREE_GB:-40' "${SCRIPT_DIR}/lib/preflight.sh" ||
+grep -Fq 'DATABENCH_MIN_CPUS:-12' "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline preflight does not enforce the Worker and EvalScope CPU floor'
+grep -Fq 'DATABENCH_MIN_MEMORY_GB:-40' "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline preflight does not enforce the Worker and EvalScope memory floor'
+grep -Fq 'DATABENCH_MIN_FREE_GB:-60' "${SCRIPT_DIR}/lib/preflight.sh" ||
   fail 'offline preflight does not enforce the installation disk floor'
 for lifecycle_script in install.sh upgrade.sh rollback.sh backup.sh restore.sh databenchctl; do
   grep -Eq 'start_application_services|stop_application_services' \
@@ -346,7 +400,9 @@ printf '%s\n' \
   source "${SCRIPT_DIR}/lib/manifest.sh"
   validate_release_contract "${TEMP_DIR}/legacy-release"
   [ -z "${DATABENCH_WORKER_IMAGE:-}" ]
+  [ -z "${DATABENCH_EVALSCOPE_IMAGE:-}" ]
   ! release_has_worker "${TEMP_DIR}/legacy-release"
+  ! release_has_evalscope "${TEMP_DIR}/legacy-release"
 )
 
 (
@@ -355,7 +411,8 @@ printf '%s\n' \
   validate_release_contract "${TEMP_DIR}/release"
   load_release_env "${TEMP_DIR}/legacy-release/release.env"
   [ -z "${DATABENCH_WORKER_IMAGE:-}" ]
-  [ "$(release_image_count "${TEMP_DIR}/release")" -eq 6 ]
+  [ -z "${DATABENCH_EVALSCOPE_IMAGE:-}" ]
+  [ "$(release_image_count "${TEMP_DIR}/release")" -eq 7 ]
   validate_images_lock "${TEMP_DIR}/release/images.lock" false \
     "$(release_image_count "${TEMP_DIR}/release")"
 )
@@ -377,6 +434,8 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
     "${TEMP_DIR}/release/compose.yml"
   sed -i.bak "s#/etc/databench/mcp.env#${TEMP_DIR}/mcp.env#g" \
     "${TEMP_DIR}/release/compose.yml"
+  sed -i.bak "s#/etc/databench/evalscope.env#${TEMP_DIR}/evalscope.env#g" \
+    "${TEMP_DIR}/release/compose.yml"
   cat > "${TEMP_DIR}/databench.env" <<'EOF'
 POSTGRES_USER=databench
 POSTGRES_PASSWORD=test
@@ -396,12 +455,56 @@ DATABENCH_ROOT=/var/lib/databench
 DATABENCH_V2_CURSOR_SECRET=test-cursor-secret-long-enough
 PORT=8000
 EOF
+  cat > "${TEMP_DIR}/evalscope.env" <<'EOF'
+EVALSCOPE_TASK_CONFIG_HMAC_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+EVALSCOPE_OPERATOR_TOKEN=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+DATABENCH_ORIGIN=http://databench.internal
+EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=
+EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=
+EVALSCOPE_INPUT_MAX_BYTES=1073741824
+EVALSCOPE_OUTPUT_MAX_BYTES=4294967296
+EVALSCOPE_ARCHIVE_MAX_BYTES=1073741824
+EVALSCOPE_REQUEST_MAX_BYTES=1048576
+EVALSCOPE_RESPONSE_MAX_BYTES=16777216
+EVALSCOPE_DOCUMENT_MAX_BYTES=16777216
+EVALSCOPE_DOCUMENT_TTL_SECONDS=900
+EVALSCOPE_MAX_CONCURRENT_EVALS=2
+EVALSCOPE_MAX_CONCURRENT_PERF=2
+EVALSCOPE_MAX_TASKS=10000
+EVALSCOPE_TASK_RUNTIME_SECONDS=86400
+EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX=100000
+EVALSCOPE_EVALUATION_BATCH_SIZE_MAX=256
+EVALSCOPE_EVALUATION_REPEATS_MAX=10
+EVALSCOPE_PERFORMANCE_PARALLEL_MAX=256
+EVALSCOPE_PERFORMANCE_REQUESTS_MAX=1000000
+EVALSCOPE_PERFORMANCE_RATE_MAX=10000
+EVALSCOPE_MODEL_TOKENS_MAX=32768
+EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX=3600
+EOF
   cat > "${TEMP_DIR}/mcp.env" <<'EOF'
 DATABENCH_MCP_ENABLED=true
 DATABENCH_MCP_AUTH_MODE=none
 DATABENCH_MCP_PUBLIC_BASE_URL=http://databench.internal/api
 DATABENCH_MCP_ORIGINS=
 EOF
+  (
+    source "${SCRIPT_DIR}/lib/common.sh"
+    source "${SCRIPT_DIR}/lib/config.sh"
+    DATABENCH_EVALSCOPE_CONFIG_FILE="${TEMP_DIR}/evalscope.env"
+    validate_evalscope_positive_bound EVALSCOPE_MAX_CONCURRENT_EVALS 16
+    validate_evalscope_positive_bound EVALSCOPE_OUTPUT_MAX_BYTES 17179869184
+  )
+  cp "${TEMP_DIR}/evalscope.env" "${TEMP_DIR}/evalscope-invalid.env"
+  sed -i.bak 's/EVALSCOPE_MAX_CONCURRENT_EVALS=2/EVALSCOPE_MAX_CONCURRENT_EVALS=17/' \
+    "${TEMP_DIR}/evalscope-invalid.env"
+  if (
+    source "${SCRIPT_DIR}/lib/common.sh"
+    source "${SCRIPT_DIR}/lib/config.sh"
+    DATABENCH_EVALSCOPE_CONFIG_FILE="${TEMP_DIR}/evalscope-invalid.env"
+    validate_evalscope_positive_bound EVALSCOPE_MAX_CONCURRENT_EVALS 16
+  ) >/dev/null 2>&1; then
+    fail 'offline EvalScope capacity validator accepted a value above the compiled ceiling'
+  fi
   docker compose --env-file "${TEMP_DIR}/release/release.env" \
     --env-file "${TEMP_DIR}/databench.env" --file "${TEMP_DIR}/release/compose.yml" config --quiet
 
@@ -412,6 +515,7 @@ EOF
     export DATABENCH_API_IMAGE='wrong-api:ambient-variable-must-not-win'
     export DATABENCH_WEB_IMAGE='wrong-web:ambient-variable-must-not-win'
     export DATABENCH_WORKER_IMAGE='wrong-worker:ambient-variable-must-not-win'
+    export DATABENCH_EVALSCOPE_IMAGE='wrong-evalscope:ambient-variable-must-not-win'
     rendered="$(compose_for_release "${TEMP_DIR}/release" config)"
     grep -q 'image: databench-api:1.2.3' <<< "$rendered" ||
       fail 'ambient variables overrode the selected API release'
@@ -419,6 +523,8 @@ EOF
       fail 'ambient variables overrode the selected Web release'
     grep -q 'image: databench-worker:1.2.3' <<< "$rendered" ||
       fail 'ambient variables overrode the selected Worker release'
+    grep -q 'image: databench-evalscope:1.2.3' <<< "$rendered" ||
+      fail 'ambient variables overrode the selected EvalScope release'
     ! grep -q 'ambient-variable-must-not-win' <<< "$rendered" ||
       fail 'ambient release variables leaked into Compose interpolation'
   )

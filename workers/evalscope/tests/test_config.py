@@ -34,6 +34,15 @@ def test_runtime_config_is_fail_closed_and_path_separated(tmp_path: Path) -> Non
     assert config.endpoint_allowlist == ''
     assert config.dataset_endpoint_allowlist == ''
     assert config.archive_max_bytes == 1024 * 1024 * 1024
+    assert config.task_runtime_seconds == 24 * 60 * 60
+    assert config.evaluation_sample_limit_max == 100_000
+    assert config.evaluation_batch_size_max == 256
+    assert config.evaluation_repeats_max == 10
+    assert config.performance_parallel_max == 256
+    assert config.performance_requests_max == 1_000_000
+    assert config.performance_rate_max == 10_000
+    assert config.model_tokens_max == 32_768
+    assert config.request_timeout_seconds_max == 3_600
 
     configured = RuntimeConfig.from_env({
         **env,
@@ -59,6 +68,18 @@ def test_runtime_config_is_fail_closed_and_path_separated(tmp_path: Path) -> Non
         RuntimeConfig.from_env({**env, 'EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST': 'https|*|443'})
     with pytest.raises(RuntimePolicyError):
         RuntimeConfig.from_env({**env, 'EVALSCOPE_ARCHIVE_MAX_BYTES': str(1024 * 1024 * 1024 + 1)})
+    with pytest.raises(RuntimePolicyError):
+        RuntimeConfig.from_env({**env, 'EVALSCOPE_MAX_CONCURRENT_EVALS': '17'})
+    with pytest.raises(RuntimePolicyError):
+        RuntimeConfig.from_env({**env, 'EVALSCOPE_OUTPUT_MAX_BYTES': str(16 * 1024 * 1024 * 1024 + 1)})
+    with pytest.raises(RuntimePolicyError):
+        RuntimeConfig.from_env({**env, 'EVALSCOPE_TASK_RUNTIME_SECONDS': str(24 * 60 * 60 + 1)})
+    with pytest.raises(RuntimePolicyError):
+        RuntimeConfig.from_env({**env, 'EVALSCOPE_PERFORMANCE_PARALLEL_MAX': '1025'})
+    with pytest.raises(RuntimePolicyError):
+        RuntimeConfig.from_env({**env, 'EVALSCOPE_EVALUATION_REPEATS_MAX': '101'})
+    with pytest.raises(RuntimePolicyError):
+        RuntimeConfig.from_env({**env, 'EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX': '86401'})
 
 
 def test_config_response_origins_and_plotly_digest_are_exact(tmp_path: Path) -> None:
