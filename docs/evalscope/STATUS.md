@@ -3,20 +3,23 @@
 > 每个 E Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- evalscope-status
-current_step: E3
-last_completed_step: E2
+current_step: E4
+last_completed_step: E3
 runtime_enabled: false
 ui_routes_enabled: false
 upstream_commit: b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
+e3_implementation: complete
+e3_gate: passed
 -->
 
 ## 当前检查点
 
 - **当前分支:** `feat/evalscope-integration-design`
-- **当前 Step:** E3 backend-only EvalScope、安全 gateway 与任务正确性边界；尚未开始 runtime 实施
+- **当前 Step:** E4 Evaluation UI foundation；尚未开始实现
 - **已完成:** E0 决策/来源/能力基线；E1 `evalscope-general-qa@1.0.0` projection；E2 Evaluation Run
-  控制面
-- **产品状态:** 没有 `/evaluations/*` 路由，没有 EvalScope service/image，capability 保持 disabled
+  控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环
+- **产品状态:** backend-only image 与 same-origin gateway 已实现但 disabled-by-default；没有
+  `/evaluations/*` 路由
 - **GE7:** `pnpm evalscope:parity:check:green` 按设计保持失败；60 个 capability 均为 `planned`
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
 
@@ -27,8 +30,8 @@ upstream_commit: b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
 | E0 | 决策、来源与 capability parity 基线 | ✅ | GE0 | 183 source files、34 upstream tests、60 capabilities、31 upstream routes |
 | E1 | `evalscope-general-qa` projection | ✅ | GE1 | 三种 profile fixed bytes；真实 exact Dataset export |
 | E2 | Evaluation run 控制面 | ✅ | GE2 | exact Dataset binding、canonical create digest、REST 状态机 |
-| E3 | backend-only EvalScope 与安全 gateway | ⬜ 当前 | GE3 | 下一步；runtime/image/gateway/reconciliation |
-| E4 | Evaluation UI foundation | ⬜ | GE4 | |
+| E3 | backend-only EvalScope 与安全 gateway | ✅ | GE3 | prebuilt image `network=none`、真实 eval/stop/report |
+| E4 | Evaluation UI foundation | ⬜ 当前 | GE4 | 下一步；routes/client/tokens/i18n/primitives |
 | E5 | Tasks 与 Databench Dataset 闭环 | ⬜ | GE5 | |
 | E6 | Reports、Details 与 Predictions | ⬜ | GE6 | |
 | E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ⬜ | GE7 | 完整 UI 复刻唯一 gate |
@@ -141,3 +144,30 @@ E1 没有 UI capability 实现，GE7 green gate 仍按设计失败；runtime/UI 
 
 E2 没有启动 EvalScope、增加 `/evaluations/*` Web route 或实现 UI capability；GE7 green gate 仍按设计失败，
 runtime/UI flags、V16/V17 与公共云 D3 状态均未改变。
+
+## E3 交付与 Gate 记录
+
+- pinned EvalScope source/patch、Python lock、base image、Plotly 2.35.2 与 NLTK `punkt_tab` 已进入
+  backend-only image；完整 Python package data 保留，upstream `evalscope/web` 整目录删除；
+- Gunicorn 固定 one process + threaded；32 条 runtime routes 仅包含 reviewed provider routes 与
+  operator-only reconcile；resume、scan、SPA root、synthetic route 继续 blocked；
+- Hono `/evalscope-api` gateway 使用独立 compiled allowlist + manifest double check，method/path/query/body、
+  redirect、media type 和 response bytes 均 fail closed；浏览器 credential/cookie 不转发；
+- native `dataset_args` locator deny、model scheme/host/port/DNS/socket guard、task HMAC claim、race/replay、
+  stop intent、startup/manual reconcile 与 callback loss 已覆盖；
+- report/chart/perf active HTML 只生成短期 opaque document；iframe context、nonce CSP、local Plotly、
+  `nosniff`、`no-referrer`、media realpath/MIME/signature 边界已建立；
+- 真实 `evalscope-e3-smoke` Dataset 完成 export → general_qa → fake model → BLEU/ROUGE → Databench
+  completed callback；慢任务并发 polling/stop 收敛为 cancelled；
+- final image ID
+  `sha256:5266dc68033c51a46d2992f7f679128b993aba747d940103d42a9961b93d1f1c` 在 Docker network mode
+  `none` 下健康启动并读取真实安全报告与固定 Plotly asset；
+- Python 51 tests、API 96 regular/100 real-dependency tests、Workspace 155、CLI 14、Web 59、全仓
+  lint/build/typecheck/test/openapi/v2-status/peers/offline/parity gates 均通过；GE7 green 仍按设计失败。
+
+完整证据见 [E3-BACKEND-RUNTIME.md](evidence/E3-BACKEND-RUNTIME.md)。
+
+Owner 于 2026-07-28 确认 GE3/GE9 的 offline release boundary 是 digest-pinned prebuilt image：fresh build
+可以联网获取锁定输入，不要求 `docker build --network=none`，仓库不提交 wheelhouse/apt mirror；目标机
+断网 install/start/eval/report/upgrade/rollback 要求不变并在 E9 验收。基于该明确决策，GE3 已通过，可以
+进入 E4。

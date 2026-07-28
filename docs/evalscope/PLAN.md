@@ -182,7 +182,7 @@ E2 只记录 Databench Dataset evaluation run，不把 native Benchmark/perf run
 交付：
 
 - `deploy/evalscope/upstream.lock` 固定 commit、source digest、Python/npm lock evidence；
-- reproducible production image；
+- reproducible production image：source/base/Python lock/patch/assets 固定；fresh build 可联网获取锁定输入；
 - `EVALSCOPE_SERVE_WEB=false`，不注册/暴露 upstream SPA；
 - production WSGI one-process + threaded；
 - Vite/Caddy `/evalscope-api` 使用同一 method + exact-path manifest；所有未评审 path/method/query 默认拒绝；
@@ -210,7 +210,8 @@ E2 只记录 Databench Dataset evaluation run，不把 native Benchmark/perf run
 - 原子 `task-claim.json` 和 `databench-integration.json` replay；
 - task/concurrency/disk/body bounds 的最小 fail-closed 配置。
 
-> **GE3:** pinned image 断网可复现；upstream SPA root 和所有非 allowlist API blocked；health/exact proxy
+> **GE3:** pinned prebuilt image 在 `network=none` 下可启动并读取本地报告/资产；fresh
+> `docker build --network=none` 不属于本 gate；upstream SPA root 和所有非 allowlist API blocked；health/exact proxy
 > 通过；真实 Databench export → general_qa → progress/log/stop/report；same-ID race、active/terminal replay、
 > config mismatch、registry overwrite、stop/fail race、prepared/running restart、callback loss、startup/manual
 > reconcile 全通过；malicious HTML/Markdown/Plotly、top-level raw HTML、root/media traversal、scheme/host/

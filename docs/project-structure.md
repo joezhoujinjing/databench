@@ -4,7 +4,7 @@
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
 > `docs/mcp/`。EvalScope ADR 0017 已接受，E0 来源/能力基线、E1 Dataset projection 和 E2 run 控制面已
-> 完成；尚未增加 EvalScope runtime 或 Web 产品路由。
+> 完成；E3 backend-only runtime 与 disabled-by-default gateway 已实现，仍没有 Web 产品路由。
 
 ## 顶层目录
 
@@ -29,7 +29,7 @@ databench-ts/
 ├─ prisma/              v2-only schema 与 forward migrations
 ├─ deploy/
 │  ├─ ecs/              既有托管部署资产
-│  ├─ evalscope/        E0 upstream/API/Plotly locks；E3 前不含可运行镜像
+│  ├─ evalscope/        pinned backend-only EvalScope image、runtime patch、gateway manifest 与测试
 │  └─ offline/          ADR 0012 Ubuntu 单机离线发布
 ├─ scripts/             repo gate、测试 schema、EvalScope parity 与辅助脚本
 ├─ THIRD_PARTY_NOTICES.md
@@ -97,7 +97,7 @@ hashing
 apps/web 仅消费 generated OpenAPI client
 tooling/openapi-export 仅装配 apps/api
 tooling/v1-retirement 是显式 maintenance 边界
-deploy/evalscope 在 E3 前只含不可执行的 upstream/API/asset locks
+deploy/evalscope backend-only Python service（不进入 TS package DAG）
 ```
 
 精确允许关系：
@@ -115,8 +115,9 @@ deploy/evalscope 在 E3 前只含不可执行的 upstream/API/asset locks
 EvalScope E0 在 `apps/web/src/evaluations/` 只放置来源、能力 manifest 和 pinned fixtures，不注册路由、
 不发网络请求。E1 在既有 `schema → io → workspace → API/CLI/generated Web client` 边界增加
 `evalscope-general-qa` converter；E2 沿相同边界增加 exact Dataset-bound evaluation run 控制面和 generated
-client，没有建立第二条数据访问路径。后续 UI 对 Databench `/v2/*` 仍只用 generated client；隔离的
-EvalScope Zod client 只能访问
+client。E3 增加独立 Python provider service 与 `apps/api` same-origin exact gateway；Dataset 数据仍由
+EvalScope 通过 Databench REST exact inspect/export 获取，API 不直连下层包。后续 UI 对 Databench `/v2/*`
+仍只用 generated client；隔离的 EvalScope Zod client 只能访问
 `deploy/evalscope/api-routes.json` 明确允许的方法与精确路径，不能成为通用反向代理。
 
 MCP runtime 内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了

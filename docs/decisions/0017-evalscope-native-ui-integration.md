@@ -1,6 +1,7 @@
 # ADR 0017 — EvalScope 功能等价 UI 迁移与 Databench 集成
 
-- **状态:** Accepted——owner 于 2026-07-27 确认方案 review 问题修复并要求开始实施
+- **状态:** Accepted——owner 于 2026-07-27 确认方案 review 问题修复并要求开始实施；2026-07-28
+  确认预构建镜像离线交付口径
 - **日期:** 2026-07-27
 - **决策者:** owner
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
@@ -191,6 +192,17 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
   升级、回滚和 lifecycle gate；完成对应 Step 前不得声称离线包已包含 EvalScope；
 - 本 ADR 不完成 V16/V17，不解除公共云 D3 决策门，不授权匿名公网部署；
 - 只有本 ADR、详细技术方案和实施计划被接受后，才进入 runtime 实施。
+
+### 10. 离线交付以预构建镜像为边界，不要求源码仓库携带 apt/PyPI 镜像
+
+- production image 必须固定 upstream source、base image digest、Python lock、downstream patch 和运行时
+  asset digest；联网 fresh build 只能读取这些锁定输入，禁止浮动 `main` 或未锁依赖；
+- ADR 0012 离线包交付已经构建并记录 digest 的 EvalScope image；目标机安装、启动、报告查看、升级和
+  回滚不得访问公网；
+- fresh `docker build --network=none` 不属于 GE3/GE9。仓库不为此提交数百 MB wheelhouse 或 Debian
+  mirror；如果未来需要 air-gapped source build，应作为独立发布供应链决策实施；
+- 该澄清不放宽运行时断网、固定本地 Plotly、许可证、image digest、离线 bundle lifecycle 或目标机
+  无外部 DNS/HTTP 请求的要求。
 
 ## 非目标
 

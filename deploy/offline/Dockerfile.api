@@ -44,10 +44,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   openssl \
   && rm -rf /var/lib/apt/lists/*
 
+ENV DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST=/app/evalscope-api-routes.json
 ENV NODE_ENV=production
 ENV PORT=8000
 
 COPY --from=build --chown=node:node /prod /app
+COPY --chown=node:node deploy/evalscope/api-routes.json /app/evalscope-api-routes.json
 
 RUN ln -s /app/apps/cli/dist/index.js /usr/local/bin/databench
 

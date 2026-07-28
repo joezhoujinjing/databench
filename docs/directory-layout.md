@@ -3,7 +3,8 @@
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
 > 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope 已完成 E0
-> 来源/能力基线、E1 Dataset projection 和 E2 run 控制面，没有 Web 产品路由或 EvalScope runtime。
+> 来源/能力基线、E1 Dataset projection 和 E2 run 控制面；E3 backend-only runtime 与 gateway 已实现，
+> 仍没有 Web 产品路由。
 
 ## `apps/api`
 
@@ -17,6 +18,10 @@ apps/api/
 │  ├─ context.ts               Hono context 中的 V2Workspace
 │  ├─ openapi.ts               OpenAPI 元信息与 server URL
 │  ├─ response.ts              REST/MCP 共用 response stream 与附件 header
+│  ├─ evalscope/
+│  │  ├─ config.ts             disabled-by-default internal origin + route manifest gate
+│  │  ├─ routes.ts             method/path/query/response exact allowlist
+│  │  └─ gateway.ts            bounded same-origin proxy 与 generated-document enforcement
 │  ├─ mcp/
 │  │  ├─ register.ts           stateless MCP server 与四个 tools
 │  │  ├─ config.ts · origin.ts disabled-by-default config 与 Origin 防护
@@ -44,6 +49,7 @@ apps/api/
 │     └─ multipart.ts           bounded multipart ingest
 ├─ test/
 │  ├─ app-support.test.ts
+│  ├─ evalscope-gateway.test.ts
 │  ├─ errors.test.ts
 │  ├─ mcp-config.test.ts · mcp-file-tokens.test.ts · mcp.test.ts
 │  ├─ v2-http.test.ts
@@ -328,9 +334,29 @@ docs/evalscope/evidence/E2-RUN-CONTROL.md
 THIRD_PARTY_NOTICES.md
 ```
 
-`deploy/evalscope/` 当前没有 Dockerfile、patch 或可执行服务；它们属于 E3。E1/E2 只扩展既有
-converter/export 与 Workspace/REST/OpenAPI 链，不在该目录放 runtime。`upstream-manifest.json` 是
-文件来源真源，`ui-capability-manifest.json` 是业务能力验收真源；前者的 `adapted` 不能替代后者的 green。
+E3 后的 backend runtime 布局为：
+
+```text
+deploy/evalscope/
+├─ README.md
+├─ Dockerfile
+├─ .python-version · pyproject.toml · uv.lock
+├─ api-routes.json
+├─ patches/0001-databench-runtime-boundary.patch
+├─ runtime/databench_evalscope/
+│  ├─ app.py · wsgi.py · config.py
+│  ├─ databench.py · storage.py
+│  └─ security.py · documents.py · errors.py
+├─ test/                       Python runtime/security tests
+└─ vendor/
+   ├─ evalscope-upstream.tar.gz
+   ├─ plotly-2.35.2.min.js · plotly-LICENSE.txt
+   └─ punkt_tab.zip
+```
+
+镜像删除 upstream `evalscope/web`，只运行 Gunicorn/Flask backend。`upstream-manifest.json` 是文件来源真源，
+`ui-capability-manifest.json` 是业务能力验收真源；前者的 `adapted` 不能替代后者的 green。E1/E2 的
+converter/export 与 Workspace/REST/OpenAPI 数据链没有被 Python service 绕开。
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。

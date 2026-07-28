@@ -17,11 +17,23 @@ assets.
 
 ## Plotly.js
 
-The planned offline report renderer pins Plotly.js `2.35.2`, distributed under the MIT License. E0 records the
-expected asset digest; the bytes and license text are not shipped until the E3 backend image step.
+The offline report renderer pins and ships Plotly.js `2.35.2`, distributed under the MIT License.
 
 - Asset SHA-256: `6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603`
+- Vendored license: `deploy/evalscope/vendor/plotly-LICENSE.txt`
 - License: <https://github.com/plotly/plotly.js/blob/v2.35.2/LICENSE>
+
+## NLTK Punkt tokenizer data
+
+The EvalScope image ships the NLTK `punkt_tab` tokenizer data required by EvalScope's built-in BLEU, ROUGE and
+instruction-following metrics. The package identifies Jan Strunk as its author and documents the training corpora and
+model contributors in its bundled `README`. The NLTK package index does not declare a separate license field for this
+data package; downstream distribution therefore retains the package unchanged with its README and source metadata.
+
+- Package SHA-256: `e57f64187974277726a3417ca6f181ec5403676c717672eef6a748a7b20e0106`
+- Source package: <https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/tokenizers/punkt_tab.zip>
+- Package metadata: <https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/index.xml>
+- NLTK data licensing notice: <https://www.nltk.org/data.html>
 
 Additional third-party notices introduced while source is ported must be appended before the corresponding Step can
 pass its gate.

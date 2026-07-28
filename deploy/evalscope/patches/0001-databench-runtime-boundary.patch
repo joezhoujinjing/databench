@@ -1,0 +1,39 @@
+diff --git a/evalscope/benchmarks/general_qa/general_qa_adapter.py b/evalscope/benchmarks/general_qa/general_qa_adapter.py
+--- a/evalscope/benchmarks/general_qa/general_qa_adapter.py
++++ b/evalscope/benchmarks/general_qa/general_qa_adapter.py
+@@ -89 +89,4 @@
+-        return Sample(input=message_list, target=answer or '')
++        databench_metadata = record.get('_databench')
++        if not isinstance(databench_metadata, dict):
++            databench_metadata = {}
++        return Sample(input=message_list, target=answer or '', metadata={'_databench': databench_metadata})
+diff --git a/evalscope/constants.py b/evalscope/constants.py
+--- a/evalscope/constants.py
++++ b/evalscope/constants.py
+@@ -175 +175,4 @@
+-PLOTLY_CDN_URL = 'https://resources.modelscope.cn/third-part/js/plotly/plotly-2.35.2.min.js'
++PLOTLY_CDN_URL = (
++    '/evalscope-api/generated-assets/'
++    'plotly-6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603.min.js'
++)
+diff --git a/evalscope/service/app.py b/evalscope/service/app.py
+--- a/evalscope/service/app.py
++++ b/evalscope/service/app.py
+@@ -65 +65,2 @@
+-    if os.path.isdir(_WEB_DIST):
++    serve_web = os.getenv('EVALSCOPE_SERVE_WEB', 'true').strip().lower() == 'true'
++    if serve_web and os.path.isdir(_WEB_DIST):
+diff --git a/evalscope/service/utils/process.py b/evalscope/service/utils/process.py
+--- a/evalscope/service/utils/process.py
++++ b/evalscope/service/utils/process.py
+@@ -3,0 +4 @@
++import os
+@@ -29,0 +31,2 @@
++        if task_id in _active_processes:
++            raise RuntimeError(f'Task {task_id} already has an active process')
+@@ -84,0 +88,2 @@
++    from databench_evalscope.security import install_socket_guard
++    restore_socket = install_socket_guard(os.getenv('EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST', ''))
+@@ -95,0 +101,2 @@
++        finally:
++            restore_socket()

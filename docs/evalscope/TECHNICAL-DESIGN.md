@@ -1336,7 +1336,7 @@ DATABENCH_EVALUATION_MAX_ARTIFACT_BYTES=1073741824
 
 - bundle manifest、镜像计数和 digest；
 - Compose、Caddy、health/dependency order；
-- Web static bundle 和 EvalScope Python wheels；
+- Web static bundle 和包含锁定 Python dependencies 的预构建 EvalScope image；
 - 固定 Plotly JS asset、digest、许可证和全部 report/perf template 的 local-asset patch；
 - install/upgrade/drain/rollback；
 - PostgreSQL、MinIO、EvalScope volume 的备份责任；
@@ -1344,6 +1344,11 @@ DATABENCH_EVALUATION_MAX_ARTIFACT_BYTES=1073741824
 - 旧包回滚对 evaluation table/objects 的兼容。
 
 对应 gate 完成前，现有离线发布声明不变。
+
+Owner 于 2026-07-28 明确：offline source build 不是本集成的交付边界。fresh image build 可以联网获取
+`uv.lock`/digest 固定的 Python inputs 和 base OS packages；离线 bundle 必须携带已构建且记录 digest 的
+image，使目标机 install/start/eval/report/upgrade/rollback 全程无公网访问。仓库不提交 wheelhouse 或
+Debian mirror；未来若要求 air-gapped source build，必须单独设计供应链和制品 gate。
 
 ## 14. Upstream 源码、许可证与升级
 
@@ -1564,7 +1569,7 @@ docs/evalscope/
 
 ### 17.4 EvalScope compatibility
 
-- pinned reproducible image；
+- pinned reproducible image：锁定 source/base/dependencies/patch/assets，并以预构建 image 进入离线包；
 - backend-only mode不暴露 SPA；
 - real export → general_qa；
 - invoke/progress/log/stop/report；

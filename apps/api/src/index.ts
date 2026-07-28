@@ -30,6 +30,7 @@ export function createAppFromConfig(config: ApiConfig) {
     ...(config.databaseUrl !== undefined ? { databaseUrl: config.databaseUrl } : {}),
     ...(config.openApiServerUrl !== undefined ? { openApiServerUrl: config.openApiServerUrl } : {}),
     corsOrigins: config.corsOrigins,
+    ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
     mcp: config.mcp,
     storeConfig: config.storeConfig,
     v2CursorSecret: config.v2CursorSecret,
@@ -89,6 +90,7 @@ export async function startApiRuntime(
         ? {}
         : { openApiServerUrl: config.openApiServerUrl }),
       corsOrigins: config.corsOrigins,
+      ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
       mcp: mcpConfig,
       version: config.version,
       workspaceRoot: config.workspaceRoot,

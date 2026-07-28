@@ -21,8 +21,11 @@
   文件、60 个能力、default-deny API 路由、五类 Benchmark fixture 和 Plotly 证据；E1 已完成
   `evalscope-general-qa@1.0.0` 三种 reference profile、确定性 JSONL、eligibility/fidelity 与真实 exact
   Dataset export；E2 已完成 `evaluation_runs_v2`、canonical create digest、exact Dataset binding、状态机和
-  `/v2/evaluation-runs*` REST。当前仍没有 `/evaluations/*` 产品路由或 EvalScope runtime，下一步是 E3
-  backend-only service、安全 gateway 与任务正确性边界。
+  `/v2/evaluation-runs*` REST。E3 已实现 pinned backend-only image、same-origin exact gateway、Databench
+  Dataset source preparation、task/reconcile/model-egress/active-content 安全边界，并通过真实 BLEU/ROUGE
+  evaluation 与 stop callback 闭环；当前仍没有 `/evaluations/*` 产品路由。Owner 于 2026-07-28 明确
+  offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
+  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E3 已关闭，下一步是 E4。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 

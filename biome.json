@@ -6,7 +6,12 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!openapi.json", "!packages/workspace/src/internal/worker/generated"]
+    "includes": [
+      "**",
+      "!openapi.json",
+      "!packages/workspace/src/internal/worker/generated",
+      "!deploy/evalscope/vendor"
+    ]
   },
   "formatter": {
     "enabled": true,

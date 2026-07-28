@@ -119,6 +119,7 @@ services:
       - /etc/databench/mcp.env
     environment:
       DATABENCH_OPENAPI_SERVER_URL: "/api"
+      DATABENCH_EVALSCOPE_ENABLED: "false"
       DATABENCH_WORKER_ENABLED: "true"
       DATABENCH_WORKER_TARGET: "worker:50051"
       NODE_ENV: production

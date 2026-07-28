@@ -3,6 +3,7 @@ import { isIP } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { type V2WorkspaceOpenOptions, v2ObjectStoreConfigFromEnv } from '@databench/workspace'
 import { z } from 'zod'
+import { type EvalScopeGatewayConfig, evalScopeGatewayConfigFromEnv } from './evalscope/config.js'
 import { type McpRuntimeConfig, mcpConfigFromEnv } from './mcp/config.js'
 
 // Read the service version from the monorepo root package.json rather than
@@ -85,6 +86,7 @@ export interface WorkerApiConfig {
 export interface ApiConfig {
   readonly corsOrigins: readonly string[]
   readonly databaseUrl?: string
+  readonly evalscope?: EvalScopeGatewayConfig
   readonly mcp: McpRuntimeConfig
   readonly openApiServerUrl?: string
   readonly port: number
@@ -102,6 +104,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     corsOrigins: parsed.DATABENCH_CORS_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    evalscope: evalScopeGatewayConfigFromEnv(env),
     mcp: mcpConfigFromEnv(env),
     port: parsed.PORT,
     storeConfig: v2ObjectStoreConfigFromEnv(env),
