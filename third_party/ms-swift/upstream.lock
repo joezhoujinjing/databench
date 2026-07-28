@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/modelscope/ms-swift.git",
+  "tag": "v4.4.2",
+  "commit": "f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d",
+  "tree": "833d2e1e3ab871a3dc419e46afe79584d1caa45a",
+  "commit_date": "2026-07-21T19:05:19+08:00",
+  "source_archive": {
+    "path": "vendor/ms-swift-upstream.tar.gz",
+    "prefix": "ms-swift-v4.4.2/",
+    "bytes": 16517100,
+    "sha256": "60eeb1a53a089306166899951950e195144dc025002ffeffa700067be2787d48"
+  },
+  "ui": {
+    "root": "swift/ui",
+    "entrypoint": "swift/ui/app.py",
+    "entrypoint_sha256": "77308138e716823be779afa2daa8bd1e6bd38a13551c844d3afc341840d92a7f",
+    "top_level_surfaces": [
+      "llm_train",
+      "llm_rlhf",
+      "llm_grpo",
+      "llm_infer",
+      "llm_export",
+      "llm_eval",
+      "llm_sample"
+    ]
+  },
+  "baseline_environment": {
+    "python": "3.11.15",
+    "ms_swift": "4.4.2",
+    "gradio": "5.50.0",
+    "torch": "2.13.0",
+    "transformers": "5.12.1"
+  },
+  "runtime_target": {
+    "status": "locked",
+    "platform": "linux/amd64",
+    "base_image": "pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
+    "base_image_digest": "417bd75df6365104c283ea4c1651fb3530d9eb5a4c2fafa51943cff2a94e6385",
+    "base_image_media_type": "application/vnd.docker.distribution.manifest.v2+json",
+    "base_image_created": "2025-08-06T17:20:49.136285477Z",
+    "base_image_resolution": {
+      "canonical_registry": "docker.io",
+      "read_through_registry": "docker.m.daocloud.io",
+      "resolved_at": "2026-07-28T09:48:38Z"
+    },
+    "python": "3.11",
+    "cuda": "12.8.1",
+    "torch": "2.8.0",
+    "transformers": "4.57.6",
+    "gradio": "5.50.0",
+    "dependency_input_path": "runtime-requirements.in",
+    "dependency_input_sha256": "d87ab67bc64e158be6c987c13f131760199c4dcd1a0b552832f619d4ef8d338a",
+    "runtime_provided_path": "runtime-provided.txt",
+    "runtime_provided_sha256": "8b3e8f74d618235841e803f9ff21dff3fd4033d3d399662377ee6b2ff27087d8",
+    "dependency_lock_path": "runtime-requirements.lock",
+    "dependency_lock_sha256": "9da563f95463de1855934914bc79c199b7e16c3bbdf54e2ab47deb02b7c97713",
+    "dependency_lock_package_count": 227,
+    "dependency_lock_resolver": "uv 0.11.1",
+    "dependency_lock_exclude_newer": "2026-07-28T00:00:00Z"
+  },
+  "source_inputs": {
+    "setup_py_sha256": "ab9701b05ec687e6379b32eccbd310030501442538736a1f4c47a1c1e4282959",
+    "framework_requirements_sha256": "c6a93e6c988c416c91c5c1fd7a10f9cbf74c355633604873c02186dedbc29846",
+    "install_all_sha256": "fb1b979e84cf22a087b8d763bc630833ff29e334b54e905e957a33a03a071ea3"
+  },
+  "patches": [
+    {
+      "path": "patches/0001-databench-session-prefill.patch",
+      "sha256": "c309cec73e863ef4b507d51eda4a2a3bd67cdf549e6fe15974f22a08970f59ff",
+      "scope": [
+        "fixed root path",
+        "Databench Session banner",
+        "Dataset/output/logging prefill",
+        "disable Gradio monitoring and MCP"
+      ]
+    }
+  ],
+  "license": {
+    "spdx": "Apache-2.0",
+    "path": "LICENSE",
+    "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  }
+}

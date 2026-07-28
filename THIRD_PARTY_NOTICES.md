@@ -1,5 +1,26 @@
 # Third-party notices
 
+## ms-swift
+
+Databench's Training Studio vendors and applies a narrow integration patch to the complete native Gradio interface
+from [ModelScope ms-swift](https://github.com/modelscope/ms-swift).
+
+- Upstream tag: `v4.4.2`
+- Upstream commit: `f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d`
+- Copyright: ModelScope Contributors
+- License: Apache License 2.0
+- Upstream license digest: `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4`
+- Vendored source archive digest: `60eeb1a53a089306166899951950e195144dc025002ffeffa700067be2787d48`
+
+The full Apache License 2.0 text is retained in the vendored upstream source archive and is available at
+<https://www.apache.org/licenses/LICENSE-2.0>. The downstream patch only adds the Databench root path, Session banner
+and Dataset/output/logging prefill. The ms-swift and ModelScope names, logos and documentation links remain upstream
+assets and are not relicensed as Databench brand assets.
+
+The pinned source archive, downstream patch and compatibility fixtures are retained under `third_party/ms-swift/`.
+Databench Provider runtime code and deployment definitions are maintained separately and are not part of the
+vendored upstream source.
+
 ## EvalScope
 
 Databench's Evaluation implementation is designed as a modified port of the React user interface and an integration

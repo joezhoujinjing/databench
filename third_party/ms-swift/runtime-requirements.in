@@ -1,0 +1,46 @@
+# Runtime dependencies required to load the complete native ms-swift v4.4.2
+# Gradio application. ms-swift itself is installed from the vendored source
+# archive after this lock.
+accelerate
+addict
+aiohttp
+attrdict
+binpacking
+charset-normalizer
+cpm-kernels
+dacite
+datasets>=3.0,<4.8.5
+einops
+evalscope[opencompass,vlmeval]>=1.0.0
+fastapi
+gradio==5.50.0
+importlib-metadata
+json-repair
+matplotlib
+modelscope>=1.23
+nltk
+numpy
+openai
+oss2
+pandas
+peft>=0.11,<0.20
+pillow
+pyyaml>=5.4
+ray
+requests
+rouge
+safetensors
+scipy
+sentencepiece
+simplejson>=3.3.0
+sortedcontainers>=1.5.9
+swanlab
+tensorboard
+tiktoken
+torch==2.8.0
+tqdm
+transformers==4.57.6
+transformers-stream-generator
+trl>=0.15,<1.0
+uvicorn
+zstandard

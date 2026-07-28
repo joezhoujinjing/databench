@@ -1,0 +1,131 @@
+diff --git a/swift/ui/app.py b/swift/ui/app.py
+index 4dcf1a9d3113cedfda33e277f93a8082ccf4fa88..5d0237d63d6617ecf75734e5ce2211482f0a68a7 100644
+--- a/swift/ui/app.py
++++ b/swift/ui/app.py
+@@ -2,6 +2,7 @@
+ import gradio as gr
+ import os
+ from functools import partial
++from html import escape
+ from packaging import version
+ from transformers.utils import strtobool
+ from typing import List, Optional, Union
+@@ -53,6 +54,8 @@ class SwiftWebUI(SwiftPipeline):
+         server = os.environ.get('WEBUI_SERVER') or self.args.server_name
+         port_env = os.environ.get('WEBUI_PORT')
+         port = int(port_env) if port_env else self.args.server_port
++        root_path = os.environ.get('DATABENCH_SWIFT_ROOT_PATH') or None
++        session_label = os.environ.get('DATABENCH_SWIFT_SESSION_LABEL')
+         LLMTrain.set_lang(lang)
+         LLMRLHF.set_lang(lang)
+         LLMGRPO.set_lang(lang)
+@@ -67,6 +70,10 @@ class SwiftWebUI(SwiftPipeline):
+                 _version = ''
+             gr.HTML(f"<h1><center>{locale_dict['title'][lang]}({_version})</center></h1>")
+             gr.HTML(f"<h3><center>{locale_dict['sub_title'][lang]}</center></h3>")
++            if session_label:
++                gr.HTML(
++                    f'<div class="databench-swift-session"><strong>Databench:</strong> '
++                    f'{escape(session_label)}</div>')
+             with gr.Tabs():
+                 LLMTrain.build_ui(LLMTrain)
+                 LLMRLHF.build_ui(LLMRLHF)
+@@ -107,7 +114,15 @@ class SwiftWebUI(SwiftPipeline):
+                 partial(LLMSample.update_input_model, arg_cls=SamplingArguments, has_record=False),
+                 inputs=[LLMSample.element('model')],
+                 outputs=list(LLMSample.valid_elements().values()))
+-        app.queue(**concurrent).launch(server_name=server, inbrowser=True, server_port=port, height=800, share=share)
++        app.queue(**concurrent).launch(
++            server_name=server,
++            inbrowser=True,
++            server_port=port,
++            height=800,
++            share=share,
++            root_path=root_path,
++            enable_monitoring=False,
++            mcp_server=False)
+ 
+ 
+ def webui_main(args: Optional[Union[List[str], WebUIArguments]] = None):
+diff --git a/swift/ui/llm_train/dataset.py b/swift/ui/llm_train/dataset.py
+index a726af19209a3fb262d8c1ee121a2038f38718e0..ecb30680d0d8bb893716779fc70f36fb133940cb 100644
+--- a/swift/ui/llm_train/dataset.py
++++ b/swift/ui/llm_train/dataset.py
+@@ -1,5 +1,6 @@
+ # Copyright (c) ModelScope Contributors. All rights reserved.
+ import gradio as gr
++import os
+ from typing import Type
+ 
+ from swift.dataset import get_dataset_list
+@@ -61,10 +62,16 @@ class Dataset(BaseUI):
+ 
+     @classmethod
+     def do_build_ui(cls, base_tab: Type['BaseUI']):
++        databench_dataset_path = os.environ.get('DATABENCH_SWIFT_DATASET_PATH')
+         with gr.Accordion(elem_id='dataset_param', open=True):
+             with gr.Row():
+                 gr.Dropdown(
+-                    elem_id='dataset', multiselect=True, choices=get_dataset_list(), scale=20, allow_custom_value=True)
++                    elem_id='dataset',
++                    multiselect=True,
++                    choices=get_dataset_list(),
++                    value=[databench_dataset_path] if databench_dataset_path else None,
++                    scale=20,
++                    allow_custom_value=True)
+                 gr.Slider(elem_id='split_dataset_ratio', minimum=0.0, maximum=1.0, step=0.05, scale=10)
+                 gr.Slider(elem_id='max_length', minimum=32, maximum=32768, value=1024, step=1, scale=10)
+                 gr.Checkbox(elem_id='padding_free', scale=10)
+diff --git a/swift/ui/llm_train/hyper.py b/swift/ui/llm_train/hyper.py
+index 3f27528af90f2d03bbb22f5db8a074bdeae16832..261883a4fed1ded67ff6fe703f9216d7e27276cd 100644
+--- a/swift/ui/llm_train/hyper.py
++++ b/swift/ui/llm_train/hyper.py
+@@ -1,5 +1,6 @@
+ # Copyright (c) ModelScope Contributors. All rights reserved.
+ import gradio as gr
++import os
+ from typing import Type
+ 
+ from ..base import BaseUI
+@@ -116,6 +117,7 @@ class Hyper(BaseUI):
+ 
+     @classmethod
+     def do_build_ui(cls, base_tab: Type['BaseUI']):
++        databench_output_dir = os.environ.get('DATABENCH_SWIFT_OUTPUT_DIR')
+         with gr.Accordion(elem_id='hyper_param', open=False):
+             with gr.Blocks():
+                 with gr.Row():
+@@ -133,7 +135,7 @@ class Hyper(BaseUI):
+                 with gr.Row():
+                     gr.Textbox(elem_id='eval_steps', lines=1, value='500', scale=20)
+                     gr.Textbox(elem_id='save_steps', value='500', lines=1, scale=20)
+-                    gr.Textbox(elem_id='output_dir', scale=20)
++                    gr.Textbox(elem_id='output_dir', value=databench_output_dir, scale=20)
+                     gr.Dropdown(
+                         elem_id='attn_impl',
+                         value=None,
+diff --git a/swift/ui/llm_train/runtime.py b/swift/ui/llm_train/runtime.py
+index 6e6cc5cc7f92cd917950d9a4a1b5e2814190e9d7..64d1f653fc7fdff6ac1ba98a92a74a7cb1613071 100644
+--- a/swift/ui/llm_train/runtime.py
++++ b/swift/ui/llm_train/runtime.py
+@@ -293,13 +293,19 @@ class Runtime(BaseUI):
+ 
+     @classmethod
+     def do_build_ui(cls, base_tab: Type['BaseUI']):
++        databench_logging_dir = os.environ.get('DATABENCH_SWIFT_LOGGING_DIR')
+         with gr.Accordion(elem_id='runtime_tab', open=False):
+             with gr.Blocks():
+                 with gr.Row():
+                     with gr.Column(scale=3):
+                         with gr.Row():
+                             gr.Textbox(elem_id='running_cmd', lines=1, scale=3, interactive=False, max_lines=1)
+-                            gr.Textbox(elem_id='logging_dir', lines=1, scale=3, max_lines=1)
++                            gr.Textbox(
++                                elem_id='logging_dir',
++                                value=databench_logging_dir,
++                                lines=1,
++                                scale=3,
++                                max_lines=1)
+                         with gr.Row():
+                             gr.Button(elem_id='show_running_cmd', scale=2, variant='primary')
+                             gr.Button(elem_id='show_log', scale=2, variant='primary')

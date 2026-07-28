@@ -23,7 +23,7 @@
 
 | Step | 目标 | 首要交付 | 进入条件 |
 |---|---|---|---|
-| S0 | 上游与运行矩阵基线 | lock、manifest、fixtures、license、patch baseline | ADR/方案 accepted |
+| S0 | 上游与兼容性基线 | lock、manifest、fixtures、license、patch baseline | ADR/方案 accepted |
 | S1 | 本地完整 GPU Studio | pinned image、完整 Gradio、Gateway/iframe、真实 LoRA | S0 green |
 | S2 | Dataset + Session bridge | exact export、Session 表/API、预填 patch、单 active conflict | S1 green |
 | S3 | LoRA Artifact import | output discovery、deterministic archive、immutable Artifact | S2 green |
@@ -33,7 +33,7 @@
 
 S0-S4 构成当前 accepted 主计划。S5/S6 是保留扩展点，不属于首期完成声明。
 
-## S0 — 上游、能力与部署基线
+## S0 — 上游、能力与兼容性基线
 
 ### 目标
 
@@ -42,21 +42,21 @@ S0-S4 构成当前 accepted 主计划。S5/S6 是保留扩展点，不属于首�
 
 ### 交付
 
-- `deploy/swift-studio/upstream.lock`：
+- `third_party/ms-swift/upstream.lock`：
   - `modelscope/ms-swift@v4.4.2`；
   - commit `f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d`；
   - source tree/archive digest；
   - Apache-2.0 license digest；
   - Python/CUDA/Torch/Transformers/Gradio/base image lock；
-- `deploy/swift-studio/runtime-capabilities.json`：
+- `third_party/ms-swift/runtime-capabilities.json`：
   - 七个顶级 UI surface；
   - 每项 optional dependencies；
   - `surface-present/runtime-installed/runtime-validated` 三态；
-- `deploy/swift-studio/gradio-routes.json`：
+- `third_party/ms-swift/gradio-routes.json`：
   - method/path/stream type；
   - Queue/SSE/WebSocket/upload/download 分类；
 - Gradio `/config` component/dependency/callback baseline fixture；
-- upstream source/license/patch manifest；
+- `third_party/ms-swift/` 下的 upstream source/license/patch manifest；
 - `THIRD_PARTY_NOTICES.md` 增加适用 notice；
 - downstream patch 骨架，仅允许 root path、Session context、Dataset/output prefill、banner；
 - scripts：lock/check/manifest drift gate；
@@ -89,7 +89,8 @@ callback 完成一次小模型 LoRA + Infer。
 
 ### 交付
 
-- `deploy/swift-studio/Dockerfile` 与 exact dependency lock；
+- `deploy/swift-studio/Dockerfile` 与 deployment-only 资产；
+- Linux exact dependency lock（若为第三方构建输入则位于 `third_party/ms-swift/`）；
 - Swift Studio runtime：
   - Gradio `:7860`；
   - Provider health/runtime `:7861`，此 Step 只提供只读 runtime 信息；

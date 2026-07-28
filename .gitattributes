@@ -1,0 +1,2 @@
+third_party/ms-swift/patches/*.patch -whitespace
+third_party/ms-swift/vendor/*.tar.gz binary

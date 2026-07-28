@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d",
+  "phase": "S0-baseline",
+  "status_values": ["planned", "green"],
+  "capabilities": [
+    {
+      "id": "surface.shell",
+      "kind": "native-ui-surface",
+      "upstream_sources": [
+        "swift/ui/app.py",
+        "swift/ui/base.py",
+        "swift/ui/__init__.py",
+        "swift/arguments/webui_args.py",
+        "swift/cli/web_ui.py"
+      ],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["ms-swift==4.4.2", "gradio==5.50.0"],
+      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json"],
+      "status": "green",
+      "known_limitations": ["S1 image and iframe are not implemented"]
+    },
+    {
+      "id": "surface.train",
+      "kind": "native-ui-surface",
+      "upstream_sources": ["swift/ui/llm_train/**"],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["torch", "transformers", "peft"],
+      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_train"],
+      "status": "green",
+      "known_limitations": ["No Linux/NVIDIA training gate yet"]
+    },
+    {
+      "id": "surface.rlhf",
+      "kind": "native-ui-surface",
+      "upstream_sources": ["swift/ui/llm_rlhf/**"],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["trl", "algorithm-specific dependencies"],
+      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_rlhf"],
+      "status": "green",
+      "known_limitations": ["Surface is pinned; no RLHF runtime claim"]
+    },
+    {
+      "id": "surface.grpo",
+      "kind": "native-ui-surface",
+      "upstream_sources": ["swift/ui/llm_grpo/**"],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["trl", "vllm or external rollout runtime", "reward dependencies"],
+      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_grpo"],
+      "status": "green",
+      "known_limitations": ["Surface is pinned; no GRPO runtime claim"]
+    },
+    {
+      "id": "surface.infer",
+      "kind": "native-ui-surface",
+      "upstream_sources": ["swift/ui/llm_infer/**"],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["transformers", "optional vllm/sglang/lmdeploy"],
+      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_infer"],
+      "status": "green",
+      "known_limitations": ["No Linux/NVIDIA inference or deployment gate yet"]
+    },
+    {
+      "id": "surface.export",
+      "kind": "native-ui-surface",
+      "upstream_sources": ["swift/ui/llm_export/**"],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["merge/quantization backend selected by the user"],
+      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_export"],
+      "status": "green",
+      "known_limitations": ["No merge or quantization runtime claim"]
+    },
+    {
+      "id": "surface.eval",
+      "kind": "native-ui-surface",
+      "upstream_sources": ["swift/ui/llm_eval/**"],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["evalscope"],
+      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_eval"],
+      "status": "green",
+      "known_limitations": ["Local baseline warns that evalscope is not installed"]
+    },
+    {
+      "id": "surface.sample",
+      "kind": "native-ui-surface",
+      "upstream_sources": ["swift/ui/llm_sample/**"],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["sampling backend selected by the user"],
+      "evidence": ["fixture:third_party/ms-swift/gradio-baseline.json#llm_sample"],
+      "status": "green",
+      "known_limitations": ["No sampling runtime claim"]
+    },
+    {
+      "id": "integration.root-path",
+      "kind": "databench-integration",
+      "upstream_sources": [],
+      "surface_present": false,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["downstream patch", "streaming reverse proxy"],
+      "evidence": ["patch:third_party/ms-swift/patches/0001-databench-session-prefill.patch"],
+      "status": "planned",
+      "known_limitations": ["Implemented and browser-validated in S1"]
+    },
+    {
+      "id": "integration.session-context",
+      "kind": "databench-integration",
+      "upstream_sources": [],
+      "surface_present": false,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["S2 Session API", "Dataset/output/logging prefill"],
+      "evidence": ["patch:third_party/ms-swift/patches/0001-databench-session-prefill.patch"],
+      "status": "planned",
+      "known_limitations": ["Environment-backed prefill only until S2 Provider is implemented"]
+    },
+    {
+      "id": "runtime.qwen-small-sft-lora",
+      "kind": "runtime-capability",
+      "upstream_sources": [],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["Linux", "NVIDIA GPU", "pinned Qwen model", "pinned image"],
+      "evidence": ["planned:docs/swift/evidence/S1-GPU-STUDIO.md"],
+      "status": "planned",
+      "known_limitations": ["No real GPU is available in the current macOS design worktree"]
+    },
+    {
+      "id": "runtime.transformers-lora-infer",
+      "kind": "runtime-capability",
+      "upstream_sources": [],
+      "surface_present": true,
+      "runtime_installed": false,
+      "runtime_validated": false,
+      "requirements": ["Linux", "NVIDIA GPU", "completed LoRA output"],
+      "evidence": ["planned:docs/swift/evidence/S1-GPU-STUDIO.md"],
+      "status": "planned",
+      "known_limitations": ["No real GPU is available in the current macOS design worktree"]
+    }
+  ]
+}

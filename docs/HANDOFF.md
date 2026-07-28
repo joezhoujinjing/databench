@@ -40,7 +40,9 @@
 - ADR 0018 ms-swift 集成已于 2026-07-28 接受，采用完整原生 Gradio iframe 的最小桥接方案：首期只建设
   Studio Session、exact Dataset export、GPU/Session workspace 与 LoRA Model Artifact import，不先建设
   Training Run/Attempt 或接管原生 callback。实施从 EvalScope E7 complete commit `25931d6` 建立独立
-  `feat/swift-studio-integration` 分支；当前处于 S0，runtime 与 `/training` 均未实现、保持 disabled。
+  `feat/swift-studio-integration` 分支；S0 已完成并锁定 upstream、完整 Gradio baseline、Linux/amd64
+  GPU base image digest 与 227-package hash lock，当前进入 S1。runtime 与 `/training` 仍未实现、
+  保持 disabled。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 

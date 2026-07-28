@@ -6,8 +6,8 @@
 > `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E7 已完成：backend-only runtime、disabled-by-default
 > gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports、逐样本、Dashboard、
 > 比较、Performance、Benchmark 和安全 Viewer 已实现；锁定 React 基线的完整 UI 功能迁移 gate 已关闭。
-> ms-swift ADR 0018 已接受，当前只完成设计并进入 S0；完整原生 Gradio、`/training`、GPU runtime、
-> Studio Session 与 Model Artifact 均尚未实现。
+> ms-swift ADR 0018 已接受，S0 upstream/compatibility baseline 已完成并进入 S1；完整原生 Gradio、
+> `/training`、GPU runtime、Studio Session 与 Model Artifact 均尚未实现。
 
 ## 顶层目录
 
@@ -37,12 +37,14 @@ databench-ts/
 │  ├─ ecs/              既有托管部署资产
 │  ├─ evalscope/        EvalScope image、upstream patch/vendor 与 gateway manifest
 │  └─ offline/          ADR 0012 Ubuntu 单机离线发布
+├─ third_party/
+│  └─ ms-swift/         锁定 upstream archive、patch 与 Gradio compatibility baseline；非 runtime 代码
 ├─ scripts/             repo gate、测试 schema、EvalScope parity 与辅助脚本
 ├─ THIRD_PARTY_NOTICES.md
 └─ docs/
    ├─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
    ├─ evalscope/         已接受的设计、E0 evidence、实施计划与状态
-   └─ swift/             已接受的原生 Gradio 集成方案、实施计划与状态；S0 current
+   └─ swift/             已接受的原生 Gradio 集成方案、实施计划与状态；S1 current
 ```
 
 `v2` 仍出现在 REST 路径、数据库表、对象 key、类型和测试名中。它是稳定协议/持久化命名，

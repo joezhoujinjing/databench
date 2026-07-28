@@ -1,0 +1,542 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d",
+  "gradio_version": "5.50.0",
+  "root_path": "/swift-studio",
+  "route_count": 76,
+  "routes_sha256": "2d9b3b0ca69acf53980140fbc9eeec6280239c018be3c431181309de53225635",
+  "routes": [
+    {
+      "path": "/",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "document-or-config",
+      "proxy_required": true
+    },
+    {
+      "path": "/",
+      "methods": ["HEAD"],
+      "route_type": "APIRoute",
+      "classification": "document-or-config",
+      "proxy_required": true
+    },
+    {
+      "path": "/assets/{path:path}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "static-asset",
+      "proxy_required": true
+    },
+    {
+      "path": "/config",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "document-or-config",
+      "proxy_required": true
+    },
+    {
+      "path": "/config/",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "document-or-config",
+      "proxy_required": true
+    },
+    {
+      "path": "/favicon.ico",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "static-asset",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/api/{api_name}",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/api/{api_name}/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/app_id",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/app_id/",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/call/{api_name}",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/call/{api_name}/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/call/{api_name}/{event_id}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/cancel",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/component_server",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/component_server/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/custom_component/{id}/{environment}/{type}/{file_name}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/deep_link",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/dev/reload",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/file/{path:path}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "file-or-download",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/file={path_or_url:path}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "file-or-download",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/file={path_or_url:path}",
+      "methods": ["HEAD"],
+      "route_type": "APIRoute",
+      "classification": "file-or-download",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/heartbeat/{session_hash}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/info",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/info/",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/login_check",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "auth-session",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/login_check/",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "auth-session",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/openapi.json",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/process_recording",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/proxy={url_path:path}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "file-or-download",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/proxy={url_path:path}",
+      "methods": ["HEAD"],
+      "route_type": "APIRoute",
+      "classification": "file-or-download",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/queue/data",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "queue",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/queue/join",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "queue",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/queue/status",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "queue",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/reset",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/reset/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/run/{api_name}",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/run/{api_name}/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/startup-events",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/stream/{event_id}",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "websocket-or-stream",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/stream/{event_id}",
+      "methods": ["WEBSOCKET"],
+      "route_type": "APIWebSocketRoute",
+      "classification": "websocket-or-stream",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/stream/{event_id}/close",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "websocket-or-stream",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/stream/{session_hash}/{run}/{component_id}/playlist-file",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "websocket-or-stream",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/stream/{session_hash}/{run}/{component_id}/playlist.m3u8",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "websocket-or-stream",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/stream/{session_hash}/{run}/{component_id}/{segment_id}.{ext}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "websocket-or-stream",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/theme.css",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/token",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/token/",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/undo-vibe-edit",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/undo-vibe-edit/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/upload",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "upload",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/upload_progress",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "upload",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/user",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "auth-session",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/user/",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/vibe-code",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/vibe-code",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/vibe-code/",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/vibe-code/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/vibe-edit",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/vibe-edit/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/vibe-starter-queries",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/gradio_api/vibe-starter-queries/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "development",
+      "proxy_required": true
+    },
+    {
+      "path": "/login",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "auth-session",
+      "proxy_required": true
+    },
+    {
+      "path": "/login/",
+      "methods": ["POST"],
+      "route_type": "APIRoute",
+      "classification": "auth-session",
+      "proxy_required": true
+    },
+    {
+      "path": "/logout",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "auth-session",
+      "proxy_required": true
+    },
+    {
+      "path": "/manifest.json",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "static-asset",
+      "proxy_required": true
+    },
+    {
+      "path": "/monitoring",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "monitoring",
+      "proxy_required": true
+    },
+    {
+      "path": "/monitoring/summary",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "monitoring",
+      "proxy_required": true
+    },
+    {
+      "path": "/monitoring/{key}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "monitoring",
+      "proxy_required": true
+    },
+    {
+      "path": "/openapi.json",
+      "methods": ["GET", "HEAD"],
+      "route_type": "Route",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/pwa_icon",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "static-asset",
+      "proxy_required": true
+    },
+    {
+      "path": "/pwa_icon/{size}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "gradio-api",
+      "proxy_required": true
+    },
+    {
+      "path": "/robots.txt",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "static-asset",
+      "proxy_required": true
+    },
+    {
+      "path": "/static/{path:path}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "static-asset",
+      "proxy_required": true
+    },
+    {
+      "path": "/svelte/{path:path}",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "static-asset",
+      "proxy_required": true
+    },
+    {
+      "path": "/theme.css",
+      "methods": ["GET"],
+      "route_type": "APIRoute",
+      "classification": "static-asset",
+      "proxy_required": true
+    }
+  ]
+}

@@ -244,21 +244,35 @@ Provider 与 Gradio 共享 Session workspace，但 Provider：
 
 Provider control API 只允许 Databench internal origin 访问，不进入浏览器 generated client。
 
-### 5.4 Swift Studio image/deployment
+### 5.4 第三方构建输入与 Swift Studio 部署
 
-部署资产位于：
+上游源码、补丁与兼容性基线属于第三方集成构建输入，位于：
 
 ```text
-deploy/swift-studio/
+third_party/ms-swift/
 ├─ upstream.lock
-├─ Dockerfile
 ├─ README.md
+├─ upstream-manifest.json
+├─ gradio-baseline.json
 ├─ gradio-routes.json
 ├─ runtime-capabilities.json
 ├─ patches/
 │  └─ 0001-databench-session-prefill.patch
 └─ vendor/
+   └─ ms-swift-upstream.tar.gz
 ```
+
+部署资产单独位于：
+
+```text
+deploy/swift-studio/
+├─ Dockerfile
+├─ compose.yaml
+└─ gateway/              deployment-only 配置
+```
+
+`deploy/` 不持有 Python Provider 源码、vendored upstream、补丁或兼容性 fixture。镜像构建只消费
+`third_party/ms-swift/` 与 `workers/swift-studio/` 的固定输入。
 
 `upstream.lock` 至少固定：
 
@@ -1050,6 +1064,7 @@ packages/store/src/v2/model-artifact*.ts
 packages/workspace/src/v2/swift-studio.ts
 packages/workspace/src/internal/swift-studio/
 workers/swift-studio/
+third_party/ms-swift/
 deploy/swift-studio/
 docs/swift/
 ```
@@ -1061,6 +1076,7 @@ apps/api → workspace + schema
 workspace → catalog/store/io/schema/hashing + internal provider adapter
 apps/web → generated OpenAPI client
 workers/swift-studio → Databench REST/internal control contract，不进入 TS package DAG
+third_party/ms-swift → deploy image build input，不进入 runtime import DAG
 ```
 
 Studio Provider 不连接 Catalog/Store；最终 Artifact identity/publication 仍由 Workspace 拥有。

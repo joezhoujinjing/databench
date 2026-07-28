@@ -5,8 +5,29 @@
 > 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E7 已
 > 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports、Predictions、
 > Dashboard、Compare、Performance、Benchmarks 与安全 Viewer 已实现，完整 UI 功能迁移 gate 已关闭。
-> ms-swift ADR 0018 已接受并新增 `docs/swift/`，但当前只处于 S0；本文件不把计划中的
-> `workers/swift-studio`、`deploy/swift-studio` 或 `/training` 写成已实现目录。
+> ms-swift ADR 0018 已接受并新增 `docs/swift/` 与 S0 的 `third_party/ms-swift/`；当前尚未创建计划中的
+> `workers/swift-studio`、`deploy/swift-studio` 或 `/training`。
+
+## `third_party/ms-swift`
+
+```text
+third_party/ms-swift/
+├─ upstream.lock                         固定 tag/commit/tree/archive/license/runtime target
+├─ vendor/ms-swift-upstream.tar.gz       锁定 commit 的 deterministic source archive
+├─ upstream-manifest.json                UI/build/license source digests
+├─ gradio-baseline.json                  component/dependency/callback compatibility fixture
+├─ gradio-routes.json                    完整 Gradio HTTP/SSE/WebSocket route fixture
+├─ runtime-capabilities.json             surface/install/validation 三态能力清单
+├─ runtime-requirements.in               完整原生 UI 的 Python dependency intent
+├─ runtime-provided.txt                  base image 提供的 CUDA/PyTorch exact versions
+├─ runtime-requirements.lock             Linux/amd64 hash-locked dependency closure
+├─ patches/
+│  └─ 0001-databench-session-prefill.patch
+└─ README.md
+```
+
+这里只保留第三方集成构建输入，不放 Databench Python 服务或部署定义。后续 Provider 源码归属
+`workers/swift-studio/`；Dockerfile、Compose 和 gateway deployment 配置归属 `deploy/swift-studio/`。
 
 ## `apps/api`
 
@@ -464,7 +485,7 @@ MCP runtime 与真实 Excel fixture 已按上文实际落点登记。离线配�
 docs/swift/
 ├─ TECHNICAL-DESIGN.md   完整原生 Gradio、四桥、Session/Artifact 与演进边界
 ├─ PLAN.md               S0-S4 主计划，S5/S6 后续扩展
-└─ STATUS.md             当前真实状态；S0 current，runtime/UI disabled
+└─ STATUS.md             当前真实状态；S1 current，runtime/UI disabled
 ```
 
 计划中的 Web/API/Provider/deploy/DB 文件只有在对应 Step 实现并过 gate 后，才能加入本文的当前文件级

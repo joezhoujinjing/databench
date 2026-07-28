@@ -45,6 +45,9 @@ ms-swift 内部所有任务语义重建成 Databench 原生训练控制面。
 - 不把 Gradio runtime config 当作 Databench 长期 API contract；它只属于锁定上游镜像的内部实现；
 - Databench 可以维护极小 downstream patch，用于固定 root path、读取当前 Studio Session、预填
   Dataset/output_dir 和显示 Databench 上下文，但不得借此替换或删减原生业务 callback；
+- 上游锁、vendor archive、downstream patch 与 Gradio 兼容性 fixture 统一归属
+  `third_party/ms-swift/`；Databench Python Provider 归属 `workers/swift-studio/`；Dockerfile、Compose、
+  gateway 配置等部署资产归属 `deploy/swift-studio/`。三者不得混放；
 - Gradio 页面“可见”与某项可选运行时依赖“已验证”分开记录。能力清单必须标明
   `surface-present`、`runtime-installed` 与 `runtime-validated`，不能把页面存在等同于所有 GPU/框架组合
   已过真实 gate。
