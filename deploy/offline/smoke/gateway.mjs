@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 const origin = 'http://web'
 const apiPaths = [
   '/api/health',
@@ -78,4 +80,52 @@ for (const path of ['/datasets', '/transforms']) {
   if (!(await response.text()).includes('<div id="root"></div>')) {
     throw new Error(`${path} SPA navigation did not return the Web entry point`)
   }
+}
+
+const evalscopeHealth = await fetch(`${origin}/evalscope-api/health`)
+if (!evalscopeHealth.ok) throw new Error('EvalScope gateway health is unavailable')
+const evalscopeHealthBody = await evalscopeHealth.json()
+if (
+  evalscopeHealthBody?.service !== 'evalscope-backend' ||
+  evalscopeHealthBody?.ready !== true ||
+  evalscopeHealthBody?.evalscope_commit !== 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60'
+) {
+  throw new Error('EvalScope gateway health payload is invalid')
+}
+
+const evalscopeConfigResponse = await fetch(`${origin}/evalscope-api/api/v1/config`)
+if (!evalscopeConfigResponse.ok) throw new Error('EvalScope public config is unavailable')
+const evalscopeConfigText = await evalscopeConfigResponse.text()
+if (/(?:\/var\/|\/srv\/|\/app\/|[A-Za-z]:\\)/u.test(evalscopeConfigText)) {
+  throw new Error('EvalScope public config exposed an absolute path')
+}
+const evalscopeConfig = JSON.parse(evalscopeConfigText)
+const plotlyDigest = '6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603'
+if (evalscopeConfig?.plotly_asset_sha256 !== plotlyDigest) {
+  throw new Error('EvalScope public config did not pin the expected Plotly asset')
+}
+const plotlyResponse = await fetch(
+  `${origin}/evalscope-api/generated-assets/plotly-${plotlyDigest}.min.js`,
+)
+if (!plotlyResponse.ok) throw new Error('Pinned local Plotly asset is unavailable')
+const plotlyBytes = new Uint8Array(await plotlyResponse.arrayBuffer())
+if (createHash('sha256').update(plotlyBytes).digest('hex') !== plotlyDigest) {
+  throw new Error('Pinned local Plotly asset digest is invalid')
+}
+
+for (const [method, path] of [
+  ['GET', '/evalscope-api/'],
+  ['GET', '/evalscope-api/static/app.js'],
+  ['POST', '/evalscope-api/api/v1/eval/resume/invoke'],
+  ['GET', '/evalscope-api/api/v1/reports/scan'],
+  ['GET', '/evalscope-api/api/v1/synthetic-new-endpoint'],
+  ['GET', '/evalscope-api/internal/v1/operator/status'],
+]) {
+  const response = await fetch(origin + path, { method })
+  if (response.status !== 404) throw new Error(`${method} ${path} was not blocked`)
+}
+
+const evaluationPage = await fetch(`${origin}/evaluations`)
+if (!evaluationPage.ok || !evaluationPage.headers.get('content-type')?.includes('text/html')) {
+  throw new Error('/evaluations SPA route is unavailable')
 }

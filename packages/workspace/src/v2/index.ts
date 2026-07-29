@@ -39,6 +39,7 @@ export {
   V2CursorCodec,
   type V2CursorCodecOptions,
 } from './cursor.js'
+export { evaluationBenchmarkFromPlanV2, evaluationRunFromCatalogV2 } from './evaluation.js'
 export {
   insertOrReplayV2IdentityClaim,
   type V2IdentityAllocatorCatalog,

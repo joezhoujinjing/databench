@@ -7,6 +7,7 @@ import {
   type ErrorClass,
   ErrorResponseSchema,
   ErrorResponseV2Schema,
+  EvaluationRunStateConflictDetailV2Schema,
   FidelityErrorDetailV2Schema,
   IdentityConflictDetailV2Schema,
   IntegrityErrorDetailV2Schema,
@@ -32,6 +33,7 @@ type ErrorCode =
   | 'conflict'
   | 'determinism_conflict'
   | 'error'
+  | 'evaluation_run_state_conflict'
   | 'fidelity_error'
   | 'forbidden'
   | 'identity_conflict'
@@ -280,6 +282,12 @@ function normalizeV2Error(
         message,
         detail: TransformJobStateConflictDetailV2Schema.parse(detail),
       }
+    case 'evaluation_run_state_conflict':
+      return {
+        code: 'evaluation_run_state_conflict',
+        message,
+        detail: EvaluationRunStateConflictDetailV2Schema.parse(detail),
+      }
     case 'unsupported_profile':
       return {
         code: 'unsupported_profile',
@@ -427,6 +435,7 @@ function normalizeNotFound(context: Context<ApiEnv>, detail: unknown) {
     ['dataset_version', 'dataset'],
     ['converter', 'converter'],
     ['transform', 'transform'],
+    ['run_id', 'evaluation_run'],
   ] as const) {
     const value = record?.[key]
     if (typeof value === 'string') {

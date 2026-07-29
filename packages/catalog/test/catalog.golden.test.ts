@@ -73,6 +73,7 @@ beforeAll(() => {
 })
 
 beforeEach(async () => {
+  await prisma.v2EvaluationRun.deleteMany()
   await prisma.v2RecordParentEdge.deleteMany()
   await prisma.v2RecordRevisionLocation.deleteMany()
   await prisma.v2TransformJob.deleteMany()
@@ -98,6 +99,24 @@ function transformJobInput(cacheKey: string, inputVersion = fixtureVersion('alph
     inputCount: 1n,
     resultRefNamespaceId: null,
     resultRefName: null,
+  }
+}
+
+function evaluationRunInput(namespaceId: string, providerTaskId: string) {
+  return {
+    namespaceId,
+    provider: 'evalscope' as const,
+    providerTaskId,
+    createRequestDigest: '8'.repeat(64),
+    datasetVersion: fixtureVersion('alpha'),
+    sourceRef: 'main',
+    converter: 'evalscope-general-qa',
+    converterVersion: '1.0.0',
+    converterOptions: { target_source: 'none' },
+    fidelityDigest: '9'.repeat(64),
+    benchmark: 'general_qa',
+    modelName: 'Qwen/Qwen3-8B',
+    evalscopeCommit: 'a'.repeat(40),
   }
 }
 
@@ -1292,6 +1311,248 @@ describe('V2Catalog', () => {
     await expect(
       prisma.v2IdentityNamespace.delete({ where: { id: namespaceId } }),
     ).rejects.toThrow()
+  })
+})
+
+describe('V2Catalog evaluation runs', () => {
+  test('requires an exact committed Dataset FK and creates one row under a provider-task race', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const input = evaluationRunInput(namespaceId, 'task-race')
+    await expect(v2Catalog.createOrReadEvaluationRun(input)).rejects.toThrow()
+
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const rows = await Promise.all(
+      Array.from({ length: 16 }, () => v2Catalog.createOrReadEvaluationRun(input)),
+    )
+    expect(new Set(rows.map((row) => row.id)).size).toBe(1)
+    expect(rows.every((row) => row.status === 'prepared')).toBe(true)
+    expect(await prisma.v2EvaluationRun.count()).toBe(1)
+    await expect(
+      prisma.v2DatasetSnapshot.delete({ where: { version: input.datasetVersion } }),
+    ).rejects.toThrow()
+  })
+
+  test('serializes archive attempts and replays concurrent finalize without changing the locator', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const prepared = await v2Catalog.createOrReadEvaluationRun(
+      evaluationRunInput(namespaceId, 'task-archive-race'),
+    )
+    await v2Catalog.transitionEvaluationRun({ namespaceId, id: prepared.id, status: 'running' })
+    await v2Catalog.transitionEvaluationRun({
+      namespaceId,
+      id: prepared.id,
+      status: 'completed',
+      metrics: [],
+      providerReportIds: ['report-archive'],
+    })
+    const claims = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        v2Catalog.prepareEvaluationRunArchive({ namespaceId, id: prepared.id }),
+      ),
+    )
+    expect(claims.every((row) => row?.archiveStatus === 'pending')).toBe(true)
+    expect(new Set(claims.map((row) => row?.archiveAttempt))).toEqual(new Set([1]))
+    const uploading = await v2Catalog.markEvaluationRunArchiveUploading({
+      namespaceId,
+      id: prepared.id,
+      archiveAttempt: 1,
+    })
+    expect(uploading).toMatchObject({ archiveStatus: 'uploading', archiveAttempt: 1 })
+    const digest = 'd'.repeat(64)
+    const locator = {
+      namespaceId,
+      id: prepared.id,
+      archiveAttempt: 1,
+      resultArtifactKey: `objects/v2/evaluation-result-v1/dd/${digest}.tar.zst`,
+      resultArtifactDigest: digest,
+      resultArtifactSizeBytes: 512n,
+    }
+    const finalized = await Promise.all(
+      Array.from({ length: 12 }, () => v2Catalog.finalizeEvaluationRunArchive(locator)),
+    )
+    expect(finalized.every((row) => row?.archiveStatus === 'available')).toBe(true)
+    expect(finalized.every((row) => row?.resultArtifactDigest === digest)).toBe(true)
+    expect(
+      await v2Catalog.prepareEvaluationRunArchive({ namespaceId, id: prepared.id }),
+    ).toMatchObject({
+      archiveStatus: 'available',
+      archiveAttempt: 1,
+    })
+  })
+
+  test('lists scoped runs and enforces the execution transition matrix', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const prepared = await v2Catalog.createOrReadEvaluationRun(
+      evaluationRunInput(namespaceId, 'task-lifecycle'),
+    )
+    await expect(
+      v2Catalog.transitionEvaluationRun({
+        namespaceId,
+        id: prepared.id,
+        status: 'completed',
+        metrics: [],
+        providerReportIds: [],
+      }),
+    ).resolves.toMatchObject({ status: 'prepared' })
+
+    const running = await v2Catalog.transitionEvaluationRun({
+      namespaceId,
+      id: prepared.id,
+      status: 'running',
+    })
+    expect(running).toMatchObject({ status: 'running' })
+    expect(running?.startedAt).toBeInstanceOf(Date)
+
+    const completion = {
+      namespaceId,
+      id: prepared.id,
+      status: 'completed' as const,
+      metrics: [
+        {
+          dataset: 'general_qa',
+          subset: 'databench',
+          metric: 'accuracy',
+          score: 1,
+          sampleCount: 1,
+          categories: [],
+        },
+      ],
+      providerReportIds: ['report-1'],
+    }
+    await expect(v2Catalog.transitionEvaluationRun(completion)).resolves.toMatchObject({
+      status: 'completed',
+      providerReportIds: ['report-1'],
+      metrics: [{ metric: 'accuracy' }],
+    })
+    await expect(v2Catalog.transitionEvaluationRun(completion)).resolves.toMatchObject({
+      status: 'completed',
+    })
+    await expect(
+      v2Catalog.transitionEvaluationRun({
+        namespaceId,
+        id: prepared.id,
+        status: 'failed',
+        error: { phase: 'provider', code: 'late_failure', message: 'late failure' },
+      }),
+    ).resolves.toMatchObject({ status: 'completed' })
+
+    const page = await v2Catalog.listEvaluationRuns(
+      namespaceId,
+      { datasetVersion: prepared.datasetVersion, status: 'completed' },
+      null,
+      20,
+    )
+    expect(page.rows.map((row) => row.id)).toEqual([prepared.id])
+    expect(page.nextCursor).toBeNull()
+  })
+
+  test('rejects provider report locators and raw JSON shapes outside their bounds', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const prepared = await v2Catalog.createOrReadEvaluationRun(
+      evaluationRunInput(namespaceId, 'task-bounds'),
+    )
+    await v2Catalog.transitionEvaluationRun({ namespaceId, id: prepared.id, status: 'running' })
+    await expect(
+      v2Catalog.transitionEvaluationRun({
+        namespaceId,
+        id: prepared.id,
+        status: 'completed',
+        metrics: [],
+        providerReportIds: ['reports/path'],
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    await expect(
+      v2Catalog.transitionEvaluationRun({
+        namespaceId,
+        id: prepared.id,
+        status: 'completed',
+        metrics: [],
+        providerReportIds: Array.from({ length: 33 }, (_, index) => `report-${index}`),
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    await v2Catalog.transitionEvaluationRun({
+      namespaceId,
+      id: prepared.id,
+      status: 'completed',
+      metrics: [],
+      providerReportIds: ['report-valid'],
+    })
+    const maximumIds = Array.from({ length: 32 }, (_, index) => `r${index}-`.padEnd(512, 'x'))
+    const maximumPrepared = await v2Catalog.createOrReadEvaluationRun(
+      evaluationRunInput(namespaceId, 'task-maximum-report-ids'),
+    )
+    await v2Catalog.transitionEvaluationRun({
+      namespaceId,
+      id: maximumPrepared.id,
+      status: 'running',
+    })
+    await expect(
+      v2Catalog.transitionEvaluationRun({
+        namespaceId,
+        id: maximumPrepared.id,
+        status: 'completed',
+        metrics: [],
+        providerReportIds: maximumIds,
+      }),
+    ).resolves.toMatchObject({ providerReportIds: maximumIds })
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: maximumPrepared.id },
+        data: {
+          metrics: [
+            {
+              dataset: 'general_qa',
+              subset: null,
+              metric: 'accuracy',
+              score: 1,
+              sample_count: 1,
+              categories: [],
+              prompt: 'must-not-enter-postgres',
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: maximumPrepared.id },
+        data: {
+          metrics: [
+            {
+              dataset: 'Authorization: Bearer-secret-value',
+              subset: null,
+              metric: 'accuracy',
+              score: 1,
+              sample_count: 1,
+              categories: [],
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow()
+    for (const providerReportIds of [
+      ['reports/path'],
+      ['sk-proj-1234567890abcdef'],
+      Array.from({ length: 33 }, (_, index) => `report-${index}`),
+    ]) {
+      await expect(
+        prisma.v2EvaluationRun.update({
+          where: { id: prepared.id },
+          data: { providerReportIds },
+        }),
+      ).rejects.toThrow()
+    }
   })
 })
 

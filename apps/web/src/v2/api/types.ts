@@ -41,3 +41,5 @@ export type TransformRegistryPageV2 = components['schemas']['TransformRegistryPa
 export type CreateBasicCleanJobRequestV2 = components['schemas']['CreateBasicCleanJobRequestV2']
 export type TransformJobV2 = components['schemas']['TransformJobV2']
 export type TransformJobPageV2 = components['schemas']['TransformJobPageV2']
+export type EvaluationRunV2 = components['schemas']['EvaluationRunV2']
+export type EvaluationRunPageV2 = components['schemas']['EvaluationRunPageV2']

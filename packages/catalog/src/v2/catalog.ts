@@ -13,6 +13,13 @@ import {
   V2CatalogTransformJobLeaseError,
 } from './errors.js'
 import type {
+  CatalogEvaluationMetricV2,
+  CatalogEvaluationRunCursorV2,
+  CatalogEvaluationRunErrorV2,
+  CatalogEvaluationRunListFilterV2,
+  CatalogEvaluationRunPageV2,
+  CatalogEvaluationRunRowV2,
+  CatalogEvaluationRunStatusV2,
   CatalogIdentityClaimInputV2,
   CatalogIdentityClaimResultV2,
   CatalogIdentityClaimRowV2,
@@ -39,16 +46,22 @@ import type {
   ClearCompletedTransformJobStagingV2,
   CompareAndSetRefV2,
   CompleteTransformJobV2,
+  CreateEvaluationRunV2,
   CreateTransformJobV2,
   DeleteRefResultV2,
   DeleteRefV2,
+  FailEvaluationRunArchiveV2,
   FailTransformJobV2,
+  FinalizeEvaluationRunArchiveV2,
+  MarkEvaluationRunArchiveUploadingV2,
+  PrepareEvaluationRunArchiveV2,
   RegisterLayoutV2,
   RegisterTransformResultV2,
   RestoreRefResultV2,
   RestoreRefV2,
   SetTransformJobStagingKeysV2,
   TransformJobLeaseV2,
+  TransitionEvaluationRunV2,
   UpdateTransformJobProgressV2,
 } from './types.js'
 
@@ -63,6 +76,18 @@ const SAFE_WORKER_VERSION = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const SAFE_REF_NAME = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const MAX_JOB_JSON_BYTES = 16 * 1024
 const MAX_JOB_LEASE_MS = 24 * 60 * 60 * 1_000
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+const PROVIDER_TASK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/
+const PROVIDER_REPORT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,511}$/
+const SAFE_EVALUATION_NAME = /^[a-z][a-z0-9._-]{0,127}$/
+const SAFE_EVALUATION_VERSION = /^[a-z0-9][a-z0-9._-]{0,127}$/
+const GIT_COMMIT = /^[0-9a-f]{40}$/
+const CREDENTIAL_VALUE =
+  /(?:\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}\b)|(?:\b(?:authorization|x-api-key|api[_-]?key|token)\s*[:=]\s*\S+)/i
+const MAX_EVALUATION_OPTIONS_BYTES = 64 * 1024
+const MAX_EVALUATION_METRICS = 10_000
+const MAX_EVALUATION_METRICS_BYTES = 8 * 1024 * 1024
+const MAX_PROVIDER_REPORT_IDS = 32
 
 export interface V2CatalogOptions {
   readonly databaseUrl?: string
@@ -151,6 +176,37 @@ interface LockedTransformJobSqlRow extends TransformJobSqlRow {
   readonly lease_valid: boolean
 }
 
+interface EvaluationRunSqlRow {
+  readonly id: string
+  readonly namespace_id: string
+  readonly provider: string
+  readonly provider_task_id: string
+  readonly create_request_digest: string
+  readonly provider_report_ids_json: Prisma.JsonValue | null
+  readonly dataset_version: string
+  readonly source_ref: string | null
+  readonly converter: string
+  readonly converter_version: string
+  readonly converter_options_json: Prisma.JsonValue
+  readonly fidelity_digest: string
+  readonly benchmark: string
+  readonly model_name: string | null
+  readonly evalscope_commit: string | null
+  readonly status: string
+  readonly metrics_json: Prisma.JsonValue | null
+  readonly error_json: Prisma.JsonValue | null
+  readonly archive_status: string
+  readonly archive_attempt: number
+  readonly result_artifact_key: string | null
+  readonly result_artifact_digest: string | null
+  readonly result_artifact_size_bytes: bigint | null
+  readonly archive_error_json: Prisma.JsonValue | null
+  readonly created_at: Date
+  readonly started_at: Date | null
+  readonly finished_at: Date | null
+  readonly updated_at: Date
+}
+
 const TRANSFORM_JOB_COLUMNS = Prisma.sql`
   "id", "cache_key", "op", "op_version", "params_json", "input_version",
   "capability_name", "capability_version", "status", "attempt", "lease_owner",
@@ -158,6 +214,16 @@ const TRANSFORM_JOB_COLUMNS = Prisma.sql`
   "input_count", "output_count", "output_version", "result_ref_namespace_id",
   "result_ref_name", "result_ref_status", "result_ref_version", "cache_hit", "error_json",
   "created_at", "started_at", "finished_at", "updated_at"
+`
+
+const EVALUATION_RUN_COLUMNS = Prisma.sql`
+  "id", "namespace_id", "provider", "provider_task_id", "create_request_digest",
+  "provider_report_ids_json", "dataset_version", "source_ref", "converter",
+  "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
+  "model_name", "evalscope_commit", "status", "metrics_json", "error_json",
+  "archive_status", "archive_attempt", "result_artifact_key", "result_artifact_digest",
+  "result_artifact_size_bytes", "archive_error_json", "created_at", "started_at",
+  "finished_at", "updated_at"
 `
 
 export class V2Catalog {
@@ -401,6 +467,272 @@ export class V2Catalog {
       include: { inputs: { orderBy: { position: 'asc' } } },
     })
     return row ? prismaRowToRun(row) : null
+  }
+
+  async createOrReadEvaluationRun(
+    input: CreateEvaluationRunV2,
+  ): Promise<CatalogEvaluationRunRowV2> {
+    validateCreateEvaluationRun(input)
+    const id = randomUUID()
+    const converterOptionsJson = JSON.stringify(input.converterOptions)
+    const inserted = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      INSERT INTO "evaluation_runs_v2" (
+        "id", "namespace_id", "provider", "provider_task_id", "create_request_digest",
+        "dataset_version", "source_ref", "converter", "converter_version",
+        "converter_options_json", "fidelity_digest", "benchmark", "model_name",
+        "evalscope_commit", "status"
+      )
+      VALUES (
+        ${id}::uuid, ${input.namespaceId}::uuid, ${input.provider}, ${input.providerTaskId},
+        ${input.createRequestDigest}, ${input.datasetVersion}, ${input.sourceRef},
+        ${input.converter}, ${input.converterVersion}, ${converterOptionsJson}::jsonb,
+        ${input.fidelityDigest}, ${input.benchmark}, ${input.modelName},
+        ${input.evalscopeCommit}, 'prepared'
+      )
+      ON CONFLICT ("namespace_id", "provider", "provider_task_id") DO NOTHING
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    if (inserted.length > 1) {
+      throw new V2CatalogConsistencyError('Evaluation run insert returned more than one row')
+    }
+    const created = inserted[0]
+    if (created) return sqlRowToEvaluationRun(created)
+
+    const existing = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      SELECT ${EVALUATION_RUN_COLUMNS}
+      FROM "evaluation_runs_v2"
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "provider" = ${input.provider} AND
+        "provider_task_id" = ${input.providerTaskId}
+    `)
+    if (existing.length !== 1 || !existing[0]) {
+      throw new V2CatalogConsistencyError(
+        'Evaluation run insert conflicted but the winning row could not be read',
+      )
+    }
+    return sqlRowToEvaluationRun(existing[0])
+  }
+
+  async getEvaluationRun(
+    namespaceId: string,
+    id: string,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateNamespaceId(namespaceId)
+    validateEvaluationRunId(id)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      SELECT ${EVALUATION_RUN_COLUMNS}
+      FROM "evaluation_runs_v2"
+      WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError('Evaluation run lookup returned more than one row')
+    }
+    return rows[0] ? sqlRowToEvaluationRun(rows[0]) : null
+  }
+
+  async listEvaluationRuns(
+    namespaceId: string,
+    filter: CatalogEvaluationRunListFilterV2,
+    before: CatalogEvaluationRunCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogEvaluationRunPageV2> {
+    validateNamespaceId(namespaceId)
+    validateEvaluationRunListFilter(filter)
+    if (before !== null) validateEvaluationRunCursor(before)
+    const fetchLimit = checkedPageFetchLimit(limit, 'Evaluation run page limit')
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      SELECT ${EVALUATION_RUN_COLUMNS}
+      FROM "evaluation_runs_v2"
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        ${
+          filter.datasetVersion === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`"dataset_version" = ${filter.datasetVersion}`
+        } AND
+        ${filter.status === null ? Prisma.sql`TRUE` : Prisma.sql`"status" = ${filter.status}`} AND
+        ${
+          before === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`
+              (
+                date_trunc('milliseconds', "created_at") < ${before.createdAt} OR
+                (
+                  date_trunc('milliseconds', "created_at") = ${before.createdAt} AND
+                  "id"::text COLLATE "C" < ${before.id}
+                )
+              )
+            `
+        }
+      ORDER BY date_trunc('milliseconds', "created_at") DESC, "id"::text COLLATE "C" DESC
+      LIMIT ${fetchLimit}
+    `)
+    const hasMore = rows.length > limit
+    const pageRows = rows.slice(0, limit).map(sqlRowToEvaluationRun)
+    const last = hasMore ? pageRows.at(-1) : undefined
+    return {
+      rows: Object.freeze(pageRows),
+      nextCursor:
+        last === undefined
+          ? null
+          : Object.freeze({ createdAt: truncateDateToMilliseconds(last.createdAt), id: last.id }),
+    }
+  }
+
+  async transitionEvaluationRun(
+    input: TransitionEvaluationRunV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateEvaluationRunTransition(input)
+    const fromStatuses: readonly CatalogEvaluationRunStatusV2[] =
+      input.status === 'running'
+        ? ['prepared']
+        : input.status === 'completed'
+          ? ['running']
+          : ['prepared', 'running']
+    let assignments: Prisma.Sql
+    if (input.status === 'running') {
+      assignments = Prisma.sql`
+        "status" = 'running',
+        "started_at" = COALESCE("started_at", clock_timestamp())
+      `
+    } else if (input.status === 'completed') {
+      const metricsJson = JSON.stringify(
+        input.metrics.map((metric) => ({
+          dataset: metric.dataset,
+          subset: metric.subset,
+          metric: metric.metric,
+          score: metric.score,
+          sample_count: metric.sampleCount,
+          categories: metric.categories,
+        })),
+      )
+      const reportIdsJson = JSON.stringify(input.providerReportIds)
+      assignments = Prisma.sql`
+        "status" = 'completed',
+        "metrics_json" = ${metricsJson}::jsonb,
+        "provider_report_ids_json" = ${reportIdsJson}::jsonb,
+        "finished_at" = clock_timestamp()
+      `
+    } else {
+      const errorJson = JSON.stringify(input.error)
+      assignments = Prisma.sql`
+        "status" = ${input.status},
+        "error_json" = ${errorJson}::jsonb,
+        "finished_at" = clock_timestamp()
+      `
+    }
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET ${assignments}, "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "status" IN (${Prisma.join(fromStatuses)})
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError('Evaluation run transition returned more than one row')
+    }
+    return rows[0]
+      ? sqlRowToEvaluationRun(rows[0])
+      : await this.getEvaluationRun(input.namespaceId, input.id)
+  }
+
+  async prepareEvaluationRunArchive(
+    input: PrepareEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateEvaluationArchiveIdentity(input)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET
+        "archive_status" = 'pending',
+        "archive_attempt" = "archive_attempt" + 1,
+        "archive_error_json" = NULL,
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "status" = 'completed' AND
+        "archive_status" IN ('not_requested', 'failed')
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    return await this.#archiveMutationResult(input, rows, 'prepare')
+  }
+
+  async markEvaluationRunArchiveUploading(
+    input: MarkEvaluationRunArchiveUploadingV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateEvaluationArchiveAttempt(input)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET "archive_status" = 'uploading', "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "archive_status" = 'pending' AND
+        "archive_attempt" = ${input.archiveAttempt}
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    return await this.#archiveMutationResult(input, rows, 'mark uploading')
+  }
+
+  async finalizeEvaluationRunArchive(
+    input: FinalizeEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateFinalizeEvaluationArchive(input)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET
+        "archive_status" = 'available',
+        "result_artifact_key" = ${input.resultArtifactKey},
+        "result_artifact_digest" = ${input.resultArtifactDigest},
+        "result_artifact_size_bytes" = ${input.resultArtifactSizeBytes},
+        "archive_error_json" = NULL,
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "archive_status" = 'uploading' AND
+        "archive_attempt" = ${input.archiveAttempt}
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    return await this.#archiveMutationResult(input, rows, 'finalize')
+  }
+
+  async failEvaluationRunArchive(
+    input: FailEvaluationRunArchiveV2,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    validateEvaluationArchiveAttempt(input)
+    validateEvaluationError(input.error)
+    const errorJson = JSON.stringify(input.error)
+    const rows = await this.#client.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
+      UPDATE "evaluation_runs_v2"
+      SET
+        "archive_status" = 'failed',
+        "archive_error_json" = ${errorJson}::jsonb,
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.id}::uuid AND
+        "archive_status" IN ('pending', 'uploading') AND
+        "archive_attempt" = ${input.archiveAttempt}
+      RETURNING ${EVALUATION_RUN_COLUMNS}
+    `)
+    return await this.#archiveMutationResult(input, rows, 'fail')
+  }
+
+  async #archiveMutationResult(
+    input: PrepareEvaluationRunArchiveV2,
+    rows: EvaluationRunSqlRow[],
+    action: string,
+  ): Promise<CatalogEvaluationRunRowV2 | null> {
+    if (rows.length > 1) {
+      throw new V2CatalogConsistencyError(`Evaluation archive ${action} returned more than one row`)
+    }
+    return rows[0]
+      ? sqlRowToEvaluationRun(rows[0])
+      : await this.getEvaluationRun(input.namespaceId, input.id)
   }
 
   async createOrReadTransformJob(input: CreateTransformJobV2): Promise<CatalogTransformJobRowV2> {
@@ -1770,6 +2102,200 @@ function prismaRowToRun(row: {
   }
 }
 
+function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRowV2 {
+  const status = parseEvaluationRunStatus(row.status)
+  const providerReportIds = parseStoredProviderReportIds(row.provider_report_ids_json)
+  const metrics = parseStoredEvaluationMetrics(row.metrics_json)
+  const error = parseStoredEvaluationError(row.error_json, 'execution')
+  const archiveStatus = parseEvaluationArchiveStatus(row.archive_status)
+  const archiveError = parseStoredEvaluationError(row.archive_error_json, 'archive')
+  if (row.provider !== 'evalscope') {
+    throw new V2CatalogConsistencyError('Stored evaluation run provider is invalid')
+  }
+  const terminal = status === 'completed' || status === 'failed' || status === 'cancelled'
+  if (terminal !== (row.finished_at !== null)) {
+    throw new V2CatalogConsistencyError('Stored evaluation run terminal timestamp is invalid')
+  }
+  if ((status === 'running' || status === 'completed') && row.started_at === null) {
+    throw new V2CatalogConsistencyError('Stored evaluation run start timestamp is invalid')
+  }
+  if ((status === 'completed') !== (metrics !== null && providerReportIds !== null)) {
+    throw new V2CatalogConsistencyError('Stored evaluation run completion body is invalid')
+  }
+  if ((status === 'failed' || status === 'cancelled') !== (error !== null)) {
+    throw new V2CatalogConsistencyError('Stored evaluation run error body is invalid')
+  }
+  const artifactCount = [
+    row.result_artifact_key,
+    row.result_artifact_digest,
+    row.result_artifact_size_bytes,
+  ].filter((value) => value !== null).length
+  if (artifactCount !== 0 && artifactCount !== 3) {
+    throw new V2CatalogConsistencyError('Stored evaluation run artifact shape is invalid')
+  }
+  if ((archiveStatus === 'available') !== (artifactCount === 3)) {
+    throw new V2CatalogConsistencyError('Stored evaluation run archive availability is invalid')
+  }
+  if ((archiveStatus === 'failed') !== (archiveError !== null)) {
+    throw new V2CatalogConsistencyError('Stored evaluation run archive error is invalid')
+  }
+  const result: CatalogEvaluationRunRowV2 = {
+    id: row.id,
+    namespaceId: row.namespace_id,
+    provider: row.provider,
+    providerTaskId: row.provider_task_id,
+    createRequestDigest: row.create_request_digest,
+    providerReportIds,
+    datasetVersion: row.dataset_version,
+    sourceRef: row.source_ref,
+    converter: row.converter,
+    converterVersion: row.converter_version,
+    converterOptions: parseStoredJsonObject(
+      row.converter_options_json,
+      'Evaluation run converter options',
+    ),
+    fidelityDigest: row.fidelity_digest,
+    benchmark: row.benchmark,
+    modelName: row.model_name,
+    evalscopeCommit: row.evalscope_commit,
+    status,
+    metrics,
+    error,
+    archiveStatus,
+    archiveAttempt: row.archive_attempt,
+    resultArtifactKey: row.result_artifact_key,
+    resultArtifactDigest: row.result_artifact_digest,
+    resultArtifactSizeBytes: row.result_artifact_size_bytes,
+    archiveError,
+    createdAt: row.created_at,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    updatedAt: row.updated_at,
+  }
+  try {
+    validateCreateEvaluationRun(result)
+    if (!Number.isSafeInteger(result.archiveAttempt) || result.archiveAttempt < 0) {
+      throw new V2CatalogInputError('Evaluation archive attempt is invalid')
+    }
+    if (result.resultArtifactDigest !== null && !EXACT_VERSION.test(result.resultArtifactDigest)) {
+      throw new V2CatalogInputError('Evaluation result artifact digest is invalid')
+    }
+    if (
+      result.resultArtifactSizeBytes !== null &&
+      (result.resultArtifactSizeBytes < 0n || result.resultArtifactSizeBytes > POSTGRES_BIGINT_MAX)
+    ) {
+      throw new V2CatalogInputError('Evaluation result artifact size is invalid')
+    }
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored evaluation run is invalid', { cause })
+  }
+  return result
+}
+
+function parseEvaluationRunStatus(value: string): CatalogEvaluationRunStatusV2 {
+  if (
+    value === 'prepared' ||
+    value === 'running' ||
+    value === 'completed' ||
+    value === 'failed' ||
+    value === 'cancelled'
+  ) {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored evaluation run status is invalid')
+}
+
+function parseEvaluationArchiveStatus(value: string): CatalogEvaluationRunRowV2['archiveStatus'] {
+  if (
+    value === 'not_requested' ||
+    value === 'pending' ||
+    value === 'uploading' ||
+    value === 'available' ||
+    value === 'failed'
+  ) {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored evaluation archive status is invalid')
+}
+
+function parseStoredProviderReportIds(value: Prisma.JsonValue | null): readonly string[] | null {
+  if (value === null) return null
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new V2CatalogConsistencyError('Stored provider report IDs are invalid')
+  }
+  const ids = [...value] as string[]
+  try {
+    validateProviderReportIds(ids)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored provider report IDs are invalid', { cause })
+  }
+  return Object.freeze(ids)
+}
+
+function parseStoredEvaluationMetrics(
+  value: Prisma.JsonValue | null,
+): readonly CatalogEvaluationMetricV2[] | null {
+  if (value === null) return null
+  if (!Array.isArray(value)) {
+    throw new V2CatalogConsistencyError('Stored evaluation metrics are invalid')
+  }
+  const metrics = value.map((item) => {
+    if (
+      item === null ||
+      typeof item !== 'object' ||
+      Array.isArray(item) ||
+      Object.keys(item).length !== 6 ||
+      typeof item.dataset !== 'string' ||
+      (item.subset !== null && typeof item.subset !== 'string') ||
+      typeof item.metric !== 'string' ||
+      (item.score !== null && typeof item.score !== 'number') ||
+      (item.sample_count !== null && typeof item.sample_count !== 'number') ||
+      !Array.isArray(item.categories) ||
+      item.categories.some((category) => typeof category !== 'string')
+    ) {
+      throw new V2CatalogConsistencyError('Stored evaluation metric item is invalid')
+    }
+    return {
+      dataset: item.dataset,
+      subset: item.subset,
+      metric: item.metric,
+      score: item.score,
+      sampleCount: item.sample_count,
+      categories: [...item.categories] as string[],
+    }
+  })
+  try {
+    validateEvaluationMetrics(metrics)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored evaluation metrics are invalid', { cause })
+  }
+  return Object.freeze(metrics)
+}
+
+function parseStoredEvaluationError(
+  value: Prisma.JsonValue | null,
+  kind: 'execution' | 'archive',
+): CatalogEvaluationRunErrorV2 | null {
+  if (value === null) return null
+  if (
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 3 ||
+    typeof value.phase !== 'string' ||
+    typeof value.code !== 'string' ||
+    typeof value.message !== 'string'
+  ) {
+    throw new V2CatalogConsistencyError(`Stored evaluation ${kind} error is invalid`)
+  }
+  const error = { phase: value.phase, code: value.code, message: value.message }
+  try {
+    validateEvaluationError(error)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError(`Stored evaluation ${kind} error is invalid`, { cause })
+  }
+  return error
+}
+
 function prismaRowToTransformJob(row: {
   id: string
   cacheKey: string
@@ -1884,6 +2410,186 @@ function sqlRowToTransformJob(row: TransformJobSqlRow): CatalogTransformJobRowV2
     finishedAt: row.finished_at,
     updatedAt: row.updated_at,
   })
+}
+
+function validateCreateEvaluationRun(input: CreateEvaluationRunV2): void {
+  validateNamespaceId(input.namespaceId)
+  if (input.provider !== 'evalscope') {
+    throw new V2CatalogInputError('Evaluation run provider is invalid')
+  }
+  if (!PROVIDER_TASK_ID.test(input.providerTaskId)) {
+    throw new V2CatalogInputError('Evaluation provider task ID is invalid')
+  }
+  if (!EXACT_VERSION.test(input.createRequestDigest)) {
+    throw new V2CatalogInputError('Evaluation create request digest is invalid')
+  }
+  if (!EXACT_VERSION.test(input.datasetVersion)) {
+    throw new V2CatalogInputError('Evaluation Dataset version is invalid')
+  }
+  if (
+    input.sourceRef !== null &&
+    (!SAFE_REF_NAME.test(input.sourceRef) ||
+      EXACT_VERSION.test(input.sourceRef) ||
+      input.sourceRef === '.' ||
+      input.sourceRef === '..')
+  ) {
+    throw new V2CatalogInputError('Evaluation source Ref is invalid')
+  }
+  if (!SAFE_EVALUATION_NAME.test(input.converter)) {
+    throw new V2CatalogInputError('Evaluation converter is invalid')
+  }
+  if (!SAFE_EVALUATION_VERSION.test(input.converterVersion)) {
+    throw new V2CatalogInputError('Evaluation converter version is invalid')
+  }
+  const optionsJson = JSON.stringify(input.converterOptions)
+  if (Buffer.byteLength(optionsJson) > MAX_EVALUATION_OPTIONS_BYTES) {
+    throw new V2CatalogInputError('Evaluation converter options exceed the catalog bound')
+  }
+  if (!EXACT_VERSION.test(input.fidelityDigest)) {
+    throw new V2CatalogInputError('Evaluation fidelity digest is invalid')
+  }
+  if (!SAFE_EVALUATION_NAME.test(input.benchmark)) {
+    throw new V2CatalogInputError('Evaluation benchmark is invalid')
+  }
+  if (input.modelName !== null) validateEvaluationText(input.modelName, 512, 'model name')
+  if (input.evalscopeCommit !== null && !GIT_COMMIT.test(input.evalscopeCommit)) {
+    throw new V2CatalogInputError('EvalScope commit is invalid')
+  }
+}
+
+function validateNamespaceId(value: string): void {
+  if (!UUID.test(value)) throw new V2CatalogInputError('Evaluation namespace ID is invalid')
+}
+
+function validateEvaluationRunId(value: string): void {
+  if (!UUID.test(value)) throw new V2CatalogInputError('Evaluation run ID is invalid')
+}
+
+function validateEvaluationRunListFilter(filter: CatalogEvaluationRunListFilterV2): void {
+  if (filter.datasetVersion !== null && !EXACT_VERSION.test(filter.datasetVersion)) {
+    throw new V2CatalogInputError('Evaluation run Dataset filter is invalid')
+  }
+  if (filter.status !== null) parseEvaluationRunStatus(filter.status)
+}
+
+function validateEvaluationRunCursor(cursor: CatalogEvaluationRunCursorV2): void {
+  if (!(cursor.createdAt instanceof Date) || !Number.isFinite(cursor.createdAt.getTime())) {
+    throw new V2CatalogInputError('Evaluation run cursor timestamp is invalid')
+  }
+  if (cursor.createdAt.getTime() !== truncateDateToMilliseconds(cursor.createdAt).getTime()) {
+    throw new V2CatalogInputError('Evaluation run cursor timestamp must use millisecond precision')
+  }
+  validateEvaluationRunId(cursor.id)
+}
+
+function validateEvaluationRunTransition(input: TransitionEvaluationRunV2): void {
+  validateNamespaceId(input.namespaceId)
+  validateEvaluationRunId(input.id)
+  if (input.status === 'completed') {
+    validateEvaluationMetrics(input.metrics)
+    validateProviderReportIds(input.providerReportIds)
+  } else if (input.status === 'failed' || input.status === 'cancelled') {
+    validateEvaluationError(input.error)
+  }
+}
+
+function validateEvaluationArchiveIdentity(input: PrepareEvaluationRunArchiveV2): void {
+  validateNamespaceId(input.namespaceId)
+  validateEvaluationRunId(input.id)
+}
+
+function validateEvaluationArchiveAttempt(input: MarkEvaluationRunArchiveUploadingV2): void {
+  validateEvaluationArchiveIdentity(input)
+  if (
+    !Number.isSafeInteger(input.archiveAttempt) ||
+    input.archiveAttempt < 1 ||
+    input.archiveAttempt > 2_147_483_647
+  ) {
+    throw new V2CatalogInputError('Evaluation archive attempt is invalid')
+  }
+}
+
+function validateFinalizeEvaluationArchive(input: FinalizeEvaluationRunArchiveV2): void {
+  validateEvaluationArchiveAttempt(input)
+  if (!EXACT_VERSION.test(input.resultArtifactDigest)) {
+    throw new V2CatalogInputError('Evaluation result artifact digest is invalid')
+  }
+  if (input.resultArtifactSizeBytes <= 0n || input.resultArtifactSizeBytes > POSTGRES_BIGINT_MAX) {
+    throw new V2CatalogInputError('Evaluation result artifact size is invalid')
+  }
+  const expectedKey = `objects/v2/evaluation-result-v1/${input.resultArtifactDigest.slice(0, 2)}/${input.resultArtifactDigest}.tar.zst`
+  if (input.resultArtifactKey !== expectedKey) {
+    throw new V2CatalogInputError('Evaluation result artifact key is invalid')
+  }
+}
+
+function validateEvaluationMetrics(metrics: readonly CatalogEvaluationMetricV2[]): void {
+  if (metrics.length > MAX_EVALUATION_METRICS) {
+    throw new V2CatalogInputError('Evaluation metrics exceed the item bound')
+  }
+  if (Buffer.byteLength(JSON.stringify(metrics)) > MAX_EVALUATION_METRICS_BYTES) {
+    throw new V2CatalogInputError('Evaluation metrics exceed the byte bound')
+  }
+  for (const metric of metrics) {
+    validateEvaluationText(metric.dataset, 512, 'metric dataset')
+    if (metric.subset !== null) validateEvaluationText(metric.subset, 512, 'metric subset')
+    validateEvaluationText(metric.metric, 512, 'metric name')
+    if (metric.score !== null && !Number.isFinite(metric.score)) {
+      throw new V2CatalogInputError('Evaluation metric score must be finite')
+    }
+    if (
+      metric.sampleCount !== null &&
+      (!Number.isSafeInteger(metric.sampleCount) || metric.sampleCount < 0)
+    ) {
+      throw new V2CatalogInputError('Evaluation metric sample count is invalid')
+    }
+    if (
+      metric.categories.length > 64 ||
+      new Set(metric.categories).size !== metric.categories.length
+    ) {
+      throw new V2CatalogInputError('Evaluation metric categories are invalid')
+    }
+    for (const category of metric.categories) {
+      validateEvaluationText(category, 128, 'metric category')
+    }
+  }
+}
+
+function validateProviderReportIds(ids: readonly string[]): void {
+  if (ids.length > MAX_PROVIDER_REPORT_IDS || new Set(ids).size !== ids.length) {
+    throw new V2CatalogInputError('Provider report IDs exceed bounds or are not unique')
+  }
+  for (const id of ids) {
+    if (!PROVIDER_REPORT_ID.test(id) || Buffer.byteLength(id) > 512 || CREDENTIAL_VALUE.test(id)) {
+      throw new V2CatalogInputError('Provider report ID is invalid')
+    }
+  }
+}
+
+function validateEvaluationError(error: CatalogEvaluationRunErrorV2): void {
+  if (!SAFE_EVALUATION_NAME.test(error.phase) || !SAFE_EVALUATION_NAME.test(error.code)) {
+    throw new V2CatalogInputError('Evaluation error phase or code is invalid')
+  }
+  validateEvaluationText(error.message, 2_048, 'error message')
+}
+
+function validateEvaluationText(value: string, maxBytes: number, label: string): void {
+  if (
+    value.length === 0 ||
+    Buffer.byteLength(value) > maxBytes ||
+    hasControlCharacter(value) ||
+    CREDENTIAL_VALUE.test(value)
+  ) {
+    throw new V2CatalogInputError(`Evaluation ${label} is invalid`)
+  }
+}
+
+function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index)
+    if (codeUnit <= 0x1f || codeUnit === 0x7f) return true
+  }
+  return false
 }
 
 function validateCreateTransformJob(input: CreateTransformJobV2): void {

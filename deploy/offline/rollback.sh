@@ -45,6 +45,9 @@ validate_release_contract "$TARGET_RELEASE"
 load_release_manifest "${CURRENT_RELEASE}/release-manifest.json"
 CURRENT_ROLLBACK_MODE="$MANIFEST_ROLLBACK_MODE"
 validate_existing_config
+if release_has_evalscope "$CURRENT_RELEASE" || release_has_evalscope "$TARGET_RELEASE"; then
+  validate_evalscope_config
+fi
 validate_release_mcp_config_if_required "$CURRENT_RELEASE"
 validate_release_mcp_config_if_required "$TARGET_RELEASE"
 

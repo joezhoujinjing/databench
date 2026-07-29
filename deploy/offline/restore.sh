@@ -58,6 +58,13 @@ TARGET_RELEASE="${DATABENCH_RELEASES_DIR}/${BACKUP_VERSION}"
 [ -d "$TARGET_RELEASE" ] || die "matching release is not installed: $BACKUP_VERSION"
 [ "$(sed -n '1p' "${TARGET_RELEASE}/release-bundle.sha256")" = "$BACKUP_BUNDLE_SHA" ] ||
   die "matching release bundle checksum is unavailable"
+if release_has_evalscope "$TARGET_RELEASE"; then
+  validate_evalscope_config
+  [ -f "${BACKUP_DIR}/evalscope-volume.tar" ] ||
+    die "backup generation is missing the EvalScope persistent volume"
+  validate_evalscope_volume_archive "$TARGET_RELEASE" "${BACKUP_DIR}/evalscope-volume.tar" ||
+    die "backup EvalScope volume archive is invalid"
+fi
 
 CURRENT_RELEASE="$(current_release_dir)"
 if [ "$SKIP_SAFETY_BACKUP" = false ]; then
@@ -82,6 +89,17 @@ compose_for_release "$TARGET_RELEASE" run --rm --no-deps \
     mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
     mc mirror --overwrite --remove /backup "local/$S3_BUCKET"
   '
+
+if release_has_evalscope "$TARGET_RELEASE"; then
+  log "restoring the persistent EvalScope output and input volume"
+  find "${DATABENCH_DATA_ROOT}/evalscope/outputs" \
+    "${DATABENCH_DATA_ROOT}/evalscope/inputs" -xdev -mindepth 1 -delete
+  tar --numeric-owner -C "${DATABENCH_DATA_ROOT}/evalscope" \
+    -xpf "${BACKUP_DIR}/evalscope-volume.tar"
+  chown -R 10001:10001 "${DATABENCH_DATA_ROOT}/evalscope"
+  find "${DATABENCH_DATA_ROOT}/evalscope" -xdev -type d -exec chmod 0750 {} +
+  find "${DATABENCH_DATA_ROOT}/evalscope" -xdev -type f -exec chmod 0640 {} +
+fi
 
 if [ "$KEEP_STOPPED" = true ]; then
   log "restore completed with API stopped"

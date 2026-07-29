@@ -184,11 +184,19 @@ export class S3ConditionalObjectStoreV2
           : new PutObjectCommand({
               Bucket: this.#bucket,
               ContentType: input.contentType,
+              ...(input.ifNoneMatch === undefined ? {} : { IfNoneMatch: input.ifNoneMatch }),
               Key: input.key,
             })
       return await getSignedUrl(this.#signingClient, command, {
         expiresIn,
-        ...(input.method === 'PUT' ? { signableHeaders: new Set(['content-type']) } : {}),
+        ...(input.method === 'PUT'
+          ? {
+              signableHeaders: new Set([
+                'content-type',
+                ...(input.ifNoneMatch === undefined ? [] : ['if-none-match']),
+              ]),
+            }
+          : {}),
       })
     } catch (error) {
       throw new ObjectStoreFailureErrorV2('Unable to sign S3 staging request', error, 's3')

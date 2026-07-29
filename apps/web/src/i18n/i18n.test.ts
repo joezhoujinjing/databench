@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest'
+import { foundationEn, foundationZh } from '../evaluations/i18n/foundation.js'
+import { localeDictionaries } from '../evaluations/i18n/translations.js'
 import { normalizeLanguage } from './index.js'
 import en from './locales/en.json'
 import zh from './locales/zh.json'
@@ -8,7 +10,7 @@ describe('i18n resources', () => {
     const enKeys = flattenKeys(en)
     const zhKeys = flattenKeys(zh)
 
-    expect(enKeys).toHaveLength(458)
+    expect(enKeys).toHaveLength(460)
     expect(zhKeys).toEqual(enKeys)
     expect(enKeys).toEqual(
       expect.arrayContaining([
@@ -19,6 +21,27 @@ describe('i18n resources', () => {
         'v2.transforms.title',
         'v2.transforms.jobs.status.finalizing',
         'v2.export.title',
+        'nav.evaluations',
+      ]),
+    )
+  })
+
+  test('keeps the complete EvalScope business dictionary aligned under evaluations.*', () => {
+    const evaluationEn = { ...localeDictionaries.en, foundation: foundationEn }
+    const evaluationZh = { ...localeDictionaries.zh, foundation: foundationZh }
+    const enKeys = flattenKeys(evaluationEn)
+    const zhKeys = flattenKeys(evaluationZh)
+
+    expect(enKeys.length).toBeGreaterThan(300)
+    expect(zhKeys).toEqual(enKeys)
+    expect(enKeys).toEqual(
+      expect.arrayContaining([
+        'nav.dashboard',
+        'eval.datasetArgs',
+        'prediction.messageLocated',
+        'performance.requests',
+        'benchmarks.shots',
+        'foundation.serviceUnavailable',
       ]),
     )
   })

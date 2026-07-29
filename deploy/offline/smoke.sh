@@ -28,6 +28,19 @@ compose_for_release "$SCRIPT_DIR" run --rm --no-deps \
   --volume "${SCRIPT_DIR}/smoke:/opt/databench/smoke:ro" \
   --entrypoint node api /opt/databench/smoke/gateway.mjs
 
+if release_has_evalscope "$SCRIPT_DIR"; then
+  log "verifying EvalScope operator drain and resume controls"
+  [ "$(evalscope_operator_request POST /internal/v1/operator/drain)" = \
+    '{"active_tasks":0,"draining":true,"ready":false}' ] ||
+    die "EvalScope did not enter drain state"
+  [ "$(evalscope_operator_request GET /internal/v1/operator/status)" = \
+    '{"active_tasks":0,"draining":true,"ready":false}' ] ||
+    die "EvalScope drain status is inconsistent"
+  [ "$(evalscope_operator_request POST /internal/v1/operator/resume)" = \
+    '{"active_tasks":0,"draining":false,"ready":true}' ] ||
+    die "EvalScope did not resume task admission"
+fi
+
 log "running MCP and companion lifecycle smoke through Caddy"
 compose_for_release "$SCRIPT_DIR" run --rm --no-deps \
   --volume "${SCRIPT_DIR}/smoke:/opt/databench/smoke:ro" \
@@ -67,14 +80,14 @@ trap - EXIT
 
 PROCESS_LOG_SENTINEL="proc_$(printf 'f%.0s' {1..64})"
 EXPORT_LOG_SENTINEL="exp_$(printf 'e%.0s' {1..64})"
-MCP_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs web api worker 2>&1)"
+MCP_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs web api worker evalscope 2>&1)"
 case "$MCP_SERVICE_LOGS" in
   *"$PROCESS_LOG_SENTINEL"*|*"$EXPORT_LOG_SENTINEL"*)
     die "API or Caddy logs exposed an MCP bearer token path"
     ;;
 esac
 
-WORKER_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs api worker 2>&1)"
+WORKER_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs api worker evalscope 2>&1)"
 case "$WORKER_SERVICE_LOGS" in
   *X-Amz-Signature*|*X-Amz-Credential*|*X-Amz-Security-Token*)
     die "API or Worker logs exposed an object-store signed URL"

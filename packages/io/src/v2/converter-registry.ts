@@ -27,6 +27,11 @@ import {
   rowsTrlSftV2,
 } from './converter-projection.js'
 import { deterministicJsonLineV2, deterministicJsonV2 } from './deterministic-json.js'
+import {
+  analyzeEvalScopeGeneralQaV2,
+  EvalScopeGeneralQaOptionsV2Schema,
+  rowsEvalScopeGeneralQaV2,
+} from './evalscope-general-qa.js'
 
 const V2_CONVERTER_VERSION = '1.0.0'
 const V2_EXPORT_FIDELITY_PROFILE = 'databench-export-fidelity-1'
@@ -219,6 +224,7 @@ export class V2ConverterRegistry {
 export function createDefaultV2ConverterRegistry(): V2ConverterRegistry {
   return new V2ConverterRegistry([
     defineCanonicalJsonlConverter(),
+    defineEvalScopeGeneralQaConverter(),
     defineProjectedConverter('trl-sft', ['sft'], 'trl-sft.jsonl', analyzeTrlSftV2, rowsTrlSftV2),
     defineProjectedConverter('trl-dpo', ['dpo'], 'trl-dpo.jsonl', analyzeTrlDpoV2, rowsTrlDpoV2),
     defineProjectedConverter(
@@ -236,6 +242,50 @@ export function createDefaultV2ConverterRegistry(): V2ConverterRegistry {
       rowsMsSwiftV2,
     ),
   ])
+}
+
+function defineEvalScopeGeneralQaConverter(): V2ConverterDefinition {
+  return Object.freeze({
+    name: 'evalscope-general-qa',
+    version: V2_CONVERTER_VERSION,
+    optionsSchema: EvalScopeGeneralQaOptionsV2Schema,
+    mediaType: V2_CONVERTER_MEDIA_TYPE,
+    taskViews: ['evaluation-qa'] as const,
+    inspect(records: readonly RecordRevisionV2[], options: JsonObjectV2) {
+      const normalizedOptions = EvalScopeGeneralQaOptionsV2Schema.parse(options)
+      const projection = analyzeEvalScopeGeneralQaV2(records, normalizedOptions)
+      return ConverterAnalysisV2Schema.parse({
+        normalized_options: normalizedOptions,
+        media_type: V2_CONVERTER_MEDIA_TYPE,
+        suggested_filename: 'databench.jsonl',
+        output_count: projection.outputCount,
+        config_hints: projection.configHints,
+        fidelity: projection.fidelity,
+      })
+    },
+    async *stream(
+      records: readonly RecordRevisionV2[],
+      options: JsonObjectV2,
+      analysis: ConverterAnalysisV2,
+    ) {
+      const normalizedOptions = EvalScopeGeneralQaOptionsV2Schema.parse(options)
+      let outputCount = 0
+      for (const row of rowsEvalScopeGeneralQaV2(records, normalizedOptions)) {
+        outputCount += 1
+        if (outputCount > analysis.output_count) {
+          throw new IntegrityError(
+            'EvalScope general_qa converter produced more rows than inspected',
+          )
+        }
+        yield deterministicJsonLineV2(row)
+      }
+      if (outputCount !== analysis.output_count) {
+        throw new IntegrityError(
+          'EvalScope general_qa converter produced fewer rows than inspected',
+        )
+      }
+    },
+  })
 }
 
 function defineCanonicalJsonlConverter(): V2ConverterDefinition<Record<string, never>> {

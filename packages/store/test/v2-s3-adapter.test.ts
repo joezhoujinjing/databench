@@ -32,6 +32,30 @@ class FakeS3Client {
 }
 
 describe('S3ConditionalObjectStoreV2 conditional create', () => {
+  test('presigns content type and If-None-Match as required conditional PUT headers', async () => {
+    const store = new S3ConditionalObjectStoreV2({
+      accessKeyId: 'test-access-key',
+      bucket: 'databench',
+      endpoint: 'https://objects.example',
+      forcePathStyle: true,
+      region: 'us-east-1',
+      secretAccessKey: 'test-secret-key',
+    })
+
+    const signed = new URL(
+      await store.presignStaging({
+        contentType: 'application/zstd',
+        expiresInSeconds: 900,
+        ifNoneMatch: '*',
+        key: 'staging/evaluations/v1/run/1/result.tar.zst',
+        method: 'PUT',
+      }),
+    )
+    const signedHeaders = signed.searchParams.get('X-Amz-SignedHeaders')?.split(';') ?? []
+    expect(signedHeaders).toContain('content-type')
+    expect(signedHeaders).toContain('if-none-match')
+  })
+
   test('sets IfNoneMatch=* and streams the caller-owned body', async () => {
     const client = new FakeS3Client(async () => ({}))
     const source = Readable.from([Buffer.from('payload')])

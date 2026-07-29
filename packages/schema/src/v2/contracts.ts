@@ -78,6 +78,30 @@ export type TransformJobStateConflictDetailV2 = z.infer<
   typeof TransformJobStateConflictDetailV2Schema
 >
 
+export const EvaluationRunStateConflictDetailV2Schema = z
+  .strictObject({
+    reason: z.enum([
+      'create_request_mismatch',
+      'invalid_transition',
+      'terminal_body_mismatch',
+      'archive_invalid_transition',
+      'archive_attempt_mismatch',
+      'archive_body_mismatch',
+    ]),
+    run_id: z.uuid(),
+    status: z.enum(['prepared', 'running', 'completed', 'failed', 'cancelled']),
+    requested_status: z.enum(['running', 'completed', 'failed', 'cancelled']).nullable(),
+    archive_status: z
+      .enum(['not_requested', 'pending', 'uploading', 'available', 'failed'])
+      .optional(),
+    archive_attempt: z.number().int().safe().nonnegative().optional(),
+    requested_archive_status: z.enum(['uploading', 'available', 'failed']).optional(),
+  })
+  .meta({ id: 'EvaluationRunStateConflictDetailV2' })
+export type EvaluationRunStateConflictDetailV2 = z.infer<
+  typeof EvaluationRunStateConflictDetailV2Schema
+>
+
 export const PostTrainingV2LimitsSchema = z
   .strictObject({
     max_record_bytes: z.number().int().safe().nonnegative(),
@@ -593,7 +617,7 @@ export type CapacityExceededDetailV2 = z.infer<typeof CapacityExceededDetailV2Sc
 
 export const NotFoundDetailV2Schema = z
   .strictObject({
-    kind: z.enum(['route', 'ref', 'dataset', 'record', 'converter', 'transform']),
+    kind: z.enum(['route', 'ref', 'dataset', 'record', 'converter', 'transform', 'evaluation_run']),
     value: z.string().min(1).max(512),
   })
   .meta({ id: 'NotFoundDetailV2' })
@@ -720,6 +744,10 @@ const TransformJobStateConflictErrorBodyV2Schema = createDetailedErrorBodyV2Sche
   'transform_job_state_conflict',
   TransformJobStateConflictDetailV2Schema,
 )
+const EvaluationRunStateConflictErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
+  'evaluation_run_state_conflict',
+  EvaluationRunStateConflictDetailV2Schema,
+)
 const UnsupportedProfileErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
   'unsupported_profile',
   UnsupportedProfileDetailV2Schema,
@@ -766,6 +794,7 @@ export const ErrorBodyV2Schema = z
     RefConflictErrorBodyV2Schema,
     RefStateConflictErrorBodyV2Schema,
     TransformJobStateConflictErrorBodyV2Schema,
+    EvaluationRunStateConflictErrorBodyV2Schema,
     UnsupportedProfileErrorBodyV2Schema,
     FidelityErrorBodyV2Schema,
     IntegrityErrorBodyV2Schema,
@@ -853,6 +882,14 @@ export type TransformJobStateConflictErrorResponseV2 = z.infer<
   typeof TransformJobStateConflictErrorResponseV2Schema
 >
 
+export const EvaluationRunStateConflictErrorResponseV2Schema = createErrorResponseV2Schema(
+  'EvaluationRunStateConflictErrorResponseV2',
+  EvaluationRunStateConflictErrorBodyV2Schema,
+)
+export type EvaluationRunStateConflictErrorResponseV2 = z.infer<
+  typeof EvaluationRunStateConflictErrorResponseV2Schema
+>
+
 export const FidelityErrorResponseV2Schema = createErrorResponseV2Schema(
   'FidelityErrorResponseV2',
   FidelityErrorBodyV2Schema,
@@ -913,6 +950,7 @@ export const ErrorResponse409V2Schema = z
     RefConflictErrorResponseV2Schema,
     RefStateConflictErrorResponseV2Schema,
     TransformJobStateConflictErrorResponseV2Schema,
+    EvaluationRunStateConflictErrorResponseV2Schema,
   ])
   .meta({ id: 'ErrorResponse409V2' })
 export type ErrorResponse409V2 = z.infer<typeof ErrorResponse409V2Schema>

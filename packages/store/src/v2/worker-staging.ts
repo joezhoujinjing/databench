@@ -26,6 +26,7 @@ export interface WorkerStagingPresignInputV1 {
   readonly method: 'GET' | 'PUT'
   readonly contentType: string
   readonly expiresInSeconds: number
+  readonly ifNoneMatch?: '*'
 }
 
 export interface WorkerStagingObjectStoreV1 extends ConditionalObjectStoreV2 {

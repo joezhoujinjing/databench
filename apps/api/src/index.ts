@@ -30,6 +30,9 @@ export function createAppFromConfig(config: ApiConfig) {
     ...(config.databaseUrl !== undefined ? { databaseUrl: config.databaseUrl } : {}),
     ...(config.openApiServerUrl !== undefined ? { openApiServerUrl: config.openApiServerUrl } : {}),
     corsOrigins: config.corsOrigins,
+    ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
+    evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
+    evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
     mcp: config.mcp,
     storeConfig: config.storeConfig,
     v2CursorSecret: config.v2CursorSecret,
@@ -64,6 +67,8 @@ export async function startApiRuntime(
     root: config.workspaceRoot,
     cursorSecret: config.v2CursorSecret,
     storeConfig: config.storeConfig,
+    evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
+    evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
     ...(config.databaseUrl === undefined ? {} : { databaseUrl: config.databaseUrl }),
   })
   let workerRuntime: WorkerRuntime | null = null
@@ -89,6 +94,9 @@ export async function startApiRuntime(
         ? {}
         : { openApiServerUrl: config.openApiServerUrl }),
       corsOrigins: config.corsOrigins,
+      ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
+      evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
+      evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
       mcp: mcpConfig,
       version: config.version,
       workspaceRoot: config.workspaceRoot,

@@ -35,6 +35,7 @@ export function RootLayout() {
             <NavLink to="/datasets">{t('nav.datasets')}</NavLink>
             <NavLink to="/ingest">{t('nav.ingest')}</NavLink>
             <NavLink to="/transforms">{t('nav.transforms')}</NavLink>
+            <NavLink to="/evaluations">{t('nav.evaluations')}</NavLink>
           </nav>
           <div className="flex shrink-0 items-center gap-3 border-border border-l pl-5 max-md:pl-3">
             <LanguageSwitcher />
@@ -60,11 +61,11 @@ function NavLink({
   to,
 }: {
   children: string
-  to: '/datasets' | '/ingest' | '/transforms'
+  to: '/datasets' | '/evaluations' | '/ingest' | '/transforms'
 }) {
   return (
     <Link
-      activeOptions={{ exact: to !== '/datasets' }}
+      activeOptions={{ exact: to === '/ingest' || to === '/transforms' }}
       activeProps={{
         className: 'text-foreground after:scale-x-100',
       }}

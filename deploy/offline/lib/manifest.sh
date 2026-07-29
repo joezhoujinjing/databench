@@ -56,6 +56,9 @@ validate_release_contract() {
   if [ -n "${DATABENCH_WORKER_IMAGE:-}" ]; then
     images+=("$DATABENCH_WORKER_IMAGE")
   fi
+  if [ -n "${DATABENCH_EVALSCOPE_IMAGE:-}" ]; then
+    images+=("$DATABENCH_EVALSCOPE_IMAGE")
+  fi
   for image in "${images[@]}"; do
     awk -F '|' -v expected="$image" '
       $1 == expected { matches += 1 }

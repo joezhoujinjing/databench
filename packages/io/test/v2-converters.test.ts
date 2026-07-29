@@ -14,6 +14,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import {
   createDefaultV2ConverterRegistry,
+  EVALSCOPE_GENERAL_QA_EXCLUSION_REASONS,
   type V2ConverterDefinition,
   V2ConverterRegistry,
 } from '../src/index.js'
@@ -34,6 +35,16 @@ interface ConverterGoldenFixture {
   readonly converters: readonly ConverterGoldenEntry[]
 }
 
+interface EvalScopeGeneralQaGoldenFixture {
+  readonly source_fixture: string
+  readonly dataset_version: string
+  readonly profiles: readonly Array<{
+    readonly target_source: 'selected-candidate' | 'verification-ground-truth' | 'none'
+    readonly plan: unknown
+    readonly output_utf8: string
+  }>
+}
+
 const sourceFixtureUrl = new URL(
   '../../schema/test/golden/fixtures/v2/record-all-fields.input.json',
   import.meta.url,
@@ -44,6 +55,10 @@ const goldenSourceFixtureUrl = new URL(
 )
 const goldenFixtureUrl = new URL(
   './golden/fixtures/v2/converter-output-bytes-and-fidelity.expected.json',
+  import.meta.url,
+)
+const evalScopeGoldenFixtureUrl = new URL(
+  './golden/fixtures/v2/evalscope-general-qa.expected.json',
   import.meta.url,
 )
 
@@ -119,10 +134,239 @@ describe('V2 converter registry and fidelity', () => {
     const registry = createDefaultV2ConverterRegistry()
 
     for (const descriptor of registry.descriptors()) {
-      const left = await inspectAndCollect(registry, descriptor.name, [first, second])
-      const right = await inspectAndCollect(registry, descriptor.name, [second, first])
+      const options =
+        descriptor.name === 'evalscope-general-qa' ? { target_source: 'none' as const } : {}
+      const left = await inspectAndCollect(registry, descriptor.name, [first, second], options)
+      const right = await inspectAndCollect(registry, descriptor.name, [second, first], options)
       expect(right).toEqual(left)
     }
+  })
+
+  test('matches all three EvalScope general_qa profile fixed bytes and fidelity plans', async () => {
+    const fixture = readJson<EvalScopeGeneralQaGoldenFixture>(evalScopeGoldenFixtureUrl)
+    const revision = createRecordRevisionV2(readJson<PostTrainingRecordV2>(goldenSourceFixtureUrl))
+    const registry = createDefaultV2ConverterRegistry()
+    const descriptor = registry.require('evalscope-general-qa')
+
+    expect(fixture.source_fixture).toBe(
+      'packages/io/test/golden/fixtures/v2/converter-output-bytes-and-fidelity.input.json',
+    )
+    expect(fixture.profiles.map(({ target_source }) => target_source)).toEqual([
+      'selected-candidate',
+      'verification-ground-truth',
+      'none',
+    ])
+
+    for (const expected of fixture.profiles) {
+      const options = { target_source: expected.target_source }
+      const analysis = registry.inspect('evalscope-general-qa', [revision], options)
+      const output = await collectUtf8(
+        registry.stream('evalscope-general-qa', [revision], options, analysis),
+      )
+      const plan = createExportPlanV2({
+        export_fidelity_profile: 'databench-export-fidelity-1',
+        dataset_version: fixture.dataset_version,
+        converter: 'evalscope-general-qa',
+        converter_version: descriptor.version,
+        normalized_options: analysis.normalized_options,
+        media_type: analysis.media_type,
+        suggested_filename: analysis.suggested_filename,
+        output_count: analysis.output_count,
+        config_hints: analysis.config_hints,
+        fidelity: analysis.fidelity,
+      })
+
+      expect(plan, expected.target_source).toEqual(expected.plan)
+      expect(output, expected.target_source).toBe(expected.output_utf8)
+      expect(new TextEncoder().encode(output), expected.target_source).toEqual(
+        new TextEncoder().encode(expected.output_utf8),
+      )
+    }
+  })
+
+  test('publishes strict EvalScope options, evaluation task view, and fixed config hints', () => {
+    const registry = createDefaultV2ConverterRegistry()
+    const descriptor = registry.descriptors().find(({ name }) => name === 'evalscope-general-qa')
+    if (!descriptor) throw new TypeError('Missing EvalScope general_qa descriptor')
+
+    expect(descriptor).toMatchObject({
+      version: '1.0.0',
+      media_type: 'application/x-ndjson',
+      task_views: ['evaluation-qa'],
+      options_schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['target_source'],
+      },
+    })
+    expect(registry.parseOptions('evalscope-general-qa', { target_source: 'none' })).toEqual({
+      target_source: 'none',
+    })
+    expect(() => registry.parseOptions('evalscope-general-qa', {})).toThrow()
+    expect(() =>
+      registry.parseOptions('evalscope-general-qa', {
+        target_source: 'selected-candidate',
+        field_mapping: '/unsafe',
+      }),
+    ).toThrow()
+    expect(() =>
+      registry.parseOptions('evalscope-general-qa', { target_source: 'selected' }),
+    ).toThrow()
+
+    const revision = createRecordRevisionV2(qaRecord('1', 'Question'))
+    const analysis = registry.inspect('evalscope-general-qa', [revision], {
+      target_source: 'none',
+    })
+    expect(analysis).toMatchObject({
+      normalized_options: { target_source: 'none' },
+      suggested_filename: 'databench.jsonl',
+      output_count: 1,
+      config_hints: {
+        evalscope: {
+          benchmark: 'general_qa',
+          subset: 'databench',
+          total_records: 1,
+          output_count: 1,
+          excluded_records: 0,
+          excluded_by_reason: {},
+        },
+      },
+    })
+  })
+
+  test('reports every bounded exclusion reason and rejects non-text prompt forms', () => {
+    const registry = createDefaultV2ConverterRegistry()
+    const promptCases = [
+      withQaRecord('1', (record) => {
+        record.contents = []
+      }),
+      withQaRecord('2', (record) => {
+        record.contents.push(textContent('ai', 'unfinished answer'))
+      }),
+      withQaRecord('3', (record) => {
+        record.contents[0]?.parts.push(textPart('second part'))
+      }),
+      withQaRecord('4', (record) => {
+        const content = record.contents[0]
+        if (!content) throw new TypeError('Expected prompt content')
+        content.parts = [
+          {
+            type: 'file_data',
+            file_data: {
+              uri: 's3://evalscope-fixtures/prompt.png',
+              media_type: 'image/png',
+              digest: { algorithm: 'blake3', value: '1'.repeat(64) },
+              size_bytes: 1,
+            },
+            thought: false,
+            thought_signature: null,
+            part_metadata: {},
+          },
+        ]
+      }),
+      withQaRecord('5', (record) => {
+        const part = record.contents[0]?.parts[0]
+        if (part?.type !== 'text') throw new TypeError('Expected text prompt')
+        part.thought = true
+      }),
+      functionTrajectoryRecord('6'),
+      withQaRecord('7', (record) => {
+        record.tools = [fixtureTool()]
+      }),
+    ].map(createRecordRevisionV2)
+    const promptAnalysis = registry.inspect('evalscope-general-qa', promptCases, {
+      target_source: 'none',
+    })
+    expect(evalScopeSummary(promptAnalysis)).toEqual({
+      benchmark: 'general_qa',
+      subset: 'databench',
+      total_records: 7,
+      output_count: 0,
+      excluded_records: 7,
+      excluded_by_reason: {
+        prompt_empty: 1,
+        prompt_not_user_terminated: 1,
+        prompt_not_text_only: 4,
+        tools_not_supported: 1,
+      },
+    })
+
+    const missingSelected = createRecordRevisionV2(qaRecord('8', 'No selected answer'))
+    const incompatibleSelected = createRecordRevisionV2(
+      withQaRecord('9', (record) => {
+        record.candidates = [selectedCandidate('9', 'answer')]
+        record.candidates[0]?.contents[0]?.parts.push(textPart('extra'))
+      }),
+    )
+    const selectedAnalysis = registry.inspect(
+      'evalscope-general-qa',
+      [missingSelected, incompatibleSelected],
+      { target_source: 'selected-candidate' },
+    )
+    expect(evalScopeSummary(selectedAnalysis).excluded_by_reason).toEqual({
+      selected_candidate_missing: 1,
+      selected_candidate_not_text_only: 1,
+    })
+
+    const missingVerification = createRecordRevisionV2(qaRecord('a', 'No verification'))
+    const nonStringVerification = createRecordRevisionV2(
+      withQaRecord('b', (record) => {
+        record.verification = verification({ answer: 42 })
+      }),
+    )
+    const verificationAnalysis = registry.inspect(
+      'evalscope-general-qa',
+      [missingVerification, nonStringVerification],
+      { target_source: 'verification-ground-truth' },
+    )
+    expect(evalScopeSummary(verificationAnalysis).excluded_by_reason).toEqual({
+      verification_missing: 1,
+      verification_ground_truth_not_string: 1,
+    })
+    expect([
+      ...Object.keys(evalScopeSummary(promptAnalysis).excluded_by_reason),
+      ...Object.keys(evalScopeSummary(selectedAnalysis).excluded_by_reason),
+      ...Object.keys(evalScopeSummary(verificationAnalysis).excluded_by_reason),
+    ]).toEqual(EVALSCOPE_GENERAL_QA_EXCLUSION_REASONS)
+  })
+
+  test('keeps Unicode and empty text exact, expands selected rows, and binds profile options', async () => {
+    const source = withQaRecord('c', (record) => {
+      const prompt = record.contents[0]?.parts[0]
+      if (prompt?.type !== 'text') throw new TypeError('Expected text prompt')
+      prompt.text = '  问题 🌏\n第二行  '
+      record.candidates = [selectedCandidate('c', ''), selectedCandidate('d', '  答案 🌟  ')]
+      record.verification = verification('')
+    })
+    const revision = createRecordRevisionV2(source)
+    const registry = createDefaultV2ConverterRegistry()
+    const analysis = registry.inspect('evalscope-general-qa', [revision], {
+      target_source: 'selected-candidate',
+    })
+    expect(analysis.output_count).toBe(2)
+    const output = await collectUtf8(
+      registry.stream('evalscope-general-qa', [revision], analysis.normalized_options, analysis),
+    )
+    const rows = nonEmptyLines(output).map(
+      (line) => JSON.parse(line) as { messages: Array<{ content: string }>; response: string },
+    )
+    expect(rows.map(({ response }) => response)).toEqual(['', '  答案 🌟  '])
+    expect(rows.map(({ messages }) => messages[0]?.content)).toEqual([
+      '  问题 🌏\n第二行  ',
+      '  问题 🌏\n第二行  ',
+    ])
+    expect(() =>
+      registry.stream('evalscope-general-qa', [revision], { target_source: 'none' }, analysis),
+    ).toThrow(IntegrityError)
+
+    const groundTruth = await inspectAndCollect(registry, 'evalscope-general-qa', [revision], {
+      target_source: 'verification-ground-truth',
+    })
+    expect(JSON.parse(groundTruth.output)).toMatchObject({ response: '' })
+    const noReference = await inspectAndCollect(registry, 'evalscope-general-qa', [revision], {
+      target_source: 'none',
+    })
+    expect(JSON.parse(noReference.output)).not.toHaveProperty('response')
   })
 
   test('normalizes nested open-object key order in trainer bytes', async () => {
@@ -567,11 +811,10 @@ async function inspectAndCollect(
   registry: V2ConverterRegistry,
   name: ConverterNameV2,
   records: readonly RecordRevisionV2[],
+  options: JsonObjectV2 = {},
 ): Promise<{ readonly analysis: ConverterAnalysisV2; readonly output: string }> {
-  const analysis = registry.inspect(name, records, {})
-  const output = await collectUtf8(
-    registry.stream(name, records, analysis.normalized_options, analysis),
-  )
+  const analysis = registry.inspect(name, records, options)
+  const output = await collectUtf8(registry.stream(name, records, options, analysis))
   return { analysis, output }
 }
 
@@ -601,6 +844,139 @@ function withRecordId(
 
 function nonEmptyLines(output: string): string[] {
   return output.split('\n').filter((line) => line.length > 0)
+}
+
+function qaRecord(idDigit: string, text: string): PostTrainingRecordV2 {
+  return {
+    schema_version: '2.0.0',
+    id: `rec_${idDigit.repeat(64)}`,
+    contents: [textContent('user', text)],
+    candidates: [],
+    preference_relations: [],
+    tools: [],
+    verification: null,
+    source: null,
+    lang: null,
+    lineage: null,
+    tags: [],
+    extra: {},
+  }
+}
+
+function withQaRecord(
+  idDigit: string,
+  mutate: (record: PostTrainingRecordV2) => void,
+): PostTrainingRecordV2 {
+  const record = qaRecord(idDigit, 'Question')
+  mutate(record)
+  return record
+}
+
+function textContent(role: 'system' | 'user' | 'ai', text: string) {
+  return {
+    role,
+    parts: [textPart(text)],
+    loss_weight: role === 'system' ? 0 : null,
+  }
+}
+
+function textPart(text: string) {
+  return {
+    type: 'text' as const,
+    text,
+    thought: false,
+    thought_signature: null,
+    part_metadata: {},
+  }
+}
+
+function selectedCandidate(idDigit: string, text: string) {
+  return {
+    id: `cand_${idDigit.repeat(64)}`,
+    contents: [textContent('ai', text)],
+    finish_reason: null,
+    rank: null,
+    selected: true,
+    signals: [],
+    generator: null,
+    token_count: null,
+    avg_logprobs: null,
+  }
+}
+
+function verification(groundTruth: JsonObjectV2 | string) {
+  return {
+    verifier: 'fixture-verifier',
+    verifier_version: '1',
+    ground_truth: groundTruth,
+    constraint: null,
+    config: {},
+  }
+}
+
+function fixtureTool() {
+  return {
+    name: 'lookup',
+    description: null,
+    input_schema: {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      additionalProperties: false,
+    },
+  }
+}
+
+function functionTrajectoryRecord(idDigit: string): PostTrainingRecordV2 {
+  const record = qaRecord(idDigit, 'Use the tool')
+  record.tools = [fixtureTool()]
+  record.contents = [
+    textContent('user', 'Use the tool'),
+    {
+      role: 'ai',
+      parts: [
+        {
+          type: 'function_call',
+          function_call: { id: 'call-1', name: 'lookup', args: {} },
+          thought: false,
+          thought_signature: null,
+          part_metadata: {},
+        },
+      ],
+      loss_weight: null,
+    },
+    {
+      role: 'user',
+      parts: [
+        {
+          type: 'function_response',
+          function_response: { call_id: 'call-1', response: 'done' },
+          thought: false,
+          thought_signature: null,
+          part_metadata: {},
+        },
+      ],
+      loss_weight: null,
+    },
+  ]
+  return record
+}
+
+function evalScopeSummary(analysis: ConverterAnalysisV2): {
+  benchmark: string
+  subset: string
+  total_records: number
+  output_count: number
+  excluded_records: number
+  excluded_by_reason: Record<string, number>
+} {
+  return analysis.config_hints.evalscope as {
+    benchmark: string
+    subset: string
+    total_records: number
+    output_count: number
+    excluded_records: number
+    excluded_by_reason: Record<string, number>
+  }
 }
 
 function readJson<T>(url: URL): T {

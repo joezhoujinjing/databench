@@ -28,3 +28,11 @@ export {
   CanonicalJsonlUnsupportedRecordSchemaErrorV2,
   CanonicalJsonlValidationErrorV2,
 } from './errors.js'
+export {
+  EVALSCOPE_GENERAL_QA_EXCLUSION_REASONS,
+  EVALSCOPE_GENERAL_QA_TARGET_SOURCES,
+  type EvalScopeGeneralQaExclusionReasonV2,
+  type EvalScopeGeneralQaOptionsV2,
+  EvalScopeGeneralQaOptionsV2Schema,
+  type EvalScopeGeneralQaTargetSourceV2,
+} from './evalscope-general-qa.js'

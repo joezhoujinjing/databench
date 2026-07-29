@@ -1,5 +1,6 @@
 import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { foundationEn, foundationZh } from '../evaluations/i18n/foundation.js'
 import en from './locales/en.json'
 import zh from './locales/zh.json'
 
@@ -17,8 +18,18 @@ void i18next.use(initReactI18next).init({
   load: 'languageOnly',
   nonExplicitSupportedLngs: true,
   resources: {
-    en: { translation: en },
-    zh: { translation: zh },
+    en: {
+      translation: {
+        ...en,
+        evaluations: { foundation: foundationEn },
+      },
+    },
+    zh: {
+      translation: {
+        ...zh,
+        evaluations: { foundation: foundationZh },
+      },
+    },
   },
   showSupportNotice: false,
   supportedLngs: [...SUPPORTED_LANGUAGES],

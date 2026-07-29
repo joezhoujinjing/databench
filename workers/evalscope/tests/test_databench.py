@@ -1,0 +1,375 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+
+from databench_evalscope.databench import DatabenchClient, DatabenchSource
+from databench_evalscope.errors import RuntimePolicyError
+from databench_evalscope.storage import TaskManifestStore, config_digest
+
+TASK_ID = 'eval_123e4567-e89b-42d3-a456-426614174000'
+RUN_ID = '123e4567-e89b-42d3-a456-426614174099'
+VERSION = 'a' * 64
+FIDELITY = 'b' * 64
+
+
+def source() -> DatabenchSource:
+    return DatabenchSource.parse({
+        'source_ref': 'support-qa',
+        'dataset_version': VERSION,
+        'converter': 'evalscope-general-qa',
+        'options': {'target_source': 'none'},
+        'accepted_fidelity_digest': FIDELITY,
+    })
+
+
+def archive_prepare(url: str) -> dict[str, Any]:
+    return {
+        'run_id': RUN_ID,
+        'archive_status': 'uploading',
+        'archive_attempt': 1,
+        'upload': {
+            'method': 'PUT',
+            'url': url,
+            'expires_at': '2026-07-28T00:15:00.000Z',
+            'content_type': 'application/zstd',
+            'required_headers': {
+                'content-type': 'application/zstd',
+                'if-none-match': '*',
+            },
+            'max_size_bytes': 1024 * 1024 * 1024,
+        },
+    }
+
+
+def test_exact_inspect_create_export_start_and_complete(runtime_config) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    manifests.claim(TASK_ID, 'evaluation', config_digest({'task': 1}, runtime_config.task_hmac_key))
+    requests: list[tuple[str, str, Any]] = []
+    create_attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal create_attempts
+        try:
+            body = json.loads(request.content) if request.content else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            body = {'binary_size': len(request.content)}
+        requests.append((request.method, request.url.path, body))
+        if request.method == 'GET' and request.url.path == f'/v2/datasets/{VERSION}':
+            return httpx.Response(200, json={
+                'requested_ref': VERSION,
+                'ref_name': None,
+                'dataset_version': VERSION,
+                'manifest': {'dataset_version': VERSION},
+            })
+        if request.url.path == f'/v2/datasets/{VERSION}:inspect-export':
+            return httpx.Response(200, json={
+                'dataset_version': VERSION,
+                'converter': 'evalscope-general-qa',
+                'converter_version': '1.0.0',
+                'normalized_options': {'target_source': 'none'},
+                'media_type': 'application/x-ndjson',
+                'fidelity_digest': FIDELITY,
+                'config_hints': {'evalscope': {'benchmark': 'general_qa', 'subset': 'databench'}},
+            })
+        if request.url.path == '/v2/evaluation-runs':
+            create_attempts += 1
+            if create_attempts == 1:
+                raise httpx.ReadError('response lost', request=request)
+            return httpx.Response(201, json={'id': RUN_ID, 'status': 'prepared'})
+        if request.url.path == f'/v2/datasets/{VERSION}:export':
+            return httpx.Response(
+                200,
+                content=b'{"messages":[{"role":"user","content":"hi"}],"_databench":{"dataset_version":"' + VERSION.encode() + b'"}}\n',
+                headers={'content-type': 'application/x-ndjson'},
+            )
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:start':
+            return httpx.Response(200, json={'id': RUN_ID, 'status': 'running'})
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:complete':
+            return httpx.Response(200, json={'id': RUN_ID, 'status': 'completed'})
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:prepare-result-upload':
+            return httpx.Response(200, json={
+                'run_id': RUN_ID,
+                'archive_status': 'uploading',
+                'archive_attempt': 1,
+                'upload': {
+                    'method': 'PUT',
+                    'url': 'https://objects.example/staging/result.tar.zst?signature=opaque',
+                    'expires_at': '2026-07-28T00:15:00.000Z',
+                    'content_type': 'application/zstd',
+                    'required_headers': {
+                        'content-type': 'application/zstd',
+                        'if-none-match': '*',
+                    },
+                    'max_size_bytes': 1024 * 1024 * 1024,
+                },
+            })
+        if request.url.host == 'objects.example':
+            assert request.headers['if-none-match'] == '*'
+            assert request.headers['content-type'] == 'application/zstd'
+            return httpx.Response(200)
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:finalize-result-upload':
+            return httpx.Response(200, json={
+                'id': RUN_ID,
+                'archive_status': 'available',
+                'archive_attempt': 1,
+                'result_artifact_digest': body['digest'],
+                'result_artifact_size_bytes': body['size_bytes'],
+            })
+        raise AssertionError(f'unexpected request: {request.method} {request.url.path}')
+
+    transport = httpx.MockTransport(handler)
+    http = httpx.Client(base_url=runtime_config.databench_base_url, transport=transport)
+    client = DatabenchClient(runtime_config, manifests, client=http, uploader=http)
+    prepared = client.prepare_evaluation(
+        TASK_ID,
+        {'model': 'Qwen', 'api_url': 'http://127.0.0.1:8001/v1'},
+        source(),
+    )
+    assert prepared.run_id == RUN_ID
+    assert create_attempts == 2
+    assert prepared.input_file.read_text().endswith('\n')
+    assert prepared.payload['datasets'] == ['general_qa']
+    assert prepared.payload['dataset_args']['general_qa'] == {
+        'local_path': str(runtime_config.input_dir / TASK_ID),
+        'subset_list': ['databench'],
+    }
+    assert client.start(RUN_ID) is True
+    manifests.mark_running(TASK_ID)
+    terminal = manifests.record_terminal(TASK_ID, 'completed', metrics=[], provider_report_ids=[TASK_ID])
+    assert client.callback(terminal, manifests.read_integration(TASK_ID) or {}) is True
+    assert ('POST', f'/v2/evaluation-runs/{RUN_ID}:complete', {'metrics': [], 'provider_report_ids': [TASK_ID]}) in requests
+    assert any(path.endswith(':finalize-result-upload') for _, path, _ in requests)
+
+
+@pytest.mark.parametrize('first_put_result', ['expired', 'response_lost'])
+def test_archive_refreshes_put_url_and_replays_lost_finalize_response(
+    runtime_config,
+    first_put_result: str,
+) -> None:
+    runtime_config.prepare()
+    task_dir = runtime_config.output_dir / TASK_ID
+    (task_dir / 'reports').mkdir(parents=True)
+    (task_dir / 'reports' / 'summary.json').write_text('{"score":1}\n', encoding='utf-8')
+    state = {'prepare': 0, 'put': 0, 'finalize': 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:prepare-result-upload':
+            state['prepare'] += 1
+            return httpx.Response(
+                200,
+                json=archive_prepare(
+                    f'https://objects.example/staging/result.tar.zst?generation={state["prepare"]}'
+                ),
+            )
+        if request.url.host == 'objects.example':
+            assert 'authorization' not in request.headers
+            assert request.headers['if-none-match'] == '*'
+            state['put'] += 1
+            if state['put'] == 1:
+                if first_put_result == 'response_lost':
+                    raise httpx.ReadError('PUT response lost', request=request)
+                return httpx.Response(403)
+            return httpx.Response(412 if first_put_result == 'response_lost' else 200)
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:finalize-result-upload':
+            state['finalize'] += 1
+            if state['finalize'] == 1:
+                raise httpx.ReadError('finalize response lost', request=request)
+            body = json.loads(request.content)
+            return httpx.Response(200, json={
+                'id': RUN_ID,
+                'archive_status': 'available',
+                'archive_attempt': 1,
+                'result_artifact_digest': body['digest'],
+                'result_artifact_size_bytes': body['size_bytes'],
+            })
+        raise AssertionError(f'unexpected request: {request.method} {request.url}')
+
+    transport = httpx.MockTransport(handler)
+    http = httpx.Client(base_url=runtime_config.databench_base_url, transport=transport)
+    client = DatabenchClient(runtime_config, TaskManifestStore(runtime_config.output_dir), client=http, uploader=http)
+
+    assert client._archive_completed_result(
+        task_id=TASK_ID,
+        run_id=RUN_ID,
+        provider_report_ids=[TASK_ID],
+    ) is True
+    assert state == {'prepare': 2, 'put': 2, 'finalize': 2}
+
+
+def test_permanent_archive_policy_failure_is_sanitized_and_marked_failed(runtime_config) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    manifests.claim(TASK_ID, 'evaluation', config_digest({'task': 1}, runtime_config.task_hmac_key))
+    task_dir = runtime_config.output_dir / TASK_ID
+    (task_dir / 'reports').mkdir()
+    (task_dir / 'reports' / 'summary.json').write_text(
+        '{"api_key":"must-not-leave-provider"}\n',
+        encoding='utf-8',
+    )
+    terminal = manifests.record_terminal(
+        TASK_ID,
+        'completed',
+        metrics=[],
+        provider_report_ids=[TASK_ID],
+    )
+    failed_bodies: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:complete':
+            return httpx.Response(200, json={'id': RUN_ID, 'status': 'completed'})
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:prepare-result-upload':
+            return httpx.Response(
+                200,
+                json=archive_prepare('https://objects.example/staging/result.tar.zst'),
+            )
+        if request.method == 'GET' and request.url.path == f'/v2/evaluation-runs/{RUN_ID}':
+            return httpx.Response(200, json={'id': RUN_ID, 'archive_attempt': 1})
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:fail-result-upload':
+            body = json.loads(request.content)
+            failed_bodies.append(body)
+            return httpx.Response(200, json={
+                'id': RUN_ID,
+                'archive_status': 'failed',
+                'archive_attempt': 1,
+            })
+        raise AssertionError(f'unexpected request: {request.method} {request.url.path}')
+
+    client = DatabenchClient(
+        runtime_config,
+        manifests,
+        client=httpx.Client(
+            base_url=runtime_config.databench_base_url,
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    integration = {'run_id': RUN_ID, 'task_id': TASK_ID}
+    assert client.callback(terminal, integration) is True
+    assert failed_bodies == [{
+        'archive_attempt': 1,
+        'error': {
+            'phase': 'provider_archive',
+            'code': 'archive_secret_detected',
+            'message': 'EvalScope result archive was rejected by the archive policy',
+        },
+    }]
+    assert 'must-not-leave-provider' not in json.dumps(failed_bodies)
+
+
+def test_fidelity_is_reinspected_and_mismatch_stops_before_create(runtime_config) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    manifests.claim(TASK_ID, 'evaluation', config_digest({'task': 1}, runtime_config.task_hmac_key))
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.method == 'GET':
+            return httpx.Response(200, json={
+                'requested_ref': VERSION,
+                'ref_name': None,
+                'dataset_version': VERSION,
+            })
+        return httpx.Response(200, json={
+            'dataset_version': VERSION,
+            'converter': 'evalscope-general-qa',
+            'converter_version': '1.0.0',
+            'normalized_options': {'target_source': 'none'},
+            'media_type': 'application/x-ndjson',
+            'fidelity_digest': 'c' * 64,
+            'config_hints': {'evalscope': {'benchmark': 'general_qa', 'subset': 'databench'}},
+        })
+
+    client = DatabenchClient(
+        runtime_config,
+        manifests,
+        client=httpx.Client(base_url=runtime_config.databench_base_url, transport=httpx.MockTransport(handler)),
+    )
+    with pytest.raises(RuntimePolicyError) as captured:
+        client.prepare_evaluation(TASK_ID, {'model': 'Qwen'}, source())
+    assert captured.value.code == 'databench_fidelity_mismatch'
+    assert '/v2/evaluation-runs' not in paths
+
+
+@pytest.mark.parametrize(
+    'change',
+    [
+        {'converter': 'canonical-jsonl'},
+        {'dataset_version': '../dataset'},
+        {'options': {'local_path': '/tmp/file'}},
+        {'source_ref': 'https://evil.example/ref'},
+    ],
+)
+def test_databench_source_envelope_is_strict(change: dict[str, Any]) -> None:
+    value = {
+        'source_ref': 'support-qa',
+        'dataset_version': VERSION,
+        'converter': 'evalscope-general-qa',
+        'options': {'target_source': 'none'},
+        'accepted_fidelity_digest': FIDELITY,
+        **change,
+    }
+    with pytest.raises(RuntimePolicyError):
+        DatabenchSource.parse(value)
+
+
+def test_databench_redirect_is_never_followed(runtime_config) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    manifests.claim(TASK_ID, 'evaluation', config_digest({'task': 1}, runtime_config.task_hmac_key))
+    client = DatabenchClient(
+        runtime_config,
+        manifests,
+        client=httpx.Client(
+            base_url=runtime_config.databench_base_url,
+            transport=httpx.MockTransport(lambda _request: httpx.Response(302, headers={'location': 'http://evil.test'})),
+            follow_redirects=False,
+        ),
+    )
+    with pytest.raises(RuntimePolicyError) as captured:
+        client.prepare_evaluation(TASK_ID, {'model': 'Qwen'}, source())
+    assert captured.value.code == 'databench_redirect_rejected'
+
+
+def test_terminal_callback_recovers_run_id_after_create_response_loss(runtime_config) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    manifests.claim(TASK_ID, 'evaluation', config_digest({'task': 1}, runtime_config.task_hmac_key))
+    manifests.write_integration(TASK_ID, {
+        'schema_version': 1,
+        'task_id': TASK_ID,
+        'run_id': None,
+        'source_ref': 'support-qa',
+        'dataset_version': VERSION,
+        'converter': 'evalscope-general-qa',
+        'options': {'target_source': 'none'},
+        'accepted_fidelity_digest': FIDELITY,
+        'model_name': 'Qwen',
+        'evalscope_commit': 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
+        'input_filename': 'databench.jsonl',
+    })
+    terminal = manifests.record_terminal(
+        TASK_ID,
+        'failed',
+        error={'phase': 'provider_prepare', 'code': 'databench_unavailable', 'message': 'Unavailable'},
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == '/v2/evaluation-runs':
+            return httpx.Response(201, json={'id': RUN_ID, 'status': 'prepared'})
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:fail':
+            return httpx.Response(200, json={'id': RUN_ID, 'status': 'failed'})
+        raise AssertionError(f'unexpected request: {request.method} {request.url.path}')
+
+    client = DatabenchClient(
+        runtime_config,
+        manifests,
+        client=httpx.Client(base_url=runtime_config.databench_base_url, transport=httpx.MockTransport(handler)),
+    )
+    assert client.callback(terminal, manifests.read_integration(TASK_ID) or {}) is True
+    assert manifests.read_integration(TASK_ID)['run_id'] == RUN_ID

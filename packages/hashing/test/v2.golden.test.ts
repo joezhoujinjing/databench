@@ -17,6 +17,7 @@ import {
   hashArtifactBytes,
   hashV2DatasetIdentity,
   hashV2DatasetIdentityFromSortedRecordDigests,
+  hashV2EvaluationRunCreate,
   hashV2ExportFidelity,
   hashV2IdentityClaimKey,
   hashV2IdentityRequest,
@@ -27,6 +28,7 @@ import {
   type RecordSeedV1,
   type SourceRootSeedV1,
   type TransformCacheIdentityV1,
+  V2_EVALUATION_RUN_CREATE_PROFILE,
 } from '../src/index.js'
 
 const fixturePath = (name: string) =>
@@ -258,6 +260,29 @@ interface EntityIdFixture {
 }
 
 describe('v2 identity and version fixed vectors', () => {
+  test('locks the canonical evaluation run create request domain', () => {
+    const identity = {
+      evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
+      provider: 'evalscope' as const,
+      provider_task_id: 'task-fixed-1',
+      dataset_version: 'a'.repeat(64),
+      source_ref: 'main',
+      converter: 'evalscope-general-qa' as const,
+      converter_version: '1.0.0',
+      normalized_options: { target_source: 'none' },
+      fidelity_digest: 'b'.repeat(64),
+      benchmark: 'general_qa',
+      model_name: 'Qwen/Qwen3-8B',
+      evalscope_commit: 'c'.repeat(40),
+    }
+    expect(hashV2EvaluationRunCreate(identity)).toBe(
+      'de467c5dd0ce450c5d234cbaefe483bf83ee97c307d578e3928f5150fa6d25b8',
+    )
+    expect(hashV2EvaluationRunCreate({ ...identity, provider_task_id: 'task-fixed-2' })).not.toBe(
+      hashV2EvaluationRunCreate(identity),
+    )
+  })
+
   test('matches all record seed profiles and four public entity prefixes', () => {
     const fixture = readJson<EntityIdFixture>('entity-id-four-prefixes.expected.json')
     expect({

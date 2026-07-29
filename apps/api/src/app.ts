@@ -1,6 +1,8 @@
 import type { V2WorkspaceOpenOptions } from '@databench/workspace'
 import { OpenAPIHono } from '@hono/zod-openapi'
 import type { ApiEnv, ApiV2Workspace } from './context.js'
+import type { EvalScopeGatewayConfig } from './evalscope/config.js'
+import { registerEvalScopeGateway } from './evalscope/gateway.js'
 import type { McpRuntimeConfig } from './mcp/config.js'
 import { registerMcpFileRoutes } from './mcp/file-routes.js'
 import { McpFileTokenRegistry } from './mcp/file-tokens.js'
@@ -24,6 +26,8 @@ export interface CreateAppOptions {
   readonly version?: string
   readonly corsOrigins?: readonly string[]
   readonly databaseUrl?: string
+  readonly evalscope?: EvalScopeGatewayConfig
+  readonly evalscopeFetch?: typeof fetch
   readonly mcp?: McpRuntimeConfig
   readonly openApiServerUrl?: string
   readonly storeConfig?: V2WorkspaceOpenOptions['storeConfig']
@@ -31,6 +35,8 @@ export interface CreateAppOptions {
   readonly v2Workspace?: ApiV2Workspace
   readonly workspaceRoot?: string
   readonly workerJobsAvailable?: boolean
+  readonly evaluationArchiveMaxBytes?: number
+  readonly evaluationArchiveSignedUrlTtlMs?: number
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -89,6 +95,17 @@ function createRoutedApp(
   }
   registerMetaRoutes(app, options)
   registerV2Routes(app, { workerJobsAvailable: options.workerJobsAvailable ?? false })
+  registerEvalScopeGateway(app, {
+    config: options.evalscope ?? {
+      enabled: false,
+      invokeTimeoutMs: 86_400_000,
+      proxyPrefix: '/evalscope-api',
+      requestMaxBytes: 1024 * 1024,
+      responseMaxBytes: 16 * 1024 * 1024,
+      timeoutMs: 30_000,
+    },
+    ...(options.evalscopeFetch === undefined ? {} : { fetch: options.evalscopeFetch }),
+  })
   if (mcpRuntime !== undefined) {
     registerMcpRoutes(app, mcpRuntime)
     registerMcpFileRoutes(app, mcpRuntime)
@@ -114,6 +131,12 @@ function v2RuntimeOptions(options: CreateAppOptions): V2WorkspaceMiddlewareOptio
       cursorSecret: options.v2CursorSecret,
       ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
       ...(options.storeConfig === undefined ? {} : { storeConfig: options.storeConfig }),
+      ...(options.evaluationArchiveMaxBytes === undefined
+        ? {}
+        : { evaluationArchiveMaxBytes: options.evaluationArchiveMaxBytes }),
+      ...(options.evaluationArchiveSignedUrlTtlMs === undefined
+        ? {}
+        : { evaluationArchiveSignedUrlTtlMs: options.evaluationArchiveSignedUrlTtlMs }),
     },
   }
 }

@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
+  "default": "blocked",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "classification": "allowed",
+      "response": "bounded-service-health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/config",
+      "classification": "allowed-patched",
+      "response": "path-free-version-capabilities"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/eval/invoke",
+      "classification": "allowed-patched",
+      "response": "blocking-task-result"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/eval/stop",
+      "classification": "allowed-patched",
+      "response": "stop-intent-result"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/eval/progress",
+      "classification": "allowed",
+      "response": "bounded-progress"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/eval/log",
+      "classification": "allowed",
+      "response": "bounded-log-page"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/eval/report",
+      "classification": "allowed-patched",
+      "response": "opaque-report-locator"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/eval/benchmarks",
+      "classification": "allowed",
+      "response": "five-category-catalogue"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/eval/resume/invoke",
+      "classification": "blocked",
+      "reason": "React UI does not call it and process recovery is not claimed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/perf/invoke",
+      "classification": "allowed-patched",
+      "response": "blocking-task-result"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/perf/stop",
+      "classification": "allowed-patched",
+      "response": "stop-intent-result"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/progress",
+      "classification": "allowed",
+      "response": "bounded-progress"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/log",
+      "classification": "allowed",
+      "response": "bounded-log-page"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/report",
+      "classification": "allowed-patched",
+      "response": "opaque-report-locator"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/list",
+      "classification": "allowed-patched",
+      "response": "configured-root-list"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/detail",
+      "classification": "allowed-patched",
+      "response": "path-free-structured-detail"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/chart",
+      "classification": "allowed-patched",
+      "response": "generated-document-descriptor"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/compare/chart",
+      "classification": "allowed-patched",
+      "response": "generated-document-descriptor"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/runs",
+      "classification": "allowed-patched",
+      "response": "bounded-run-list"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/requests",
+      "classification": "allowed-patched",
+      "response": "bounded-request-page"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/perf/history/report",
+      "classification": "allowed-patched",
+      "response": "generated-document-descriptor"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/list",
+      "classification": "allowed-patched",
+      "response": "configured-root-list-generation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/scan",
+      "classification": "blocked-replaced",
+      "reason": "configured-root list refresh preserves the user purpose without arbitrary path input"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/load",
+      "classification": "allowed-patched",
+      "response": "path-free-structured-report"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/load_multi",
+      "classification": "allowed-patched",
+      "response": "bounded-multi-report"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/dataframe",
+      "classification": "allowed-patched",
+      "response": "bounded-dataframe"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/predictions",
+      "classification": "allowed-patched",
+      "response": "bounded-predictions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/analysis",
+      "classification": "allowed-patched",
+      "response": "sanitized-analysis-model"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/html",
+      "classification": "allowed-patched",
+      "response": "generated-document-descriptor"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/chart",
+      "classification": "allowed-patched",
+      "response": "generated-document-descriptor"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/media/file",
+      "classification": "allowed-patched",
+      "response": "allowed-root-media-stream"
+    },
+    {
+      "method": "GET",
+      "path": "/generated-documents/{opaque_id}",
+      "classification": "databench-generated",
+      "response": "sandboxed-safe-document"
+    },
+    {
+      "method": "GET",
+      "path": "/generated-assets/plotly-{sha256}.min.js",
+      "classification": "databench-generated",
+      "response": "digest-pinned-local-asset"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "classification": "blocked",
+      "reason": "upstream SPA is backend-only"
+    },
+    {
+      "method": "GET",
+      "path": "/{path}",
+      "classification": "blocked",
+      "reason": "upstream SPA catch-all is backend-only"
+    }
+  ]
+}

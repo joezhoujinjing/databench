@@ -26,6 +26,7 @@ docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
 
 - `/etc/databench/databench.env`；
 - `/etc/databench/mcp.env` 的完整内容（public base 可单独报告，但不要粘贴整份容器 Env）；
+- `/etc/databench/evalscope.env`；
 - `/etc/databench/backup.key`；
 - `docker inspect` 的完整 Env；
 - 完整 `DATABASE_URL`；
@@ -84,9 +85,9 @@ getconf _NPROCESSORS_ONLN
 awk '/^MemTotal:/ {printf "%.1f GiB\n", $2/1024/1024}' /proc/meminfo
 ```
 
-完整 Worker 离线部署最低要求 8 logical CPUs 和 30 GiB 可见 RAM。不要通过改脚本或环境变量
-绕过后继续作为生产安装；资源不足会让 Data-Juicer 作业、API 和存储服务争抢资源。应调整目标机
-规格后重跑安装。
+完整 Worker + EvalScope 离线部署最低要求 12 logical CPUs 和 40 GiB 可见 RAM。不要通过改脚本或
+环境变量绕过后继续作为生产安装；资源不足会让 Data-Juicer 作业、评测/压测、API 和存储服务争抢
+资源。应调整目标机规格后重跑安装。
 
 ### 2.6 磁盘不足
 
@@ -343,6 +344,31 @@ docker inspect --format '{{json .Mounts}}' databench-offline-api
 如果 workspace 挂载缺失，不要把整个容器改成可写；恢复当前版本的原始 Compose/release 资产后
 重建 API。
 
+### 7.5 EvalScope unhealthy、draining 或任务被拒绝
+
+```bash
+sudo databenchctl status
+sudo databenchctl evalscope-status
+sudo databenchctl logs evalscope
+sudo stat -c '%U:%G %a %n' /etc/databench/evalscope.env
+df -h /srv/databench/evalscope
+```
+
+- `runtime_draining`：维护正在进行；等待结束。确认没有维护任务后可由 operator 执行
+  `sudo databenchctl evalscope-resume`；
+- `task_capacity_invalid` / `task_concurrency_exceeded`：缩小 samples、parallel、requests、tokens 或等待
+  现有任务完成，不要直接删除容量检查；
+- `model_endpoint_*_rejected`：模型 URL 不在 `/etc/databench/evalscope.env` 的精确 allowlist 中，按
+  [EVALSCOPE-OPERATOR-GUIDE.zh-CN.md](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md) 在维护窗口修正并重启；
+- 容器启动即失败：确认配置为 `root:root 0600`、稳定 HMAC/operator secret 未丢失、Plotly asset digest
+  未改变、output/input 目录 owner 为 UID/GID 10001；
+- 页面 503 但容器健康：检查 API gateway 和 EvalScope health。不要把 9000 发布到宿主机作为绕过；
+- `provider_interrupted`：表示强制重启前没有 terminal evidence，不是自动续跑。查看持久化状态并重新发起
+  或使用受认证 reconciliation。
+
+计划维护默认等待 active task 300 秒。超时会取消维护、恢复 Web/admission；让用户停止或完成任务后重试，
+不要用 `docker kill` 绕过 drain。
+
 ## 8. MCP 与 Agent 问题
 
 ### 8.1 安装/升级要求 `DATABENCH_MCP_PUBLIC_BASE_URL`
@@ -416,7 +442,7 @@ Caddy access log在离线配置中默认关闭，runtime error log 会删除 req
 
 ### 9.1 备份失败后服务状态
 
-备份脚本在普通调用失败时会尝试按 Worker → API → Web 重新启动应用服务。立即检查：
+备份脚本在普通调用失败时会尝试按 Worker → API → EvalScope → Web 重新启动应用服务。立即检查：
 
 ```bash
 sudo databenchctl status
@@ -435,11 +461,12 @@ sudo chown root:root /etc/databench/backup.key
 sudo chmod 0600 /etc/databench/backup.key
 ```
 
-### 9.3 PostgreSQL dump 或 MinIO mirror 失败
+### 9.3 PostgreSQL dump、MinIO mirror 或 EvalScope volume 失败
 
 ```bash
 sudo databenchctl logs postgres
 sudo databenchctl logs minio
+sudo databenchctl logs evalscope
 df -h /srv/databench
 ```
 

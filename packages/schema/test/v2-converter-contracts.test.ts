@@ -74,6 +74,13 @@ describe('V11 converter wire contracts', () => {
     expect(ConverterDescriptorV2Schema.safeParse({ ...descriptor, internal: true }).success).toBe(
       false,
     )
+    expect(
+      ConverterDescriptorV2Schema.parse({
+        ...descriptor,
+        name: 'evalscope-general-qa',
+        task_views: ['evaluation-qa'],
+      }),
+    ).toMatchObject({ name: 'evalscope-general-qa', task_views: ['evaluation-qa'] })
   })
 
   test('validates RFC 6901 change paths and stable reason codes', () => {
@@ -104,6 +111,15 @@ describe('V11 converter wire contracts', () => {
     expect(InspectExportRequestV2Schema.parse({ converter: 'ms-swift', options: {} })).toEqual({
       converter: 'ms-swift',
       options: {},
+    })
+    expect(
+      InspectExportRequestV2Schema.parse({
+        converter: 'evalscope-general-qa',
+        options: { target_source: 'none' },
+      }),
+    ).toEqual({
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
     })
     expect(
       InspectExportRequestV2Schema.safeParse({ converter: 'trl-sft', options: {}, extra: true })

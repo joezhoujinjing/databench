@@ -23,4 +23,10 @@ export const v2QueryKeys = {
     [scope, base, 'v2', 'transform-jobs', 'list', limit] as const,
   transformJob: (scope: string, base: string, jobId: string) =>
     [scope, base, 'v2', 'transform-jobs', 'detail', jobId] as const,
+  evaluationRunByTask: (
+    scope: string,
+    base: string,
+    datasetVersion: string,
+    providerTaskId: string,
+  ) => [scope, base, 'v2', 'evaluation-runs', datasetVersion, providerTaskId] as const,
 } as const

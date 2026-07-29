@@ -114,6 +114,33 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
     expect(described).toEqual(directView)
     expect(ingested.manifest).toEqual(directView.manifest)
 
+    const evalScopeConverter = await responseJson(
+      await app.fetch(request('/v2/converters/evalscope-general-qa')),
+    )
+    expect(evalScopeConverter).toMatchObject({
+      name: 'evalscope-general-qa',
+      version: '1.0.0',
+      media_type: 'application/x-ndjson',
+      task_views: ['evaluation-qa'],
+    })
+    const evalScopeInspectResponse = await app.fetch(
+      request(`/v2/datasets/${REF_NAME}:inspect-export`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          converter: 'evalscope-general-qa',
+          options: { target_source: 'none' },
+        }),
+      }),
+    )
+    expect(evalScopeInspectResponse.status).toBe(200)
+    expect(await responseJson(evalScopeInspectResponse)).toEqual(
+      await workspace.inspectExport(REF_NAME, {
+        converter: 'evalscope-general-qa',
+        options: { target_source: 'none' },
+      }),
+    )
+
     const sharedInspectResponse = await app.fetch(
       request(`/v2/datasets/${REF_NAME}:inspect-export`, {
         method: 'POST',
@@ -207,6 +234,112 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
     const exportedText = await exported.text()
     expect(exportedText).toContain(FIRST_ID)
     expect(exportedText).not.toContain(SECOND_ID)
+  })
+
+  test('creates, replays, lists, and transitions an evaluation run over REST', async () => {
+    const app = createTestApp({ v2Workspace: workspace })
+    const ingested = await workspace.addRecords(fixtureRecords, {
+      ref: null,
+      expected_ref_version: null,
+      message: null,
+    })
+    const inspected = await workspace.inspectExport(ingested.dataset_version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    const createBody = {
+      provider: 'evalscope',
+      provider_task_id: `task-${randomUUID()}`,
+      dataset_version: ingested.dataset_version,
+      source_ref: REF_NAME,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: inspected.fidelity_digest,
+      model_name: 'Qwen/Qwen3-8B',
+      evalscope_commit: 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
+    }
+    const create = async (body = createBody) =>
+      await app.fetch(
+        request('/v2/evaluation-runs', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      )
+
+    const createdResponse = await create()
+    expect(createdResponse.status).toBe(201)
+    const created = await responseJson<{ id: string; status: string }>(createdResponse)
+    expect(created.status).toBe('prepared')
+    const replayed = await responseJson<{ id: string }>(await create())
+    expect(replayed.id).toBe(created.id)
+
+    const mismatched = await create({ ...createBody, model_name: 'different-model' })
+    expect(mismatched.status).toBe(409)
+    expect(await responseJson(mismatched)).toMatchObject({
+      error: {
+        code: 'evaluation_run_state_conflict',
+        detail: { reason: 'create_request_mismatch', run_id: created.id },
+      },
+    })
+
+    const transition = async (suffix: string, body: unknown) =>
+      await app.fetch(
+        request(`/v2/evaluation-runs/${created.id}:${suffix}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      )
+    expect((await transition('start', {})).status).toBe(200)
+    const completion = {
+      metrics: [
+        {
+          dataset: 'general_qa',
+          subset: 'databench',
+          metric: 'accuracy',
+          score: 0.5,
+          sample_count: 2,
+          categories: [],
+        },
+      ],
+      provider_report_ids: ['report-integration-1'],
+    }
+    const completed = await transition('complete', completion)
+    expect(completed.status).toBe(200)
+    expect(await responseJson(completed)).toMatchObject({
+      id: created.id,
+      status: 'completed',
+      ...completion,
+    })
+    expect((await transition('complete', completion)).status).toBe(200)
+    const conflictingCompletion = await transition('complete', {
+      ...completion,
+      provider_report_ids: ['report-integration-2'],
+    })
+    expect(conflictingCompletion.status).toBe(409)
+    expect(await responseJson(conflictingCompletion)).toMatchObject({
+      error: { detail: { reason: 'terminal_body_mismatch' } },
+    })
+
+    const shown = await responseJson<{ id: string; status: string }>(
+      await app.fetch(request(`/v2/evaluation-runs/${created.id}`)),
+    )
+    expect(shown).toMatchObject({ id: created.id, status: 'completed' })
+    const page = await responseJson<{ items: Array<{ id: string }> }>(
+      await app.fetch(
+        request(
+          `/v2/evaluation-runs?dataset_version=${ingested.dataset_version}&status=completed&limit=20`,
+        ),
+      ),
+    )
+    expect(page.items.map((run) => run.id)).toContain(created.id)
+
+    const secretMetric = await transition('complete', {
+      ...completion,
+      metrics: [{ ...completion.metrics[0], prompt: 'must-not-enter-postgres' }],
+    })
+    expect(secretMetric.status).toBe(422)
   })
 
   test('MCP preview → import → show → canonical export → idempotent reimport', async () => {

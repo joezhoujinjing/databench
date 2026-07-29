@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import type { V2Workspace, WorkerRuntime } from '@databench/workspace'
 import { describe, expect, test, vi } from 'vitest'
 import { createApp, createOpenApiDocument } from '../src/app.js'
@@ -34,12 +35,30 @@ describe('api support', () => {
     expect(config.corsOrigins).toEqual(['https://one.example', 'https://two.example'])
     expect(config.openApiServerUrl).toBe('/api')
     expect(config.storeConfig).toMatchObject({ kind: 's3', bucket: 'v2-config-test' })
+    expect(config.evaluationArchiveMaxBytes).toBe(1024 * 1024 * 1024)
+    expect(config.evaluationArchiveSignedUrlTtlMs).toBe(15 * 60 * 1000)
     expect(config.worker).toMatchObject({
       enabled: false,
       target: '127.0.0.1:50051',
       leaseMs: 30_000,
       heartbeatMs: 10_000,
     })
+    expect(() =>
+      loadConfig({
+        DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES: String(1024 * 1024 * 1024 + 1),
+        DATABENCH_OBJECT_STORE: 's3',
+        DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+        S3_BUCKET: 'v2-config-test',
+      }),
+    ).toThrow()
+    expect(() =>
+      loadConfig({
+        DATABENCH_EVALUATION_ARCHIVE_SIGNED_URL_TTL_MS: String(15 * 60 * 1000 + 1),
+        DATABENCH_OBJECT_STORE: 's3',
+        DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+        S3_BUCKET: 'v2-config-test',
+      }),
+    ).toThrow()
   })
 
   test('accepts only coherent private Worker runtime configuration', () => {
@@ -64,6 +83,48 @@ describe('api support', () => {
     expect(() => loadConfig({ ...base, DATABENCH_WORKER_TARGET: '8.8.8.8:50051' })).toThrow()
     expect(() => loadConfig({ ...base, DATABENCH_WORKER_LEASE_MS: '20000' })).toThrow()
     expect(() => loadConfig({ ...base, DATABENCH_WORKER_SIGNED_URL_TTL_MS: '910000' })).toThrow()
+  })
+
+  test('keeps EvalScope disabled by default and validates enabled internal routing', () => {
+    const base = {
+      DATABENCH_OBJECT_STORE: 's3',
+      DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+      S3_BUCKET: 'v2-config-test',
+    }
+    expect(loadConfig(base).evalscope).toMatchObject({
+      enabled: false,
+      proxyPrefix: '/evalscope-api',
+    })
+    const manifest = fileURLToPath(
+      new URL('../../../deploy/evalscope/api-routes.json', import.meta.url),
+    )
+    expect(
+      loadConfig({
+        ...base,
+        DATABENCH_EVALSCOPE_ENABLED: 'true',
+        DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: 'http://evalscope:9000',
+        DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: manifest,
+      }).evalscope,
+    ).toMatchObject({
+      enabled: true,
+      internalBaseUrl: 'http://evalscope:9000',
+      routeManifestPath: manifest,
+    })
+    expect(() =>
+      loadConfig({
+        ...base,
+        DATABENCH_EVALSCOPE_ENABLED: 'true',
+        DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: 'https://public.example',
+        DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: manifest,
+      }),
+    ).toThrow()
+    expect(() =>
+      loadConfig({
+        ...base,
+        DATABENCH_EVALSCOPE_ENABLED: 'true',
+        DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: 'http://evalscope:9000',
+      }),
+    ).toThrow()
   })
 
   test('meta routes expose the v2-only health, version, and capability contract', async () => {

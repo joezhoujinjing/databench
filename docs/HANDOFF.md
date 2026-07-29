@@ -13,10 +13,34 @@
   `docs/mcp/STATUS.md`。通用 runtime 仍
   disabled-by-default；ADR 0012 离线包会在 operator 显式提供稳定、agent 可达的 `/api` public
   base 后，以 `auth_mode=none` 在可信内网启用。该 scoped gate 不授权公网部署，也不改变 V16/V17。
-- ADR 0012 的 2026-07-27 窄修订要求完整离线包包含 CPU-only Python Worker；六镜像构建、
-  Worker → API → Web 生命周期、`basic-clean@1` smoke 和旧五镜像回滚兼容已在
-  `feat/offline-worker` 实现并通过本地 `linux/amd64` Compose gate，仍待真实 Ubuntu 22.04
-  amd64 断网验收。
+- ADR 0012 的 2026-07-27 窄修订要求完整离线包包含 CPU-only Python Worker；2026-07-28 的
+  EvalScope E9 修订进一步加入 pinned backend-only EvalScope，当前为七镜像、
+  Worker → API → EvalScope → Web 生命周期、drain、三数据面备份和旧五/六镜像回滚兼容。目标机只
+  `docker load` 预构建镜像；真实 Ubuntu 22.04 amd64 断网 install/eval/report/upgrade/rollback 仍待验收。
+  Owner 于 2026-07-29 批准先合并，并由 owner 后续手工补该目标机证据；GE9 不因此标记为 passed。
+- ADR 0017 EvalScope 原生 UI 集成已接受并开始实施。E0 已固定 upstream commit、183 个 Web source
+  文件、60 个能力、default-deny API 路由、五类 Benchmark fixture 和 Plotly 证据；E1 已完成
+  `evalscope-general-qa@1.0.0` 三种 reference profile、确定性 JSONL、eligibility/fidelity 与真实 exact
+  Dataset export；E2 已完成 `evaluation_runs_v2`、canonical create digest、exact Dataset binding、状态机和
+  `/v2/evaluation-runs*` REST。E3 已实现 pinned backend-only image、same-origin exact gateway、Databench
+  Dataset source preparation、task/reconcile/model-egress/active-content 安全边界，并通过真实 BLEU/ROUGE
+  evaluation 与 stop callback 闭环；E4 已增加完整 `/evaluations/*` lazy route tree、Databench 主/次导航、
+  exact Zod client、无路径 public config、opaque route key、scoped tokens、完整中英文词典和可访问基础组件。
+  EvalScope 的 Databench-owned Python provider source 位于 `workers/evalscope`，与内部 gRPC 的
+  `workers/python` 同级；`deploy/evalscope` 只保留镜像、upstream patch/vendor 和 gateway 部署资产。
+  E5 已完成 Evaluation/Performance 表单、Benchmark autocomplete、Databench exact Dataset source、
+  progress/log/stop/reload task monitor 与安全报告入口，并通过真实 Dataset/native/performance/cancel/
+  provider-interrupt/same-ID gate；E6 已完成 Reports catalogue、Overview/Details/Predictions、逐样本导航、
+  legacy/structured/AgentTrace 展示、富内容渲染与 configured source refresh；E7 已完成 Dashboard、
+  Evaluation Compare、Performance catalogue/detail/runs/requests/compare、五类 Benchmark 目录/详情和安全
+  Viewer。60 个 capability 已全部 green，其中 58 个 target capability 已实现、2 个为 Databench shell
+  exclusion，锁定 React 基线的完整 UI 功能迁移 gate 已关闭。E8 已完成 deterministic result archive、
+  attempt-scoped conditional upload、BLAKE3 content-addressed immutable object、PG locator、exact cleanup、
+  online/archive 独立状态与 retention。Owner 于 2026-07-28 明确手机版竖屏不属于
+  当前 Web gate，并明确
+  offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
+  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E8 已关闭，当前进入 E9 最终集成
+  gate。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -34,6 +58,8 @@
    `docs/mcp/PLAN.md` 与 `docs/mcp/STATUS.md`。
 7. 若处理离线发布或 Worker，读 ADR 0010/0012、`docs/processing/TECHNICAL_DESIGN.md` 和
    `docs/deployment/offline-single-host-plan.zh-CN.md`。
+8. 若处理 EvalScope，依次读 ADR 0017、`docs/evalscope/TECHNICAL-DESIGN.md`、
+   `docs/evalscope/PLAN.md`、`docs/evalscope/STATUS.md` 和 E0 evidence。
 
 不要用旧 v1 migration inventory 覆盖当前实现。
 
@@ -48,6 +74,16 @@ Web
   /transforms
   /lineage/:ref
   /export/:ref
+  /evaluations
+  /evaluations/tasks
+  /evaluations/reports
+  /evaluations/reports/:reportKey
+  /evaluations/compare
+  /evaluations/performance
+  /evaluations/performance/:performanceKey
+  /evaluations/performance/compare
+  /evaluations/benchmarks
+  /evaluations/viewer
 
 CLI
   databench dataset ingest|show|records|audit|export
@@ -104,7 +140,7 @@ R4 manifest 在本机 ignored maintenance 目录中。标准操作仍以
 - `git diff --check`
 - 真实 Postgres + MinIO Store/Workspace/API/CLI suites
 - 浏览器 v2-only 全主流程、直接刷新、404、console、窄屏
-- 离线静态检查和实际 lifecycle smoke；当前 Worker 修订还需重新执行六镜像 gate
+- 离线静态检查和实际 lifecycle smoke；当前 EvalScope 七镜像修订仍需真实 Ubuntu 目标机断网 gate
 
 R5 已完成并只更新了产品切换状态，没有改变 V16/V17。
 

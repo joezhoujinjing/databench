@@ -25,6 +25,7 @@ offline_preflight
 acquire_operation_lock
 validate_existing_config
 ensure_mcp_config
+ensure_evalscope_config
 
 PREVIOUS_RELEASE="$(current_release_dir)"
 load_release_env "${PREVIOUS_RELEASE}/release.env"

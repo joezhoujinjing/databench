@@ -4,6 +4,8 @@ export {
   v2ObjectStoreConfigFromEnv,
 } from './config.js'
 export * from './contracts.js'
+export * from './evaluation-artifact.js'
+export * from './evaluation-staging.js'
 export { type V2ObjectKeys, v2ObjectKeys } from './keys.js'
 export { createV2ObjectStore } from './object-store.js'
 export {

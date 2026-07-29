@@ -261,3 +261,120 @@ export interface SetTransformJobStagingKeysV2 extends TransformJobLeaseV2 {
 export interface FailTransformJobV2 extends TransformJobLeaseV2 {
   readonly error: CatalogTransformJobErrorV2
 }
+
+export type CatalogEvaluationRunStatusV2 =
+  | 'prepared'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export type CatalogEvaluationArchiveStatusV2 =
+  | 'not_requested'
+  | 'pending'
+  | 'uploading'
+  | 'available'
+  | 'failed'
+
+export interface CatalogEvaluationMetricV2 {
+  readonly dataset: string
+  readonly subset: string | null
+  readonly metric: string
+  readonly score: number | null
+  readonly sampleCount: number | null
+  readonly categories: readonly string[]
+}
+
+export interface CatalogEvaluationRunErrorV2 {
+  readonly phase: string
+  readonly code: string
+  readonly message: string
+}
+
+export interface CreateEvaluationRunV2 {
+  readonly namespaceId: string
+  readonly provider: 'evalscope'
+  readonly providerTaskId: string
+  readonly createRequestDigest: string
+  readonly datasetVersion: string
+  readonly sourceRef: string | null
+  readonly converter: string
+  readonly converterVersion: string
+  readonly converterOptions: Readonly<Record<string, CatalogJsonValueV2>>
+  readonly fidelityDigest: string
+  readonly benchmark: string
+  readonly modelName: string | null
+  readonly evalscopeCommit: string | null
+}
+
+export interface CatalogEvaluationRunRowV2 extends CreateEvaluationRunV2 {
+  readonly id: string
+  readonly providerReportIds: readonly string[] | null
+  readonly status: CatalogEvaluationRunStatusV2
+  readonly metrics: readonly CatalogEvaluationMetricV2[] | null
+  readonly error: CatalogEvaluationRunErrorV2 | null
+  readonly archiveStatus: CatalogEvaluationArchiveStatusV2
+  readonly archiveAttempt: number
+  readonly resultArtifactKey: string | null
+  readonly resultArtifactDigest: string | null
+  readonly resultArtifactSizeBytes: bigint | null
+  readonly archiveError: CatalogEvaluationRunErrorV2 | null
+  readonly createdAt: Date
+  readonly startedAt: Date | null
+  readonly finishedAt: Date | null
+  readonly updatedAt: Date
+}
+
+export interface CatalogEvaluationRunCursorV2 {
+  readonly createdAt: Date
+  readonly id: string
+}
+
+export interface CatalogEvaluationRunPageV2 {
+  readonly rows: readonly CatalogEvaluationRunRowV2[]
+  readonly nextCursor: CatalogEvaluationRunCursorV2 | null
+}
+
+export interface CatalogEvaluationRunListFilterV2 {
+  readonly datasetVersion: string | null
+  readonly status: CatalogEvaluationRunStatusV2 | null
+}
+
+export type TransitionEvaluationRunV2 =
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly status: 'running'
+    }
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly status: 'completed'
+      readonly metrics: readonly CatalogEvaluationMetricV2[]
+      readonly providerReportIds: readonly string[]
+    }
+  | {
+      readonly namespaceId: string
+      readonly id: string
+      readonly status: 'failed' | 'cancelled'
+      readonly error: CatalogEvaluationRunErrorV2
+    }
+
+export interface PrepareEvaluationRunArchiveV2 {
+  readonly namespaceId: string
+  readonly id: string
+}
+
+export interface MarkEvaluationRunArchiveUploadingV2 extends PrepareEvaluationRunArchiveV2 {
+  readonly archiveAttempt: number
+}
+
+export interface FinalizeEvaluationRunArchiveV2 extends MarkEvaluationRunArchiveUploadingV2 {
+  readonly resultArtifactKey: string
+  readonly resultArtifactDigest: string
+  readonly resultArtifactSizeBytes: bigint
+}
+
+export interface FailEvaluationRunArchiveV2 extends MarkEvaluationRunArchiveUploadingV2 {
+  readonly error: CatalogEvaluationRunErrorV2
+}

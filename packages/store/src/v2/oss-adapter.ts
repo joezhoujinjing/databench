@@ -250,6 +250,7 @@ export class OssConditionalObjectStoreV2
         expires: positiveSafeInteger('expiresInSeconds', input.expiresInSeconds),
         method: input.method,
         'Content-Type': input.contentType,
+        ...(input.ifNoneMatch === undefined ? {} : { 'If-None-Match': input.ifNoneMatch }),
       })
     } catch (error) {
       throw new ObjectStoreFailureErrorV2('Unable to sign OSS staging request', error, 'oss')

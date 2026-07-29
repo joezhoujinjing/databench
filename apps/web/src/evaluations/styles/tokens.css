@@ -1,0 +1,36 @@
+.evaluation-surface {
+  --es-bg: var(--background);
+  --es-card: var(--surface-raised);
+  --es-card-soft: var(--surface-soft);
+  --es-text: var(--foreground);
+  --es-text-muted: var(--muted-foreground);
+  --es-border: var(--border);
+  --es-border-strong: var(--border-strong);
+  --es-accent: var(--primary);
+  --es-success: var(--success);
+  --es-warning: var(--warning);
+  --es-danger: var(--danger);
+  --es-compare-0: #818cf8;
+  --es-compare-1: #34d399;
+  --es-compare-2: #fbbf24;
+  --es-chat-user: color-mix(in srgb, var(--primary) 15%, var(--surface));
+  --es-chat-assistant: color-mix(in srgb, var(--success) 10%, var(--surface));
+  color: var(--es-text);
+}
+
+.evaluation-surface .evaluation-subnav-active {
+  color: var(--es-text);
+}
+
+.evaluation-surface .evaluation-subnav-active::after {
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evaluation-surface *,
+  .evaluation-surface *::before,
+  .evaluation-surface *::after {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+  }
+}
