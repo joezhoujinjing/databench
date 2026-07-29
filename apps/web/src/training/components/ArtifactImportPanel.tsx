@@ -398,7 +398,7 @@ function ArtifactDetail({ artifact }: { readonly artifact: ModelArtifactV2 }) {
           <div className="flex items-center gap-2">
             <PackageCheck aria-hidden="true" className="text-success" size={18} />
             <strong>{artifact.display_name}</strong>
-            <Badge tone="violet">LoRA</Badge>
+            <Badge tone="accent">LoRA</Badge>
           </div>
           <p className="mt-2 text-muted-foreground text-xs">{artifact.id}</p>
         </div>

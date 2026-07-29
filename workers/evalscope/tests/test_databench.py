@@ -31,6 +31,25 @@ def source() -> DatabenchSource:
     })
 
 
+def archive_prepare(url: str) -> dict[str, Any]:
+    return {
+        'run_id': RUN_ID,
+        'archive_status': 'uploading',
+        'archive_attempt': 1,
+        'upload': {
+            'method': 'PUT',
+            'url': url,
+            'expires_at': '2026-07-28T00:15:00.000Z',
+            'content_type': 'application/zstd',
+            'required_headers': {
+                'content-type': 'application/zstd',
+                'if-none-match': '*',
+            },
+            'max_size_bytes': 1024 * 1024 * 1024,
+        },
+    }
+
+
 def test_exact_inspect_create_export_start_and_complete(runtime_config) -> None:
     runtime_config.prepare()
     manifests = TaskManifestStore(runtime_config.output_dir)
@@ -40,7 +59,10 @@ def test_exact_inspect_create_export_start_and_complete(runtime_config) -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal create_attempts
-        body = json.loads(request.content) if request.content else None
+        try:
+            body = json.loads(request.content) if request.content else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            body = {'binary_size': len(request.content)}
         requests.append((request.method, request.url.path, body))
         if request.method == 'GET' and request.url.path == f'/v2/datasets/{VERSION}':
             return httpx.Response(200, json={
@@ -74,11 +96,40 @@ def test_exact_inspect_create_export_start_and_complete(runtime_config) -> None:
             return httpx.Response(200, json={'id': RUN_ID, 'status': 'running'})
         if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:complete':
             return httpx.Response(200, json={'id': RUN_ID, 'status': 'completed'})
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:prepare-result-upload':
+            return httpx.Response(200, json={
+                'run_id': RUN_ID,
+                'archive_status': 'uploading',
+                'archive_attempt': 1,
+                'upload': {
+                    'method': 'PUT',
+                    'url': 'https://objects.example/staging/result.tar.zst?signature=opaque',
+                    'expires_at': '2026-07-28T00:15:00.000Z',
+                    'content_type': 'application/zstd',
+                    'required_headers': {
+                        'content-type': 'application/zstd',
+                        'if-none-match': '*',
+                    },
+                    'max_size_bytes': 1024 * 1024 * 1024,
+                },
+            })
+        if request.url.host == 'objects.example':
+            assert request.headers['if-none-match'] == '*'
+            assert request.headers['content-type'] == 'application/zstd'
+            return httpx.Response(200)
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:finalize-result-upload':
+            return httpx.Response(200, json={
+                'id': RUN_ID,
+                'archive_status': 'available',
+                'archive_attempt': 1,
+                'result_artifact_digest': body['digest'],
+                'result_artifact_size_bytes': body['size_bytes'],
+            })
         raise AssertionError(f'unexpected request: {request.method} {request.url.path}')
 
     transport = httpx.MockTransport(handler)
     http = httpx.Client(base_url=runtime_config.databench_base_url, transport=transport)
-    client = DatabenchClient(runtime_config, manifests, client=http)
+    client = DatabenchClient(runtime_config, manifests, client=http, uploader=http)
     prepared = client.prepare_evaluation(
         TASK_ID,
         {'model': 'Qwen', 'api_url': 'http://127.0.0.1:8001/v1'},
@@ -97,6 +148,121 @@ def test_exact_inspect_create_export_start_and_complete(runtime_config) -> None:
     terminal = manifests.record_terminal(TASK_ID, 'completed', metrics=[], provider_report_ids=[TASK_ID])
     assert client.callback(terminal, manifests.read_integration(TASK_ID) or {}) is True
     assert ('POST', f'/v2/evaluation-runs/{RUN_ID}:complete', {'metrics': [], 'provider_report_ids': [TASK_ID]}) in requests
+    assert any(path.endswith(':finalize-result-upload') for _, path, _ in requests)
+
+
+@pytest.mark.parametrize('first_put_result', ['expired', 'response_lost'])
+def test_archive_refreshes_put_url_and_replays_lost_finalize_response(
+    runtime_config,
+    first_put_result: str,
+) -> None:
+    runtime_config.prepare()
+    task_dir = runtime_config.output_dir / TASK_ID
+    (task_dir / 'reports').mkdir(parents=True)
+    (task_dir / 'reports' / 'summary.json').write_text('{"score":1}\n', encoding='utf-8')
+    state = {'prepare': 0, 'put': 0, 'finalize': 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:prepare-result-upload':
+            state['prepare'] += 1
+            return httpx.Response(
+                200,
+                json=archive_prepare(
+                    f'https://objects.example/staging/result.tar.zst?generation={state["prepare"]}'
+                ),
+            )
+        if request.url.host == 'objects.example':
+            assert 'authorization' not in request.headers
+            assert request.headers['if-none-match'] == '*'
+            state['put'] += 1
+            if state['put'] == 1:
+                if first_put_result == 'response_lost':
+                    raise httpx.ReadError('PUT response lost', request=request)
+                return httpx.Response(403)
+            return httpx.Response(412 if first_put_result == 'response_lost' else 200)
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:finalize-result-upload':
+            state['finalize'] += 1
+            if state['finalize'] == 1:
+                raise httpx.ReadError('finalize response lost', request=request)
+            body = json.loads(request.content)
+            return httpx.Response(200, json={
+                'id': RUN_ID,
+                'archive_status': 'available',
+                'archive_attempt': 1,
+                'result_artifact_digest': body['digest'],
+                'result_artifact_size_bytes': body['size_bytes'],
+            })
+        raise AssertionError(f'unexpected request: {request.method} {request.url}')
+
+    transport = httpx.MockTransport(handler)
+    http = httpx.Client(base_url=runtime_config.databench_base_url, transport=transport)
+    client = DatabenchClient(runtime_config, TaskManifestStore(runtime_config.output_dir), client=http, uploader=http)
+
+    assert client._archive_completed_result(
+        task_id=TASK_ID,
+        run_id=RUN_ID,
+        provider_report_ids=[TASK_ID],
+    ) is True
+    assert state == {'prepare': 2, 'put': 2, 'finalize': 2}
+
+
+def test_permanent_archive_policy_failure_is_sanitized_and_marked_failed(runtime_config) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    manifests.claim(TASK_ID, 'evaluation', config_digest({'task': 1}, runtime_config.task_hmac_key))
+    task_dir = runtime_config.output_dir / TASK_ID
+    (task_dir / 'reports').mkdir()
+    (task_dir / 'reports' / 'summary.json').write_text(
+        '{"api_key":"must-not-leave-provider"}\n',
+        encoding='utf-8',
+    )
+    terminal = manifests.record_terminal(
+        TASK_ID,
+        'completed',
+        metrics=[],
+        provider_report_ids=[TASK_ID],
+    )
+    failed_bodies: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:complete':
+            return httpx.Response(200, json={'id': RUN_ID, 'status': 'completed'})
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:prepare-result-upload':
+            return httpx.Response(
+                200,
+                json=archive_prepare('https://objects.example/staging/result.tar.zst'),
+            )
+        if request.method == 'GET' and request.url.path == f'/v2/evaluation-runs/{RUN_ID}':
+            return httpx.Response(200, json={'id': RUN_ID, 'archive_attempt': 1})
+        if request.url.path == f'/v2/evaluation-runs/{RUN_ID}:fail-result-upload':
+            body = json.loads(request.content)
+            failed_bodies.append(body)
+            return httpx.Response(200, json={
+                'id': RUN_ID,
+                'archive_status': 'failed',
+                'archive_attempt': 1,
+            })
+        raise AssertionError(f'unexpected request: {request.method} {request.url.path}')
+
+    client = DatabenchClient(
+        runtime_config,
+        manifests,
+        client=httpx.Client(
+            base_url=runtime_config.databench_base_url,
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    integration = {'run_id': RUN_ID, 'task_id': TASK_ID}
+    assert client.callback(terminal, integration) is True
+    assert failed_bodies == [{
+        'archive_attempt': 1,
+        'error': {
+            'phase': 'provider_archive',
+            'code': 'archive_secret_detected',
+            'message': 'EvalScope result archive was rejected by the archive policy',
+        },
+    }]
+    assert 'must-not-leave-provider' not in json.dumps(failed_bodies)
 
 
 def test_resolves_deployment_and_persists_only_v2_lineage(runtime_config) -> None:

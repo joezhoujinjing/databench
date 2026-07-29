@@ -60,6 +60,7 @@ IMAGE_VERSION="${VERSION//+/-}"
 API_IMAGE="databench-api:${IMAGE_VERSION}"
 WEB_IMAGE="databench-web:${IMAGE_VERSION}"
 WORKER_IMAGE="databench-worker:${IMAGE_VERSION}"
+EVALSCOPE_IMAGE="databench-evalscope:${IMAGE_VERSION}"
 BUNDLE_NAME="databench-offline-${VERSION}-linux-amd64"
 BUNDLE_DIR="${OUTPUT_ROOT}/${BUNDLE_NAME}"
 ARCHIVE="${OUTPUT_ROOT}/${BUNDLE_NAME}.tar.gz"
@@ -104,6 +105,16 @@ docker buildx build \
   --tag "$WORKER_IMAGE" \
   workers/python
 
+log "building pinned backend-only $EVALSCOPE_IMAGE for $PLATFORM"
+docker buildx build \
+  --platform "$PLATFORM" \
+  --load \
+  --label "org.opencontainers.image.revision=${GIT_SHA}" \
+  --label "org.opencontainers.image.version=${VERSION}" \
+  --file deploy/evalscope/Dockerfile \
+  --tag "$EVALSCOPE_IMAGE" \
+  .
+
 pull_and_retag() {
   local role="$1"
   local source_image="$2"
@@ -129,7 +140,7 @@ inspect_image() {
   [ "$actual" = "$PLATFORM" ] || die "$image has platform $actual, expected $PLATFORM"
 }
 
-for image in "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"; do
+for image in "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$EVALSCOPE_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"; do
   inspect_image "$image"
 done
 
@@ -146,6 +157,19 @@ installed = {distribution.metadata["Name"].lower() for distribution in metadata.
 assert torch.version.cuda is None and not torch.cuda.is_available()
 assert not any(name == "triton" or name.startswith("nvidia-") for name in installed)
 ' >/dev/null
+docker run --rm --platform "$PLATFORM" \
+  --entrypoint /app/.venv/bin/python "$EVALSCOPE_IMAGE" -c '
+import importlib.metadata as metadata
+from pathlib import Path
+
+import databench_evalscope
+import evalscope
+
+installed = {distribution.metadata["Name"].lower() for distribution in metadata.distributions()}
+assert not (Path(evalscope.__file__).parent / "web").exists()
+assert not any(name == "triton" or name.startswith("nvidia-") for name in installed)
+assert Path("/opt/vendor/plotly-2.35.2.min.js").is_file()
+' >/dev/null
 docker run --rm --platform "$PLATFORM" "$POSTGRES_IMAGE" postgres --version >/dev/null
 docker run --rm --platform "$PLATFORM" "$MINIO_IMAGE" minio --version >/dev/null
 docker run --rm --platform "$PLATFORM" "$MINIO_MC_IMAGE" --version >/dev/null
@@ -155,6 +179,7 @@ cp -a \
   deploy/offline/compose.yml \
   deploy/offline/env.example \
   deploy/offline/mcp.env.example \
+  deploy/offline/evalscope.env.example \
   deploy/offline/Caddyfile \
   deploy/offline/install.sh \
   deploy/offline/upgrade.sh \
@@ -167,6 +192,7 @@ cp -a \
   deploy/offline/DEPLOYMENT-GUIDE.zh-CN.md \
   deploy/offline/TROUBLESHOOTING.zh-CN.md \
   deploy/offline/MCP-AGENT-GUIDE.zh-CN.md \
+  deploy/offline/EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
   "$BUNDLE_DIR/"
 cp -a deploy/offline/lib deploy/offline/minio deploy/offline/smoke "$BUNDLE_DIR/"
 install -d -m 0755 "${BUNDLE_DIR}/docs"
@@ -180,6 +206,7 @@ DATABENCH_VERSION=${VERSION}
 DATABENCH_API_IMAGE=${API_IMAGE}
 DATABENCH_WEB_IMAGE=${WEB_IMAGE}
 DATABENCH_WORKER_IMAGE=${WORKER_IMAGE}
+DATABENCH_EVALSCOPE_IMAGE=${EVALSCOPE_IMAGE}
 DATABENCH_POSTGRES_IMAGE=${POSTGRES_IMAGE}
 DATABENCH_MINIO_IMAGE=${MINIO_IMAGE}
 DATABENCH_MINIO_MC_IMAGE=${MINIO_MC_IMAGE}
@@ -198,6 +225,7 @@ write_lock_line() {
   write_lock_line "$API_IMAGE" "git:${GIT_SHA}"
   write_lock_line "$WEB_IMAGE" "git:${GIT_SHA}"
   write_lock_line "$WORKER_IMAGE" "git:${GIT_SHA}"
+  write_lock_line "$EVALSCOPE_IMAGE" "evalscope:b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60;git:${GIT_SHA}"
   write_lock_line "$POSTGRES_IMAGE" "$POSTGRES_SOURCE_IMAGE"
   write_lock_line "$MINIO_IMAGE" "$MINIO_SOURCE_IMAGE"
   write_lock_line "$MINIO_MC_IMAGE" "$MINIO_MC_SOURCE_IMAGE"
@@ -219,9 +247,9 @@ docker_version=$(docker version --format '{{.Client.Version}}')
 buildx_version=$(docker buildx version | awk '{print $2}')
 EOF
 
-log "saving six images"
+log "saving seven images"
 docker save --platform "$PLATFORM" --output "${BUNDLE_DIR}/images.tar" \
-  "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" \
+  "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$EVALSCOPE_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" \
   "$MINIO_MC_IMAGE"
 
 (

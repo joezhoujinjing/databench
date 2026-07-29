@@ -6,6 +6,9 @@ import {
   EvaluationProviderReportIdsV2Schema,
   EvaluationRunPageRequestV2Schema,
   EvaluationRunV2Schema,
+  FailEvaluationResultUploadRequestV2Schema,
+  FinalizeEvaluationResultUploadRequestV2Schema,
+  PrepareEvaluationResultUploadResponseV2Schema,
 } from '../src/index.js'
 
 const VERSION = 'a'.repeat(64)
@@ -177,5 +180,51 @@ describe('V2 evaluation contracts', () => {
         limit: '100',
       }),
     ).toEqual({ dataset_version: VERSION, status: 'running', cursor: null, limit: 100 })
+  })
+
+  test('keeps archive upload descriptors exact, bounded, and attempt scoped', () => {
+    const response = {
+      run_id: '11111111-1111-4111-8111-111111111111',
+      archive_status: 'uploading',
+      archive_attempt: 1,
+      upload: {
+        method: 'PUT',
+        url: 'https://objects.example/exact?signature=opaque',
+        expires_at: '2026-07-28T00:15:00.000Z',
+        content_type: 'application/zstd',
+        required_headers: {
+          'content-type': 'application/zstd',
+          'if-none-match': '*',
+        },
+        max_size_bytes: 1024 * 1024 * 1024,
+      },
+    }
+    expect(PrepareEvaluationResultUploadResponseV2Schema.parse(response)).toEqual(response)
+    expect(
+      PrepareEvaluationResultUploadResponseV2Schema.safeParse({
+        ...response,
+        upload: { ...response.upload, required_headers: { 'content-type': 'application/zstd' } },
+      }).success,
+    ).toBe(false)
+    expect(
+      FinalizeEvaluationResultUploadRequestV2Schema.parse({
+        archive_attempt: 1,
+        digest: DIGEST,
+        size_bytes: 1,
+      }),
+    ).toEqual({ archive_attempt: 1, digest: DIGEST, size_bytes: 1 })
+    expect(
+      FinalizeEvaluationResultUploadRequestV2Schema.safeParse({
+        archive_attempt: 0,
+        digest: DIGEST,
+        size_bytes: 1,
+      }).success,
+    ).toBe(false)
+    expect(
+      FailEvaluationResultUploadRequestV2Schema.safeParse({
+        archive_attempt: 1,
+        error: { phase: 'provider_archive', code: 'archive_failed', message: 'api_key=secret' },
+      }).success,
+    ).toBe(false)
   })
 })

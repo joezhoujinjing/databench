@@ -15,6 +15,9 @@ export const V2_EVALUATION_RUN_PAGE_DEFAULT_LIMIT = 20
 export const V2_EVALUATION_RUN_PAGE_MAX_LIMIT = 100
 export const V2_EVALUATION_METRICS_MAX_ITEMS = 10_000
 export const V2_EVALUATION_PROVIDER_REPORT_IDS_MAX_ITEMS = 32
+export const V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES = 1024 * 1024 * 1024
+export const V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS = 15 * 60 * 1000
+export const V2_EVALUATION_ARCHIVE_MEDIA_TYPE = 'application/zstd'
 
 const SAFE_TOKEN = /^[a-z][a-z0-9._-]{0,127}$/
 const PROVIDER_TASK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/
@@ -207,6 +210,69 @@ export const CancelEvaluationRunRequestV2Schema = z
   .strictObject({ error: EvaluationRunErrorV2Schema })
   .meta({ id: 'CancelEvaluationRunRequestV2' })
 export type CancelEvaluationRunRequestV2 = z.infer<typeof CancelEvaluationRunRequestV2Schema>
+
+export const PrepareEvaluationResultUploadRequestV2Schema = z
+  .strictObject({})
+  .meta({ id: 'PrepareEvaluationResultUploadRequestV2' })
+
+export const EvaluationResultUploadDescriptorV2Schema = z
+  .strictObject({
+    method: z.literal('PUT'),
+    url: z.string().url().max(8_192),
+    expires_at: Rfc3339UtcSchema,
+    content_type: z.literal(V2_EVALUATION_ARCHIVE_MEDIA_TYPE),
+    required_headers: z.strictObject({
+      'content-type': z.literal(V2_EVALUATION_ARCHIVE_MEDIA_TYPE),
+      'if-none-match': z.literal('*'),
+    }),
+    max_size_bytes: z.number().int().safe().positive().max(V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES),
+  })
+  .meta({ id: 'EvaluationResultUploadDescriptorV2' })
+export type EvaluationResultUploadDescriptorV2 = z.infer<
+  typeof EvaluationResultUploadDescriptorV2Schema
+>
+
+export const PrepareEvaluationResultUploadResponseV2Schema = z
+  .strictObject({
+    run_id: EvaluationRunIdV2Schema,
+    archive_status: z.enum(['uploading', 'available']),
+    archive_attempt: z.number().int().safe().positive(),
+    upload: EvaluationResultUploadDescriptorV2Schema.nullable(),
+  })
+  .superRefine((response, context) => {
+    if ((response.archive_status === 'uploading') !== (response.upload !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['upload'],
+        message: 'Only uploading archives expose a signed upload descriptor',
+      })
+    }
+  })
+  .meta({ id: 'PrepareEvaluationResultUploadResponseV2' })
+export type PrepareEvaluationResultUploadResponseV2 = z.infer<
+  typeof PrepareEvaluationResultUploadResponseV2Schema
+>
+
+export const FinalizeEvaluationResultUploadRequestV2Schema = z
+  .strictObject({
+    archive_attempt: z.number().int().safe().positive(),
+    digest: DigestHexSchema,
+    size_bytes: z.number().int().safe().positive().max(V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES),
+  })
+  .meta({ id: 'FinalizeEvaluationResultUploadRequestV2' })
+export type FinalizeEvaluationResultUploadRequestV2 = z.infer<
+  typeof FinalizeEvaluationResultUploadRequestV2Schema
+>
+
+export const FailEvaluationResultUploadRequestV2Schema = z
+  .strictObject({
+    archive_attempt: z.number().int().safe().positive(),
+    error: EvaluationRunErrorV2Schema,
+  })
+  .meta({ id: 'FailEvaluationResultUploadRequestV2' })
+export type FailEvaluationResultUploadRequestV2 = z.infer<
+  typeof FailEvaluationResultUploadRequestV2Schema
+>
 
 export const EvaluationRunV2Schema = z
   .strictObject({

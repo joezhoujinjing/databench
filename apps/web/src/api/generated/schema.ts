@@ -332,6 +332,54 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v2/evaluation-runs/{run_id}:fail-result-upload': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['failEvaluationResultUploadV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/evaluation-runs/{run_id}:finalize-result-upload': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['finalizeEvaluationResultUploadV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/evaluation-runs/{run_id}:prepare-result-upload': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['prepareEvaluationResultUploadV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v2/evaluation-runs/{run_id}:start': {
     parameters: {
       query?: never
@@ -1036,6 +1084,22 @@ export interface components {
       score: number | null
       subset: string | null
     }
+    EvaluationResultUploadDescriptorV2: {
+      /** @enum {string} */
+      content_type: 'application/zstd'
+      expires_at: string
+      max_size_bytes: number
+      /** @enum {string} */
+      method: 'PUT'
+      required_headers: {
+        /** @enum {string} */
+        'content-type': 'application/zstd'
+        /** @enum {string} */
+        'if-none-match': '*'
+      }
+      /** Format: uri */
+      url: string
+    } | null
     EvaluationRunErrorV2: {
       code: string
       message: string
@@ -1046,8 +1110,19 @@ export interface components {
       next_cursor: string | null
     }
     EvaluationRunStateConflictDetailV2: {
+      archive_attempt?: number
       /** @enum {string} */
-      reason: 'create_request_mismatch' | 'invalid_transition' | 'terminal_body_mismatch'
+      archive_status?: 'not_requested' | 'pending' | 'uploading' | 'available' | 'failed'
+      /** @enum {string} */
+      reason:
+        | 'create_request_mismatch'
+        | 'invalid_transition'
+        | 'terminal_body_mismatch'
+        | 'archive_invalid_transition'
+        | 'archive_attempt_mismatch'
+        | 'archive_body_mismatch'
+      /** @enum {string} */
+      requested_archive_status?: 'uploading' | 'available' | 'failed'
       /** @enum {string|null} */
       requested_status: 'running' | 'completed' | 'failed' | 'cancelled' | null
       /** Format: uuid */
@@ -1129,6 +1204,10 @@ export interface components {
         [key: string]: unknown
       }
     }
+    FailEvaluationResultUploadRequestV2: {
+      archive_attempt: number
+      error: components['schemas']['EvaluationRunErrorV2']
+    }
     FailEvaluationRunRequestV2: {
       error: components['schemas']['EvaluationRunErrorV2']
     }
@@ -1156,6 +1235,11 @@ export interface components {
     FidelityV2: {
       changes: components['schemas']['FidelityChangeV2'][]
       preserved: string[]
+    }
+    FinalizeEvaluationResultUploadRequestV2: {
+      archive_attempt: number
+      digest: string
+      size_bytes: number
     }
     ForbiddenDetailV2: {
       /** @enum {string} */
@@ -1754,6 +1838,15 @@ export interface components {
       max_snapshot_records: number
       max_transform_inputs: number
       max_transform_working_set_bytes: number
+    }
+    PrepareEvaluationResultUploadRequestV2: Record<string, never>
+    PrepareEvaluationResultUploadResponseV2: {
+      archive_attempt: number
+      /** @enum {string} */
+      archive_status: 'uploading' | 'available'
+      /** Format: uuid */
+      run_id: string
+      upload: components['schemas']['EvaluationResultUploadDescriptorV2']
     }
     PutRefRequestV2: {
       expected_version: string | null
@@ -3973,6 +4066,453 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['EvaluationRunV2']
+        }
+      }
+      /** @description Malformed evaluation transition request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Evaluation run was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Evaluation run state or replay body conflicts */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['EvaluationRunStateConflictErrorResponseV2']
+        }
+      }
+      /** @description Evaluation transition is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid evaluation run identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  failEvaluationResultUploadV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        run_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['FailEvaluationResultUploadRequestV2']
+      }
+    }
+    responses: {
+      /** @description Fail or replay evaluation result upload */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['EvaluationRunV2']
+        }
+      }
+      /** @description Malformed evaluation transition request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Evaluation run was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Evaluation run state or replay body conflicts */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['EvaluationRunStateConflictErrorResponseV2']
+        }
+      }
+      /** @description Evaluation transition is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid evaluation run identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  finalizeEvaluationResultUploadV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        run_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['FinalizeEvaluationResultUploadRequestV2']
+      }
+    }
+    responses: {
+      /** @description Finalize or replay evaluation result upload */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['EvaluationRunV2']
+        }
+      }
+      /** @description Malformed evaluation transition request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Evaluation run was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Evaluation run state or replay body conflicts */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['EvaluationRunStateConflictErrorResponseV2']
+        }
+      }
+      /** @description Evaluation transition is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid evaluation run identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description Unexpected internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InternalErrorResponseV2']
+        }
+      }
+      /** @description A required dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ServiceUnavailableErrorResponseV2']
+        }
+      }
+    }
+  }
+  prepareEvaluationResultUploadV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        run_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PrepareEvaluationResultUploadRequestV2']
+      }
+    }
+    responses: {
+      /** @description Prepare or replay exact evaluation result upload */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PrepareEvaluationResultUploadResponseV2']
         }
       }
       /** @description Malformed evaluation transition request */

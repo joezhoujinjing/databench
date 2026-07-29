@@ -33,7 +33,7 @@ export function RecordContents({ contents }: { contents: readonly RecordContentV
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Badge
               tone={
-                content.role === 'system' ? 'orange' : content.role === 'ai' ? 'violet' : 'blue'
+                content.role === 'system' ? 'orange' : content.role === 'ai' ? 'accent' : 'blue'
               }
             >
               {content.role}

@@ -2,9 +2,11 @@
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
-> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E7 已
-> 完成：backend-only runtime、gateway、Evaluation 路由、Tasks、Databench Dataset、Reports、Predictions、
-> Dashboard、Compare、Performance、Benchmarks 与安全 Viewer 已实现，完整 UI 功能迁移 gate 已关闭。
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E8 gate
+> 已完成，E9 本地实现完成、真实目标 gate pending：backend-only runtime、gateway、Evaluation 路由、
+> Tasks、Databench Dataset、Reports、Predictions、Dashboard、Compare、Performance、Benchmarks、安全
+> Viewer 与完整结果归档已实现，完整 UI 功能迁移和归档 gate 已关闭；七镜像离线生命周期、安全和容量
+> 实现已落地。
 > ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
 > deferred GPU gate。S2 exact Dataset 与单 active Session bridge、S3 immutable LoRA Artifact 已完成
 > non-GPU gate；S4 Deployment + EvalScope opaque resolve/lineage 已完成 non-GPU contract，GPU gate deferred。
@@ -174,7 +176,7 @@ apps/web/
 │  ├─ main.tsx
 │  ├─ router.tsx                无版本产品 route tree
 │  ├─ routes/
-│  │  ├─ __root.tsx             单一产品 shell 与主导航
+│  │  ├─ __root.tsx             数据集/训练/测评一级导航与响应式工作区布局
 │  │  ├─ index.tsx
 │  │  └─ not-found.tsx
 │  ├─ api/
@@ -184,7 +186,7 @@ apps/web/
 │  │  ├─ capabilities.tsx · meta.ts · version.ts
 │  │  └─ errors.ts · types.ts
 │  ├─ components/
-│  │  ├─ shell/                 导航、连接设置、语言切换
+│  │  ├─ shell/                 数据集侧栏、路由映射、连接设置与语言切换
 │  │  ├─ common/                状态、JSON、复制
 │  │  └─ ui/                    基础 UI primitives
 │  ├─ evaluations/              ADR 0017；E4-E7 complete Evaluation UI
@@ -193,7 +195,7 @@ apps/web/
 │  │  ├─ domain/                route key、report、metric、task state 与 AgentTrace 纯逻辑
 │  │  ├─ features/              Tasks、Reports、Predictions、sample 与 rich-content UI
 │  │  ├─ i18n/                  lazy evaluations namespace 与完整中英文词典
-│  │  ├─ layouts/               Evaluation shell 和二级导航
+│  │  ├─ layouts/               Evaluation shell、桌面侧栏与窄屏横向导航
 │  │  ├─ routes/                typed lazy routes、search contracts 与 route states
 │  │  ├─ styles/                .evaluation-surface scoped --es-* tokens
 │  │  ├─ UPSTREAM.md
@@ -352,13 +354,16 @@ src/
    ├─ temp-store.ts             shared bounded temp admission for canonical, draft and Worker spools
    ├─ worker-staging.ts · worker-staging-keys.ts
    ├─ model-artifact-store.ts · model-artifact-keys.ts
+   ├─ evaluation-staging.ts · evaluation-artifact.ts
    ├─ config.ts
    └─ index.ts
 ```
 
 管理 `objects/v2/` immutable artifacts/manifests，以及不进入 canonical identity 的
-`staging/worker/v1/` 与 `staging/swift-artifact/v1/` exact temporary objects。canonical 写入和 staging
-input 均 conditional create；staging 只允许 attempt-scoped exact read/delete，禁止 prefix delete。
+`staging/worker/v1/`、`staging/swift-artifact/v1/` 与 `staging/evaluations/v1/` exact temporary
+objects。canonical 写入和 staging input 均 conditional create；staging 只允许 attempt-scoped exact
+read/delete，禁止 prefix delete。Evaluation archive 最终写入
+`objects/v2/evaluation-result-v1/` content-addressed immutable object。
 
 ## `packages/catalog`
 
@@ -450,6 +455,13 @@ scripts/
 docs/evalscope/evidence/E0-BASELINE.md
 docs/evalscope/evidence/E1-PROJECTION.md
 docs/evalscope/evidence/E2-RUN-CONTROL.md
+docs/evalscope/evidence/E3-BACKEND-RUNTIME.md
+docs/evalscope/evidence/E4-UI-FOUNDATION.md
+docs/evalscope/evidence/E5-TASKS-DATASET.md
+docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md
+docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md
+docs/evalscope/evidence/E8-RESULT-ARCHIVE.md
+docs/evalscope/evidence/E9-SECURITY-CAPACITY-RELEASE.md
 THIRD_PARTY_NOTICES.md
 ```
 
@@ -460,8 +472,8 @@ workers/evalscope/
 ├─ .python-version · pyproject.toml · uv.lock
 ├─ src/databench_evalscope/
 │  ├─ app.py · wsgi.py · config.py
-│  ├─ databench.py · storage.py
-│  └─ security.py · documents.py · errors.py
+│  ├─ databench.py · archive.py · storage.py
+│  └─ security.py · documents.py · volume_backup.py · errors.py
 └─ tests/                      Python runtime/security tests
 
 deploy/evalscope/
@@ -481,6 +493,10 @@ provider。`deploy/evalscope` 只保留构建和部署资产。镜像删除 upst
 Gunicorn/Flask backend。`upstream-manifest.json` 是文件来源真源，
 `ui-capability-manifest.json` 是业务能力验收真源；前者的 `adapted` 不能替代后者的 green。E1/E2 的
 converter/export 与 Workspace/REST/OpenAPI 数据链没有被 Python service 绕开。
+
+E8 result archive 通过 `databench.py`/`archive.py` 调用 Databench prepare/finalize/fail REST。Python service
+只接收 attempt-scoped conditional PUT descriptor；BLAKE3/size 校验、immutable publication、PG locator 与
+exact staging cleanup 仍由 Store/Workspace/Catalog 边界拥有。
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。
@@ -535,15 +551,17 @@ docs/mcp/
 
 ```text
 deploy/offline/
-├─ compose.yml                    API 加载 MCP 配置；私网 Worker → API → Web 生命周期
+├─ compose.yml                    私网 Worker → API → EvalScope → Web 生命周期
 ├─ mcp.env.example                匿名可信内网 MCP 配置示例
+├─ evalscope.env.example          EvalScope stable secret、allowlist 与容量示例
 ├─ MCP-AGENT-GUIDE.zh-CN.md       agent endpoint、三种意图与恢复规则
+├─ EVALSCOPE-OPERATOR-GUIDE.zh-CN.md  EvalScope drain、容量、备份与断网验收
 ├─ README.zh-CN.md
 ├─ DEPLOYMENT-GUIDE.zh-CN.md
 ├─ TROUBLESHOOTING.zh-CN.md
-├─ install.sh · upgrade.sh        显式创建或复用 MCP 配置
-├─ rollback.sh                    停服务前校验 current/target 所需 MCP 配置
-├─ lib/config.sh                  public base 校验与原子配置
+├─ install.sh · upgrade.sh        显式创建或复用 MCP/EvalScope 配置
+├─ rollback.sh                    停服务前校验 current/target 所需配置
+├─ lib/config.sh                  public base、EvalScope stable secret 与原子配置
 ├─ lib/preflight.sh               CPU/RAM、根盘与 Databench 数据盘容量检查
 └─ smoke/
    ├─ mcp.mjs                     官方 SDK + companion lifecycle smoke

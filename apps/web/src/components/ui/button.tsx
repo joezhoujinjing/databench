@@ -30,7 +30,7 @@ export function Button({
       'border border-border bg-background/35 text-foreground hover:border-border-strong hover:bg-surface-hover',
     variant === 'quiet' && 'text-accent-foreground hover:text-foreground',
     variant === 'default' &&
-      'bg-primary text-primary-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset,0_12px_32px_rgba(124,92,255,0.2)] hover:bg-primary-hover',
+      'bg-primary text-primary-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset,0_12px_32px_rgba(240,138,60,0.2)] hover:bg-primary-hover',
     variant === 'destructive' && 'bg-danger text-white hover:bg-danger/85',
     className,
   )

@@ -42,6 +42,8 @@ export function createAppFromConfig(config: ApiConfig) {
     ...(config.openApiServerUrl !== undefined ? { openApiServerUrl: config.openApiServerUrl } : {}),
     corsOrigins: config.corsOrigins,
     ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
+    evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
+    evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
     mcp: config.mcp,
     ...(config.modelDeploymentOperatorToken === undefined
       ? {}
@@ -85,6 +87,8 @@ export async function startApiRuntime(
     root: config.workspaceRoot,
     cursorSecret: config.v2CursorSecret,
     storeConfig: config.storeConfig,
+    evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
+    evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
     ...(config.databaseUrl === undefined ? {} : { databaseUrl: config.databaseUrl }),
     ...(swiftStudioConfig.enabled &&
     swiftStudioConfig.providerBaseUrl !== undefined &&
@@ -129,6 +133,8 @@ export async function startApiRuntime(
         : { openApiServerUrl: config.openApiServerUrl }),
       corsOrigins: config.corsOrigins,
       ...(config.evalscope === undefined ? {} : { evalscope: config.evalscope }),
+      evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
+      evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
       mcp: mcpConfig,
       ...(config.modelDeploymentOperatorToken === undefined
         ? {}

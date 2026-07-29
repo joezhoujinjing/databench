@@ -2,7 +2,12 @@
 
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+[ -n "$SCRIPT_PATH" ] || {
+  printf '[databench] ERROR: could not resolve databenchctl path\n' >&2
+  exit 1
+}
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
 # shellcheck source=lib/health.sh
@@ -16,7 +21,10 @@ Commands:
   status                         Show container status
   logs [service]                 Follow recent logs
   doctor                         Check PostgreSQL and object storage
-  restart                        Restart Worker, API and Web, then run doctor
+  restart                        Drain and restart Worker, EvalScope, API and Web
+  evalscope-status               Show internal drain and active-task state
+  evalscope-drain                Stop admitting new evaluation tasks
+  evalscope-resume               Resume evaluation task admission
   backup                         Create a consistent backup generation
   restore <generation> --confirm Restore a backup generation
   upgrade <extracted-bundle>     Upgrade using a new offline bundle
@@ -44,6 +52,18 @@ case "$COMMAND" in
     start_application_services "$RELEASE_DIR"
     wait_application_services "$RELEASE_DIR"
     run_doctor "$RELEASE_DIR"
+    ;;
+  evalscope-status)
+    release_has_evalscope "$RELEASE_DIR" || die "this release does not contain EvalScope"
+    evalscope_operator_request GET /internal/v1/operator/status
+    ;;
+  evalscope-drain)
+    release_has_evalscope "$RELEASE_DIR" || die "this release does not contain EvalScope"
+    evalscope_operator_request POST /internal/v1/operator/drain
+    ;;
+  evalscope-resume)
+    release_has_evalscope "$RELEASE_DIR" || die "this release does not contain EvalScope"
+    evalscope_operator_request POST /internal/v1/operator/resume
     ;;
   backup)
     exec "${RELEASE_DIR}/backup.sh"

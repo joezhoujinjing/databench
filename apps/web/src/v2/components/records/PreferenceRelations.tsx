@@ -66,7 +66,7 @@ export function MountedRelations({ relations }: { relations: readonly Preference
                   ? t('v2.record.superseded')
                   : t('v2.record.current')}
               </Badge>
-              <Badge tone="violet">{relation.outcome}</Badge>
+              <Badge tone="accent">{relation.outcome}</Badge>
               <Badge tone="blue">{relation.status}</Badge>
             </div>
             <div className="space-y-2 text-sm">

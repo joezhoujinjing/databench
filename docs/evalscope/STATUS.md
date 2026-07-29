@@ -3,9 +3,10 @@
 > 每个 E Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- evalscope-status
-current_step: E8
-last_completed_step: E7
+current_step: E9
+last_completed_step: E8
 runtime_enabled: false
+offline_runtime_enabled: true
 ui_routes_enabled: true
 upstream_commit: b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
 e3_implementation: complete
@@ -18,20 +19,31 @@ e6_implementation: complete
 e6_gate: passed
 e7_implementation: complete
 e7_gate: passed
+e8_implementation: complete
+e8_gate: passed
+e9_implementation: complete
+e9_gate: owner_deferred_target
 -->
 
 ## 当前检查点
 
-- **当前分支:** `feat/swift-studio-integration`（E7 complete 基线上增加 Swift S4 交叉扩展）
-- **当前 Step:** E8 完整结果归档与 retention
+- **当前分支:** `main`（包含 Swift S4 交叉扩展）
+- **当前 Step:** E9 安全复核、容量、离线与最终集成 gate
 - **已完成:** E0 决策/来源/能力基线；E1 `evalscope-general-qa@1.0.0` projection；E2 Evaluation Run
   控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环；E4 Databench Evaluation UI foundation；
   E5 Tasks、Databench Dataset、task monitor 与安全报告入口；E6 Reports、Details、Predictions 与逐样本内容展示；
-  E7 Dashboard、Evaluation Compare、Performance、Benchmarks 与安全 Viewer 完整业务面
+  E7 Dashboard、Evaluation Compare、Performance、Benchmarks 与安全 Viewer 完整业务面；E8 deterministic
+  `tar.zst`、attempt-scoped upload、immutable result object、归档状态与 retention
 - **产品状态:** backend-only image 与 same-origin gateway 仍 disabled-by-default；`/evaluations/*` 原生
   lazy routes 已开放；锁定 React 基线的全部业务页面已按 Databench 风格迁入唯一 SPA，E7 完整复刻 gate 已关闭
-- **GE7:** `pnpm evalscope:parity:check:green` 通过；60 个 capability 全部 green，其中 58 个 target capability
-  已实现、2 个为 Databench application/brand shell exclusion
+- **GE8:** deterministic archive、secret/oversize/wrong digest/expired URL、replay/PG failure/exact cleanup、
+  真实 MinIO/Postgres、OSS contract 和 Web 状态 gate 已通过
+- **E9 本地实现:** runtime drain/capacity/timeout、七镜像离线 bundle、EvalScope stable config、
+  backup/restore、upgrade/rollback、operator 与 upstream upgrade runbook 已完成；`0.7.0`
+  `linux/amd64` 七镜像 bundle 已实际生成并通过 inner/outer checksum、gzip/tar 可读性与 image smoke
+- **GE9 待验收:** 仍需在真实 Ubuntu 22.04 amd64 目标机断网执行 install → Dataset evaluation →
+  native report/compare/performance → callback/archive → restart/reconcile → upgrade → rollback；本机
+  Docker 验证不替代该目标 gate。Owner 于 2026-07-29 批准先合并，并由 owner 后续手工执行该验证
 - **Swift S4 交叉扩展:** opaque Databench Deployment model source、server-side resolve 与
   Dataset/Artifact/Deployment Evaluation lineage 已完成 non-GPU gate；不改变 E8/E9 状态
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
@@ -48,8 +60,8 @@ e7_gate: passed
 | E5 | Tasks 与 Databench Dataset 闭环 | ✅ | GE5 | eval/perf、monitor、exact Dataset、safe viewer |
 | E6 | Reports、Details 与 Predictions | ✅ | GE6 | catalogue、overview/details、逐样本与富内容 |
 | E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ✅ | GE7 | 完整 UI 复刻唯一 gate 已通过 |
-| E8 | 结果归档与 retention | ⬜ 当前 | GE8 | |
-| E9 | 安全、容量、离线与最终集成 gate | ⬜ | GE9 | |
+| E8 | 结果归档与 retention | ✅ | GE8 | deterministic archive、immutable object、exact cleanup |
+| E9 | 安全、容量、离线与最终集成 gate | 🔄 owner 后验 | GE9 | 本地实现与 bundle 完成；owner 批准先合并并自行补目标机验证 |
 
 ## E0 交付
 
@@ -323,3 +335,58 @@ E7 只关闭锁定 EvalScope React UI 的完整功能迁移 gate。Runtime 仍 d
 
 该扩展的唯一允许结论是 `S4 non-GPU contract green / GPU deferred`。E8 结果归档、E9 最终离线集成、
 V16/V17 和公共云 D3 均未被关闭。
+
+## E8 交付与 Gate 记录
+
+- 新增 prepare/finalize/fail 三条 evaluation result archive REST；execution 与 archive state 保持独立，
+  completed run 不等待归档成功；
+- EvalScope provider 使用固定 tar metadata、UTF-8 path 排序和固定 zstd 参数生成 deterministic allowlist
+  `tar.zst`，拒绝 credential、绝对/遍历 path、symlink、hardlink 和 oversize；
+- staging key 固定为 `staging/evaluations/v1/<run>/<attempt>/result.tar.zst`；15 分钟 signed URL 只允许
+  exact-key conditional `PUT`，默认和最大归档均为 1 GiB；
+- Workspace 验证 content type、size、BLAKE3 后 conditional-create
+  `objects/v2/evaluation-result-v1/<prefix>/<digest>.tar.zst`，PG locator 成功后只删除 exact staging key；
+- prepare/finalize 可并发重放；PUT/finalize response loss、412 和 PG failure 均可安全 retry，PG 失败时保留
+  staging/immutable orphan 供 finalize repair；
+- Web 通过 Databench run 查询独立显示 online available/unavailable 与 archive
+  processing/available/failed/unavailable；Dataset version 和 run ID 写入 URL，刷新可恢复；
+- online volume、immutable archive、PG locator 的 retention/backup owner 固定在
+  [RETENTION.md](RETENTION.md)，完整实现与验证见
+  [E8-RESULT-ARCHIVE.md](evidence/E8-RESULT-ARCHIVE.md)。
+
+Gate 通过：
+
+- `pnpm lint`（570 files）、`pnpm build`（13/13）、`pnpm typecheck`（22/22 tasks）、
+  `pnpm test`（22/22 tasks）、`pnpm openapi:check`、`pnpm v2:status:check`、`pnpm peers check`、
+  `pnpm offline:check` 与 `git diff --check`；
+- `pnpm evalscope:parity:check`、`pnpm evalscope:parity:check:green` 和
+  `pnpm evalscope:parity:test`（7/7）；Python lock 与 62 tests；
+- Store 90/90 真实 MinIO；Workspace 156（10 skipped）、API 101/101、CLI 14/14 真实 Postgres/MinIO；
+  Catalog 37/37 真实 Postgres；OSS conditional-presign contract；
+- Web production build 保持 11 个 Evaluation lazy route entries，initial JS 853,184 bytes；真实 completed
+  Databench task 的 desktop direct-refresh 与 online/archive 状态通过，console 0 error / 0 warning。
+
+E8 不启用 runtime，也不改变 UI parity、V16/V17 或公共云 D3。下一步 E9 只关闭 ADR 0017 的安全、容量、
+离线、升级/回滚和最终集成 gate。
+
+## E9 本地交付与待完成 Gate
+
+- EvalScope 增加 authenticated operator status/drain/resume；drain 拒绝新 invoke，但不阻断已有任务的
+  progress、log、stop 和 report，离线维护默认等待 300 秒，超时会恢复 admission 并取消维护；
+- evaluation/performance 使用独立并发槽，并增加 task runtime、sample/batch/repeat、performance
+  parallel/request/rate、model token 和 request timeout 上限；所有可配置值另受编译期 ceiling 约束；
+- ADR 0012 离线包扩为七镜像，EvalScope 使用 pinned backend-only `linux/amd64` image、Compose 私网
+  `evalscope:9000`、无宿主机端口、无 GPU、只读根、4 CPU、12 GiB 和 1024 PIDs；通用部署继续
+  disabled-by-default，只有可信内网离线 profile 设置 `offline_runtime_enabled: true`；
+- install/backup/restore/restart/upgrade/rollback 纳入稳定 `evalscope.env`、HMAC/operator secrets、
+  PostgreSQL + MinIO + EvalScope outputs/inputs 一致备份，以及旧五/六镜像 release 回滚兼容；备份拒绝
+  symlink、hardlink 和特殊文件，恢复前拒绝 traversal、重复路径、links、错误根与非普通成员；
+- exact browser gateway 继续阻断 operator route、EvalScope root/static SPA、resume/scan 和未知 upstream
+  endpoint；public config 保持 path-free，Plotly 继续使用本地固定 digest；
+- operator、故障处理、容量、断网部署和 upstream source/API/UI compatibility matrix 已形成 runbook。
+
+本地验证结果与目标机缺口见
+[E9-SECURITY-CAPACITY-RELEASE.md](evidence/E9-SECURITY-CAPACITY-RELEASE.md)。当前 E9
+`implementation=complete`；owner 于 2026-07-29 批准在 GE9 目标机证据未补齐时先合并，并自行执行真实
+断网安装验证，因此 gate 记录为 `owner_deferred_target` 而不是 passed。该状态不完成 V16/V17，也不解除
+公共云 D3。

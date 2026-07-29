@@ -48,7 +48,12 @@ The service fails closed unless all required values are present:
 Optional bounded settings are `EVALSCOPE_INPUT_MAX_BYTES`, `EVALSCOPE_OUTPUT_MAX_BYTES`,
 `EVALSCOPE_REQUEST_MAX_BYTES`, `EVALSCOPE_RESPONSE_MAX_BYTES`, `EVALSCOPE_DOCUMENT_MAX_BYTES`,
 `EVALSCOPE_DOCUMENT_TTL_SECONDS`, `EVALSCOPE_MAX_CONCURRENT_EVALS`, `EVALSCOPE_MAX_CONCURRENT_PERF` and
-`EVALSCOPE_MAX_TASKS`. `EVALSCOPE_MODEL_REDIRECT_MAX_HOPS` must remain `0`.
+`EVALSCOPE_MAX_TASKS`. E9 additionally bounds `EVALSCOPE_TASK_RUNTIME_SECONDS`,
+`EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX`, `EVALSCOPE_EVALUATION_BATCH_SIZE_MAX`,
+`EVALSCOPE_EVALUATION_REPEATS_MAX`, `EVALSCOPE_PERFORMANCE_PARALLEL_MAX`,
+`EVALSCOPE_PERFORMANCE_REQUESTS_MAX`, `EVALSCOPE_PERFORMANCE_RATE_MAX`,
+`EVALSCOPE_MODEL_TOKENS_MAX` and `EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX`.
+`EVALSCOPE_MODEL_REDIRECT_MAX_HOPS` must remain `0`.
 
 The production command is fixed to one Gunicorn worker with eight threads. One process owns the in-memory upstream
 process registry; the threads allow progress/log/stop requests while an invoke request blocks.
@@ -72,9 +77,23 @@ The manifest is checked against the compiled method/path allowlist at startup. U
 redirects, response media types and oversized bodies fail closed. Browser authorization and cookies are not forwarded.
 The upstream root, `/api/v1/eval/resume/invoke` and `/api/v1/reports/scan` are intentionally unavailable.
 
-The current offline Compose file carries the manifest but explicitly keeps this integration disabled. Adding the
-prebuilt image, persistent volume and release lifecycle is an E9 release task; E3 does not silently change existing
-offline installations.
+The E9 offline Compose enables this gateway only in the ADR 0012 trusted-network release. It loads the digest-locked
+prebuilt image, mounts persistent input/output roots, publishes no EvalScope host port and applies CPU/memory/PID/GPU
+bounds. General deployments remain disabled-by-default; this scoped offline enablement is not public-cloud
+authorization.
+
+## Drain and lifecycle
+
+The internal operator endpoints `/internal/v1/operator/drain`, `/internal/v1/operator/status` and
+`/internal/v1/operator/resume` require the stable operator token and are not part of the browser gateway manifest.
+Drain atomically rejects new invoke requests while progress/log/stop/report remain available. Offline backup,
+upgrade, rollback and restart stop Web admission, drain active tasks, then stop API/EvalScope/Worker. A drain timeout
+cancels maintenance and resumes admission instead of killing a task silently.
+
+Offline backup contains the EvalScope input/output volume together with PostgreSQL and MinIO, and encrypts the
+stable EvalScope config for escrow. The operator procedure is in
+`deploy/offline/EVALSCOPE-OPERATOR-GUIDE.zh-CN.md`; upstream source/UI/Python updates follow
+`docs/evalscope/UPSTREAM-UPGRADE.md`.
 
 ## Verification
 

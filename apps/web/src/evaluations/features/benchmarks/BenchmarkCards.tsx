@@ -26,7 +26,7 @@ export function BenchmarkCards({
                 benchmark.displayCategory === 'text'
                   ? 'blue'
                   : benchmark.displayCategory === 'multimodal'
-                    ? 'violet'
+                    ? 'accent'
                     : benchmark.displayCategory === 'agent'
                       ? 'orange'
                       : 'green'

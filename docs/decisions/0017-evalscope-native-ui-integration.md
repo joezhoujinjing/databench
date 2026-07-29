@@ -1,7 +1,8 @@
 # ADR 0017 — EvalScope 功能等价 UI 迁移与 Databench 集成
 
 - **状态:** Accepted——owner 于 2026-07-27 确认方案 review 问题修复并要求开始实施；2026-07-28
-  确认预构建镜像离线交付口径，并接受 ms-swift S4 的 opaque Model Deployment 扩展
+  确认预构建镜像离线交付口径，并接受 ms-swift S4 的 opaque Model Deployment 扩展；2026-07-29
+  接受测评工作区桌面侧栏与窄屏横向导航
 - **日期:** 2026-07-27
 - **决策者:** owner
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
@@ -223,6 +224,15 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
 - resolved endpoint 只存在于受控服务端执行 payload 和短期内存脱敏上下文，不进入浏览器 response、
   task integration manifest、report HTML、日志或公开 Model Deployment projection；
 - 本扩展不改变 E8/E9、V16/V17 或公共云 D3 状态，也不证明 GPU 训练或 GPU inference/deployment。
+
+### 12. 测评工作区使用响应式二级侧栏
+
+- 全局一级导航中的测评入口保持稳定；`/training` 合入后与数据集、测评并列，不改变测评内部结构；
+- `/evaluations/*` 在桌面使用“看板 / 报告 / 性能 / 任务 / 基准测试”左侧栏，窄屏退化为同五项
+  可横向滚动的二级导航；
+- 报告详情、性能详情、比较和 Viewer 沿用现有父级选中语义，不改变任何 URL、route search contract、
+  API、capability 或安全边界；
+- Evaluation 页面继续 route-level lazy load，不把完整测评词典、图表或富内容依赖拉入数据集首屏。
 
 ## 非目标
 

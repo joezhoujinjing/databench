@@ -1,7 +1,9 @@
 {
   "nav": {
     "primary": "Primary navigation",
+    "datasetNavigation": "Dataset navigation",
     "datasets": "Datasets",
+    "datasetList": "Dataset list",
     "ingest": "Ingest",
     "transforms": "Transforms",
     "training": "Training",

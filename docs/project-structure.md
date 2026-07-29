@@ -3,9 +3,12 @@
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
-> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E7 已完成：backend-only runtime、disabled-by-default
+> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E8 gate 已完成，E9 本地实现已完成：backend-only
+> runtime、disabled-by-default
 > gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports、逐样本、Dashboard、
-> 比较、Performance、Benchmark 和安全 Viewer 已实现；锁定 React 基线的完整 UI 功能迁移 gate 已关闭。
+> 比较、Performance、Benchmark、安全 Viewer 和完整结果归档已实现；锁定 React 基线的完整 UI 功能迁移
+> gate 与结果归档 gate 已关闭。七镜像离线生命周期、安全和容量实现已落地，真实 Ubuntu 22.04 amd64
+> 断网目标机 GE9 仍待验收。
 > ms-swift ADR 0018 已接受，S0 已完成；S1 的完整原生 Gradio、`/training`、GPU image、Provider 与
 > Gateway 已 code-complete，真实 Linux/NVIDIA LoRA + Infer gate 按 owner 决策后置且 capability 保持
 > unvalidated。S2 exact Dataset 与单 active Studio Session bridge、S3 LoRA immutable Model Artifact
@@ -136,7 +139,9 @@ EvalScope 通过 Databench REST exact inspect/export 获取，API 不直连下�
 增加 lazy `/evaluations/*` route tree、Evaluation shell、scoped tokens/i18n/primitives 和隔离的 exact Zod
 client。E5 在该边界实现 Tasks 与 exact Dataset 闭环；E6 实现 Reports catalogue、详情、Predictions、
 样本形态与富内容展示；E7 完成 Dashboard、Evaluation Compare、Performance 全业务面、Benchmark 与
-安全 Viewer。UI 对 Databench `/v2/*` 仍只用 generated client；EvalScope client 只能访问
+安全 Viewer。E8 在同一 Workspace 边界加入 attempt-scoped result staging、BLAKE3 immutable archive、PG
+locator 和 exact cleanup；EvalScope 不持有长期 object-store credential。UI 对 Databench `/v2/*` 仍只用
+generated client；EvalScope client 只能访问
 `deploy/evalscope/api-routes.json` 明确允许的方法与精确路径，不能成为通用反向代理。
 
 MCP runtime 内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
@@ -186,8 +191,10 @@ packages/<name>/
 - 托管对象存储：Aliyun OSS；本地及离线单机使用 S3-compatible MinIO adapter。
 - 离线 MCP：`/etc/databench/mcp.env` 独立保存匿名模式、agent 可达 `/api` public base 与可选
   origins；旧 release 不读取该文件。
-- 离线 Worker：作为第六张镜像随 bundle 交付，使用 4 GiB tmpfs；备份仍只覆盖 PostgreSQL、
-  MinIO、release/config escrow。
+- 离线 Worker：作为第六张镜像随 bundle 交付，使用 4 GiB tmpfs。
+- 离线 EvalScope：作为第七张 pinned backend-only 镜像随 bundle 交付，使用私网 HTTP、持久化
+  output/input volume、稳定 operator/HMAC 配置、drain 生命周期与 4 CPU / 12 GiB 容量边界；备份覆盖
+  PostgreSQL、MinIO、EvalScope volume 和三份加密配置 escrow。
 - OpenAPI：API Zod route → `openapi/openapi.json` →
   `apps/web/src/api/generated/schema.ts`。
 - Node 版本：`.nvmrc`，当前 Node 22 LTS。
@@ -211,13 +218,12 @@ endpoint 写进浏览器、OpenAPI public projection 或 task integration manife
 
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3、EvalScope E0-E7 与 Swift S0-S4 non-GPU gate 已完成。Swift S1-S4 的真实
+产品切换 R0-R5、MCP M0-M3、EvalScope E0-E8 与 Swift S0-S4 non-GPU gate 已完成。Swift S1-S4 的真实
 NVIDIA LoRA/Infer/serving/evaluation gate 按 owner 决策后置且尚未关闭；S4 状态固定为
 `non-GPU contract green / GPU deferred`。runtime 保持
 disabled-by-default，`/training` 在未启用时显示明确 unavailable
-boundary。EvalScope runtime 仍 disabled-by-default；Web 已
-完成锁定 EvalScope React 基线的完整业务功能迁移，结果归档与最终离线集成仍分别属于 E8/E9。MCP 和单个
-CPU-only Worker只获
+boundary。EvalScope E9 本地实现完成、目标机 gate pending；通用部署仍 disabled-by-default，结果归档与
+七镜像离线接线已完成。MCP、CPU-only Worker 和 backend-only EvalScope 只获
 授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台

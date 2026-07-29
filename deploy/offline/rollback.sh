@@ -45,6 +45,9 @@ validate_release_contract "$TARGET_RELEASE"
 load_release_manifest "${CURRENT_RELEASE}/release-manifest.json"
 CURRENT_ROLLBACK_MODE="$MANIFEST_ROLLBACK_MODE"
 validate_existing_config
+if release_has_evalscope "$CURRENT_RELEASE" || release_has_evalscope "$TARGET_RELEASE"; then
+  validate_evalscope_config
+fi
 validate_release_mcp_config_if_required "$CURRENT_RELEASE"
 validate_release_mcp_config_if_required "$TARGET_RELEASE"
 
@@ -63,7 +66,14 @@ recover_current_release() {
     exit "$status"
   fi
   warn "rollback failed; restoring release $CURRENT_VERSION"
-  stop_application_services "$TARGET_RELEASE" >/dev/null 2>&1 || true
+  if ! stop_application_services "$TARGET_RELEASE" >/dev/null 2>&1; then
+    warn "target services did not stop gracefully; forcing them to stop"
+    force_stop_application_services "$TARGET_RELEASE" >/dev/null 2>&1 ||
+      warn "one or more target services could not be stopped"
+  fi
+  remove_application_services_absent_from_release \
+    "$TARGET_RELEASE" "$CURRENT_RELEASE" >/dev/null 2>&1 ||
+    warn "one or more target-only service containers could not be removed"
   if [ "$DATA_WAS_RESTORED" = true ] && [ -n "$SAFETY_GENERATION" ]; then
     DATABENCH_OPERATION_LOCK_HELD=1 "${CURRENT_RELEASE}/restore.sh" \
       "${DATABENCH_DATA_ROOT}/backups/${SAFETY_GENERATION}" --confirm \
@@ -91,6 +101,7 @@ if [ "$CURRENT_ROLLBACK_MODE" = 'restore-backup' ]; then
     --skip-safety-backup --api-already-stopped --keep-stopped
 fi
 
+remove_application_services_absent_from_release "$CURRENT_RELEASE" "$TARGET_RELEASE"
 start_application_services "$TARGET_RELEASE" || die "target application services did not start"
 wait_application_services "$TARGET_RELEASE" ||
   die "target application services did not become healthy"

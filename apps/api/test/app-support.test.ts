@@ -35,12 +35,30 @@ describe('api support', () => {
     expect(config.corsOrigins).toEqual(['https://one.example', 'https://two.example'])
     expect(config.openApiServerUrl).toBe('/api')
     expect(config.storeConfig).toMatchObject({ kind: 's3', bucket: 'v2-config-test' })
+    expect(config.evaluationArchiveMaxBytes).toBe(1024 * 1024 * 1024)
+    expect(config.evaluationArchiveSignedUrlTtlMs).toBe(15 * 60 * 1000)
     expect(config.worker).toMatchObject({
       enabled: false,
       target: '127.0.0.1:50051',
       leaseMs: 30_000,
       heartbeatMs: 10_000,
     })
+    expect(() =>
+      loadConfig({
+        DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES: String(1024 * 1024 * 1024 + 1),
+        DATABENCH_OBJECT_STORE: 's3',
+        DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+        S3_BUCKET: 'v2-config-test',
+      }),
+    ).toThrow()
+    expect(() =>
+      loadConfig({
+        DATABENCH_EVALUATION_ARCHIVE_SIGNED_URL_TTL_MS: String(15 * 60 * 1000 + 1),
+        DATABENCH_OBJECT_STORE: 's3',
+        DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+        S3_BUCKET: 'v2-config-test',
+      }),
+    ).toThrow()
   })
 
   test('accepts only coherent private Worker runtime configuration', () => {

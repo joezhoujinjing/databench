@@ -47,6 +47,8 @@ export interface CreateAppOptions {
   readonly v2Workspace?: ApiV2Workspace
   readonly workspaceRoot?: string
   readonly workerJobsAvailable?: boolean
+  readonly evaluationArchiveMaxBytes?: number
+  readonly evaluationArchiveSignedUrlTtlMs?: number
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -156,6 +158,12 @@ function v2RuntimeOptions(options: CreateAppOptions): V2WorkspaceMiddlewareOptio
       ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
       ...(options.storeConfig === undefined ? {} : { storeConfig: options.storeConfig }),
       ...swiftStudioWorkspaceOpenOptions(options.swiftStudio),
+      ...(options.evaluationArchiveMaxBytes === undefined
+        ? {}
+        : { evaluationArchiveMaxBytes: options.evaluationArchiveMaxBytes }),
+      ...(options.evaluationArchiveSignedUrlTtlMs === undefined
+        ? {}
+        : { evaluationArchiveSignedUrlTtlMs: options.evaluationArchiveSignedUrlTtlMs }),
     },
   }
 }

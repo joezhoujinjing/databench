@@ -700,3 +700,22 @@ export interface CatalogModelDeploymentHealthV2 {
   readonly status: Exclude<CatalogModelDeploymentHealthStatusV2, 'unknown'>
   readonly error: string | null
 }
+
+export interface PrepareEvaluationRunArchiveV2 {
+  readonly namespaceId: string
+  readonly id: string
+}
+
+export interface MarkEvaluationRunArchiveUploadingV2 extends PrepareEvaluationRunArchiveV2 {
+  readonly archiveAttempt: number
+}
+
+export interface FinalizeEvaluationRunArchiveV2 extends MarkEvaluationRunArchiveUploadingV2 {
+  readonly resultArtifactKey: string
+  readonly resultArtifactDigest: string
+  readonly resultArtifactSizeBytes: bigint
+}
+
+export interface FailEvaluationRunArchiveV2 extends MarkEvaluationRunArchiveUploadingV2 {
+  readonly error: CatalogEvaluationRunErrorV2
+}

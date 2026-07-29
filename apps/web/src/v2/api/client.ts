@@ -16,6 +16,7 @@ import type {
   DeletedRefPageV2,
   DeleteRefRequestV2,
   DeleteRefResultV2,
+  EvaluationRunPageV2,
   ExportPlanV2,
   ExportRequestV2,
   IngestResultV2,
@@ -79,6 +80,11 @@ export interface V2RunTransformOptions extends V2ReadOptions {
 
 export interface V2TransformJobsOptions extends V2ReadOptions {
   readonly cursor: string | null
+  readonly limit: number
+}
+
+export interface V2EvaluationRunsOptions extends V2ReadOptions {
+  readonly datasetVersion: string
   readonly limit: number
 }
 
@@ -218,6 +224,23 @@ export function listTransformJobsV2(options: V2TransformJobsOptions): Promise<Tr
     createApiClient(options).GET('/v2/transform-jobs', {
       ...requestOptions(options.signal),
       params: { query: { cursor: options.cursor, limit: options.limit } },
+    }),
+  )
+}
+
+export function listEvaluationRunsV2(
+  options: V2EvaluationRunsOptions,
+): Promise<EvaluationRunPageV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).GET('/v2/evaluation-runs', {
+      ...requestOptions(options.signal),
+      params: {
+        query: {
+          cursor: null,
+          dataset_version: options.datasetVersion,
+          limit: options.limit,
+        },
+      },
     }),
   )
 }

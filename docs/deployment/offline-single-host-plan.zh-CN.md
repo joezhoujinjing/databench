@@ -7,7 +7,9 @@
 > 将 Databench 一键安装到单台 Ubuntu。现有阿里云 ECS、RDS、OSS/CDN 发布链保持
 > 不变；本方案只新增一条并列的离线发布通道。Owner 于 2026-07-27 进一步明确：整个不暴露
 > 公网的内网可作为可信边界，CIDR/iptables 是可选加固，不是安装前置条件。Owner 同日追加
-> 要求：离线包必须包含 Python Worker，交付完整 `basic-clean@1` 能力。
+> 要求：离线包必须包含 Python Worker，交付完整 `basic-clean@1` 能力。Owner 于 2026-07-28 接受
+> ADR 0017 的预构建镜像边界：当前离线包同时包含 pinned backend-only EvalScope，目标机不执行源码
+> build，但 install/start/eval/report/upgrade/rollback 必须全程断网。
 
 ## 1. 结论
 
@@ -27,7 +29,8 @@ GitHub Actions ────▶│ ECS API + RDS + OSS/CDN     │
                                    ▼
                     ┌─────────────────────────────┐
                     │ 单台 Ubuntu                  │
-                    │ Web + API + Worker + PG/MinIO│
+                    │ Web + API + Worker + EvalScope│
+                    │ + PostgreSQL + MinIO          │
                     └─────────────────────────────┘
 ```
 
@@ -48,14 +51,14 @@ npm registry 或其他公网服务。
 
 ### 2.1 本方案覆盖
 
-- 联网环境构建 API/Web/Worker 应用镜像；
+- 联网环境构建 API/Web/Worker/EvalScope 应用镜像；
 - 拉取并锁定 PostgreSQL、MinIO、MinIO Client 等第三方镜像；
 - 将所有镜像和部署资产组装为一个带校验值的离线包；
 - 在干净 Ubuntu 上一键导入、初始化、迁移、启动和冒烟；
 - 首次安装自动生成密码并写入服务器 `.env`；
 - 后续离线升级、失败回滚、备份和恢复；
 - 宿主机重启后的自动恢复和持久化；
-- 只开放 Web 入口，API/Worker/PG/MinIO 走容器内部网络。
+- 只开放 Web 入口，API/EvalScope/Worker/PG/MinIO 走容器内部网络。
 
 ### 2.2 本方案不覆盖
 
@@ -64,7 +67,7 @@ npm registry 或其他公网服务。
 - 不把 Docker Engine 混进每个业务版本包；
 - 不把生产密码、证书或用户数据打进镜像/离线包；
 - 不把 MinIO 重新定义为所有生产环境的默认对象存储；
-- 不把 Worker 扩展到多副本、GPU、任意 Python 执行或其他发布环境。
+- 不把 Worker 或 EvalScope 扩展到多副本、GPU、任意 Python 执行或其他发布环境。
 - 首版不实现应用层鉴权，只允许受控内网访问，不能暴露到公网。
 
 ## 3. 与当前代码重构的边界
@@ -90,6 +93,7 @@ npm registry 或其他公网服务。
 | API 监听 | 容器内 `8000` | 不发布宿主机端口 |
 | API 启动 | `node apps/api/dist/index.js` | 由 production Dockerfile 固定 |
 | Worker | Python 3.11 + Data-Juicer 1.5.3 | CPU-only、单并发、Compose 私网 `worker:50051` |
+| EvalScope | pinned Python backend-only image | CPU-only、单实例、Compose 私网 `evalscope:9000`，不发布原生 SPA |
 | 数据库 | PostgreSQL 17 + Prisma | `prisma migrate deploy`，升级按第 9 节停写 |
 | 对象存储 | `DATABENCH_OBJECT_STORE=s3` + MinIO | on-prem production 例外由 ADR 0012 接受 |
 | 健康检查 | API 内部 `/health` 仅 liveness | 外部 `/api/health`；readiness 使用固定 smoke ref 的 resolve + audit |
@@ -97,6 +101,7 @@ npm registry 或其他公网服务。
 | OpenAPI/业务路径 | API 内部 `/v2/*` + meta paths | 外部统一加 `/api`；Caddy 去前缀后代理，文档 `servers.url=/api` |
 | API 临时空间 | `/var/lib/databench/.databench-v2-temp` | `/var/lib/databench` 必须挂载数据盘 |
 | Worker 临时空间 | `/tmp/databench-worker-v1` | 4 GiB tmpfs，无持久化数据 |
+| EvalScope 持久化 | `/var/lib/evalscope/{outputs,inputs}` | 宿主机 `/srv/databench/evalscope`，备份与 drain 覆盖 |
 
 如果后续重构改变以上任一项，只调整应用镜像和契约适配层，不改变离线包总体流程。v2
 V16/V17 的状态不阻断本离线通道生成 production 包；这是 owner 对该发布目标的明确例外，
@@ -112,18 +117,19 @@ V16/V17 的状态不阻断本离线通道生成 production 包；这是 owner �
 │ Web Gateway                   │
 │ Caddy + apps/web 静态产物     │
 │ /api/*（去前缀）→ api:8000    │
+│ /evalscope-api/* → API gateway│
 │ /datasets 等产品路径 → SPA    │
 └──────────────┬────────────────┘
                ▼
 ┌───────────────────────────────┐
 │ Databench API                 │
 │ Node 22 + Hono + v2 codec     │
-└──────┬────────────┬────────────┘
-       │            │
-       ▼            ▼
- Python Worker   PostgreSQL 17 ─── MinIO
- basic-clean@1   catalog/control   immutable Parquet data
- private gRPC
+└──────┬────────────┬────────────┬────────────┘
+       │            │            │
+       ▼            ▼            ▼
+ Python Worker   EvalScope     PostgreSQL 17 ─── MinIO
+ basic-clean@1   eval/report   catalog/control   immutable data
+ private gRPC    private HTTP
 ```
 
 计划中的 Compose 服务：
@@ -133,13 +139,14 @@ V16/V17 的状态不阻断本离线通道生成 production 包；这是 owner �
 | `web` | Caddy + Vite 静态文件 + API 反代 | `80` | 无状态 |
 | `api` | Databench API | 不映射 | `/srv/databench/workspace:/var/lib/databench` |
 | `worker` | CPU-only Python/Data-Juicer Worker | 不映射（gRPC 50051 仅容器网络） | 无；4 GiB tmpfs |
+| `evalscope` | backend-only evaluation provider | 不映射（HTTP 9000 仅容器网络） | `/srv/databench/evalscope` |
 | `postgres` | catalog/control plane | 不映射 | `/srv/databench/postgres` |
 | `minio` | immutable Parquet data plane | 不映射 | `/srv/databench/minio` |
 | `minio-init` | 首次/幂等创建 bucket | 不映射 | 无，一次性任务 |
 | `migrate` | `prisma migrate deploy` | 不映射 | 无，一次性任务 |
 
 MinIO Console 默认不对业务网段开放；需要管理时使用 SSH 隧道或临时仅绑定
-`127.0.0.1`。Postgres、MinIO、API 和 Worker 不能发布到 `0.0.0.0`。API 通过 Compose DNS
+`127.0.0.1`。Postgres、MinIO、API、EvalScope 和 Worker 不能发布到 `0.0.0.0`。API 通过 Compose DNS
 目标 `worker:50051` 连接 Worker，不固定 Docker 子网，避免从历史五镜像版本升级时发生网段冲突。
 
 ## 5. 离线发布物规范
@@ -164,6 +171,8 @@ databench-offline-<app-version>-linux-amd64/
 ├── compose.yml
 ├── release.env               # 只含版本和镜像名，不含 secret
 ├── env.example
+├── mcp.env.example
+├── evalscope.env.example
 ├── Caddyfile
 ├── install.sh
 ├── upgrade.sh
@@ -175,6 +184,8 @@ databench-offline-<app-version>-linux-amd64/
 ├── README.zh-CN.md           # 快速安装和运维入口
 ├── DEPLOYMENT-GUIDE.zh-CN.md # 完整部署与运维手册
 ├── TROUBLESHOOTING.zh-CN.md  # 故障排查手册
+├── MCP-AGENT-GUIDE.zh-CN.md
+├── EVALSCOPE-OPERATOR-GUIDE.zh-CN.md
 ├── docs/
 │   ├── offline-single-host-plan.zh-CN.md
 │   └── ADR-0012.md
@@ -221,6 +232,7 @@ databench-offline-<app-version>-linux-amd64/
 - `databench-api:<app-version>`；
 - `databench-web:<app-version>`，最终层包含 Caddy 和静态 Web；
 - `databench-worker:<app-version>`，固定 Python lock 与 CPU-only Torch；
+- `databench-evalscope:<app-version>`，固定 upstream commit、Python lock、patch 和本地 Plotly asset；
 - 精确版本/摘要的 PostgreSQL 镜像；
 - 精确版本/摘要的 MinIO 镜像；
 - 精确版本/摘要的 MinIO Client 镜像。
@@ -239,7 +251,7 @@ deploy/offline/build-bundle.sh <version>
 首版固定在当前联网 Apple Silicon Mac 上使用 Docker Buildx 构建 `linux/amd64`。脚本必须：
 
 - 拒绝 dirty worktree，并记录精确 git SHA；
-- 对 API/Web/Worker build 和所有第三方镜像 pull 显式指定 `linux/amd64`；
+- 对 API/Web/Worker/EvalScope build 和所有第三方镜像 pull 显式指定 `linux/amd64`；
 - 构建后逐个 inspect 镜像架构与 digest，拒绝 arm64、`latest` 或未锁定引用；
 - 输出外层 SHA-256 与包内 `SHA256SUMS`；
 - 在 Docker 的 amd64 仿真下完成镜像启动 smoke，正式首发再在真实 Ubuntu 22.04 amd64 验收。
@@ -249,7 +261,7 @@ GitHub Actions workflow 作为后续可选入口，不是首版依赖：
 ```text
 workflow_dispatch(version, platform)
   → checkout 精确 commit
-  → build API/Web/Worker
+  → build API/Web/Worker/EvalScope
   → pull 第三方镜像
   → 记录 digest/platform
   → docker save
@@ -260,10 +272,10 @@ workflow_dispatch(version, platform)
 无论从本地还是 CI 调用，都必须使用同一个脚本和产物格式；workflow 只生成包，不连接内网
 服务器，也不触发已有 ECS/OSS 发布。
 
-历史五镜像包的 `images.tar` 约 412 MB、外层 gzip 约 409 MiB。当前 CPU-only Worker 单镜像
-约 499 MiB；2026-07-27 六镜像 amd64 测试构建的 `images.tar` 为 925,142,528 bytes（约
-882 MiB），gzip 后为 919,433,062 bytes（约 877 MiB），完整发布物按 **约 0.9 GiB** 传输。
-正式发布仍以完整构建结果为准。该数字不含业务数据、备份、Docker 已有缓存和解包期间的临时空间。
+历史五镜像包的 `images.tar` 约 412 MB、外层 gzip 约 409 MiB；2026-07-27 六镜像记录为
+EvalScope 纳入前的 Worker 包。当前发布物为七镜像，新增 pinned EvalScope 后不沿用旧体积估算，
+正式交付以当次 `RELEASE.txt`、`ls -lh` 和 SHA-256 为准。该数字不含业务数据、EvalScope 在线结果、
+备份、Docker 已有缓存和解包期间的临时空间。
 
 ## 6. 一键安装行为
 
@@ -281,8 +293,8 @@ sudo ./install.sh
 `install.sh` 按以下顺序执行：
 
 1. 确认传输阶段已校验外层 SHA-256，并校验包内 `SHA256SUMS`；
-2. 检查 Ubuntu 版本、CPU 架构、Docker Engine、Compose、8 logical CPUs、30 GiB 可见 RAM、
-   40 GiB 系统盘可用空间和端口；
+2. 检查 Ubuntu 版本、CPU 架构、Docker Engine、Compose、12 logical CPUs、40 GiB 可见 RAM、
+   60 GiB 系统盘、12 GiB Databench 数据文件系统可用空间和端口；
 3. 拒绝含 `build:`、`latest`、缺失本地镜像或允许 pull 的离线配置；
 4. `docker load` 导入全部镜像；
 5. 创建 `/opt/databench-offline`、`/etc/databench`、`/srv/databench`；
@@ -291,7 +303,7 @@ sudo ./install.sh
 8. 幂等创建 MinIO bucket；
 9. 执行数据库 migration；
 10. 启动 Worker 并等待标准 gRPC health 为 `SERVING`；
-11. 启动 API 和 Web；
+11. 按 API → EvalScope → Web 启动其余应用服务；
 12. 执行 readiness、固定数据集、MCP 和 `basic-clean@1` 完整生命周期冒烟；
 13. 输出访问地址、配置位置、数据位置和运维命令。
 
@@ -372,8 +384,9 @@ PORT=8000
 ## 8. Docker Engine 前置条件
 
 目标 Ubuntu 已安装 Docker，首版不提供 bootstrap 包。安装器只做只读 preflight，最低要求
-Docker Engine 24、Docker Compose plugin 2.20、8 logical CPUs、30 GiB 可见 RAM 和 40 GiB
-系统盘可用空间；版本或容量不足时明确失败，不在离线安装过程中擅自升级宿主机 Docker。
+Docker Engine 24、Docker Compose plugin 2.20、12 logical CPUs、40 GiB 可见 RAM、60 GiB
+系统盘和 12 GiB Databench 数据文件系统可用空间；版本或容量不足时明确失败，不在离线安装过程中
+擅自升级宿主机 Docker。
 
 ## 9. 升级、回滚和版本保留
 
@@ -388,12 +401,12 @@ sudo ./upgrade.sh
 1. 校验新包与目标平台；
 2. 检查目标版本高于/不同于当前版本；
 3. 校验 `release-manifest.json` 的来源版本范围、Postgres major、migration 与 rollback 属性；
-4. 依次停止 Web/API/Worker，停止 API 接受写入；
-5. 生成同一 generation 的 Postgres + MinIO 一致性备份并验证；
+4. 停止 Web、drain EvalScope，active task 归零后停止 API/EvalScope/Worker；
+5. 生成同一 generation 的 PostgreSQL + MinIO + EvalScope volume 一致性备份并验证；
 6. 导入新镜像；
 7. 执行 migration；
 8. 原子切换当前 `release.env`；
-9. 先启动 Worker 并确认健康，再重建 API/Web；
+9. 按 Worker → API → EvalScope → Web 启动并确认健康；
 10. `doctor`、数据集、MCP 与 `basic-clean@1` lifecycle smoke 通过后记录成功版本；
 11. 保留当前版、上一版及一个已知稳定版的镜像和发布清单。
 
@@ -405,7 +418,8 @@ MinIO 数据对象是持久化数据，不随应用镜像升级；任何脚本�
 - 备份、镜像导入或 migration 前置检查失败：重新启动 previous release；
 - migration 失败：按 manifest 的 `rollback_mode` 切回旧镜像，必要时恢复升级前 PG 备份；
 - 新版启动、doctor 或 smoke 失败：停止新版、切回 previous release，按 manifest 决定是否
-  恢复备份，然后重新启动旧版应用服务；历史五镜像 release 不启动 Worker；
+  恢复备份，然后重新启动旧版应用服务；历史五镜像 release 不启动 Worker，历史五/六镜像 release
+  不启动 EvalScope；
 - 自动恢复也失败：保留备份和两个 release，不删除数据，输出精确人工恢复命令并以非零退出；
 - 只有新版全部验收通过后才取消 trap、更新 current/success marker。
 
@@ -435,13 +449,16 @@ layout 变化，发布者必须改用对应模式或单独迁移方案，不能�
 
 - 一致性 PostgreSQL dump；
 - MinIO bucket mirror/snapshot；
-- 加密的 `/etc/databench/databench.env` secret escrow，或经演练的凭据重建材料；
+- EvalScope output/input persistent volume archive；
+- 加密的 `/etc/databench/databench.env`、`mcp.env`、`evalscope.env` secret escrow，或经演练的
+  凭据重建材料；
 - 版本、镜像清单和对应离线发布包的文件名/SHA-256；
 - 独立校验值；
 - 同一 backup generation ID、备份时间、应用版本、数据库 migration 版本。
 
-为了保证两个数据面的恢复点一致，首版 `backup` 在可接受的维护窗口内暂停 API 写入；完成
-PostgreSQL dump 和 MinIO mirror 并验证后再恢复服务。备份必须复制到 NAS、另一台内网机器
+为了保证三个持久化数据面的恢复点一致，首版 `backup` 在可接受的维护窗口内停止 Web admission、
+drain EvalScope 并暂停 API 写入；完成 PostgreSQL dump、MinIO mirror 和 EvalScope volume 并验证后
+再恢复服务。备份必须复制到 NAS、另一台内网机器
 或离线介质，不能只留在本机。
 
 完整离线发布包按版本在外部备份位置只保存一份，普通数据备份只引用其文件名和 SHA-256，
@@ -457,7 +474,7 @@ PostgreSQL dump 和 MinIO mirror 并验证后再恢复服务。备份必须复�
 
 - 宿主机只在不暴露公网的可信内网开放 `80`；
 - SSH 只对管理网段开放；
-- API、Worker、PG、MinIO 不发布宿主机端口；
+- API、EvalScope、Worker、PG、MinIO 不发布宿主机端口；
 - MinIO Console 默认关闭外部访问；
 - 可以通过服务器 IP 或内部 DNS 访问；HTTPS/内部 CA 留作后续独立增强；
 - 如启用可选 CIDR/iptables，加固规则和 Docker published ports 一起纳入端口扫描验收；
@@ -479,12 +496,13 @@ readiness，至少验证：
 - Prisma 能连接 Postgres 且 migration 已应用；
 - MinIO endpoint 可达且 bucket 存在；
 - Worker 标准 gRPC health 为 `SERVING`，且 `basic-clean@1` 可完成并命中 deterministic reuse；
+- EvalScope `/health` ready、path-free `/config`、local Plotly digest 和 operator drain/resume 可用；
 - API 能完成一次只读业务查询。
 
 `databenchctl doctor` 使用保留 ref `system-offline-smoke-v2`：先执行 `ref show` 验证
 Postgres，再执行完整 `dataset audit` 验证 catalog、manifest、artifact digest、Parquet schema、
-record digests 与 dataset version。两步都成功才输出
-`{"database":{"ok":true},"store":{"ok":true}}` 并退出 0；首次安装必须先运行幂等 lifecycle
+record digests 与 dataset version。EvalScope release 还检查 provider health；全部成功才输出
+`{"database":{"ok":true},"evalscope":{"ok":true},"store":{"ok":true}}` 并退出 0；首次安装必须先运行幂等 lifecycle
 smoke 创建该 ref，再执行 doctor。
 
 最小 `databenchctl status/logs/doctor/restart` 与 `databench` CLI 在 P2 一键安装前交付；API
@@ -507,14 +525,14 @@ smoke 使用仓库提交的固定最小 fixture、固定 canonical IDs/source/or
 
 仅作为首轮压测起点，不作为硬编码要求：
 
-- 试运行：8 vCPU、32 GiB RAM；
+- 试运行：12 vCPU、48 GiB RAM；
 - 大数据/多人并行：16 vCPU、64–128 GiB RAM；
 - 系统盘：至少 100 GiB；
 - 数据盘：预计保留 Parquet 数据的 1.5–2 倍，备份空间另算；
 - 数据盘优先 NVMe，并监控磁盘剩余量、inode、I/O latency。
 
-当前 ingest/transform 存在内存和临时文件峰值，最终规格必须用重构后的真实最大数据集做
-压测；安装器只能检查最低值，不能替代容量规划。
+当前 ingest/transform/evaluation/performance 存在内存、并发和临时文件峰值，最终规格必须用真实最大
+数据集与模型 workload 做压测；安装器只能检查最低值，不能替代容量规划。
 
 ## 13. 已实现的仓库结构
 
@@ -525,6 +543,8 @@ deploy/offline/
 ├── README.zh-CN.md
 ├── compose.yml
 ├── env.example
+├── mcp.env.example
+├── evalscope.env.example
 ├── Caddyfile
 ├── Dockerfile.web
 ├── build-bundle.sh
@@ -535,7 +555,7 @@ deploy/offline/
 ├── restore.sh
 ├── smoke.sh
 ├── databenchctl
-├── env.example
+├── EVALSCOPE-OPERATOR-GUIDE.zh-CN.md
 ├── minio/app-policy.json
 ├── smoke/{v2.jsonl,worker.mjs}
 ├── test/offline-scripts.test.sh
@@ -570,7 +590,7 @@ deploy/ecs/**
 ### P1：构建与发布物（已完成，真实 release 包待最终干净提交构建）
 
 - 精简 production API/Web 镜像；API 镜像包含 Prisma migration runtime 与构建后的 CLI；
-- CPU-only Worker 镜像、标准 gRPC healthcheck 和六镜像 release lock；
+- CPU-only Worker、pinned backend-only EvalScope 镜像、双 healthcheck 和七镜像 release lock；
 - 第三方镜像版本锁；
 - `images.lock`、`RELEASE.txt`、release manifest 与双层 checksum；
 - Apple Silicon Mac → `linux/amd64` 本地构建、架构 inspect 与仿真 smoke；
@@ -583,7 +603,7 @@ deploy/ecs/**
 - PG/MinIO 初始化；
 - 固定数据目录 ownership、MinIO app policy 与必填 v2 secret；
 - migration；
-- Worker → API → Web 有序启动及 `basic-clean@1` lifecycle smoke；
+- Worker → API → EvalScope → Web 有序启动、`basic-clean@1` 与 EvalScope gateway/operator smoke；
 - 最小 `databenchctl status/logs/doctor/restart`，doctor 解析 JSON 健康字段；
 - liveness/readiness/full smoke；
 - 幂等重跑和错误诊断。
@@ -592,7 +612,7 @@ deploy/ecs/**
 
 - 扩展 `databenchctl backup/restore/upgrade/rollback`；
 - 升级/回滚；
-- 停写后一致性备份/恢复；
+- drain 后 PostgreSQL/MinIO/EvalScope volume 一致性备份/恢复；
 - 日志轮转和容量预警；
 - release bundle/secret escrow 的异机灾难恢复。
 
@@ -619,14 +639,14 @@ deploy/ecs/**
 - [x] 首次安装脚本自动生成 secret，目标权限 `0600`，终端/日志不输出 secret；
 - [x] 重跑安装和执行升级复用现有 secret；
 - [x] Compose 不含 `build:`、`latest`，所有服务 `pull_policy: never`；
-- [x] Compose 只发布 Web 80，API/Worker/PG/MinIO 不发布宿主机端口；
+- [x] Compose 只发布 Web 80，API/EvalScope/Worker/PG/MinIO 不发布宿主机端口；
 - [x] 本地 amd64 集成环境的 migration、readiness、ingest→query/audit→export 和
   `basic-clean@1`→lineage/reuse 全通过；
 - [x] 本地 amd64 集成环境中 Caddy 将外部 `/api/*` 去前缀后代理到 API；`/datasets/<ref>`
   固定返回 SPA HTML，`/api/v2/datasets/<ref>` 固定返回 API JSON，不依赖 `Accept` 分流或禁止缓存；
 - [ ] 宿主机重启后服务与数据恢复；
 - [ ] 上一版本应用可回滚；
-- [ ] 同一 generation 的 PG + MinIO + release bundle 可在干净环境恢复；
+- [ ] 同一 generation 的 PostgreSQL + MinIO + EvalScope volume + release bundle 可在干净环境恢复；
 - [ ] 使用真实目标规模数据完成内存、CPU、磁盘和超时压测。
 
 ## 16. 已接受决策与安装时输入

@@ -6,6 +6,9 @@
 - 产品切换 R0-R5 已完成；最终全仓、真实依赖、浏览器与离线发布 gate 均已通过。
 - v2 V0-V15 已完成；V16 recovery/security 与 V17 capacity/release gate 未完成。
 - Web 与 CLI 不带版本；REST、Postgres、对象 key 与内部类型继续保留 v2 稳定命名。
+- Owner 于 2026-07-29 接受当前产品壳修订：全局一级导航为“数据集 / 测评”，数据集工作区
+  在桌面使用“数据集列表 / 导入 / 转换”左侧栏、测评工作区使用“看板 / 报告 / 性能 / 任务 /
+  基准测试”左侧栏；两者在窄屏退化为同组横向导航。全站强调色改为铜橙，警告语义使用独立黄色。
 - v1 产品面、runtime、领域代码和已确认的本地持久化数据已删除。
 - R4 maintenance tool、forward migration 和 runbook保留，供其他安装环境显式退役。
 - 公共云 API 托管平台 D3 未决定；不得擅自进入 S22。ADR 0012 离线单机发布是独立通道。
@@ -13,10 +16,11 @@
   `docs/mcp/STATUS.md`。通用 runtime 仍
   disabled-by-default；ADR 0012 离线包会在 operator 显式提供稳定、agent 可达的 `/api` public
   base 后，以 `auth_mode=none` 在可信内网启用。该 scoped gate 不授权公网部署，也不改变 V16/V17。
-- ADR 0012 的 2026-07-27 窄修订要求完整离线包包含 CPU-only Python Worker；六镜像构建、
-  Worker → API → Web 生命周期、`basic-clean@1` smoke 和旧五镜像回滚兼容已在
-  `feat/offline-worker` 实现并通过本地 `linux/amd64` Compose gate，仍待真实 Ubuntu 22.04
-  amd64 断网验收。
+- ADR 0012 的 2026-07-27 窄修订要求完整离线包包含 CPU-only Python Worker；2026-07-28 的
+  EvalScope E9 修订进一步加入 pinned backend-only EvalScope，当前为七镜像、
+  Worker → API → EvalScope → Web 生命周期、drain、三数据面备份和旧五/六镜像回滚兼容。目标机只
+  `docker load` 预构建镜像；真实 Ubuntu 22.04 amd64 断网 install/eval/report/upgrade/rollback 仍待验收。
+  Owner 于 2026-07-29 批准先合并，并由 owner 后续手工补该目标机证据；GE9 不因此标记为 passed。
 - ADR 0017 EvalScope 原生 UI 集成已接受并开始实施。E0 已固定 upstream commit、183 个 Web source
   文件、60 个能力、default-deny API 路由、五类 Benchmark fixture 和 Plotly 证据；E1 已完成
   `evalscope-general-qa@1.0.0` 三种 reference profile、确定性 JSONL、eligibility/fidelity 与真实 exact
@@ -33,10 +37,13 @@
   legacy/structured/AgentTrace 展示、富内容渲染与 configured source refresh；E7 已完成 Dashboard、
   Evaluation Compare、Performance catalogue/detail/runs/requests/compare、五类 Benchmark 目录/详情和安全
   Viewer。60 个 capability 已全部 green，其中 58 个 target capability 已实现、2 个为 Databench shell
-  exclusion，锁定 React 基线的完整 UI 功能迁移 gate 已关闭。Owner 于 2026-07-28 明确手机版竖屏不属于
+  exclusion，锁定 React 基线的完整 UI 功能迁移 gate 已关闭。E8 已完成 deterministic result archive、
+  attempt-scoped conditional upload、BLAKE3 content-addressed immutable object、PG locator、exact cleanup、
+  online/archive 独立状态与 retention。Owner 于 2026-07-28 明确手机版竖屏不属于
   当前 Web gate，并明确
   offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
-  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E7 已关闭，下一步是 E8 结果归档。
+  `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E8 已关闭，E9 本地实现完成、
+  真实 Ubuntu 22.04 amd64 目标机 gate pending。
 - ADR 0018 ms-swift 集成已于 2026-07-28 接受，采用完整原生 Gradio iframe 的最小桥接方案：首期只建设
   Studio Session、exact Dataset export、GPU/Session workspace 与 LoRA Model Artifact import，不先建设
   Training Run/Attempt 或接管原生 callback。实施从 EvalScope E7 complete commit `25931d6` 建立独立
@@ -169,7 +176,7 @@ R4 manifest 在本机 ignored maintenance 目录中。标准操作仍以
 - `git diff --check`
 - 真实 Postgres + MinIO Store/Workspace/API/CLI suites
 - 浏览器 v2-only 全主流程、直接刷新、404、console、窄屏
-- 离线静态检查和实际 lifecycle smoke；当前 Worker 修订还需重新执行六镜像 gate
+- 离线静态检查和实际 lifecycle smoke；当前 EvalScope 七镜像修订仍需真实 Ubuntu 目标机断网 gate
 
 R5 已完成并只更新了产品切换状态，没有改变 V16/V17。
 

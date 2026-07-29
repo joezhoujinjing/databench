@@ -13,9 +13,13 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3'
 import { V2Dataset } from '@databench/engine'
-import { createArtifactHasher } from '@databench/hashing'
+import { createArtifactHasher, hashArtifactBytes } from '@databench/hashing'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import {
+  EVALUATION_ARCHIVE_MEDIA_TYPE_V1,
+  EvaluationArtifactStoreV1,
+  evaluationArchiveObjectKeyV1,
+  evaluationArchiveStagingKeyV1,
   FileBackedV2Store,
   MODEL_ARTIFACT_ARCHIVE_MEDIA_TYPE,
   ModelArtifactStoreV1,
@@ -93,6 +97,55 @@ describe.runIf(runMinio)('V2 Store against real MinIO', () => {
     const destination = new CollectingWritable()
     await expect(adapter.download({ key, destination })).resolves.toBe('downloaded')
     expect(destination.bytes()).toEqual(firstPayload)
+  })
+
+  test('uploads and finalizes an evaluation archive through a real conditional presigned PUT', async () => {
+    const client = createS3Client()
+    clients.push(client)
+    const adapter = createAdapter(client)
+    const archiveStore = new EvaluationArtifactStoreV1({
+      maxBytes: 1024 * 1024,
+      objectStore: adapter,
+      signedUrlTtlMs: 15 * 60 * 1000,
+      tempStore: new V2TempStore({
+        safetyMarginBytes: 0,
+        tempRoot: join(temporaryParent, 'evaluation-archive'),
+      }),
+    })
+    const ref = { attempt: 1, runId: randomUUID() }
+    const firstBytes = Buffer.from('real MinIO evaluation archive')
+    const target = await archiveStore.staging.prepareUpload(ref)
+    expect(target.mediaType).toBe(EVALUATION_ARCHIVE_MEDIA_TYPE_V1)
+    const firstPut = await fetch(target.writeUrl, {
+      body: firstBytes,
+      headers: target.requiredHeaders,
+      method: 'PUT',
+    })
+    expect(firstPut.ok).toBe(true)
+
+    const collision = await fetch(target.writeUrl, {
+      body: Buffer.from('must not replace the first archive'),
+      headers: target.requiredHeaders,
+      method: 'PUT',
+    })
+    expect(collision.status).toBe(412)
+
+    const digest = hashArtifactBytes(firstBytes)
+    await expect(
+      archiveStore.finalize({
+        ...ref,
+        expectedDigest: digest,
+        expectedSize: firstBytes.byteLength,
+      }),
+    ).resolves.toEqual({
+      digest,
+      key: evaluationArchiveObjectKeyV1(digest),
+      size: firstBytes.byteLength,
+    })
+    const finalHead = await adapter.head(evaluationArchiveObjectKeyV1(digest))
+    expect(finalHead).toEqual({ size: firstBytes.byteLength })
+    await archiveStore.staging.deleteExact(ref)
+    await expect(adapter.headStaging(evaluationArchiveStagingKeyV1(ref))).resolves.toBeNull()
   })
 
   test('two independent V2 Stores concurrently commit and read the same immutable dataset', async () => {

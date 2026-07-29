@@ -46,6 +46,28 @@ describe('Evaluation UI foundation static boundaries', () => {
     expect(router.match(/lazyRouteComponent\(/gu)).toHaveLength(12)
   })
 
+  test('keeps all five evaluation entries in the responsive workspace sidebar', async () => {
+    const [layout, root] = await Promise.all([
+      readFile(path.join(evaluationsRoot, 'layouts/EvaluationLayout.tsx'), 'utf8'),
+      readFile(path.join(webSourceRoot, 'routes/__root.tsx'), 'utf8'),
+    ])
+
+    for (const route of [
+      '/evaluations',
+      '/evaluations/reports',
+      '/evaluations/performance',
+      '/evaluations/tasks',
+      '/evaluations/benchmarks',
+    ]) {
+      expect(layout).toContain(`to: '${route}'`)
+    }
+    expect(layout).toContain('grid-cols-[13.5rem_minmax(0,1fr)]')
+    expect(layout).toContain('max-lg:flex-row')
+    expect(layout).toContain('evaluation-sidebar-active')
+    expect(layout).toContain('includeSearch: false')
+    expect(root).toContain("pathname.startsWith('/evaluations')")
+  })
+
   test('uses the path-free configured-source refresh control on reports', async () => {
     const refresh = await readFile(
       path.join(evaluationsRoot, 'components/ConfiguredSourceRefresh.tsx'),

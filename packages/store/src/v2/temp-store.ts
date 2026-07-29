@@ -10,7 +10,7 @@ export const DEFAULT_V2_TEMP_STALE_AGE_MS = 24 * 60 * 60 * 1000
 export const DEFAULT_V2_TEMP_SAFETY_MARGIN_BYTES = 512 * 1024 * 1024
 
 const TEMP_NAME_PATTERN =
-  /^databench-v2-(?:(?:prepare|read)-[0-9a-f-]{36}\.parquet|(?:draft-(?:raw|output)|worker-(?:input|output))-[0-9a-f-]{36}\.jsonl|model-artifact-[0-9a-f-]{36}\.tar\.zst)$/
+  /^databench-v2-(?:(?:prepare|read)-[0-9a-f-]{36}\.parquet|(?:draft-(?:raw|output)|worker-(?:input|output))-[0-9a-f-]{36}\.jsonl|(?:evaluation-archive|model-artifact)-[0-9a-f-]{36}\.tar\.zst)$/
 const OWNER_CANDIDATE_PATTERN = /^\.databench-v2-owner-[0-9a-f-]{36}\.tmp$/
 
 export type V2TempFileKind =
@@ -21,6 +21,7 @@ export type V2TempFileKind =
   | 'worker-input'
   | 'worker-output'
   | 'model-artifact'
+  | 'evaluation-archive'
 
 export interface V2TempStoreConfig {
   readonly tempRoot: string
@@ -148,7 +149,7 @@ export class V2TempStore {
     const extension =
       kind === 'prepare' || kind === 'read'
         ? 'parquet'
-        : kind === 'model-artifact'
+        : kind === 'model-artifact' || kind === 'evaluation-archive'
           ? 'tar.zst'
           : 'jsonl'
     const path = join(this.#root, `databench-v2-${kind}-${randomUUID()}.${extension}`)

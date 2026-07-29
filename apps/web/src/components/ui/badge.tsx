@@ -2,7 +2,7 @@ import type { HTMLAttributes } from 'react'
 import { cn } from '@/lib/utils.js'
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  readonly tone?: 'default' | 'blue' | 'green' | 'orange' | 'violet' | 'muted'
+  readonly tone?: 'default' | 'accent' | 'blue' | 'green' | 'orange' | 'muted'
 }
 
 export function Badge({ className, tone = 'default', ...props }: BadgeProps) {
@@ -14,7 +14,7 @@ export function Badge({ className, tone = 'default', ...props }: BadgeProps) {
         tone === 'blue' && 'border-sky-500/45 bg-sky-500/10 text-sky-300',
         tone === 'green' && 'border-success/45 bg-success/10 text-success',
         tone === 'orange' && 'border-warning/45 bg-warning/10 text-warning',
-        tone === 'violet' && 'border-primary/55 bg-accent text-accent-foreground',
+        tone === 'accent' && 'border-primary/55 bg-accent text-accent-foreground',
         tone === 'muted' && 'border-border bg-transparent text-dim-foreground',
         className,
       )}
@@ -26,7 +26,7 @@ export function Badge({ className, tone = 'default', ...props }: BadgeProps) {
 export function KindBadge({ kind }: { kind: string }) {
   const normalized = kind.toLowerCase()
   const tone = normalized.includes('preference')
-    ? 'violet'
+    ? 'accent'
     : normalized.includes('active') || normalized.includes('ready')
       ? 'green'
       : normalized.includes('rl')

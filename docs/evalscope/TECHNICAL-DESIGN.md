@@ -437,7 +437,8 @@ build 和 runtime。
 
 - 在 Databench TanStack route tree 增加全部 `/evaluations/*` routes；
 - 主导航增加 `Evaluations`；
-- Evaluation 页面内使用 Databench 风格的二级导航；
+- Evaluation 页面在桌面使用 Databench 风格的“看板 / 报告 / 性能 / 任务 / 基准测试”左侧栏，
+  窄屏退化为同五项可横向滚动的二级导航；
 - route params 和 search params 使用 typed validation，替换 `useParams/useSearchParams/useNavigate`；
 - 原 `/eval`、`/perf` legacy redirect 不作为 Databench public route；
 - Dataset detail 增加“创建评测”，跳转到
@@ -1205,6 +1206,9 @@ objects/v2/evaluation-result-v1/<digest[0:2]>/<digest>.tar.zst
 在线报告继续读 EvalScope volume。operator 清理 online output 后，provider report 可能 unavailable，但
 archive 仍存在；UI 必须区分“在线可查看”和“仅归档可用”。首期不从 archive 重建在线报告。
 
+归档、在线 volume、PG locator 的保留和一致性备份责任见
+[RETENTION.md](RETENTION.md)。
+
 ## 12. Gateway、安全与运行资源
 
 ### 12.1 Gateway
@@ -1361,7 +1365,17 @@ EVALSCOPE_INPUT_MAX_BYTES
 EVALSCOPE_OUTPUT_MAX_BYTES
 EVALSCOPE_MAX_CONCURRENT_EVALS
 EVALSCOPE_MAX_CONCURRENT_PERF
+EVALSCOPE_TASK_RUNTIME_SECONDS
+EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX
+EVALSCOPE_EVALUATION_BATCH_SIZE_MAX
+EVALSCOPE_EVALUATION_REPEATS_MAX
+EVALSCOPE_PERFORMANCE_PARALLEL_MAX
+EVALSCOPE_PERFORMANCE_REQUESTS_MAX
+EVALSCOPE_PERFORMANCE_RATE_MAX
+EVALSCOPE_MODEL_TOKENS_MAX
+EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX
 EVALSCOPE_TASK_CONFIG_HMAC_KEY
+EVALSCOPE_OPERATOR_TOKEN
 EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST
 EVALSCOPE_MODEL_REDIRECT_MAX_HOPS=0
 EVALSCOPE_PLOTLY_ASSET_PATH
@@ -1383,8 +1397,8 @@ DATABENCH_EVALSCOPE_ENABLED=false
 DATABENCH_EVALSCOPE_INTERNAL_BASE_URL
 DATABENCH_EVALSCOPE_PROXY_PREFIX=/evalscope-api
 DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST
-DATABENCH_EVALUATION_UPLOAD_TTL_SECONDS=900
-DATABENCH_EVALUATION_MAX_ARTIFACT_BYTES=1073741824
+DATABENCH_EVALUATION_ARCHIVE_SIGNED_URL_TTL_MS=900000
+DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES=1073741824
 ```
 
 功能 disabled-by-default。EvalScope health、fixed commit、proxy prefix、persistent roots 或 resource limits
@@ -1392,7 +1406,7 @@ DATABENCH_EVALUATION_MAX_ARTIFACT_BYTES=1073741824
 
 ### 13.3 离线包
 
-完成集成后离线包新增固定 EvalScope image 和 volume，必须更新：
+E9 本地实现将固定 EvalScope image 和 volume 纳入离线包，并更新：
 
 - bundle manifest、镜像计数和 digest；
 - Compose、Caddy、health/dependency order；
@@ -1403,7 +1417,8 @@ DATABENCH_EVALUATION_MAX_ARTIFACT_BYTES=1073741824
 - 断网 lifecycle smoke；
 - 旧包回滚对 evaluation table/objects 的兼容。
 
-对应 gate 完成前，现有离线发布声明不变。
+仓库 static/Compose/bundle contract 完成不等于 GE9：只有真实 Ubuntu 22.04 amd64 目标机断网跑完
+install → eval/report/archive → restart → upgrade → rollback 后，才能关闭离线目标 gate。
 
 Owner 于 2026-07-28 明确：offline source build 不是本集成的交付边界。fresh image build 可以联网获取
 `uv.lock`/digest 固定的 Python inputs 和 base OS packages；离线 bundle 必须携带已构建且记录 digest 的
