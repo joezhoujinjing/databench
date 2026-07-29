@@ -1,6 +1,6 @@
 # E9 security, capacity and offline release evidence
 
-- Date: 2026-07-28
+- Date: 2026-07-29
 - Upstream: `modelscope/evalscope@b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60`
 - State: local implementation complete; real disconnected target gate pending
 
@@ -15,12 +15,11 @@ EvalScope, PostgreSQL, MinIO and MinIO Client. EvalScope is reachable only as `e
 network. It has no host port or GPU device, runs with a read-only root filesystem, and is bounded to 4 CPUs, 12 GiB
 memory and 1024 PIDs. Persistent state is limited to the reviewed `outputs` and `inputs` bind mounts.
 
-The locally built image was:
+The locally built release-candidate EvalScope image is:
 
 ```text
-tag: databench-evalscope:e9-local
-image: sha256:6df1903cf79bfd5b55badd891d452c97f38fd7a0d20b592127e57e8f0d659e95
-size: 751503210 bytes
+tag: databench-evalscope:0.7.0
+image: sha256:de904221050d23b73191df25c5efa2c66fe5255cefeeaeba48af7f8df50a0df0
 platform: linux/amd64
 ```
 
@@ -29,6 +28,15 @@ the upstream Web directory was absent, `/` returned 404, no CUDA/NVIDIA package 
 config contained no filesystem path, the operator status endpoint was ready, and the local Plotly asset matched the
 pinned SHA-256. This is a runtime-disconnection check of a prebuilt image; ADR 0017 explicitly does not require a
 fresh source build with `docker build --network=none`.
+
+On 2026-07-29 the repository actually produced the ignored local release candidate
+`output/offline/databench-offline-0.7.0-linux-amd64.tar.gz`, built from commit
+`fe63b26e1c681c27b9bb54f67d8bac34a5a149c4`. It contains all seven locked images and is 1.6 GiB.
+The release manifest records `linux/amd64`, the exact image lock digest
+`40d1d7bf7c9a948025b4a217456745c8f5f7b48d9de37f7e65ccef6a7e0028c7`, and the outer archive SHA-256 is
+`a75c4816122671d5d02af79bb1463adfaa02fdb7842ac201a68ffa396328df5a`. The bundle builder's seven-image
+executable smoke and inner checksums passed. The outer SHA-256, gzip stream and complete tar listing were then
+verified locally.
 
 ## Admission, drain and capacity
 
@@ -100,6 +108,7 @@ The following completed locally and must not be confused with the remaining targ
 - exact route/parity checks, including the all-green capability manifest;
 - runtime drain, timeout and capacity failure injection;
 - offline script/static/Compose validation and seven-image contract;
+- actual 1.6 GiB `0.7.0` seven-image offline bundle creation, inner/outer checksums and archive readability;
 - pinned `linux/amd64` backend-only image inspection and network-none runtime;
 - repository lint, build, typecheck, tests, OpenAPI, v2 status, peer, parity and offline checks completed during E9
   implementation.

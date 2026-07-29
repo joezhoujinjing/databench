@@ -39,8 +39,8 @@ e9_gate: pending_target
 - **GE8:** deterministic archive、secret/oversize/wrong digest/expired URL、replay/PG failure/exact cleanup、
   真实 MinIO/Postgres、OSS contract 和 Web 状态 gate 已通过
 - **E9 本地实现:** runtime drain/capacity/timeout、七镜像离线 bundle、EvalScope stable config、
-  backup/restore、upgrade/rollback、operator 与 upstream upgrade runbook 已完成；本地测试和
-  `linux/amd64` backend-only 镜像验证已通过
+  backup/restore、upgrade/rollback、operator 与 upstream upgrade runbook 已完成；`0.7.0`
+  `linux/amd64` 七镜像 bundle 已实际生成并通过 inner/outer checksum、gzip/tar 可读性与 image smoke
 - **GE9 待验收:** 仍需在真实 Ubuntu 22.04 amd64 目标机断网执行 install → Dataset evaluation →
   native report/compare/performance → callback/archive → restart/reconcile → upgrade → rollback；本机
   Docker 验证不替代该目标 gate
