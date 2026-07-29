@@ -13,6 +13,7 @@ import type { SwiftStudioSessionV2 } from '../api/sessions.js'
 import { ArtifactImportPanel, ModelArtifactLibrary } from '../components/ArtifactImportPanel.js'
 import { StudioSessionControl } from '../components/StudioSessionControl.js'
 import {
+  installSwiftStudioPresentation,
   isSwiftStudioFrameBooted,
   resolveSwiftStudioFrameLocation,
   shouldRenderSwiftStudioFrame,
@@ -223,6 +224,9 @@ function StudioFrame({
         gradioConfig: frameWindow?.gradio_config,
         origin: window.location.origin,
       })
+      if (booted && frameDocument !== null) {
+        installSwiftStudioPresentation(frameDocument)
+      }
       setFrameState(booted ? 'ready' : 'error')
     } catch {
       setFrameState('error')

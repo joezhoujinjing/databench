@@ -21,6 +21,14 @@ export interface SwiftStudioFrameSnapshot {
   readonly origin: string
 }
 
+const SWIFT_STUDIO_PRESENTATION_STYLE_ID = 'databench-swift-studio-presentation'
+const SWIFT_STUDIO_PRESENTATION_CSS = `
+#component-1,
+#component-2 {
+  display: none !important;
+}
+`
+
 export function resolveSwiftStudioFrameLocation(
   backendBase: string,
   browserOrigin: string,
@@ -70,6 +78,19 @@ export function isSwiftStudioFrameBooted(snapshot: SwiftStudioFrameSnapshot): bo
     return (
       new URL(parsed.data.root, snapshot.origin).pathname.replace(/\/+$/u, '') === '/swift-studio'
     )
+  } catch {
+    return false
+  }
+}
+
+export function installSwiftStudioPresentation(documentRef: Document): boolean {
+  try {
+    if (documentRef.getElementById(SWIFT_STUDIO_PRESENTATION_STYLE_ID) !== null) return true
+    const style = documentRef.createElement('style')
+    style.id = SWIFT_STUDIO_PRESENTATION_STYLE_ID
+    style.textContent = SWIFT_STUDIO_PRESENTATION_CSS
+    documentRef.head.append(style)
+    return true
   } catch {
     return false
   }

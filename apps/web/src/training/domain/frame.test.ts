@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  installSwiftStudioPresentation,
   isSwiftStudioFrameBooted,
   resolveSwiftStudioFrameLocation,
   shouldRenderSwiftStudioFrame,
@@ -56,6 +57,28 @@ describe('Swift Studio iframe boundary', () => {
         runtimeReady: true,
       }),
     ).toBe(false)
+  })
+
+  test('hides only the locked upstream title components and installs the style once', () => {
+    const elements = new Map<string, { id: string; textContent: string | null }>()
+    const appended: Array<{ id: string; textContent: string | null }> = []
+    const documentRef = {
+      createElement: () => ({ id: '', textContent: null }),
+      getElementById: (id: string) => elements.get(id) ?? null,
+      head: {
+        append: (element: { id: string; textContent: string | null }) => {
+          appended.push(element)
+          elements.set(element.id, element)
+        },
+      },
+    } as unknown as Document
+
+    expect(installSwiftStudioPresentation(documentRef)).toBe(true)
+    expect(installSwiftStudioPresentation(documentRef)).toBe(true)
+    expect(appended).toHaveLength(1)
+    expect(appended[0]?.textContent).toContain('#component-1')
+    expect(appended[0]?.textContent).toContain('#component-2')
+    expect(appended[0]?.textContent).not.toContain('#component-3')
   })
 
   test('contains fullscreen rejection and reports failure', async () => {

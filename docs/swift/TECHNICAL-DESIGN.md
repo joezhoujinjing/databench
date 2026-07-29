@@ -801,6 +801,11 @@ base 可使用；跨域 API base 明确显示不支持，因为 iframe navigatio
 `frame-ancestors 'self'`/`SAMEORIGIN` 与本设计不允许跨 origin 嵌入。`load` 事件本身不代表 ready；Web
 必须同时验证锁定 Gradio config、root path、`gradio-app` DOM 与 custom element 已注册。
 
+Databench Web 可在验证上述锁定 runtime 后，通过同源 iframe 注入 presentation-only CSS，隐藏上游固定
+branding 组件 `component-1`（标题）与 `component-2`（文档说明）。该覆盖不得改写 Gradio config、组件
+编号或事件依赖，不得隐藏 `component-3` Session banner、七个业务面或任何 callback；上游版本升级仍须
+先通过 compatibility manifest，再更新这些固定选择器。
+
 ### 13.3 兼容性 manifest
 
 S0/S1 固定：
