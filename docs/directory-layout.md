@@ -101,7 +101,7 @@ apps/web/
 │  ├─ main.tsx
 │  ├─ router.tsx                无版本产品 route tree
 │  ├─ routes/
-│  │  ├─ __root.tsx             单一产品 shell；四项主导航
+│  │  ├─ __root.tsx             两项一级导航与数据集/测评工作区布局
 │  │  ├─ index.tsx
 │  │  └─ not-found.tsx
 │  ├─ api/
@@ -111,7 +111,7 @@ apps/web/
 │  │  ├─ capabilities.tsx · meta.ts · version.ts
 │  │  └─ errors.ts · types.ts
 │  ├─ components/
-│  │  ├─ shell/                 导航、连接设置、语言切换
+│  │  ├─ shell/                 数据集侧栏、路由映射、连接设置与语言切换
 │  │  ├─ common/                状态、JSON、复制
 │  │  └─ ui/                    基础 UI primitives
 │  ├─ evaluations/              ADR 0017；E4-E7 complete Evaluation UI
@@ -120,7 +120,7 @@ apps/web/
 │  │  ├─ domain/                route key、report、metric、task state 与 AgentTrace 纯逻辑
 │  │  ├─ features/              Tasks、Reports、Predictions、sample 与 rich-content UI
 │  │  ├─ i18n/                  lazy evaluations namespace 与完整中英文词典
-│  │  ├─ layouts/               Evaluation shell 和二级导航
+│  │  ├─ layouts/               Evaluation shell、桌面侧栏与窄屏横向导航
 │  │  ├─ routes/                typed lazy routes、search contracts 与 route states
 │  │  ├─ styles/                .evaluation-surface scoped --es-* tokens
 │  │  ├─ UPSTREAM.md

@@ -205,10 +205,10 @@ export function ReasoningBlock({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   return (
-    <div className="mb-3 overflow-hidden rounded-[5px] border border-violet-400/25 bg-violet-400/5">
+    <div className="mb-3 overflow-hidden rounded-[5px] border border-primary/25 bg-primary/5">
       <button
         aria-expanded={open}
-        className="flex min-h-10 w-full items-center gap-2 px-3 text-left font-medium text-violet-200 text-xs"
+        className="flex min-h-10 w-full items-center gap-2 px-3 text-left font-medium text-accent-foreground text-xs"
         onClick={() => setOpen((value) => !value)}
         type="button"
       >
@@ -225,7 +225,7 @@ export function ReasoningBlock({
         </span>
       </button>
       {open ? (
-        <div className="border-violet-400/20 border-t px-3 py-3">
+        <div className="border-primary/20 border-t px-3 py-3">
           <RichContent content={text} />
         </div>
       ) : null}

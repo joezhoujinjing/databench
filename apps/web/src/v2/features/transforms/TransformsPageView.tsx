@@ -252,7 +252,7 @@ function TransformJobRow({
           <code className="text-dim-foreground text-xs" title={job.id}>
             {ellipsizeMiddle(job.id, 9)}
           </code>
-          {job.cache_hit ? <Badge tone="violet">{t('v2.transforms.jobs.cacheHit')}</Badge> : null}
+          {job.cache_hit ? <Badge tone="accent">{t('v2.transforms.jobs.cacheHit')}</Badge> : null}
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-muted-foreground text-xs">
           <span>{t('v2.transforms.jobs.attempt', { count: job.attempt })}</span>
@@ -285,7 +285,7 @@ function TransformJobRow({
               </Badge>
             </>
           )}
-          {unchanged ? <Badge tone="violet">{t('v2.transforms.jobs.unchanged')}</Badge> : null}
+          {unchanged ? <Badge tone="accent">{t('v2.transforms.jobs.unchanged')}</Badge> : null}
         </div>
         {job.result_ref?.status === 'conflict' ? (
           <p className="text-danger text-sm">

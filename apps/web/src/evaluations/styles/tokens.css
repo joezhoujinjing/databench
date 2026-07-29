@@ -10,7 +10,7 @@
   --es-success: var(--success);
   --es-warning: var(--warning);
   --es-danger: var(--danger);
-  --es-compare-0: #818cf8;
+  --es-compare-0: #f08a3c;
   --es-compare-1: #34d399;
   --es-compare-2: #fbbf24;
   --es-chat-user: color-mix(in srgb, var(--primary) 15%, var(--surface));
@@ -18,12 +18,24 @@
   color: var(--es-text);
 }
 
-.evaluation-surface .evaluation-subnav-active {
-  color: var(--es-text);
+.evaluation-surface .evaluation-sidebar-active {
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
+  color: var(--accent-foreground);
 }
 
-.evaluation-surface .evaluation-subnav-active::after {
-  transform: scaleX(1);
+.evaluation-surface .evaluation-sidebar-active::before {
+  transform: scaleY(1);
+}
+
+@media (width < 64rem) {
+  .evaluation-surface .evaluation-sidebar-active {
+    background: transparent;
+    color: var(--es-text);
+  }
+
+  .evaluation-surface .evaluation-sidebar-active::before {
+    transform: scaleX(1);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

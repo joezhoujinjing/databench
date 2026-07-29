@@ -1,7 +1,9 @@
 {
   "nav": {
     "primary": "主导航",
+    "datasetNavigation": "数据集导航",
     "datasets": "数据集",
+    "datasetList": "数据集列表",
     "ingest": "导入",
     "transforms": "转换",
     "evaluations": "测评"

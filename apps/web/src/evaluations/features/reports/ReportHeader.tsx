@@ -51,7 +51,7 @@ export function ReportHeader({
             ))}
           </span>
         }
-        eyebrow={<Badge tone="violet">EvalScope report</Badge>}
+        eyebrow={<Badge tone="accent">EvalScope report</Badge>}
         title={model}
       />
       {stats ? (

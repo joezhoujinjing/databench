@@ -3,6 +3,8 @@ import { Database } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConnectionPanel } from '@/components/shell/ConnectionPanel.js'
+import { DatasetSidebar } from '@/components/shell/DatasetSidebar.js'
+import { datasetNavigationSection } from '@/components/shell/dataset-navigation.js'
 import { LanguageSwitcher } from '@/components/shell/LanguageSwitcher.js'
 import { cn } from '@/lib/utils.js'
 import { PostTrainingV2Gate } from '@/v2/components/PostTrainingV2Gate.js'
@@ -10,6 +12,8 @@ import { PostTrainingV2Gate } from '@/v2/components/PostTrainingV2Gate.js'
 export function RootLayout() {
   const { t } = useTranslation()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const datasetSection = datasetNavigationSection(pathname)
+  const isEvaluationWorkspace = pathname.startsWith('/evaluations')
   const mainRef = useRef<HTMLElement>(null)
   useEffect(() => {
     void pathname
@@ -32,10 +36,12 @@ export function RootLayout() {
             aria-label={t('nav.primary')}
             className="flex h-20 min-w-0 items-center justify-center gap-5 overflow-x-auto max-md:order-3 max-md:col-span-3 max-md:h-12 max-md:justify-start"
           >
-            <NavLink to="/datasets">{t('nav.datasets')}</NavLink>
-            <NavLink to="/ingest">{t('nav.ingest')}</NavLink>
-            <NavLink to="/transforms">{t('nav.transforms')}</NavLink>
-            <NavLink to="/evaluations">{t('nav.evaluations')}</NavLink>
+            <PrimaryNavLink active={datasetSection !== null} to="/datasets">
+              {t('nav.datasets')}
+            </PrimaryNavLink>
+            <PrimaryNavLink active={pathname.startsWith('/evaluations')} to="/evaluations">
+              {t('nav.evaluations')}
+            </PrimaryNavLink>
           </nav>
           <div className="flex shrink-0 items-center gap-3 border-border border-l pl-5 max-md:pl-3">
             <LanguageSwitcher />
@@ -44,34 +50,50 @@ export function RootLayout() {
         </div>
       </header>
       <main
-        className="mx-auto max-w-[120rem] px-8 py-10 outline-none max-md:px-4 max-md:py-7"
+        className={cn(
+          'mx-auto max-w-[120rem] outline-none',
+          datasetSection !== null &&
+            'grid min-h-[calc(100dvh-5rem)] grid-cols-[13.5rem_minmax(0,1fr)] gap-x-8 px-8 max-lg:block max-md:px-4',
+          datasetSection === null && !isEvaluationWorkspace && 'px-8 py-10 max-md:px-4 max-md:py-7',
+        )}
         ref={mainRef}
         tabIndex={-1}
       >
-        <PostTrainingV2Gate>
-          <Outlet />
-        </PostTrainingV2Gate>
+        {datasetSection === null ? (
+          <PostTrainingV2Gate>
+            <Outlet />
+          </PostTrainingV2Gate>
+        ) : (
+          <>
+            <DatasetSidebar activeSection={datasetSection} />
+            <div className="min-w-0 py-10 max-md:py-7">
+              <PostTrainingV2Gate>
+                <Outlet />
+              </PostTrainingV2Gate>
+            </div>
+          </>
+        )}
       </main>
     </div>
   )
 }
 
-function NavLink({
+function PrimaryNavLink({
+  active,
   children,
   to,
 }: {
+  active: boolean
   children: string
-  to: '/datasets' | '/evaluations' | '/ingest' | '/transforms'
+  to: '/datasets' | '/evaluations'
 }) {
   return (
     <Link
-      activeOptions={{ exact: to === '/ingest' || to === '/transforms' }}
-      activeProps={{
-        className: 'text-foreground after:scale-x-100',
-      }}
+      aria-current={active ? 'page' : undefined}
       className={cn(
         'relative flex h-full shrink-0 items-center px-4 font-medium text-base text-muted-foreground transition-colors hover:text-foreground',
         'after:absolute after:right-2 after:bottom-0 after:left-2 after:h-0.5 after:origin-center after:scale-x-0 after:bg-primary after:transition-transform',
+        active && 'text-foreground after:scale-x-100',
       )}
       to={to}
     >

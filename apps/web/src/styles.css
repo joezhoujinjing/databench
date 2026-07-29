@@ -10,15 +10,15 @@
   --surface-hover: #11141a;
   --border: #20242b;
   --border-strong: #343846;
-  --primary: #7a5cff;
-  --primary-hover: #8a72ff;
-  --primary-foreground: #fbfaff;
-  --accent: #17132f;
-  --accent-foreground: #c9beff;
+  --primary: #f08a3c;
+  --primary-hover: #ff9f5a;
+  --primary-foreground: #160b05;
+  --accent: #29150b;
+  --accent-foreground: #ffc49a;
   --muted-foreground: #aaa69f;
   --dim-foreground: #77736b;
   --success: #36d07d;
-  --warning: #f0a84f;
+  --warning: #f4c95d;
   --danger: #ff6b6b;
   --code: #050607;
   --code-gutter: #0a0b0e;
@@ -59,7 +59,7 @@ html::before {
   content: "";
   background:
     linear-gradient(to bottom, rgba(255, 255, 255, 0.035), transparent 6.5rem),
-    radial-gradient(120rem 72rem at 50% -30rem, rgba(124, 92, 255, 0.16), transparent 52%),
+    radial-gradient(120rem 72rem at 50% -30rem, rgba(240, 138, 60, 0.14), transparent 52%),
     linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
     linear-gradient(0deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
   background-size:
@@ -135,7 +135,7 @@ textarea {
 
 ::selection {
   background: color-mix(in srgb, var(--primary) 45%, transparent);
-  color: var(--primary-foreground);
+  color: var(--foreground);
 }
 
 .input {

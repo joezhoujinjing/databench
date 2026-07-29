@@ -437,7 +437,8 @@ build 和 runtime。
 
 - 在 Databench TanStack route tree 增加全部 `/evaluations/*` routes；
 - 主导航增加 `Evaluations`；
-- Evaluation 页面内使用 Databench 风格的二级导航；
+- Evaluation 页面在桌面使用 Databench 风格的“看板 / 报告 / 性能 / 任务 / 基准测试”左侧栏，
+  窄屏退化为同五项可横向滚动的二级导航；
 - route params 和 search params 使用 typed validation，替换 `useParams/useSearchParams/useNavigate`；
 - 原 `/eval`、`/perf` legacy redirect 不作为 Databench public route；
 - Dataset detail 增加“创建评测”，跳转到
