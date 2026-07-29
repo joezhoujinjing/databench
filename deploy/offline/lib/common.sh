@@ -243,6 +243,33 @@ stop_application_services() {
   fi
 }
 
+force_stop_application_services() {
+  local release_dir="$1"
+  local services=(web api)
+  if release_has_evalscope "$release_dir"; then
+    services+=(evalscope)
+  fi
+  if release_has_worker "$release_dir"; then
+    services+=(worker)
+  fi
+  compose_for_release "$release_dir" stop "${services[@]}"
+}
+
+remove_application_services_absent_from_release() {
+  local source_release="$1"
+  local target_release="$2"
+  local services=()
+  if release_has_evalscope "$source_release" && ! release_has_evalscope "$target_release"; then
+    services+=(evalscope)
+  fi
+  if release_has_worker "$source_release" && ! release_has_worker "$target_release"; then
+    services+=(worker)
+  fi
+  if [ "${#services[@]}" -gt 0 ]; then
+    compose_for_release "$source_release" rm --stop --force "${services[@]}"
+  fi
+}
+
 compose_for_release() {
   local release_dir="$1"
   shift
@@ -316,6 +343,10 @@ ensure_install_directories() {
   install -d -m 0750 "$DATABENCH_DATA_ROOT" "${DATABENCH_DATA_ROOT}/backups"
   install -d -m 0700 "${DATABENCH_DATA_ROOT}/postgres" "${DATABENCH_DATA_ROOT}/minio"
   install -d -o 1000 -g 1000 -m 0750 "${DATABENCH_DATA_ROOT}/workspace"
+  ensure_evalscope_data_directories
+}
+
+ensure_evalscope_data_directories() {
   install -d -o 10001 -g 10001 -m 0750 \
     "${DATABENCH_DATA_ROOT}/evalscope" \
     "${DATABENCH_DATA_ROOT}/evalscope/outputs" \

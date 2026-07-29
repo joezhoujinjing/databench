@@ -42,6 +42,9 @@ POSTGRES_VERSION_NUM="$(docker exec databench-offline-postgres sh -ec \
 TARGET_RELEASE="${DATABENCH_RELEASES_DIR}/${TARGET_VERSION}"
 copy_release_assets "$SCRIPT_DIR" "$TARGET_RELEASE"
 record_bundle_identity "$SCRIPT_DIR" "$TARGET_RELEASE"
+if release_has_evalscope "$TARGET_RELEASE"; then
+  ensure_evalscope_data_directories
+fi
 
 BACKUP_GENERATION=''
 UPGRADE_SUCCEEDED=false
@@ -55,7 +58,14 @@ recover_previous_release() {
   fi
 
   warn "upgrade failed; restoring release $PREVIOUS_VERSION"
-  stop_application_services "$TARGET_RELEASE" >/dev/null 2>&1 || true
+  if ! stop_application_services "$TARGET_RELEASE" >/dev/null 2>&1; then
+    warn "target services did not stop gracefully; forcing them to stop"
+    force_stop_application_services "$TARGET_RELEASE" >/dev/null 2>&1 ||
+      warn "one or more target services could not be stopped"
+  fi
+  remove_application_services_absent_from_release \
+    "$TARGET_RELEASE" "$PREVIOUS_RELEASE" >/dev/null 2>&1 ||
+    warn "one or more target-only service containers could not be removed"
 
   if [ "$TARGET_ROLLBACK_MODE" = 'restore-backup' ] && [ -n "$BACKUP_GENERATION" ]; then
     if ! DATABENCH_OPERATION_LOCK_HELD=1 "${PREVIOUS_RELEASE}/restore.sh" \

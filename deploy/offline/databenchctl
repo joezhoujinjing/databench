@@ -2,7 +2,12 @@
 
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+[ -n "$SCRIPT_PATH" ] || {
+  printf '[databench] ERROR: could not resolve databenchctl path\n' >&2
+  exit 1
+}
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
 # shellcheck source=lib/health.sh

@@ -237,6 +237,24 @@ grep -Fq 'ensure_evalscope_config' "${SCRIPT_DIR}/install.sh" ||
   fail 'offline install does not create the stable EvalScope configuration'
 grep -Fq 'ensure_evalscope_config' "${SCRIPT_DIR}/upgrade.sh" ||
   fail 'offline upgrade does not preserve or create the EvalScope configuration'
+grep -Fq 'ensure_evalscope_data_directories' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade does not initialize EvalScope persistent directories'
+upgrade_evalscope_dirs_line="$(
+  grep -nF 'ensure_evalscope_data_directories' "${SCRIPT_DIR}/upgrade.sh" | cut -d: -f1
+)"
+upgrade_stop_line="$(
+  grep -nF 'stop_application_services "$PREVIOUS_RELEASE"' "${SCRIPT_DIR}/upgrade.sh" | cut -d: -f1
+)"
+[ "$upgrade_evalscope_dirs_line" -lt "$upgrade_stop_line" ] ||
+  fail 'offline upgrade must initialize EvalScope directories before stopping the previous release'
+grep -Fq 'force_stop_application_services "$TARGET_RELEASE"' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade recovery cannot force-stop an unhealthy target release'
+grep -Fq 'remove_application_services_absent_from_release' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade recovery does not remove target-only service containers'
+grep -Fq 'remove_application_services_absent_from_release' "${SCRIPT_DIR}/rollback.sh" ||
+  fail 'offline rollback does not remove service containers absent from the selected release'
+grep -Fq 'readlink -f "${BASH_SOURCE[0]}"' "${SCRIPT_DIR}/databenchctl" ||
+  fail 'databenchctl does not resolve the installed symlink before loading release libraries'
 grep -Fq 'evalscope-volume.tar' "${SCRIPT_DIR}/backup.sh" ||
   fail 'offline backup does not capture the EvalScope persistent volume'
 grep -Fq 'evalscope-volume.tar' "${SCRIPT_DIR}/restore.sh" ||
@@ -404,6 +422,41 @@ printf '%s\n' \
   ! release_has_worker "${TEMP_DIR}/legacy-release"
   ! release_has_evalscope "${TEMP_DIR}/legacy-release"
 )
+
+DIRECTORY_CALLS="${TEMP_DIR}/directory-calls"
+(
+  source "${SCRIPT_DIR}/lib/common.sh"
+  DATABENCH_DATA_ROOT="${TEMP_DIR}/data"
+  install() {
+    printf '%s\n' "$*" >> "$DIRECTORY_CALLS"
+  }
+  ensure_evalscope_data_directories
+)
+grep -Fq -- \
+  "-d -o 10001 -g 10001 -m 0750 ${TEMP_DIR}/data/evalscope ${TEMP_DIR}/data/evalscope/outputs ${TEMP_DIR}/data/evalscope/inputs" \
+  "$DIRECTORY_CALLS" ||
+  fail 'EvalScope directory initializer does not enforce the runtime uid/gid and mode'
+
+RECOVERY_CALLS="${TEMP_DIR}/recovery-calls"
+(
+  source "${SCRIPT_DIR}/lib/common.sh"
+  compose_for_release() {
+    printf '%s\n' "$*" >> "$RECOVERY_CALLS"
+  }
+  force_stop_application_services "${TEMP_DIR}/release"
+  remove_application_services_absent_from_release \
+    "${TEMP_DIR}/release" "${TEMP_DIR}/legacy-release"
+  remove_application_services_absent_from_release \
+    "${TEMP_DIR}/legacy-release" "${TEMP_DIR}/release"
+)
+grep -Fxq \
+  "${TEMP_DIR}/release stop web api evalscope worker" "$RECOVERY_CALLS" ||
+  fail 'forced target recovery does not stop every declared application service'
+grep -Fxq \
+  "${TEMP_DIR}/release rm --stop --force evalscope worker" "$RECOVERY_CALLS" ||
+  fail 'legacy recovery does not remove target-only EvalScope and Worker containers'
+[ "$(wc -l < "$RECOVERY_CALLS" | tr -d ' ')" -eq 2 ] ||
+  fail 'service cleanup attempted to remove services that exist in the target release'
 
 (
   source "${SCRIPT_DIR}/lib/common.sh"
