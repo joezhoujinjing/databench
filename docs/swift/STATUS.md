@@ -25,7 +25,7 @@ integration_mode: native-full-gradio
   operator-attested Deployment 注册、健康检查、禁用与 Evaluation lineage；`/evaluations/tasks` 已增加与
   Dataset source 独立的 opaque Databench Deployment model source
 - **运行状态:** runtime 默认 disabled；S3 production image
-  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72` 已通过本机 CPU
+  `sha256:57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d` 已通过本机 CPU
   compatibility、Provider、动态 Gradio prefill、真实 ms-swift output import 与 non-GPU gate；owner 再次确认
   GPU 全部后置，GPU 状态保持 deferred，capability 不标 GPU green
 - **首期模式:** 完整原生 Gradio；Databench 桥接 Session、exact Dataset、workspace、immutable Artifact、
@@ -114,6 +114,8 @@ owner 已明确允许以 code-complete/gpu-deferred 状态进入 S2。
 - [x] Provider BLAKE3/bytes/LF count/content-type 验证、partial/fsync/rename、restart recovery 与 exact cleanup
 - [x] `/training` Dataset selector、exact version 锁定、fidelity review、Session poll/close 与 ready iframe gate
 - [x] 原生 Train、RLHF、GRPO 页面通过动态 load callback 实时预填 Dataset/output/logging
+- [x] runtime capability `integration.session-context` 已按实际 CPU smoke 标记为
+  installed/validated/green；GPU runtime capability 保持 planned/unvalidated
 - [x] 完整七业务面与全部原生字段/callback 保留；Gradio graph 为 1,006 components / 118 dependencies
 - [x] S2 Linux/amd64 image、patch、capability manifest 与 Provider dependency 全部 digest/hash locked
 - [x] Provider 45 tests、Catalog 43 tests、真实 Postgres/MinIO Workspace 174 tests、真实 API 114
@@ -144,7 +146,7 @@ GS2 non-GPU gate，不将任何 GPU 训练或推理能力标记为 green。
 - [x] Session close 后 Artifact 仍可列出、查看和下载；真实 MinIO lifecycle 已覆盖
   Dataset → Session → staging PUT → immutable publish → cleanup retry → download → Session close
 - [x] 最终 Linux/amd64 image
-  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72` 内 synthetic
+  `sha256:57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d` 内 synthetic
   full-checkpoint importer smoke；归档只包含 adapter config/model/additional config
 - [x] Provider 77 tests、Schema 225 tests、Catalog 46 tests、API 111 tests（4 skipped）、Web 153 tests、
   真实 Postgres/MinIO Workspace 175 tests（10 skipped），以及 build/test/lint/typecheck/OpenAPI/status/peer/
@@ -198,6 +200,10 @@ S4 non-GPU contract green / GPU deferred
 
 它证明 Dataset/Session/Artifact/Deployment/Evaluation 的数据契约、服务端解析与 lineage 已接通；不证明
 GPU 训练、GPU 推理部署、真实模型输出质量或完整 Training Run 控制面。
+
+2026-07-29 对当前提交完成 S0–S4 非 GPU 完成性复验，并修复 GPU evidence fixture 与 S2 capability
+manifest 两处真源漂移；最终 Linux/amd64 image、真实依赖与所有专项 gate 记录见
+[`evidence/S0-S4-NON-GPU-COMPLETION-AUDIT.md`](evidence/S0-S4-NON-GPU-COMPLETION-AUDIT.md)。
 
 ## GS0 Gate 记录
 

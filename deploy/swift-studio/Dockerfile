@@ -59,7 +59,7 @@ RUN python -m pip install --no-cache-dir --no-deps /opt/ms-swift \
 
 ARG SWIFT_PROVIDER_RUNTIME_INPUT_SHA256=92dab8d12d555dd7437962675a65185cae134632cc1a19a5519fb53c5fa447b9
 ARG SWIFT_PROVIDER_RUNTIME_LOCK_SHA256=28dfff03d39b58d94b0969b83eee89c9229d1519c84c8f2ea83c05d6a304d748
-ARG SWIFT_CAPABILITY_MANIFEST_SHA256=01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4
+ARG SWIFT_CAPABILITY_MANIFEST_SHA256=441a53584131400a9ba462bd262e931ca584f411d721b009ee122f165da3828f
 
 COPY workers/swift-studio/runtime-requirements.in /opt/build/provider-runtime-requirements.in
 COPY workers/swift-studio/runtime-requirements.lock /opt/build/provider-runtime-requirements.lock

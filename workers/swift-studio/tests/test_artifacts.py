@@ -372,7 +372,7 @@ def test_imports_the_locked_ms_swift_peft_lora_output_layout(tmp_path: Path):
     )
     assert layout['source'] == {
         'image_id': (
-            'sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72'
+            'sha256:57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d'
         ),
         'ms_swift': '4.4.2',
         'peft': '0.19.1',

@@ -7,9 +7,9 @@ export const SWIFT_STUDIO_PROXY_PREFIX = '/swift-studio' as const
 export const SWIFT_STUDIO_RUNTIME_PREFIX = '/swift-studio-runtime' as const
 export const MS_SWIFT_UPSTREAM_COMMIT = 'f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d' as const
 export const SWIFT_STUDIO_IMAGE_DIGEST =
-  'd3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72' as const
+  '57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d' as const
 export const SWIFT_STUDIO_CAPABILITY_DIGEST =
-  '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4' as const
+  '441a53584131400a9ba462bd262e931ca584f411d721b009ee122f165da3828f' as const
 export const SWIFT_STUDIO_GRADIO_VERSION = '5.50.0' as const
 export const SWIFT_STUDIO_ROUTES_SHA256 =
   '2d9b3b0ca69acf53980140fbc9eeec6280239c018be3c431181309de53225635' as const

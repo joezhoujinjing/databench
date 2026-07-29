@@ -56,7 +56,7 @@
   GPU 状态继续 deferred，runtime 保持 disabled-by-default。S3 已完成 output discovery、真实
   ms-swift/PEFT LoRA 布局与 safetensors 验证、deterministic tar.zst、signed staging、conditional immutable
   finalize、Artifact REST/Web/download，以及 Session close 后 retained Artifact；最终镜像为
-  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72`。S4 non-GPU 已增加
+  `sha256:57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d`。S4 non-GPU 已增加
   `model_deployments_v2`、operator-attested OpenAI-compatible registry、public/internal projection、
   operator/service credential 分离、`/models` health、disable admission、opaque Deployment selector、
   `evaluation-run-create-v2` 与 Dataset/Artifact/Deployment/Report lineage。浏览器只提交 Deployment ID，

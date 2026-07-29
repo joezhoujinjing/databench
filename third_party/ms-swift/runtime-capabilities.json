@@ -151,12 +151,15 @@
       "kind": "databench-integration",
       "upstream_sources": [],
       "surface_present": true,
-      "runtime_installed": false,
-      "runtime_validated": false,
+      "runtime_installed": true,
+      "runtime_validated": true,
       "requirements": ["S2 Session API", "Dataset/output/logging prefill"],
-      "evidence": ["patch:third_party/ms-swift/patches/0001-databench-session-prefill.patch"],
-      "status": "planned",
-      "known_limitations": ["Environment-backed prefill only until S2 Provider is implemented"]
+      "evidence": [
+        "patch:third_party/ms-swift/patches/0001-databench-session-prefill.patch",
+        "runtime:docs/swift/STATUS.md#s2-交付与-gate"
+      ],
+      "status": "green",
+      "known_limitations": ["The initial runtime supports one active Databench Session"]
     },
     {
       "id": "runtime.qwen-small-sft-lora",

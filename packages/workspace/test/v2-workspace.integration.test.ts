@@ -688,8 +688,8 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         provider,
         datasetExportBaseUrl: 'http://api:8000',
         upstreamCommit: 'f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d',
-        imageDigest: 'd3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72',
-        runtimeCapabilityDigest: '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4',
+        imageDigest: '57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d',
+        runtimeCapabilityDigest: '441a53584131400a9ba462bd262e931ca584f411d721b009ee122f165da3828f',
         preparationAbandonGraceMs: 0,
       },
     })
@@ -1801,8 +1801,8 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         provider,
         datasetExportBaseUrl: 'http://api:8000',
         upstreamCommit: 'f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d',
-        imageDigest: 'd3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72',
-        runtimeCapabilityDigest: '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4',
+        imageDigest: '57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d',
+        runtimeCapabilityDigest: '441a53584131400a9ba462bd262e931ca584f411d721b009ee122f165da3828f',
         modelArtifactStore: new ModelArtifactStoreV1({
           objectStore: objects,
           tempStore: new V2TempStore({

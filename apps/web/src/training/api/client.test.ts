@@ -14,7 +14,7 @@ const RUNTIME = {
   root_path: '/swift-studio',
   capability_manifest_id: 'swift-runtime-capabilities@1',
   capability_manifest_phase: 'S1-in-progress',
-  capability_manifest_sha256: '01d259849837484b8ed00c013ed53d45548a525384317b856edebee02d5956b4',
+  capability_manifest_sha256: '441a53584131400a9ba462bd262e931ca584f411d721b009ee122f165da3828f',
   surfaces: [
     'llm_train',
     'llm_rlhf',

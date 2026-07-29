@@ -37,8 +37,8 @@ immutable LoRA Model Artifact
 - 真实依赖：Docker `postgres:17-alpine` 与 MinIO；测试使用独立 schema/bucket，不修改 public catalog；
 - Swift upstream：`modelscope/ms-swift@v4.4.2`，commit
   `f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d`；
-- S3 inherited Swift image：
-  `sha256:d3e7a503c871b8c57ef4ccb1b420e0e5faeaadc32dd2ae3567bdd88070904f72`；S4 没有用该镜像执行
+- S3/S4 current Swift image：
+  `sha256:57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d`；S4 没有用该镜像执行
   NVIDIA 训练或 serving；
 - S4 Deployment profile：`provider=openai_compatible`、
   `registration_mode=operator_attested`、`auth_mode=none`。

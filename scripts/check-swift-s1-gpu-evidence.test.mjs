@@ -9,8 +9,8 @@ import test from 'node:test'
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, '..')
 const CHECKER = path.join(REPOSITORY_ROOT, 'scripts/check-swift-s1-gpu-evidence.mjs')
 const FIXTURE = path.join(REPOSITORY_ROOT, 'scripts/fixtures/swift-s1-gpu-sft.jsonl')
-const CAPABILITY_DIGEST = 'd5d103922d96cf861bb1f4eddd8d2d2681b2c0670946aff3bee1dad6d97037ca'
-const IMAGE_ID = 'sha256:09207c761906d5a2dae7e9a6dfd58fe963a6c3047cd9a2eb6f102632fc4d8108'
+const LOCK_PATH = path.join(REPOSITORY_ROOT, 'third_party/ms-swift/upstream.lock')
+const CAPABILITY_PATH = path.join(REPOSITORY_ROOT, 'third_party/ms-swift/runtime-capabilities.json')
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
@@ -26,6 +26,17 @@ function stableJson(value) {
   }
   return JSON.stringify(value)
 }
+
+const [lock, capabilityBytes] = await Promise.all([
+  readFile(LOCK_PATH, 'utf8').then(JSON.parse),
+  readFile(CAPABILITY_PATH),
+])
+const capabilities = JSON.parse(capabilityBytes.toString('utf8'))
+const CAPABILITY_DIGEST = sha256(capabilityBytes)
+const CAPABILITY_PHASE = capabilities.phase
+const IMAGE_ID = lock.runtime_target.image_id
+const GRADIO_COMPONENT_COUNT = capabilities.compatibility.component_count
+const GRADIO_DEPENDENCY_COUNT = capabilities.compatibility.dependency_count
 
 async function provenance() {
   const sources = {
@@ -103,7 +114,7 @@ async function validEvidence(directory) {
       ms_swift: '4.4.2',
       gpu_available: true,
       cuda_available: true,
-      capability_manifest_phase: 'S1-in-progress',
+      capability_manifest_phase: CAPABILITY_PHASE,
       capability_manifest_sha256: CAPABILITY_DIGEST,
     },
     gpu: {
@@ -150,8 +161,8 @@ async function validEvidence(directory) {
     gradio: {
       root_path: '/swift-studio',
       version: '5.50.0',
-      component_count: 1006,
-      dependency_count: 115,
+      component_count: GRADIO_COMPONENT_COUNT,
+      dependency_count: GRADIO_DEPENDENCY_COUNT,
       callbacks: {
         train_local: 8,
         train_kill_task: 12,
