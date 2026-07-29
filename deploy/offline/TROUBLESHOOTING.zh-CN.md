@@ -369,6 +369,39 @@ df -h /srv/databench/evalscope
 计划维护默认等待 active task 300 秒。超时会取消维护、恢复 Web/admission；让用户停止或完成任务后重试，
 不要用 `docker kill` 绕过 drain。
 
+### 7.6 Swift GPU、Studio 或训练页面不可用
+
+安装时报 NVIDIA/CUDA 错误时检查：
+
+```bash
+nvidia-smi -L
+docker info
+sudo docker run --rm --gpus device=0 \
+  "$(sed -n 's/^DATABENCH_SWIFT_IMAGE=//p' /opt/databench-offline/current/release.env)" \
+  python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
+```
+
+第一条失败说明宿主机驱动不可用；第二/三条失败通常说明 NVIDIA Container Toolkit 没有正确接入
+Docker。修复宿主环境后重跑安装，不需要重新构建离线包。
+
+容器已启动但 `/training` 不可用时检查：
+
+```bash
+sudo databenchctl logs swift-studio
+sudo docker exec databench-offline-swift-studio python -c \
+  'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:7861/runtime")))'
+```
+
+如果 Studio 正常但模型找不到，确认模型已完整复制到 `/srv/databench/swift-models`，并在原生
+Model 字段使用容器路径 `/opt/databench-models/<模型目录>`。离线包不下载或附带第三方模型权重。
+安装或升级提示 `no offline model is preloaded` 时，先按 Swift 指南复制至少一个完整模型目录并保存
+revision/校验值，再重跑原命令。
+
+升级、备份或重启提示 `active native train/infer/deploy task` 时，先进入 Gradio Runtime Tab 停止任务，
+等待进程退出，再重新执行维护命令。不要直接 `docker kill`，否则可能留下不完整 checkpoint。
+提示 `active Swift Studio Session ... must be closed` 时，还要在 Databench `/training` 外层关闭 Session；
+这通常发生在关闭 Swift、回滚到无 Swift 的版本或 image digest 变化时。
+
 ## 8. MCP 与 Agent 问题
 
 ### 8.1 安装/升级要求 `DATABENCH_MCP_PUBLIC_BASE_URL`
@@ -442,7 +475,8 @@ Caddy access log在离线配置中默认关闭，runtime error log 会删除 req
 
 ### 9.1 备份失败后服务状态
 
-备份脚本在普通调用失败时会尝试按 Worker → API → EvalScope → Web 重新启动应用服务。立即检查：
+备份脚本在普通调用失败时会尝试按 Worker → Swift（启用时）→ API → EvalScope → Web
+重新启动应用服务。立即检查：
 
 ```bash
 sudo databenchctl status
@@ -461,7 +495,7 @@ sudo chown root:root /etc/databench/backup.key
 sudo chmod 0600 /etc/databench/backup.key
 ```
 
-### 9.3 PostgreSQL dump、MinIO mirror 或 EvalScope volume 失败
+### 9.3 PostgreSQL dump、MinIO mirror、EvalScope 或 Swift volume 失败
 
 ```bash
 sudo databenchctl logs postgres
@@ -501,6 +535,19 @@ df -h /srv/databench
 
 不要连续重复恢复。先判断失败发生在 PG、MinIO、migration 还是 smoke，再选择恢复原目标或
 safety generation。
+
+### 10.4 Swift enabled 状态与备份不一致
+
+恢复提示 `current Swift enabled state does not match the backup` 时，读取：
+
+```bash
+grep '^swift_enabled=' /srv/databench/backups/<generation>/backup-manifest
+sudo grep '^DATABENCH_SWIFT_ENABLED=' /etc/databench/swift.env
+```
+
+两者必须一致。干净机器恢复 enabled generation 时，先预置离线模型并以
+`DATABENCH_ENABLE_SWIFT_GPU=true` 安装匹配 release；disabled generation 使用默认关闭安装。不要绕过
+该检查，否则 Catalog Session 与本地 workspace 可能来自不同 generation。
 
 ## 11. 升级和回滚问题
 

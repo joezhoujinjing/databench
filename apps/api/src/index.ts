@@ -15,7 +15,6 @@ import {
   DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG,
   MS_SWIFT_UPSTREAM_COMMIT,
   SWIFT_STUDIO_CAPABILITY_DIGEST,
-  SWIFT_STUDIO_IMAGE_DIGEST,
   type SwiftStudioGatewayConfig,
 } from './swift-studio/config.js'
 import {
@@ -98,7 +97,7 @@ export async function startApiRuntime(
             providerBaseUrl: swiftStudioConfig.providerBaseUrl,
             datasetExportBaseUrl: swiftStudioConfig.databenchBaseUrl,
             upstreamCommit: MS_SWIFT_UPSTREAM_COMMIT,
-            imageDigest: SWIFT_STUDIO_IMAGE_DIGEST,
+            imageDigest: swiftStudioConfig.imageDigest,
             runtimeCapabilityDigest: SWIFT_STUDIO_CAPABILITY_DIGEST,
             timeoutMs: swiftStudioConfig.timeoutMs,
             ...(swiftStudioConfig.providerCredential === undefined

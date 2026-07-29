@@ -80,14 +80,18 @@ trap - EXIT
 
 PROCESS_LOG_SENTINEL="proc_$(printf 'f%.0s' {1..64})"
 EXPORT_LOG_SENTINEL="exp_$(printf 'e%.0s' {1..64})"
-MCP_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs web api worker evalscope 2>&1)"
+LOG_SERVICES=(web api)
+if release_has_worker "$SCRIPT_DIR"; then LOG_SERVICES+=(worker); fi
+if release_has_evalscope "$SCRIPT_DIR"; then LOG_SERVICES+=(evalscope); fi
+if release_swift_enabled "$SCRIPT_DIR"; then LOG_SERVICES+=(swift-studio); fi
+MCP_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs "${LOG_SERVICES[@]}" 2>&1)"
 case "$MCP_SERVICE_LOGS" in
   *"$PROCESS_LOG_SENTINEL"*|*"$EXPORT_LOG_SENTINEL"*)
     die "API or Caddy logs exposed an MCP bearer token path"
     ;;
 esac
 
-WORKER_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs api worker evalscope 2>&1)"
+WORKER_SERVICE_LOGS="$(compose_for_release "$SCRIPT_DIR" logs "${LOG_SERVICES[@]}" 2>&1)"
 case "$WORKER_SERVICE_LOGS" in
   *X-Amz-Signature*|*X-Amz-Credential*|*X-Amz-Security-Token*)
     die "API or Worker logs exposed an object-store signed URL"

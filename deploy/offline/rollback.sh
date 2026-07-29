@@ -48,6 +48,13 @@ validate_existing_config
 if release_has_evalscope "$CURRENT_RELEASE" || release_has_evalscope "$TARGET_RELEASE"; then
   validate_evalscope_config
 fi
+if release_has_swift "$CURRENT_RELEASE" || release_has_swift "$TARGET_RELEASE"; then
+  validate_swift_config
+fi
+TARGET_SWIFT_ENABLED=false
+if release_swift_enabled "$TARGET_RELEASE"; then
+  TARGET_SWIFT_ENABLED=true
+fi
 validate_release_mcp_config_if_required "$CURRENT_RELEASE"
 validate_release_mcp_config_if_required "$TARGET_RELEASE"
 
@@ -87,6 +94,9 @@ recover_current_release() {
 
 stop_application_services "$CURRENT_RELEASE"
 trap recover_current_release EXIT
+assert_swift_session_transition_compatible \
+  "$CURRENT_RELEASE" "$TARGET_RELEASE" "$TARGET_SWIFT_ENABLED" ||
+  die "close the active Swift Studio Session before changing this runtime"
 
 log "creating pre-rollback safety backup"
 DATABENCH_OPERATION_LOCK_HELD=1 "${CURRENT_RELEASE}/backup.sh" --api-already-stopped

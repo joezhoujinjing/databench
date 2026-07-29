@@ -5,6 +5,8 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/config.sh
+source "${SCRIPT_DIR}/lib/config.sh"
 # shellcheck source=lib/health.sh
 source "${SCRIPT_DIR}/lib/health.sh"
 
@@ -65,6 +67,32 @@ if release_has_evalscope "$TARGET_RELEASE"; then
   validate_evalscope_volume_archive "$TARGET_RELEASE" "${BACKUP_DIR}/evalscope-volume.tar" ||
     die "backup EvalScope volume archive is invalid"
 fi
+BACKUP_SWIFT_ENABLED="$(sed -n 's/^swift_enabled=//p' "${BACKUP_DIR}/backup-manifest")"
+case "$BACKUP_SWIFT_ENABLED" in
+  ''|false) BACKUP_SWIFT_ENABLED=false ;;
+  true) ;;
+  *) die "backup manifest has invalid swift_enabled" ;;
+esac
+if release_has_swift "$TARGET_RELEASE"; then
+  [ -f "${BACKUP_DIR}/swift.env.enc" ] ||
+    die "backup generation is missing the encrypted Swift configuration escrow"
+  validate_swift_config
+  ensure_swift_data_directories
+  CURRENT_SWIFT_ENABLED="$(
+    grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-
+  )"
+  [ "$CURRENT_SWIFT_ENABLED" = "$BACKUP_SWIFT_ENABLED" ] ||
+    die "current Swift enabled state does not match the backup; set DATABENCH_SWIFT_ENABLED=${BACKUP_SWIFT_ENABLED} before restore"
+fi
+if [ "$BACKUP_SWIFT_ENABLED" = true ]; then
+  release_has_swift "$TARGET_RELEASE" ||
+    die "backup contains Swift Studio data, but the matching release has no Swift runtime"
+  [ -f "${BACKUP_DIR}/swift-studio-workspace.tar" ] ||
+    die "backup generation is missing the Swift Studio workspace"
+  validate_swift_volume_archive "${BACKUP_DIR}/swift-studio-workspace.tar"
+elif [ -e "${BACKUP_DIR}/swift-studio-workspace.tar" ]; then
+  die "disabled Swift backup unexpectedly contains a Studio workspace archive"
+fi
 
 CURRENT_RELEASE="$(current_release_dir)"
 if [ "$SKIP_SAFETY_BACKUP" = false ]; then
@@ -99,6 +127,16 @@ if release_has_evalscope "$TARGET_RELEASE"; then
   chown -R 10001:10001 "${DATABENCH_DATA_ROOT}/evalscope"
   find "${DATABENCH_DATA_ROOT}/evalscope" -xdev -type d -exec chmod 0750 {} +
   find "${DATABENCH_DATA_ROOT}/evalscope" -xdev -type f -exec chmod 0640 {} +
+fi
+
+if [ "$BACKUP_SWIFT_ENABLED" = true ]; then
+  log "restoring the persistent Swift Studio Session workspace"
+  assert_swift_volume_tree_safe
+  find "${DATABENCH_DATA_ROOT}/swift-studio" -xdev -mindepth 1 -maxdepth 1 \
+    ! -name cache ! -name home -delete
+  tar --numeric-owner -C "${DATABENCH_DATA_ROOT}/swift-studio" \
+    -xpf "${BACKUP_DIR}/swift-studio-workspace.tar"
+  chown -R 10002:10002 "${DATABENCH_DATA_ROOT}/swift-studio"
 fi
 
 if [ "$KEEP_STOPPED" = true ]; then

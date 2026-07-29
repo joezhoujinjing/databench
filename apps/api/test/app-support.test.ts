@@ -172,6 +172,7 @@ describe('api support', () => {
         ...base,
         DATABENCH_SWIFT_STUDIO_ENABLED: 'true',
         DATABENCH_SWIFT_STUDIO_DATABENCH_BASE_URL: 'http://api:8000',
+        DATABENCH_SWIFT_STUDIO_IMAGE_DIGEST: 'a'.repeat(64),
         DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL: 'http://swift-studio:7860',
         DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL: 'http://swift-studio:7861',
         DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST: manifest,
@@ -179,6 +180,7 @@ describe('api support', () => {
     ).toMatchObject({
       enabled: true,
       databenchBaseUrl: 'http://api:8000',
+      imageDigest: 'a'.repeat(64),
       internalBaseUrl: 'http://swift-studio:7860',
       providerBaseUrl: 'http://swift-studio:7861',
       routeManifestPath: manifest,

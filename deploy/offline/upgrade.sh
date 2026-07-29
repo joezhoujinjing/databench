@@ -23,13 +23,27 @@ TARGET_ROLLBACK_MODE="$MANIFEST_ROLLBACK_MODE"
 TARGET_MIN_UPGRADE_FROM="$MANIFEST_MIN_UPGRADE_FROM"
 offline_preflight
 acquire_operation_lock
-validate_existing_config
+ensure_secret_config
 ensure_mcp_config
-ensure_evalscope_config
+if ! release_has_swift "$SCRIPT_DIR" && [ -n "${DATABENCH_ENABLE_SWIFT_GPU:-}" ]; then
+  die "this release does not contain the Swift GPU runtime"
+fi
 
 PREVIOUS_RELEASE="$(current_release_dir)"
 load_release_env "${PREVIOUS_RELEASE}/release.env"
 PREVIOUS_VERSION="$DATABENCH_VERSION"
+PREVIOUS_SWIFT_ENABLED=false
+if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
+  validate_swift_config
+  PREVIOUS_SWIFT_ENABLED="$(
+    grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-
+  )"
+fi
+TARGET_SWIFT_ENABLED=false
+if release_has_swift "$SCRIPT_DIR"; then
+  TARGET_SWIFT_ENABLED="${DATABENCH_ENABLE_SWIFT_GPU:-$PREVIOUS_SWIFT_ENABLED}"
+fi
+ensure_evalscope_config
 version_gt "$TARGET_VERSION" "$PREVIOUS_VERSION" ||
   die "target version $TARGET_VERSION must be newer than installed version $PREVIOUS_VERSION"
 version_ge "$PREVIOUS_VERSION" "$TARGET_MIN_UPGRADE_FROM" ||
@@ -44,6 +58,9 @@ copy_release_assets "$SCRIPT_DIR" "$TARGET_RELEASE"
 record_bundle_identity "$SCRIPT_DIR" "$TARGET_RELEASE"
 if release_has_evalscope "$TARGET_RELEASE"; then
   ensure_evalscope_data_directories
+fi
+if release_has_swift "$TARGET_RELEASE"; then
+  ensure_swift_data_directories
 fi
 
 BACKUP_GENERATION=''
@@ -66,6 +83,10 @@ recover_previous_release() {
   remove_application_services_absent_from_release \
     "$TARGET_RELEASE" "$PREVIOUS_RELEASE" >/dev/null 2>&1 ||
     warn "one or more target-only service containers could not be removed"
+  if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
+    set_swift_enabled_state "$PREVIOUS_SWIFT_ENABLED" >/dev/null 2>&1 ||
+      warn "failed to restore the previous Swift enabled state"
+  fi
 
   if [ "$TARGET_ROLLBACK_MODE" = 'restore-backup' ] && [ -n "$BACKUP_GENERATION" ]; then
     if ! DATABENCH_OPERATION_LOCK_HELD=1 "${PREVIOUS_RELEASE}/restore.sh" \
@@ -87,8 +108,7 @@ recover_previous_release() {
       printf '  sudo %s/restore.sh %s --confirm --skip-safety-backup\n' \
         "$PREVIOUS_RELEASE" "${DATABENCH_DATA_ROOT}/backups/${BACKUP_GENERATION}" >&2
     fi
-    printf '  sudo docker compose --project-name databench-offline --env-file %s/release.env --env-file %s -f %s/compose.yml up -d\n' \
-      "$PREVIOUS_RELEASE" "$DATABENCH_CONFIG_FILE" "$PREVIOUS_RELEASE" >&2
+    printf '  sudo %s/databenchctl restart\n' "$PREVIOUS_RELEASE" >&2
   fi
   exit "$status"
 }
@@ -96,16 +116,28 @@ recover_previous_release() {
 log "stopping API writes for upgrade"
 stop_application_services "$PREVIOUS_RELEASE"
 trap recover_previous_release EXIT
+assert_swift_session_transition_compatible \
+  "$PREVIOUS_RELEASE" "$TARGET_RELEASE" "$TARGET_SWIFT_ENABLED" ||
+  die "close the active Swift Studio Session before changing this runtime"
 
 log "creating pre-upgrade backup"
 DATABENCH_OPERATION_LOCK_HELD=1 "${PREVIOUS_RELEASE}/backup.sh" --api-already-stopped
 BACKUP_GENERATION="$(read_state_value last-backup-generation)"
 [ -n "$BACKUP_GENERATION" ] || die "backup generation marker was not written"
 
+if release_has_swift "$TARGET_RELEASE"; then
+  ensure_swift_config
+  ensure_evalscope_config
+fi
+
 log "loading target images"
 docker load --input "${SCRIPT_DIR}/images.tar" >/dev/null
 validate_images_lock \
   "${SCRIPT_DIR}/images.lock" true "$(release_image_count "$SCRIPT_DIR")"
+if release_swift_enabled "$TARGET_RELEASE"; then
+  verify_swift_model_preload "$TARGET_RELEASE"
+  verify_swift_gpu_runtime "$TARGET_RELEASE"
+fi
 
 log "ensuring MinIO application policy"
 compose_for_release "$TARGET_RELEASE" run --rm minio-init

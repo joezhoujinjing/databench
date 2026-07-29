@@ -12,6 +12,9 @@
   将产品面改为 v2-only；以下决策文字已按该后续 ADR 更新
 - **Worker 修订:** 本次修订履行 ADR 0010 原先要求的独立窄修订；Worker 作为第六张镜像进入
   离线包，并重新执行完整 bundle/lifecycle gate
+- **Swift 修订:** [ADR 0018](0018-ms-swift-native-gradio-studio.md) 的离线交付修订增加
+  第八张、默认关闭的 Swift CUDA 镜像。它只在 operator 显式启用 `swift-gpu` profile 时使用
+  NVIDIA GPU，不替换第六张 CPU-only Worker；模型权重由 operator 预置，不进入通用发布包
 - **详细方案:**
   [内网单机离线发布方案](../deployment/offline-single-host-plan.zh-CN.md)
 
@@ -24,11 +27,14 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
 
 1. 新增与现有发布并列的 `deploy/offline/**` 通道。联网 Apple Silicon Mac 使用 Docker
    Buildx 构建完整 `linux/amd64` 离线包，目标固定为 Ubuntu 22.04 LTS amd64。
-2. 离线拓扑固定为 Web/Caddy、Node API、一个 Python Worker、PostgreSQL 17、MinIO 与一次性
-   MinIO/migration 任务。Worker 只在 Compose 私网监听 gRPC 50051，不发布宿主机端口；API
+2. 默认离线拓扑固定为 Web/Caddy、Node API、一个 Python Worker、backend-only EvalScope、
+   PostgreSQL 17、MinIO 与一次性 MinIO/migration 任务。Worker 只在 Compose 私网监听 gRPC
+   50051，不发布宿主机端口；API
    显式启用单 dispatcher/单 Worker 的 `basic-clean@1`。Worker 不持有数据库或对象存储长期
    凭据，只使用 API 签发的 exact-key 短期 URL；临时任务文件位于有界 tmpfs。发布包仍不包含
-   Docker bootstrap。
+   Docker bootstrap。ADR 0018 允许发布包额外携带 Swift Studio CUDA 镜像；runtime 默认关闭，
+   `DATABENCH_ENABLE_SWIFT_GPU=true` 时才启用单实例、单 GPU Studio。安装器只做一次快速
+   NVIDIA/容器内 Torch CUDA 检查，不在安装期执行真实训练。
 3. ADR 0008 的 production OSS 选择继续适用于现有阿里云环境；本 ADR 允许 MinIO 作为隔离
    内网单机 production 数据面。业务代码仍只通过 `Store` 接口和
    `DATABENCH_OBJECT_STORE=s3` 选择后端。MinIO bucket 不启用 versioning，API 使用
@@ -64,7 +70,8 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
 - 单机部署不提供高可用；宿主机或数据盘故障会停机，production 必须配置异机/NAS 备份并
   完成干净机器恢复演练。
 - MinIO on-prem production 是对 ADR 0008 的窄修订，不改变阿里云 OSS production 部署。
-- Worker 镜像固定 CPU-only Torch；当前操作不使用 GPU，禁止把 CUDA runtime 无意义地带入
-  离线包。运行基线提高为 8 vCPU、32 GiB RAM 和至少 40 GiB 安装前可用系统盘空间。
+- Worker 镜像固定 CPU-only Torch；Swift CUDA runtime 是独立第八张镜像和可选 profile，不能把
+  Worker 改成 CUDA Worker。启用 Swift 的目标机还必须预装兼容 NVIDIA driver 与 NVIDIA
+  Container Toolkit，并为镜像、模型缓存、Session output 和 Adapter 预留额外磁盘。
 - 本 ADR 不解决现有公共云 API 托管平台 D3，也不授权修改现有 ECS/OSS workflow。
 - 本地跨架构构建必须在 Docker amd64 仿真和真实 Ubuntu 22.04 amd64 上分别验收。

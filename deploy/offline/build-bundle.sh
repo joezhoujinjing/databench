@@ -61,6 +61,7 @@ API_IMAGE="databench-api:${IMAGE_VERSION}"
 WEB_IMAGE="databench-web:${IMAGE_VERSION}"
 WORKER_IMAGE="databench-worker:${IMAGE_VERSION}"
 EVALSCOPE_IMAGE="databench-evalscope:${IMAGE_VERSION}"
+SWIFT_IMAGE="databench-swift-studio:${IMAGE_VERSION}"
 BUNDLE_NAME="databench-offline-${VERSION}-linux-amd64"
 BUNDLE_DIR="${OUTPUT_ROOT}/${BUNDLE_NAME}"
 ARCHIVE="${OUTPUT_ROOT}/${BUNDLE_NAME}.tar.gz"
@@ -71,7 +72,14 @@ OUTER_CHECKSUM="${ARCHIVE}.sha256"
 install -d -m 0755 "$OUTPUT_ROOT"
 
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/databench-offline-build.XXXXXX")"
-trap 'rm -rf "$TEMP_DIR"' EXIT
+SWIFT_SMOKE_CONTAINER=''
+cleanup_build() {
+  if [ -n "$SWIFT_SMOKE_CONTAINER" ]; then
+    docker rm --force "$SWIFT_SMOKE_CONTAINER" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$TEMP_DIR"
+}
+trap cleanup_build EXIT
 
 log "building $API_IMAGE for $PLATFORM"
 docker buildx build \
@@ -115,6 +123,16 @@ docker buildx build \
   --tag "$EVALSCOPE_IMAGE" \
   .
 
+log "building pinned CUDA Swift Studio $SWIFT_IMAGE for $PLATFORM"
+docker buildx build \
+  --platform "$PLATFORM" \
+  --load \
+  --label "org.opencontainers.image.revision=${GIT_SHA}" \
+  --label "org.opencontainers.image.version=${VERSION}" \
+  --file deploy/swift-studio/Dockerfile \
+  --tag "$SWIFT_IMAGE" \
+  .
+
 pull_and_retag() {
   local role="$1"
   local source_image="$2"
@@ -140,9 +158,14 @@ inspect_image() {
   [ "$actual" = "$PLATFORM" ] || die "$image has platform $actual, expected $PLATFORM"
 }
 
-for image in "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$EVALSCOPE_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"; do
+for image in "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$EVALSCOPE_IMAGE" "$SWIFT_IMAGE" \
+  "$POSTGRES_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"; do
   inspect_image "$image"
 done
+SWIFT_IMAGE_ID="$(docker image inspect --platform "$PLATFORM" "$SWIFT_IMAGE" --format '{{.Id}}')"
+SWIFT_IMAGE_DIGEST="${SWIFT_IMAGE_ID#sha256:}"
+[[ "$SWIFT_IMAGE_DIGEST" =~ ^[0-9a-f]{64}$ ]] ||
+  die "Swift Studio image does not have a valid local image digest"
 
 log "running amd64 image executable smoke"
 docker run --rm --platform "$PLATFORM" "$API_IMAGE" databench help --compact >/dev/null
@@ -170,6 +193,53 @@ assert not (Path(evalscope.__file__).parent / "web").exists()
 assert not any(name == "triton" or name.startswith("nvidia-") for name in installed)
 assert Path("/opt/vendor/plotly-2.35.2.min.js").is_file()
 ' >/dev/null
+docker run --rm --platform "$PLATFORM" \
+  --entrypoint python "$SWIFT_IMAGE" -c '
+import gradio
+import peft
+import swift
+import torch
+import transformers
+
+assert gradio.__version__ == "5.50.0"
+assert swift.__version__ == "4.4.2"
+assert transformers.__version__ == "4.57.6"
+assert torch.version.cuda is not None
+' >/dev/null
+
+log "running Swift Studio Provider and native Gradio readiness smoke without a GPU"
+SWIFT_SMOKE_CONTAINER="databench-swift-offline-build-smoke-$$"
+docker run --detach --platform "$PLATFORM" \
+  --name "$SWIFT_SMOKE_CONTAINER" \
+  --env DATABENCH_API_BASE_URL=http://api:8000 \
+  "$SWIFT_IMAGE" >/dev/null
+SWIFT_SMOKE_READY=false
+for _ in $(seq 1 300); do
+  if docker exec "$SWIFT_SMOKE_CONTAINER" python -c '
+import json
+import urllib.request
+
+body = json.load(urllib.request.urlopen("http://127.0.0.1:7861/runtime", timeout=3))
+assert body["ready"] is True
+assert body["service"] == "swift-studio-provider"
+assert len(body["surfaces"]) == 7
+' >/dev/null 2>&1; then
+    SWIFT_SMOKE_READY=true
+    break
+  fi
+  if [ "$(docker inspect "$SWIFT_SMOKE_CONTAINER" --format '{{.State.Running}}')" != 'true' ]; then
+    docker logs "$SWIFT_SMOKE_CONTAINER" >&2 || true
+    die "Swift Studio exited during the CPU readiness smoke"
+  fi
+  sleep 2
+done
+[ "$SWIFT_SMOKE_READY" = true ] || {
+  docker logs "$SWIFT_SMOKE_CONTAINER" >&2 || true
+  die "Swift Studio did not become ready during the CPU readiness smoke"
+}
+docker rm --force "$SWIFT_SMOKE_CONTAINER" >/dev/null
+SWIFT_SMOKE_CONTAINER=''
+
 docker run --rm --platform "$PLATFORM" "$POSTGRES_IMAGE" postgres --version >/dev/null
 docker run --rm --platform "$PLATFORM" "$MINIO_IMAGE" minio --version >/dev/null
 docker run --rm --platform "$PLATFORM" "$MINIO_MC_IMAGE" --version >/dev/null
@@ -180,6 +250,7 @@ cp -a \
   deploy/offline/env.example \
   deploy/offline/mcp.env.example \
   deploy/offline/evalscope.env.example \
+  deploy/offline/swift.env.example \
   deploy/offline/Caddyfile \
   deploy/offline/install.sh \
   deploy/offline/upgrade.sh \
@@ -193,12 +264,16 @@ cp -a \
   deploy/offline/TROUBLESHOOTING.zh-CN.md \
   deploy/offline/MCP-AGENT-GUIDE.zh-CN.md \
   deploy/offline/EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
+  deploy/offline/SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md \
   "$BUNDLE_DIR/"
 cp -a deploy/offline/lib deploy/offline/minio deploy/offline/smoke "$BUNDLE_DIR/"
 install -d -m 0755 "${BUNDLE_DIR}/docs"
 cp -a docs/deployment/offline-single-host-plan.zh-CN.md "${BUNDLE_DIR}/docs/"
 cp -a docs/decisions/0012-offline-single-host-deployment.md \
   "${BUNDLE_DIR}/docs/ADR-0012.md"
+cp -a docs/decisions/0018-ms-swift-native-gradio-studio.md \
+  "${BUNDLE_DIR}/docs/ADR-0018.md"
+cp -a docs/swift/TECHNICAL-DESIGN.md docs/swift/STATUS.md "${BUNDLE_DIR}/docs/"
 chmod 0755 "$BUNDLE_DIR"/*.sh "$BUNDLE_DIR/databenchctl"
 
 cat > "${BUNDLE_DIR}/release.env" <<EOF
@@ -207,6 +282,8 @@ DATABENCH_API_IMAGE=${API_IMAGE}
 DATABENCH_WEB_IMAGE=${WEB_IMAGE}
 DATABENCH_WORKER_IMAGE=${WORKER_IMAGE}
 DATABENCH_EVALSCOPE_IMAGE=${EVALSCOPE_IMAGE}
+DATABENCH_SWIFT_IMAGE=${SWIFT_IMAGE}
+DATABENCH_SWIFT_IMAGE_DIGEST=${SWIFT_IMAGE_DIGEST}
 DATABENCH_POSTGRES_IMAGE=${POSTGRES_IMAGE}
 DATABENCH_MINIO_IMAGE=${MINIO_IMAGE}
 DATABENCH_MINIO_MC_IMAGE=${MINIO_MC_IMAGE}
@@ -226,6 +303,7 @@ write_lock_line() {
   write_lock_line "$WEB_IMAGE" "git:${GIT_SHA}"
   write_lock_line "$WORKER_IMAGE" "git:${GIT_SHA}"
   write_lock_line "$EVALSCOPE_IMAGE" "evalscope:b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60;git:${GIT_SHA}"
+  write_lock_line "$SWIFT_IMAGE" "ms-swift:f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d;git:${GIT_SHA}"
   write_lock_line "$POSTGRES_IMAGE" "$POSTGRES_SOURCE_IMAGE"
   write_lock_line "$MINIO_IMAGE" "$MINIO_SOURCE_IMAGE"
   write_lock_line "$MINIO_MC_IMAGE" "$MINIO_MC_SOURCE_IMAGE"
@@ -247,10 +325,10 @@ docker_version=$(docker version --format '{{.Client.Version}}')
 buildx_version=$(docker buildx version | awk '{print $2}')
 EOF
 
-log "saving seven images"
+log "saving eight images"
 docker save --platform "$PLATFORM" --output "${BUNDLE_DIR}/images.tar" \
-  "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$EVALSCOPE_IMAGE" "$POSTGRES_IMAGE" "$MINIO_IMAGE" \
-  "$MINIO_MC_IMAGE"
+  "$API_IMAGE" "$WEB_IMAGE" "$WORKER_IMAGE" "$EVALSCOPE_IMAGE" "$SWIFT_IMAGE" "$POSTGRES_IMAGE" \
+  "$MINIO_IMAGE" "$MINIO_MC_IMAGE"
 
 (
   cd "$BUNDLE_DIR"

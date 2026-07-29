@@ -5,8 +5,8 @@
 > 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E8 gate
 > 已完成，E9 本地实现完成、真实目标 gate pending：backend-only runtime、gateway、Evaluation 路由、
 > Tasks、Databench Dataset、Reports、Predictions、Dashboard、Compare、Performance、Benchmarks、安全
-> Viewer 与完整结果归档已实现，完整 UI 功能迁移和归档 gate 已关闭；七镜像离线生命周期、安全和容量
-> 实现已落地。
+> Viewer 与完整结果归档已实现，完整 UI 功能迁移和归档 gate 已关闭；七张基础镜像加一张默认关闭的
+> Swift CUDA 镜像已经接入离线生命周期、安全、容量与备份。
 > ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
 > deferred GPU gate。S2 exact Dataset 与单 active Session bridge、S3 immutable LoRA Artifact 已完成
 > non-GPU gate；S4 Deployment + EvalScope opaque resolve/lineage 已完成 non-GPU contract，GPU gate deferred。
@@ -551,18 +551,21 @@ docs/mcp/
 
 ```text
 deploy/offline/
-├─ compose.yml                    私网 Worker → API → EvalScope → Web 生命周期
+├─ compose.yml                    私网 Worker → optional Swift → API → EvalScope → Web 生命周期
 ├─ mcp.env.example                匿名可信内网 MCP 配置示例
 ├─ evalscope.env.example          EvalScope stable secret、allowlist 与容量示例
+├─ swift.env.example              默认关闭的单 GPU Studio 与双向 Provider credential
 ├─ MCP-AGENT-GUIDE.zh-CN.md       agent endpoint、三种意图与恢复规则
 ├─ EVALSCOPE-OPERATOR-GUIDE.zh-CN.md  EvalScope drain、容量、备份与断网验收
+├─ SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md  GPU、模型预置、Session/Artifact 与目标机验收
 ├─ README.zh-CN.md
 ├─ DEPLOYMENT-GUIDE.zh-CN.md
 ├─ TROUBLESHOOTING.zh-CN.md
-├─ install.sh · upgrade.sh        显式创建或复用 MCP/EvalScope 配置
+├─ install.sh · upgrade.sh        显式创建或复用 MCP/EvalScope/Swift 配置
 ├─ rollback.sh                    停服务前校验 current/target 所需配置
-├─ lib/config.sh                  public base、EvalScope stable secret 与原子配置
-├─ lib/preflight.sh               CPU/RAM、根盘与 Databench 数据盘容量检查
+├─ lib/config.sh                  public base、EvalScope/Swift stable secret 与原子配置
+├─ lib/health.sh                  GPU 快检、Swift idle、Provider/Gradio doctor 与 workspace archive gate
+├─ lib/preflight.sh               CPU/RAM、磁盘和显式 NVIDIA profile 前置检查
 └─ smoke/
    ├─ mcp.mjs                     官方 SDK + companion lifecycle smoke
    ├─ worker.mjs                  basic-clean Dataset/lineage/deterministic reuse smoke
@@ -583,5 +586,5 @@ docs/swift/
 └─ STATUS.md             当前真实状态；S4 non-GPU green，S1-S4 GPU deferred
 ```
 
-计划中的 Web/API/Provider/deploy/DB 文件只有在对应 Step 实现并过 gate 后，才能加入本文的当前文件级
-布局。
+S0-S4 non-GPU 文件已经按本文前述 Web/API/Provider/deploy/DB 布局实现；真实 GPU 证据继续留在
+`docs/swift/evidence/`，不会因离线包包含 CUDA runtime 自动标记为 green。

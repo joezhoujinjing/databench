@@ -18,6 +18,10 @@ const SwiftStudioEnvSchema = z
   .object({
     DATABENCH_SWIFT_STUDIO_ENABLED: z.enum(['true', 'false']).default('false'),
     DATABENCH_SWIFT_STUDIO_DATABENCH_BASE_URL: z.string().trim().min(1).optional(),
+    DATABENCH_SWIFT_STUDIO_IMAGE_DIGEST: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .default(SWIFT_STUDIO_IMAGE_DIGEST),
     DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL: z.string().trim().min(1).optional(),
     DATABENCH_SWIFT_STUDIO_MAX_CONCURRENT_REQUESTS: z.coerce
       .number()
@@ -88,6 +92,7 @@ export interface SwiftStudioManifestRoute {
 export interface SwiftStudioGatewayConfig {
   readonly databenchBaseUrl?: string
   readonly enabled: boolean
+  readonly imageDigest: string
   readonly internalBaseUrl?: string
   readonly maxConcurrentRequests: number
   readonly maxWebSocketConnections: number
@@ -104,6 +109,7 @@ export interface SwiftStudioGatewayConfig {
 
 export const DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG: SwiftStudioGatewayConfig = {
   enabled: false,
+  imageDigest: SWIFT_STUDIO_IMAGE_DIGEST,
   maxConcurrentRequests: 64,
   maxWebSocketConnections: 32,
   proxyPrefix: SWIFT_STUDIO_PROXY_PREFIX,
@@ -119,6 +125,7 @@ export function swiftStudioGatewayConfigFromEnv(
 ): SwiftStudioGatewayConfig {
   const parsed = SwiftStudioEnvSchema.parse(env)
   const common = {
+    imageDigest: parsed.DATABENCH_SWIFT_STUDIO_IMAGE_DIGEST,
     proxyPrefix: SWIFT_STUDIO_PROXY_PREFIX,
     maxConcurrentRequests: parsed.DATABENCH_SWIFT_STUDIO_MAX_CONCURRENT_REQUESTS,
     maxWebSocketConnections: parsed.DATABENCH_SWIFT_STUDIO_MAX_WEBSOCKET_CONNECTIONS,

@@ -34,12 +34,17 @@ copy_release_assets "$SCRIPT_DIR" "$RELEASE_DIR"
 record_bundle_identity "$SCRIPT_DIR" "$RELEASE_DIR"
 ensure_secret_config
 ensure_mcp_config
+ensure_swift_config
 ensure_evalscope_config
 
 log "loading offline images"
 docker load --input "${SCRIPT_DIR}/images.tar" >/dev/null
 validate_images_lock \
   "${SCRIPT_DIR}/images.lock" true "$(release_image_count "$SCRIPT_DIR")"
+if release_swift_enabled "$RELEASE_DIR"; then
+  verify_swift_model_preload "$RELEASE_DIR"
+  verify_swift_gpu_runtime "$RELEASE_DIR"
+fi
 
 log "starting PostgreSQL and MinIO"
 compose_for_release "$RELEASE_DIR" up -d postgres minio
@@ -52,7 +57,7 @@ compose_for_release "$RELEASE_DIR" run --rm minio-init
 log "applying Prisma migrations"
 compose_for_release "$RELEASE_DIR" run --rm migrate
 
-log "starting Worker, API, EvalScope and Web"
+log "starting Worker, Swift Studio, API, EvalScope and Web"
 start_application_services "$RELEASE_DIR" || die "application services did not start"
 wait_application_services "$RELEASE_DIR" || die "application services did not become healthy"
 wait_gateway "$RELEASE_DIR" 120 || die "Caddy did not proxy API health"
@@ -72,6 +77,10 @@ MCP_PUBLIC_BASE_URL="$(grep -E '^DATABENCH_MCP_PUBLIC_BASE_URL=' "$DATABENCH_MCP
 printf '\nDatabench installation succeeded\n\n'
 printf 'URL: %s\n' "${MCP_PUBLIC_BASE_URL%/api}"
 printf 'Configuration: %s\n' "$DATABENCH_CONFIG_FILE"
+if release_swift_enabled "$RELEASE_DIR"; then
+  printf 'Swift GPU configuration: %s\n' "$DATABENCH_SWIFT_CONFIG_FILE"
+  printf 'Offline model directory: %s/swift-models\n' "$DATABENCH_DATA_ROOT"
+fi
 printf 'MCP endpoint: %s/mcp\n' "$MCP_PUBLIC_BASE_URL"
 printf 'Data: %s\n' "$DATABENCH_DATA_ROOT"
 printf 'Version: %s\n\n' "$TARGET_VERSION"

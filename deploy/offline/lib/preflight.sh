@@ -57,4 +57,25 @@ offline_preflight() {
 
   published="$(docker ps --filter publish=80 --format '{{.Names}}' | grep -v '^databench-offline-web$' || true)"
   [ -z "$published" ] || die "TCP port 80 is already published by another container: $published"
+
+  local swift_requested=false
+  case "${DATABENCH_ENABLE_SWIFT_GPU:-}" in
+    true) swift_requested=true ;;
+    false) ;;
+    '')
+      if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ] &&
+        grep -qx 'DATABENCH_SWIFT_ENABLED=true' "$DATABENCH_SWIFT_CONFIG_FILE"; then
+        swift_requested=true
+      fi
+      ;;
+    *) die "DATABENCH_ENABLE_SWIFT_GPU must be true or false" ;;
+  esac
+  if [ "$swift_requested" = true ]; then
+    [ -n "${DATABENCH_SWIFT_IMAGE:-}" ] ||
+      die "Swift GPU was requested, but this release does not contain the Swift image"
+    require_command nvidia-smi
+    nvidia-smi -L >/dev/null 2>&1 ||
+      die "NVIDIA driver is unavailable; nvidia-smi cannot enumerate a GPU"
+    require_command timeout
+  fi
 }

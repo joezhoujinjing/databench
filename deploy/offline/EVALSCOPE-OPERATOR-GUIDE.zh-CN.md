@@ -89,8 +89,8 @@ sudo databenchctl doctor
 sudo databenchctl rollback <previous-version>
 ```
 
-升级前确认 `/evaluations/tasks` 没有长任务或预留足够 drain 时间。脚本依次 drain、备份、加载七镜像、执行
-migration、启动 API → EvalScope → Web、验证同源 gateway 和 smoke；失败会恢复上一 release。回滚到旧的
+升级前确认 `/evaluations/tasks` 没有长任务或预留足够 drain 时间。脚本依次 drain、备份、加载完整镜像集、执行
+migration、启动 Swift Studio（启用时）→ API → EvalScope → Web、验证同源 gateway 和 smoke；失败会恢复上一 release。回滚到旧的
 五/六镜像 release 时，旧 release 的 Compose 不启动 EvalScope，但 E9 创建的数据目录和配置不会被隐式删除。
 
 ## 断网验收

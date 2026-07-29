@@ -12,12 +12,48 @@ validate_existing_config() {
   for key in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB DATABASE_URL MINIO_ROOT_USER \
     MINIO_ROOT_PASSWORD S3_ENDPOINT S3_REGION S3_BUCKET S3_ACCESS_KEY_ID \
     S3_SECRET_ACCESS_KEY S3_FORCE_PATH_STYLE DATABENCH_OBJECT_STORE DATABENCH_ROOT \
-    DATABENCH_V2_CURSOR_SECRET PORT; do
+    DATABENCH_V2_CURSOR_SECRET DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN \
+    DATABENCH_SERVICE_CREDENTIAL PORT; do
     count="$(grep -Ec "^${key}=.+" "$DATABENCH_CONFIG_FILE" || true)"
     [ "$count" -eq 1 ] || die "configuration must contain exactly one non-empty $key"
   done
   [ "$(stat -c '%a' "$DATABENCH_CONFIG_FILE")" = '600' ] ||
     die "configuration permissions must be 0600: $DATABENCH_CONFIG_FILE"
+  [ "$(stat -c '%U:%G' "$DATABENCH_CONFIG_FILE")" = 'root:root' ] ||
+    die "configuration owner must be root:root: $DATABENCH_CONFIG_FILE"
+  local operator_token service_credential
+  operator_token="$(grep -E '^DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=' "$DATABENCH_CONFIG_FILE" | cut -d= -f2-)"
+  service_credential="$(grep -E '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_CONFIG_FILE" | cut -d= -f2-)"
+  [[ "$operator_token" =~ ^[0-9a-f]{64}$ ]] ||
+    die "model Deployment operator token must be 32 random bytes in hex"
+  [[ "$service_credential" =~ ^[0-9a-f]{64}$ ]] ||
+    die "Databench service credential must be 32 random bytes in hex"
+  [ "$operator_token" != "$service_credential" ] ||
+    die "model Deployment operator and service credentials must be distinct"
+}
+
+ensure_model_deployment_credentials() {
+  local operator_count service_count operator_token service_credential temp
+  operator_count="$(grep -Ec '^DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=' "$DATABENCH_CONFIG_FILE" || true)"
+  service_count="$(grep -Ec '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_CONFIG_FILE" || true)"
+  if [ "$operator_count" -eq 1 ] && [ "$service_count" -eq 1 ]; then
+    return
+  fi
+  [ "$operator_count" -eq 0 ] && [ "$service_count" -eq 0 ] ||
+    die "existing configuration has an incomplete model Deployment credential pair"
+  operator_token="$(random_secret)"
+  service_credential="$(random_secret)"
+  temp="${DATABENCH_CONFIG_FILE}.tmp.$$"
+  umask 077
+  cp "$DATABENCH_CONFIG_FILE" "$temp"
+  {
+    printf 'DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=%s\n' "$operator_token"
+    printf 'DATABENCH_SERVICE_CREDENTIAL=%s\n' "$service_credential"
+  } >> "$temp"
+  chown root:root "$temp"
+  chmod 0600 "$temp"
+  mv -f "$temp" "$DATABENCH_CONFIG_FILE"
+  log "added model Deployment credentials to $DATABENCH_CONFIG_FILE"
 }
 
 validate_mcp_public_base_url() {
@@ -172,6 +208,7 @@ validate_evalscope_positive_bound() {
 
 validate_evalscope_config() {
   local key count task_key operator_token origin model_allowlist dataset_allowlist public_base
+  local service_credential expected_service_credential
   [ -f "$DATABENCH_EVALSCOPE_CONFIG_FILE" ] ||
     die "EvalScope configuration is missing: $DATABENCH_EVALSCOPE_CONFIG_FILE"
   validate_mcp_config
@@ -184,7 +221,8 @@ validate_evalscope_config() {
     EVALSCOPE_EVALUATION_SAMPLE_LIMIT_MAX EVALSCOPE_EVALUATION_BATCH_SIZE_MAX \
     EVALSCOPE_EVALUATION_REPEATS_MAX EVALSCOPE_PERFORMANCE_PARALLEL_MAX \
     EVALSCOPE_PERFORMANCE_REQUESTS_MAX EVALSCOPE_PERFORMANCE_RATE_MAX \
-    EVALSCOPE_MODEL_TOKENS_MAX EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX; do
+    EVALSCOPE_MODEL_TOKENS_MAX EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX \
+    DATABENCH_SERVICE_CREDENTIAL; do
     count="$(grep -Ec "^${key}=" "$DATABENCH_EVALSCOPE_CONFIG_FILE" || true)"
     [ "$count" -eq 1 ] || die "EvalScope configuration must contain exactly one $key"
   done
@@ -197,6 +235,12 @@ validate_evalscope_config() {
   public_base="$(grep -E '^DATABENCH_MCP_PUBLIC_BASE_URL=' "$DATABENCH_MCP_CONFIG_FILE" | cut -d= -f2-)"
   [ "$origin" = "${public_base%/api}" ] ||
     die "DATABENCH_ORIGIN must match the configured offline public base origin"
+  service_credential="$(grep -E '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
+  expected_service_credential="$(grep -E '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_CONFIG_FILE" | cut -d= -f2-)"
+  [[ "$service_credential" =~ ^[0-9a-f]{64}$ ]] ||
+    die "EvalScope Databench service credential must be 32 random bytes in hex"
+  [ "$service_credential" = "$expected_service_credential" ] ||
+    die "EvalScope and API Databench service credentials must match"
   model_allowlist="$(grep -E '^EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
   dataset_allowlist="$(grep -E '^EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
   [[ "$model_allowlist" =~ ^[A-Za-z0-9.,\|:/_-]*$ ]] ||
@@ -228,8 +272,11 @@ validate_evalscope_config() {
 }
 
 ensure_evalscope_config() {
-  local public_base origin task_key operator_token model_allowlist temp
+  local public_base origin task_key operator_token model_allowlist service_credential temp
   if [ -e "$DATABENCH_EVALSCOPE_CONFIG_FILE" ]; then
+    ensure_evalscope_service_credential
+    validate_evalscope_config
+    ensure_evalscope_swift_allowlist
     validate_evalscope_config
     log "reusing EvalScope configuration from $DATABENCH_EVALSCOPE_CONFIG_FILE"
     return
@@ -239,6 +286,7 @@ ensure_evalscope_config() {
   origin="${public_base%/api}"
   task_key="$(random_secret)"
   operator_token="$(random_secret)"
+  service_credential="$(grep -E '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_CONFIG_FILE" | cut -d= -f2-)"
   model_allowlist="${DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST:-}"
   [[ "$model_allowlist" =~ ^[A-Za-z0-9.,\|:/_-]*$ ]] ||
     die "DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST contains unsupported characters"
@@ -248,6 +296,7 @@ ensure_evalscope_config() {
     printf 'EVALSCOPE_TASK_CONFIG_HMAC_KEY=%s\n' "$task_key"
     printf 'EVALSCOPE_OPERATOR_TOKEN=%s\n' "$operator_token"
     printf 'DATABENCH_ORIGIN=%s\n' "$origin"
+    printf 'DATABENCH_SERVICE_CREDENTIAL=%s\n' "$service_credential"
     printf 'EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=%s\n' "$model_allowlist"
     printf 'EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=\n'
     printf 'EVALSCOPE_INPUT_MAX_BYTES=1073741824\n'
@@ -273,8 +322,153 @@ ensure_evalscope_config() {
   chown root:root "$temp"
   chmod 0600 "$temp"
   mv -f "$temp" "$DATABENCH_EVALSCOPE_CONFIG_FILE"
+  ensure_evalscope_swift_allowlist
   validate_evalscope_config
   log "wrote EvalScope runtime configuration to $DATABENCH_EVALSCOPE_CONFIG_FILE"
+}
+
+ensure_evalscope_service_credential() {
+  local count service_credential temp
+  count="$(grep -Ec '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" || true)"
+  if [ "$count" -eq 1 ]; then
+    return
+  fi
+  [ "$count" -eq 0 ] ||
+    die "EvalScope configuration contains duplicate Databench service credentials"
+  service_credential="$(grep -E '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_CONFIG_FILE" | cut -d= -f2-)"
+  [[ "$service_credential" =~ ^[0-9a-f]{64}$ ]] ||
+    die "Databench service credential is unavailable for EvalScope"
+  temp="${DATABENCH_EVALSCOPE_CONFIG_FILE}.tmp.$$"
+  umask 077
+  cp "$DATABENCH_EVALSCOPE_CONFIG_FILE" "$temp"
+  printf 'DATABENCH_SERVICE_CREDENTIAL=%s\n' "$service_credential" >> "$temp"
+  chown root:root "$temp"
+  chmod 0600 "$temp"
+  mv -f "$temp" "$DATABENCH_EVALSCOPE_CONFIG_FILE"
+}
+
+ensure_evalscope_swift_allowlist() {
+  local current updated rule temp
+  [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ] || return
+  grep -qx 'DATABENCH_SWIFT_ENABLED=true' "$DATABENCH_SWIFT_CONFIG_FILE" || return
+  current="$(grep -E '^EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
+  updated="$current"
+  for rule in \
+    'http|10.0.0.0/8|8000' \
+    'http|172.16.0.0/12|8000' \
+    'http|192.168.0.0/16|8000'; do
+    case ",${updated}," in
+      *",${rule},"*) ;;
+      *)
+        if [ -n "$updated" ]; then
+          updated="${updated},${rule}"
+        else
+          updated="$rule"
+        fi
+        ;;
+    esac
+  done
+  [ "$updated" != "$current" ] || return
+  temp="${DATABENCH_EVALSCOPE_CONFIG_FILE}.tmp.$$"
+  umask 077
+  awk -v value="$updated" '
+    /^EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=/ {
+      print "EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=" value
+      next
+    }
+    { print }
+  ' "$DATABENCH_EVALSCOPE_CONFIG_FILE" > "$temp"
+  chown root:root "$temp"
+  chmod 0600 "$temp"
+  mv -f "$temp" "$DATABENCH_EVALSCOPE_CONFIG_FILE"
+  log "allowed Docker-private Swift serving endpoints on port 8000 for EvalScope"
+}
+
+validate_swift_config() {
+  local key count enabled device_id api_credential provider_credential
+  [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ] ||
+    die "Swift configuration is missing: $DATABENCH_SWIFT_CONFIG_FILE"
+  for key in DATABENCH_SWIFT_ENABLED DATABENCH_SWIFT_GPU_DEVICE_ID \
+    DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL DATABENCH_SWIFT_PROVIDER_CREDENTIAL; do
+    count="$(grep -Ec "^${key}=.+" "$DATABENCH_SWIFT_CONFIG_FILE" || true)"
+    [ "$count" -eq 1 ] || die "Swift configuration must contain exactly one non-empty $key"
+  done
+  enabled="$(grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
+  [ "$enabled" = 'true' ] || [ "$enabled" = 'false' ] ||
+    die "DATABENCH_SWIFT_ENABLED must be true or false"
+  device_id="$(grep -E '^DATABENCH_SWIFT_GPU_DEVICE_ID=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
+  [[ "$device_id" =~ ^(0|[1-9][0-9]*)$ ]] && [ "${#device_id}" -le 4 ] ||
+    die "DATABENCH_SWIFT_GPU_DEVICE_ID must be a canonical non-negative integer"
+  api_credential="$(grep -E '^DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
+  provider_credential="$(grep -E '^DATABENCH_SWIFT_PROVIDER_CREDENTIAL=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
+  [[ "$api_credential" =~ ^[0-9a-f]{64}$ ]] ||
+    die "Swift API Provider credential must be 32 random bytes in hex"
+  [ "$api_credential" = "$provider_credential" ] ||
+    die "Swift API and Provider credentials must match"
+  [ "$(stat -c '%a' "$DATABENCH_SWIFT_CONFIG_FILE")" = '600' ] ||
+    die "Swift configuration permissions must be 0600: $DATABENCH_SWIFT_CONFIG_FILE"
+  [ "$(stat -c '%U:%G' "$DATABENCH_SWIFT_CONFIG_FILE")" = 'root:root' ] ||
+    die "Swift configuration owner must be root:root: $DATABENCH_SWIFT_CONFIG_FILE"
+}
+
+ensure_swift_config() {
+  local requested enabled device_id credential temp
+  requested="${DATABENCH_ENABLE_SWIFT_GPU:-}"
+  case "$requested" in
+    ''|true|false) ;;
+    *) die "DATABENCH_ENABLE_SWIFT_GPU must be true or false" ;;
+  esac
+  if [ -e "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
+    validate_swift_config
+    enabled="$(grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
+    if [ -n "$requested" ] && [ "$requested" != "$enabled" ]; then
+      set_swift_enabled_state "$requested"
+    fi
+    validate_swift_config
+    return
+  fi
+
+  enabled="${requested:-false}"
+  device_id="${DATABENCH_SWIFT_GPU_DEVICE_ID:-0}"
+  [[ "$device_id" =~ ^(0|[1-9][0-9]*)$ ]] && [ "${#device_id}" -le 4 ] ||
+    die "DATABENCH_SWIFT_GPU_DEVICE_ID must be a canonical non-negative integer"
+  credential="$(random_secret)"
+  temp="${DATABENCH_SWIFT_CONFIG_FILE}.tmp.$$"
+  umask 077
+  {
+    printf 'DATABENCH_SWIFT_ENABLED=%s\n' "$enabled"
+    printf 'DATABENCH_SWIFT_GPU_DEVICE_ID=%s\n' "$device_id"
+    printf 'DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL=%s\n' "$credential"
+    printf 'DATABENCH_SWIFT_PROVIDER_CREDENTIAL=%s\n' "$credential"
+  } > "$temp"
+  chown root:root "$temp"
+  chmod 0600 "$temp"
+  mv -f "$temp" "$DATABENCH_SWIFT_CONFIG_FILE"
+  validate_swift_config
+  log "wrote Swift GPU runtime configuration to $DATABENCH_SWIFT_CONFIG_FILE"
+}
+
+set_swift_enabled_state() {
+  local enabled="$1" current temp
+  [ "$enabled" = 'true' ] || [ "$enabled" = 'false' ] ||
+    die "Swift enabled state must be true or false"
+  validate_swift_config
+  current="$(grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
+  [ "$current" != "$enabled" ] || return
+  temp="${DATABENCH_SWIFT_CONFIG_FILE}.tmp.$$"
+  umask 077
+  awk -v value="$enabled" '
+    /^DATABENCH_SWIFT_ENABLED=/ {
+      print "DATABENCH_SWIFT_ENABLED=" value
+      next
+    }
+    { print }
+  ' "$DATABENCH_SWIFT_CONFIG_FILE" > "$temp"
+  chown root:root "$temp"
+  chmod 0600 "$temp"
+  mv -f "$temp" "$DATABENCH_SWIFT_CONFIG_FILE"
+  validate_swift_config
+  log "updated Swift GPU runtime enabled state to $enabled"
 }
 
 release_requires_mcp_config() {
@@ -300,8 +494,10 @@ validate_backup_key() {
 }
 
 ensure_secret_config() {
-  local postgres_password minio_root_password minio_app_password cursor_secret temp
+  local postgres_password minio_root_password minio_app_password cursor_secret
+  local operator_token service_credential temp
   if [ -e "$DATABENCH_CONFIG_FILE" ]; then
+    ensure_model_deployment_credentials
     validate_existing_config
     log "reusing existing secrets from $DATABENCH_CONFIG_FILE"
   else
@@ -309,6 +505,8 @@ ensure_secret_config() {
     minio_root_password="$(random_secret)"
     minio_app_password="$(random_secret)"
     cursor_secret="$(random_secret)"
+    operator_token="$(random_secret)"
+    service_credential="$(random_secret)"
     temp="${DATABENCH_CONFIG_FILE}.tmp.$$"
     umask 077
     {
@@ -328,6 +526,8 @@ ensure_secret_config() {
       printf 'DATABENCH_CORS_ORIGINS=\n'
       printf 'DATABENCH_ROOT=/var/lib/databench\n'
       printf 'DATABENCH_V2_CURSOR_SECRET=%s\n' "$cursor_secret"
+      printf 'DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=%s\n' "$operator_token"
+      printf 'DATABENCH_SERVICE_CREDENTIAL=%s\n' "$service_credential"
       printf 'PORT=8000\n'
     } > "$temp"
     chown root:root "$temp"

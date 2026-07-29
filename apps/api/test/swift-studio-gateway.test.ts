@@ -40,6 +40,7 @@ describe('Swift Studio gateway configuration', () => {
   test('is disabled by default and requires private, exact enabled inputs', () => {
     expect(swiftStudioGatewayConfigFromEnv({})).toMatchObject({
       enabled: false,
+      imageDigest: '57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d',
       proxyPrefix: '/swift-studio',
       routes: [],
     })
@@ -57,11 +58,31 @@ describe('Swift Studio gateway configuration', () => {
     ).toThrow('private HTTP origin')
     expect(config()).toMatchObject({
       enabled: true,
+      imageDigest: '57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d',
       internalBaseUrl: 'http://swift-studio:7860',
       maxConcurrentRequests: 64,
       maxWebSocketConnections: 32,
       providerBaseUrl: 'http://swift-studio:7861',
     })
+  })
+
+  test('accepts only a raw 64-hex release image digest', () => {
+    const imageDigest = 'a'.repeat(64)
+    expect(
+      swiftStudioGatewayConfigFromEnv({
+        DATABENCH_SWIFT_STUDIO_IMAGE_DIGEST: imageDigest,
+      }),
+    ).toMatchObject({ enabled: false, imageDigest })
+    expect(() =>
+      swiftStudioGatewayConfigFromEnv({
+        DATABENCH_SWIFT_STUDIO_IMAGE_DIGEST: `sha256:${imageDigest}`,
+      }),
+    ).toThrow()
+    expect(() =>
+      swiftStudioGatewayConfigFromEnv({
+        DATABENCH_SWIFT_STUDIO_IMAGE_DIGEST: 'A'.repeat(64),
+      }),
+    ).toThrow()
   })
 
   test('rejects a drifted route manifest before starting the API', () => {

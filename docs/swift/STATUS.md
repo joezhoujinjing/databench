@@ -32,6 +32,11 @@ integration_mode: native-full-gradio
   operator-attested Deployment 与 Evaluation lineage
 - **控制面状态:** 没有 Training Run/Attempt；原生任务仍由 ms-swift Gradio 管理
 - **发布声明:** 不改变 V16/V17、公共云 D3、ADR 0012 或 EvalScope E8/E9
+- **离线交付:** ADR 0012 通道已接入第八张、默认关闭的 Swift CUDA 镜像；显式
+  `DATABENCH_ENABLE_SWIFT_GPU=true` 才启用 `swift-gpu` profile。API 使用当次 bundle 的真实 local
+  image digest；Caddy、Provider/Gradio doctor、NVIDIA 快检、旧五/六/七镜像回滚、原生任务 idle
+  fence、Session workspace 备份/恢复和 EvalScope 私网 Deployment allowlist 均已接通。基础模型权重
+  不进入 bundle，由 operator 预置到 `/srv/databench/swift-models`
 
 ## Owner 决策
 
@@ -200,6 +205,23 @@ S4 non-GPU contract green / GPU deferred
 
 它证明 Dataset/Session/Artifact/Deployment/Evaluation 的数据契约、服务端解析与 lineage 已接通；不证明
 GPU 训练、GPU 推理部署、真实模型输出质量或完整 Training Run 控制面。
+
+## 离线八镜像 non-GPU Gate
+
+2026-07-29 在无 NVIDIA 的 Apple Silicon 构建机完成离线接线复验：
+
+- bundle builder 构建并保存 API/Web/CPU Worker/EvalScope/Swift/PostgreSQL/MinIO/MinIO Client
+  八张 `linux/amd64` 镜像，Swift 镜像执行 CPU import、Provider ready 和完整 Gradio ready smoke；
+- 普通安装默认不启动 Swift；GPU 机显式启用时只做 `nvidia-smi` 与容器内 Torch CUDA 快检；
+- 生命周期顺序为 Worker → optional Swift → API → EvalScope → Web；维护在原生
+  train/infer/deploy 活跃时 fail closed；
+- 备份包含 Swift Session workspace 与加密 `swift.env`，排除模型 cache/home 和 operator 预置模型；
+- `pnpm lint/build/typecheck/test/openapi/status/peer/offline`、真实 Postgres/MinIO、
+  Swift Provider/baseline/GPU gate 工具测试和 EvalScope parity/Python 全绿。
+
+该 gate 证明离线发布代码与 non-GPU runtime 可启动，不替代内网机上的真实 NVIDIA LoRA、Infer、
+serving 和 Evaluation 证据。实际 release archive 必须继续由干净 `main` 的
+`deploy/offline/build-bundle.sh` 生成并使用其 `RELEASE.txt`、`images.lock` 与双层 SHA-256。
 
 2026-07-29 对当前提交完成 S0–S4 非 GPU 完成性复验，并修复 GPU evidence fixture 与 S2 capability
 manifest 两处真源漂移；最终 Linux/amd64 image、真实依赖与所有专项 gate 记录见

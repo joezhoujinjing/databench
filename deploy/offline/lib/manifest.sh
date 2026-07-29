@@ -36,7 +36,7 @@ load_release_manifest() {
 
 validate_release_contract() {
   local release_dir="$1"
-  local lock_sha image
+  local lock_sha image locked_swift_digest
   local -a images
   load_release_env "${release_dir}/release.env"
   load_release_manifest "${release_dir}/release-manifest.json"
@@ -59,10 +59,22 @@ validate_release_contract() {
   if [ -n "${DATABENCH_EVALSCOPE_IMAGE:-}" ]; then
     images+=("$DATABENCH_EVALSCOPE_IMAGE")
   fi
+  if [ -n "${DATABENCH_SWIFT_IMAGE:-}" ]; then
+    images+=("$DATABENCH_SWIFT_IMAGE")
+  fi
   for image in "${images[@]}"; do
     awk -F '|' -v expected="$image" '
       $1 == expected { matches += 1 }
       END { exit matches == 1 ? 0 : 1 }
     ' "${release_dir}/images.lock" || die "release image is not locked exactly once: $image"
   done
+  if release_has_swift "$release_dir"; then
+    locked_swift_digest="$(
+      awk -F '|' -v expected="$DATABENCH_SWIFT_IMAGE" '
+        $1 == expected { sub(/^sha256:/, "", $2); print $2 }
+      ' "${release_dir}/images.lock"
+    )"
+    [ "$locked_swift_digest" = "$DATABENCH_SWIFT_IMAGE_DIGEST" ] ||
+      die "Swift image digest differs between release.env and images.lock"
+  fi
 }

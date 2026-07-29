@@ -25,7 +25,6 @@ import {
   DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG,
   MS_SWIFT_UPSTREAM_COMMIT,
   SWIFT_STUDIO_CAPABILITY_DIGEST,
-  SWIFT_STUDIO_IMAGE_DIGEST,
   type SwiftStudioGatewayConfig,
 } from './swift-studio/config.js'
 import { registerSwiftStudioGateway } from './swift-studio/gateway.js'
@@ -183,7 +182,7 @@ function swiftStudioWorkspaceOpenOptions(
       providerBaseUrl: config.providerBaseUrl,
       datasetExportBaseUrl: config.databenchBaseUrl,
       upstreamCommit: MS_SWIFT_UPSTREAM_COMMIT,
-      imageDigest: SWIFT_STUDIO_IMAGE_DIGEST,
+      imageDigest: config.imageDigest,
       runtimeCapabilityDigest: SWIFT_STUDIO_CAPABILITY_DIGEST,
       timeoutMs: config.timeoutMs,
       ...(config.providerCredential === undefined ? {} : { credential: config.providerCredential }),

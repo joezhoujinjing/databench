@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -Eeuo pipefail
+export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -57,6 +58,22 @@ grep -Fq 'image: ${DATABENCH_WORKER_IMAGE:?missing DATABENCH_WORKER_IMAGE}' \
   "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the Worker image'
 grep -Fq 'image: ${DATABENCH_EVALSCOPE_IMAGE:?missing DATABENCH_EVALSCOPE_IMAGE}' \
   "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the EvalScope image'
+grep -Fq 'image: ${DATABENCH_SWIFT_IMAGE:?missing DATABENCH_SWIFT_IMAGE}' \
+  "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the Swift Studio image'
+grep -Fq 'profiles: ["swift-gpu"]' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline Swift Studio is not isolated behind its explicit GPU profile'
+grep -Fq '/srv/databench/swift-studio:/var/lib/databench-swift-studio' \
+  "${SCRIPT_DIR}/compose.yml" || fail 'Swift Studio Session workspace is not persistent'
+grep -Fq '/srv/databench/swift-models:/opt/databench-models:ro' \
+  "${SCRIPT_DIR}/compose.yml" || fail 'offline models are not mounted read-only into Swift Studio'
+grep -Fq 'shm_size: 8gb' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline Swift Studio does not reserve enough shared memory for PyTorch workers'
+grep -Fq 'gpu_available' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'Swift Studio health does not require the selected GPU'
+if sed -n '/^  swift-studio:/,/^  api:/p' "${SCRIPT_DIR}/compose.yml" |
+  grep -Eq '^[[:space:]]+ports:'; then
+  fail 'offline Swift Studio publishes a host port'
+fi
 grep -Fq 'DATABENCH_EVALSCOPE_ENABLED: "true"' "${SCRIPT_DIR}/compose.yml" ||
   fail 'offline API does not enable the scoped EvalScope gateway'
 grep -Fq 'DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: "http://evalscope:9000"' \
@@ -88,12 +105,17 @@ grep -Fq 'workers/python/Dockerfile' "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not build the Worker image'
 grep -Fq 'deploy/evalscope/Dockerfile' "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not build the pinned EvalScope image'
+grep -Fq 'deploy/swift-studio/Dockerfile' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not build the pinned Swift Studio image'
 grep -Fq 'torch.version.cuda is None' "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not reject a CUDA-enabled Worker image'
 grep -Fq 'name.startswith("nvidia-")' "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not reject NVIDIA Worker packages'
-grep -Fq 'saving seven images' "${SCRIPT_DIR}/build-bundle.sh" ||
-  fail 'offline bundle builder does not save the seven-image release set'
+grep -Fq 'saving eight images' "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not save the eight-image release set'
+grep -Fq 'Swift Studio Provider and native Gradio readiness smoke without a GPU' \
+  "${SCRIPT_DIR}/build-bundle.sh" ||
+  fail 'offline bundle builder does not smoke the packaged native Swift runtime'
 [ "$(grep -Ec '^[[:space:]]*log([[:space:]]|$)' "${SCRIPT_DIR}/Caddyfile")" -eq 1 ] ||
   fail 'Caddy must configure exactly one redacted runtime logger and no access logger'
 grep -Fq 'format filter' "${SCRIPT_DIR}/Caddyfile" ||
@@ -108,8 +130,8 @@ grep -Fq "document.servers[0]?.url !== '/api'" "${SCRIPT_DIR}/smoke/gateway.mjs"
   fail 'offline smoke does not verify the external OpenAPI server URL'
 grep -Fq '/api/mcp' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
   fail 'offline gateway smoke does not cover the MCP route'
-grep -Fq 'logs web api worker evalscope' "${SCRIPT_DIR}/smoke.sh" ||
-  fail 'offline smoke does not check API/Caddy/Worker/EvalScope logs for bearer token leakage'
+grep -Fq 'LOG_SERVICES+=(swift-studio)' "${SCRIPT_DIR}/smoke.sh" ||
+  fail 'offline smoke does not include an enabled Swift Studio in log leak checks'
 grep -Fq '/evalscope-api/api/v1/config' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
   fail 'offline smoke does not verify the path-free EvalScope public config'
 grep -Fq '/evalscope-api/api/v1/eval/resume/invoke' "${SCRIPT_DIR}/smoke/gateway.mjs" ||
@@ -165,7 +187,8 @@ if rg -n \
 fi
 
 for document in README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
-  MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md; do
+  MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
+  SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md; do
   [ -f "${SCRIPT_DIR}/${document}" ] || fail "offline document is missing: $document"
 done
 if rg -n 'http://127\.0\.0\.1/(health|version|capabilities|openapi\.json|v1/)' \
@@ -185,17 +208,21 @@ for bundle_asset in \
   deploy/offline/TROUBLESHOOTING.zh-CN.md \
   deploy/offline/MCP-AGENT-GUIDE.zh-CN.md \
   deploy/offline/EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
+  deploy/offline/SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md \
   deploy/offline/mcp.env.example \
   deploy/offline/evalscope.env.example \
+  deploy/offline/swift.env.example \
   docs/deployment/offline-single-host-plan.zh-CN.md \
   docs/decisions/0012-offline-single-host-deployment.md \
+  docs/decisions/0018-ms-swift-native-gradio-studio.md \
   'docs/ADR-0012.md'; do
   grep -Fq "$bundle_asset" "${SCRIPT_DIR}/build-bundle.sh" ||
     fail "bundle builder does not include: $bundle_asset"
 done
 for release_asset in DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
-  MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md mcp.env.example \
-  evalscope.env.example docs; do
+  MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
+  SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md mcp.env.example evalscope.env.example \
+  swift.env.example docs; do
   grep -Fq "$release_asset" "${SCRIPT_DIR}/lib/common.sh" ||
     fail "installed release does not preserve: $release_asset"
 done
@@ -207,6 +234,8 @@ DATABENCH_API_IMAGE=databench-api:1.2.3
 DATABENCH_WEB_IMAGE=databench-web:1.2.3
 DATABENCH_WORKER_IMAGE=databench-worker:1.2.3
 DATABENCH_EVALSCOPE_IMAGE=databench-evalscope:1.2.3
+DATABENCH_SWIFT_IMAGE=databench-swift-studio:1.2.3
+DATABENCH_SWIFT_IMAGE_DIGEST=8888888888888888888888888888888888888888888888888888888888888888
 DATABENCH_POSTGRES_IMAGE=databench-offline/postgres:1111111111111111
 DATABENCH_MINIO_IMAGE=databench-offline/minio:2222222222222222
 DATABENCH_MINIO_MC_IMAGE=databench-offline/minio-mc:3333333333333333
@@ -218,6 +247,7 @@ databench-api:1.2.3|sha256:11111111111111111111111111111111111111111111111111111
 databench-web:1.2.3|sha256:2222222222222222222222222222222222222222222222222222222222222222|linux/amd64|git:1111111111111111111111111111111111111111
 databench-worker:1.2.3|sha256:3333333333333333333333333333333333333333333333333333333333333333|linux/amd64|git:1111111111111111111111111111111111111111
 databench-evalscope:1.2.3|sha256:4444444444444444444444444444444444444444444444444444444444444444|linux/amd64|evalscope:b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60
+databench-swift-studio:1.2.3|sha256:8888888888888888888888888888888888888888888888888888888888888888|linux/amd64|ms-swift:f48847d23dbcd72ceb15fdbc5a1482cc7eb0359d
 databench-offline/postgres:1111111111111111|sha256:5555555555555555555555555555555555555555555555555555555555555555|linux/amd64|postgres:17.6-alpine
 databench-offline/minio:2222222222222222|sha256:6666666666666666666666666666666666666666666666666666666666666666|linux/amd64|minio/minio:RELEASE.2025-09-07T16-13-09Z
 databench-offline/minio-mc:3333333333333333|sha256:7777777777777777777777777777777777777777777777777777777777777777|linux/amd64|minio/mc:RELEASE.2025-08-13T08-35-41Z
@@ -237,6 +267,23 @@ grep -Fq 'ensure_evalscope_config' "${SCRIPT_DIR}/install.sh" ||
   fail 'offline install does not create the stable EvalScope configuration'
 grep -Fq 'ensure_evalscope_config' "${SCRIPT_DIR}/upgrade.sh" ||
   fail 'offline upgrade does not preserve or create the EvalScope configuration'
+grep -Fq 'ensure_swift_config' "${SCRIPT_DIR}/install.sh" ||
+  fail 'offline install does not create the explicit Swift GPU configuration'
+grep -Fq 'ensure_swift_config' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade does not preserve or explicitly change the Swift GPU configuration'
+upgrade_swift_config_line="$(
+  grep -nF '  ensure_swift_config' "${SCRIPT_DIR}/upgrade.sh" | cut -d: -f1
+)"
+upgrade_backup_line="$(
+  grep -nF '"${PREVIOUS_RELEASE}/backup.sh" --api-already-stopped' \
+    "${SCRIPT_DIR}/upgrade.sh" | cut -d: -f1
+)"
+[ "$upgrade_swift_config_line" -gt "$upgrade_backup_line" ] ||
+  fail 'offline upgrade changes the Swift enabled state before backing up the previous release'
+grep -Fq 'set_swift_enabled_state "$PREVIOUS_SWIFT_ENABLED"' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade recovery does not restore the previous Swift enabled state'
+grep -Fq 'verify_swift_gpu_runtime' "${SCRIPT_DIR}/install.sh" ||
+  fail 'offline install does not verify the selected GPU with the packaged Swift image'
 grep -Fq 'ensure_evalscope_data_directories' "${SCRIPT_DIR}/upgrade.sh" ||
   fail 'offline upgrade does not initialize EvalScope persistent directories'
 upgrade_evalscope_dirs_line="$(
@@ -269,6 +316,46 @@ grep -Fq -- '-type f -exec chmod 0640' "${SCRIPT_DIR}/restore.sh" ||
   fail 'offline restore does not normalize EvalScope file permissions'
 grep -Fq 'evalscope.env.enc' "${SCRIPT_DIR}/backup.sh" ||
   fail 'offline backup does not escrow the EvalScope stable secrets'
+grep -Fq 'swift-studio-workspace.tar' "${SCRIPT_DIR}/backup.sh" ||
+  fail 'offline backup does not capture the Swift Studio Session workspace'
+grep -Fq 'swift-studio-workspace.tar' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not restore the Swift Studio Session workspace'
+grep -Fq 'swift.env.enc' "${SCRIPT_DIR}/backup.sh" ||
+  fail 'offline backup does not escrow the Swift Provider credential'
+grep -Fq 'assert_swift_idle' "${SCRIPT_DIR}/lib/common.sh" ||
+  fail 'offline maintenance does not refuse to kill an active native Swift task'
+stop_function="$(
+  sed -n '/^stop_application_services()/,/^}/p' "${SCRIPT_DIR}/lib/common.sh"
+)"
+stop_web_line="$(grep -nF 'stop web' <<< "$stop_function" | head -n 1 | cut -d: -f1)"
+stop_swift_idle_line="$(grep -nF 'assert_swift_idle' <<< "$stop_function" | cut -d: -f1)"
+[ "$stop_web_line" -lt "$stop_swift_idle_line" ] ||
+  fail 'offline maintenance must stop Web admission before checking Swift native tasks'
+grep -Fq 'assert_swift_session_transition_compatible' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade does not fence active Sessions across Swift image or enabled-state changes'
+grep -Fq 'assert_swift_session_transition_compatible' "${SCRIPT_DIR}/rollback.sh" ||
+  fail 'offline rollback does not fence active Sessions across Swift image changes'
+grep -Fq 'verify_swift_model_preload' "${SCRIPT_DIR}/install.sh" ||
+  fail 'offline install does not require a preloaded model when Swift is enabled'
+grep -Fq 'verify_swift_model_preload' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade does not require a preloaded model when enabling Swift'
+start_function="$(
+  sed -n '/^start_application_services()/,/^}/p' "${SCRIPT_DIR}/lib/health.sh"
+)"
+grep -Fq 'assert_swift_session_transition_compatible' <<< "$start_function" ||
+  fail 'disabled Swift startup does not reject a stale active Studio Session'
+start_session_line="$(
+  grep -nF 'assert_swift_session_transition_compatible' <<< "$start_function" | cut -d: -f1
+)"
+start_remove_line="$(grep -nF 'rm --stop --force swift-studio' <<< "$start_function" | cut -d: -f1)"
+[ "$start_session_line" -lt "$start_remove_line" ] ||
+  fail 'disabled Swift startup removes the container before checking active Session lineage'
+grep -Fq 'current Swift enabled state does not match the backup' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not reject a Swift enabled-state mismatch'
+grep -Fq '! -name cache ! -name home -delete' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not mirror the Swift workspace while preserving cache and home'
+grep -Fq 'databenchctl restart' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade recovery does not print a profile-aware manual restart command'
 grep -Fq 'drain_evalscope' "${SCRIPT_DIR}/lib/common.sh" ||
   fail 'offline service stop does not drain EvalScope'
 grep -Fq "stat -c '%U:%G'" "${SCRIPT_DIR}/lib/config.sh" ||
@@ -388,6 +475,18 @@ printf '%s\n' \
   [ "$MANIFEST_ROLLBACK_MODE" = 'image-only' ]
 )
 
+cp -a "${TEMP_DIR}/release" "${TEMP_DIR}/bad-swift-digest-release"
+sed -i.bak \
+  's/DATABENCH_SWIFT_IMAGE_DIGEST=8888888888888888888888888888888888888888888888888888888888888888/DATABENCH_SWIFT_IMAGE_DIGEST=9999999999999999999999999999999999999999999999999999999999999999/' \
+  "${TEMP_DIR}/bad-swift-digest-release/release.env"
+if (
+  source "${SCRIPT_DIR}/lib/common.sh"
+  source "${SCRIPT_DIR}/lib/manifest.sh"
+  validate_release_contract "${TEMP_DIR}/bad-swift-digest-release"
+) >/dev/null 2>&1; then
+  fail 'release validator accepted a Swift digest that differs from images.lock'
+fi
+
 mkdir -p "${TEMP_DIR}/legacy-release"
 cat > "${TEMP_DIR}/legacy-release/release.env" <<'EOF'
 DATABENCH_VERSION=1.0.0
@@ -419,9 +518,74 @@ printf '%s\n' \
   validate_release_contract "${TEMP_DIR}/legacy-release"
   [ -z "${DATABENCH_WORKER_IMAGE:-}" ]
   [ -z "${DATABENCH_EVALSCOPE_IMAGE:-}" ]
+  [ -z "${DATABENCH_SWIFT_IMAGE:-}" ]
   ! release_has_worker "${TEMP_DIR}/legacy-release"
   ! release_has_evalscope "${TEMP_DIR}/legacy-release"
+  ! release_has_swift "${TEMP_DIR}/legacy-release"
 )
+
+mkdir -p "${TEMP_DIR}/seven-image-release"
+grep -v '^DATABENCH_SWIFT_' "${TEMP_DIR}/release/release.env" \
+  > "${TEMP_DIR}/seven-image-release/release.env"
+grep -v '^databench-swift-studio:' "${TEMP_DIR}/release/images.lock" \
+  > "${TEMP_DIR}/seven-image-release/images.lock"
+if command -v sha256sum >/dev/null 2>&1; then
+  SEVEN_LOCK_SHA="$(
+    sha256sum "${TEMP_DIR}/seven-image-release/images.lock" | awk '{print $1}'
+  )"
+else
+  SEVEN_LOCK_SHA="$(
+    shasum -a 256 "${TEMP_DIR}/seven-image-release/images.lock" | awk '{print $1}'
+  )"
+fi
+printf '%s\n' \
+  "{\"schema_version\":1,\"app_version\":\"1.2.3\",\"git_sha\":\"1111111111111111111111111111111111111111\",\"platform\":\"linux/amd64\",\"min_upgrade_from\":\"1.0.0\",\"postgres_major\":17,\"database_migration\":\"expand-only\",\"rollback_mode\":\"image-only\",\"object_migration\":\"none\",\"images_lock_sha256\":\"${SEVEN_LOCK_SHA}\"}" \
+  > "${TEMP_DIR}/seven-image-release/release-manifest.json"
+(
+  source "${SCRIPT_DIR}/lib/common.sh"
+  source "${SCRIPT_DIR}/lib/manifest.sh"
+  validate_release_contract "${TEMP_DIR}/seven-image-release"
+  release_has_worker "${TEMP_DIR}/seven-image-release"
+  release_has_evalscope "${TEMP_DIR}/seven-image-release"
+  ! release_has_swift "${TEMP_DIR}/seven-image-release"
+  [ "$(release_image_count "${TEMP_DIR}/seven-image-release")" -eq 7 ]
+)
+
+mkdir -p "${TEMP_DIR}/different-swift-release"
+sed \
+  's/DATABENCH_SWIFT_IMAGE_DIGEST=8888888888888888888888888888888888888888888888888888888888888888/DATABENCH_SWIFT_IMAGE_DIGEST=9999999999999999999999999999999999999999999999999999999999999999/' \
+  "${TEMP_DIR}/release/release.env" > "${TEMP_DIR}/different-swift-release/release.env"
+(
+  source "${SCRIPT_DIR}/lib/common.sh"
+  active_swift_session_binding() {
+    printf '%s\n' \
+      '11111111-1111-1111-1111-111111111111|8888888888888888888888888888888888888888888888888888888888888888'
+  }
+  assert_swift_session_transition_compatible \
+    "${TEMP_DIR}/release" "${TEMP_DIR}/release" true
+)
+if (
+  source "${SCRIPT_DIR}/lib/common.sh"
+  active_swift_session_binding() {
+    printf '%s\n' \
+      '11111111-1111-1111-1111-111111111111|8888888888888888888888888888888888888888888888888888888888888888'
+  }
+  assert_swift_session_transition_compatible \
+    "${TEMP_DIR}/release" "${TEMP_DIR}/release" false
+) >/dev/null 2>&1; then
+  fail 'active Swift Session was allowed while disabling the runtime'
+fi
+if (
+  source "${SCRIPT_DIR}/lib/common.sh"
+  active_swift_session_binding() {
+    printf '%s\n' \
+      '11111111-1111-1111-1111-111111111111|8888888888888888888888888888888888888888888888888888888888888888'
+  }
+  assert_swift_session_transition_compatible \
+    "${TEMP_DIR}/release" "${TEMP_DIR}/different-swift-release" true
+) >/dev/null 2>&1; then
+  fail 'active Swift Session was allowed across an image digest change'
+fi
 
 DIRECTORY_CALLS="${TEMP_DIR}/directory-calls"
 (
@@ -437,11 +601,63 @@ grep -Fq -- \
   "$DIRECTORY_CALLS" ||
   fail 'EvalScope directory initializer does not enforce the runtime uid/gid and mode'
 
-RECOVERY_CALLS="${TEMP_DIR}/recovery-calls"
+mkdir -p "${TEMP_DIR}/model-data/swift-models/Qwen-test"
+cat > "${TEMP_DIR}/model-swift.env" <<'EOF'
+DATABENCH_SWIFT_ENABLED=true
+EOF
 (
   source "${SCRIPT_DIR}/lib/common.sh"
+  source "${SCRIPT_DIR}/lib/health.sh"
+  DATABENCH_DATA_ROOT="${TEMP_DIR}/model-data"
+  DATABENCH_SWIFT_CONFIG_FILE="${TEMP_DIR}/model-swift.env"
+  verify_swift_model_preload "${TEMP_DIR}/release"
+)
+mkdir -p "${TEMP_DIR}/empty-model-data/swift-models"
+if (
+  source "${SCRIPT_DIR}/lib/common.sh"
+  source "${SCRIPT_DIR}/lib/health.sh"
+  DATABENCH_DATA_ROOT="${TEMP_DIR}/empty-model-data"
+  DATABENCH_SWIFT_CONFIG_FILE="${TEMP_DIR}/model-swift.env"
+  verify_swift_model_preload "${TEMP_DIR}/release"
+) >/dev/null 2>&1; then
+  fail 'Swift model preflight accepted an empty offline model directory'
+fi
+
+mkdir -p "${TEMP_DIR}/safe-swift-archive/sessions"
+tar -cf "${TEMP_DIR}/safe-swift-workspace.tar" \
+  -C "${TEMP_DIR}/safe-swift-archive" sessions
+(
+  source "${SCRIPT_DIR}/lib/common.sh"
+  source "${SCRIPT_DIR}/lib/health.sh"
+  validate_swift_volume_archive "${TEMP_DIR}/safe-swift-workspace.tar"
+)
+mkdir -p "${TEMP_DIR}/unsafe-swift-archive/cache"
+printf 'must-not-restore\n' > "${TEMP_DIR}/unsafe-swift-archive/cache/model"
+tar -cf "${TEMP_DIR}/unsafe-swift-workspace.tar" \
+  -C "${TEMP_DIR}/unsafe-swift-archive" cache
+if (
+  source "${SCRIPT_DIR}/lib/common.sh"
+  source "${SCRIPT_DIR}/lib/health.sh"
+  validate_swift_volume_archive "${TEMP_DIR}/unsafe-swift-workspace.tar"
+) >/dev/null 2>&1; then
+  fail 'Swift archive validator accepted a cache member that would overwrite preserved data'
+fi
+
+RECOVERY_CALLS="${TEMP_DIR}/recovery-calls"
+cat > "${TEMP_DIR}/swift.env" <<'EOF'
+DATABENCH_SWIFT_ENABLED=true
+DATABENCH_SWIFT_GPU_DEVICE_ID=0
+DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+DATABENCH_SWIFT_PROVIDER_CREDENTIAL=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+EOF
+(
+  source "${SCRIPT_DIR}/lib/common.sh"
+  DATABENCH_SWIFT_CONFIG_FILE="${TEMP_DIR}/swift.env"
   compose_for_release() {
     printf '%s\n' "$*" >> "$RECOVERY_CALLS"
+  }
+  swift_container_exists() {
+    return 0
   }
   force_stop_application_services "${TEMP_DIR}/release"
   remove_application_services_absent_from_release \
@@ -450,11 +666,11 @@ RECOVERY_CALLS="${TEMP_DIR}/recovery-calls"
     "${TEMP_DIR}/legacy-release" "${TEMP_DIR}/release"
 )
 grep -Fxq \
-  "${TEMP_DIR}/release stop web api evalscope worker" "$RECOVERY_CALLS" ||
+  "${TEMP_DIR}/release stop web api evalscope worker swift-studio" "$RECOVERY_CALLS" ||
   fail 'forced target recovery does not stop every declared application service'
 grep -Fxq \
-  "${TEMP_DIR}/release rm --stop --force evalscope worker" "$RECOVERY_CALLS" ||
-  fail 'legacy recovery does not remove target-only EvalScope and Worker containers'
+  "${TEMP_DIR}/release rm --stop --force evalscope worker swift-studio" "$RECOVERY_CALLS" ||
+  fail 'legacy recovery does not remove target-only EvalScope, Worker, and Swift containers'
 [ "$(wc -l < "$RECOVERY_CALLS" | tr -d ' ')" -eq 2 ] ||
   fail 'service cleanup attempted to remove services that exist in the target release'
 
@@ -465,7 +681,8 @@ grep -Fxq \
   load_release_env "${TEMP_DIR}/legacy-release/release.env"
   [ -z "${DATABENCH_WORKER_IMAGE:-}" ]
   [ -z "${DATABENCH_EVALSCOPE_IMAGE:-}" ]
-  [ "$(release_image_count "${TEMP_DIR}/release")" -eq 7 ]
+  [ -z "${DATABENCH_SWIFT_IMAGE:-}" ]
+  [ "$(release_image_count "${TEMP_DIR}/release")" -eq 8 ]
   validate_images_lock "${TEMP_DIR}/release/images.lock" false \
     "$(release_image_count "${TEMP_DIR}/release")"
 )
@@ -489,6 +706,8 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
     "${TEMP_DIR}/release/compose.yml"
   sed -i.bak "s#/etc/databench/evalscope.env#${TEMP_DIR}/evalscope.env#g" \
     "${TEMP_DIR}/release/compose.yml"
+  sed -i.bak "s#/etc/databench/swift.env#${TEMP_DIR}/swift.env#g" \
+    "${TEMP_DIR}/release/compose.yml"
   cat > "${TEMP_DIR}/databench.env" <<'EOF'
 POSTGRES_USER=databench
 POSTGRES_PASSWORD=test
@@ -506,12 +725,15 @@ DATABENCH_OBJECT_STORE=s3
 DATABENCH_CORS_ORIGINS=
 DATABENCH_ROOT=/var/lib/databench
 DATABENCH_V2_CURSOR_SECRET=test-cursor-secret-long-enough
+DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+DATABENCH_SERVICE_CREDENTIAL=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 PORT=8000
 EOF
   cat > "${TEMP_DIR}/evalscope.env" <<'EOF'
 EVALSCOPE_TASK_CONFIG_HMAC_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 EVALSCOPE_OPERATOR_TOKEN=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 DATABENCH_ORIGIN=http://databench.internal
+DATABENCH_SERVICE_CREDENTIAL=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=
 EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=
 EVALSCOPE_INPUT_MAX_BYTES=1073741824
@@ -565,10 +787,13 @@ EOF
     # shellcheck source=../lib/common.sh
     source "${SCRIPT_DIR}/lib/common.sh"
     export DATABENCH_CONFIG_FILE="${TEMP_DIR}/databench.env"
+    export DATABENCH_SWIFT_CONFIG_FILE="${TEMP_DIR}/swift.env"
     export DATABENCH_API_IMAGE='wrong-api:ambient-variable-must-not-win'
     export DATABENCH_WEB_IMAGE='wrong-web:ambient-variable-must-not-win'
     export DATABENCH_WORKER_IMAGE='wrong-worker:ambient-variable-must-not-win'
     export DATABENCH_EVALSCOPE_IMAGE='wrong-evalscope:ambient-variable-must-not-win'
+    export DATABENCH_SWIFT_IMAGE='wrong-swift:ambient-variable-must-not-win'
+    export DATABENCH_SWIFT_IMAGE_DIGEST='ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
     rendered="$(compose_for_release "${TEMP_DIR}/release" config)"
     grep -q 'image: databench-api:1.2.3' <<< "$rendered" ||
       fail 'ambient variables overrode the selected API release'
@@ -578,8 +803,22 @@ EOF
       fail 'ambient variables overrode the selected Worker release'
     grep -q 'image: databench-evalscope:1.2.3' <<< "$rendered" ||
       fail 'ambient variables overrode the selected EvalScope release'
+    grep -q 'image: databench-swift-studio:1.2.3' <<< "$rendered" ||
+      fail 'ambient variables overrode the selected Swift release'
     ! grep -q 'ambient-variable-must-not-win' <<< "$rendered" ||
       fail 'ambient release variables leaked into Compose interpolation'
+  )
+  sed -i.bak 's/DATABENCH_SWIFT_ENABLED=true/DATABENCH_SWIFT_ENABLED=false/' \
+    "${TEMP_DIR}/swift.env"
+  (
+    source "${SCRIPT_DIR}/lib/common.sh"
+    export DATABENCH_CONFIG_FILE="${TEMP_DIR}/databench.env"
+    export DATABENCH_SWIFT_CONFIG_FILE="${TEMP_DIR}/swift.env"
+    rendered="$(compose_for_release "${TEMP_DIR}/release" config)"
+    ! grep -q 'image: databench-swift-studio:1.2.3' <<< "$rendered" ||
+      fail 'disabled Swift profile still renders the GPU service'
+    grep -q 'DATABENCH_SWIFT_STUDIO_ENABLED: "false"' <<< "$rendered" ||
+      fail 'disabled Swift profile does not disable the API gateway'
   )
 fi
 

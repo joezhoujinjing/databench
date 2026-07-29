@@ -7,8 +7,8 @@
 > runtime、disabled-by-default
 > gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports、逐样本、Dashboard、
 > 比较、Performance、Benchmark、安全 Viewer 和完整结果归档已实现；锁定 React 基线的完整 UI 功能迁移
-> gate 与结果归档 gate 已关闭。七镜像离线生命周期、安全和容量实现已落地，真实 Ubuntu 22.04 amd64
-> 断网目标机 GE9 仍待验收。
+> gate 与结果归档 gate 已关闭。七张基础镜像加一张默认关闭的 Swift CUDA 镜像已经接入离线
+> 生命周期、安全、容量与备份；真实 Ubuntu 22.04 amd64 断网目标机 GE9 仍待验收。
 > ms-swift ADR 0018 已接受，S0 已完成；S1 的完整原生 Gradio、`/training`、GPU image、Provider 与
 > Gateway 已 code-complete，真实 Linux/NVIDIA LoRA + Infer gate 按 owner 决策后置且 capability 保持
 > unvalidated。S2 exact Dataset 与单 active Studio Session bridge、S3 LoRA immutable Model Artifact
@@ -193,8 +193,11 @@ packages/<name>/
   origins；旧 release 不读取该文件。
 - 离线 Worker：作为第六张镜像随 bundle 交付，使用 4 GiB tmpfs。
 - 离线 EvalScope：作为第七张 pinned backend-only 镜像随 bundle 交付，使用私网 HTTP、持久化
-  output/input volume、稳定 operator/HMAC 配置、drain 生命周期与 4 CPU / 12 GiB 容量边界；备份覆盖
-  PostgreSQL、MinIO、EvalScope volume 和三份加密配置 escrow。
+  output/input volume、稳定 operator/HMAC 配置、drain 生命周期与 4 CPU / 12 GiB 容量边界。
+- 离线 Swift：作为第八张 pinned CUDA 镜像随 bundle 交付，默认关闭；operator 显式启用单 GPU
+  profile，模型从 `/srv/databench/swift-models` 只读挂载，Session workspace 独立持久化。
+- 离线备份覆盖 PostgreSQL、MinIO、EvalScope volume、启用时的 Swift Session workspace 和四份
+  加密配置 escrow；模型 cache/权重不进入每代业务备份。
 - OpenAPI：API Zod route → `openapi/openapi.json` →
   `apps/web/src/api/generated/schema.ts`。
 - Node 版本：`.nvmrc`，当前 Node 22 LTS。
@@ -223,7 +226,7 @@ NVIDIA LoRA/Infer/serving/evaluation gate 按 owner 决策后置且尚未关闭�
 `non-GPU contract green / GPU deferred`。runtime 保持
 disabled-by-default，`/training` 在未启用时显示明确 unavailable
 boundary。EvalScope E9 本地实现完成、目标机 gate pending；通用部署仍 disabled-by-default，结果归档与
-七镜像离线接线已完成。MCP、CPU-only Worker 和 backend-only EvalScope 只获
+八镜像离线接线已完成。MCP、CPU-only Worker、backend-only EvalScope 和可选 Swift GPU Studio 只获
 授权进入 ADR 0012 的
 匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台

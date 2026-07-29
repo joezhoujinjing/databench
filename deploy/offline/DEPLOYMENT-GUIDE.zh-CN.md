@@ -14,12 +14,14 @@
 [MCP-AGENT-GUIDE.zh-CN.md](MCP-AGENT-GUIDE.zh-CN.md)。
 EvalScope 模型 allowlist、容量、drain 与离线验收见
 [EVALSCOPE-OPERATOR-GUIDE.zh-CN.md](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md)。
+Swift GPU、离线模型、训练与部署见
+[SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md](SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md)。
 
 ## 1. 重要边界
 
 1. 离线包不包含 Docker Engine，也不会在目标机安装或升级 Docker。
 2. 安装和运行期间不会执行 `docker pull`、`docker build`、`pnpm install` 或访问公网。
-3. 宿主机只发布 TCP 80。API、EvalScope 9000、Worker gRPC 50051、PostgreSQL、MinIO 和 MinIO Console
+3. 宿主机只发布 TCP 80。API、EvalScope 9000、Swift 7860/7861、Worker gRPC 50051、PostgreSQL、MinIO 和 MinIO Console
    不发布宿主机端口。
 4. 当前 Web、REST 和 MCP 都没有应用层鉴权。服务器必须位于不暴露公网的可信内网；任何能访问
    TCP 80 的主体都有完整权限。CIDR/iptables 是可选加固，不是安装前置条件。
@@ -37,8 +39,8 @@ databench-offline-1.0.0-linux-amd64.tar.gz
 databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 ```
 
-目标 Ubuntu 只接收并使用这两个文件。`.tar.gz` 包含七张 `linux/amd64` 镜像（API、Web、
-CPU-only Worker、backend-only EvalScope、PostgreSQL、MinIO、MinIO Client）、Compose、安装脚本、运维脚本、固定
+目标 Ubuntu 只接收并使用这两个文件。`.tar.gz` 包含八张 `linux/amd64` 镜像（API、Web、
+CPU-only Worker、backend-only EvalScope、CUDA Swift Studio、PostgreSQL、MinIO、MinIO Client）、Compose、安装脚本、运维脚本、固定
 smoke fixtures 和本文档。
 
 历史五镜像包实测：
@@ -46,7 +48,7 @@ smoke fixtures 和本文档。
 - `images.tar`：约 412 MB；
 - 最终 `.tar.gz`：约 409.4 MiB；
 - 当前 CPU-only Worker 单镜像约 499 MiB；
-- 2026-07-27 六镜像记录只代表 EvalScope 纳入前的旧 bundle；当前七镜像体积必须按当次构建记录；
+- 2026-07-27 六镜像记录只代表 EvalScope 纳入前的旧 bundle；当前八镜像体积必须按当次构建记录；
 - 正式交付必须记录当次完整归档的实际大小和 SHA-256；
 - 业务数据和备份不包含在该体积中。
 
@@ -68,7 +70,7 @@ smoke fixtures 和本文档。
 - Docker Buildx 可用；
 - Docker 支持 `docker image save --platform`，建议 Docker 28 或更新版本；
 - Git 工作树干净；
-- 建议至少预留 25 GiB 可用空间给 Worker 依赖、镜像层、构建缓存和归档。
+- 建议至少预留 50 GiB 可用空间给 Worker/Swift 依赖、镜像层、构建缓存和归档。
 
 检查命令：
 
@@ -100,11 +102,11 @@ output/offline/databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 
 脚本会自动执行以下操作：
 
-1. 固定 `linux/amd64` 构建 API、Web、CPU-only Python Worker 和 pinned backend-only EvalScope；
+1. 固定 `linux/amd64` 构建 API、Web、CPU-only Python Worker、pinned backend-only EvalScope 和 CUDA Swift Studio；
 2. 拉取精确版本的 PostgreSQL 17、MinIO 和 MinIO Client；
-3. 检查七张镜像的 OS、架构和内容 ID；
+3. 检查八张镜像的 OS、架构和内容 ID；
 4. 在 amd64 仿真下执行镜像 executable smoke，确认 Worker CPU-only、EvalScope 无原生 Web/CUDA/NVIDIA
-   包且本地 Plotly asset 存在；
+   包且本地 Plotly asset 存在，并确认 Swift Provider 与完整原生 Gradio 可在无 GPU 构建机启动；
 5. 生成 `images.lock`、`release-manifest.json` 和 `RELEASE.txt`；
 6. 生成包内 `SHA256SUMS`；
 7. 生成外层归档和 `.sha256`。
@@ -160,6 +162,9 @@ deploy/offline/build-bundle.sh 2.0.0
 - TCP 80 未被其他容器发布；
 - 已确定 agent 可达的稳定内网 IP 或 DNS，用于 `http(s)://<host>/api`；
 - 管理员具备 `sudo` 权限。
+
+启用 Swift GPU 时还要求 NVIDIA 驱动、NVIDIA Container Toolkit 和已经离线预置的模型目录；安装器会
+运行一次短暂 `torch.cuda.is_available()` 检查，不执行训练。
 
 试运行容量建议为 12 vCPU、48 GiB RAM、100 GiB 系统盘。真实生产规格应根据最大数据集、
 EvalScope 模型请求并发和在线报告保留周期另做压测。
@@ -239,6 +244,15 @@ cat release-manifest.json
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./install.sh
 ```
 
+GPU 机显式启用：
+
+```bash
+sudo env \
+  DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api \
+  DATABENCH_ENABLE_SWIFT_GPU=true \
+  ./install.sh
+```
+
 不要手工改脚本，也不要在脚本前手工 `docker load`。Public base 必须是绝对 HTTP(S) URL，path
 精确为 `/api`，且不含 credential、query、fragment 或尾随 `/`；DNS 使用小写，默认 HTTP(S)
 端口必须省略，非默认端口使用无前导零的十进制。
@@ -247,14 +261,15 @@ sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./insta
 1. 校验外层和包内 SHA-256；
 2. 检查 OS、架构、Docker、Compose、磁盘和端口；
 3. 创建安装、配置和数据目录；
-4. 自动生成数据库、MinIO、应用访问和 v2 cursor secret，把显式 MCP public base 写入独立的
-   `/etc/databench/mcp.env`，并创建稳定的 `/etc/databench/evalscope.env`；
-5. 导入七张离线镜像；
+4. 自动生成数据库、MinIO、应用访问、v2 cursor、Deployment、EvalScope 和 Swift Provider secret，
+   把显式 MCP public base 写入独立的 `/etc/databench/mcp.env`，并创建稳定的
+   `/etc/databench/evalscope.env` 与 `/etc/databench/swift.env`；
+5. 导入八张离线镜像；
 6. 启动 PostgreSQL 和 MinIO；
 7. 创建 MinIO bucket、应用用户和 bucket-scoped policy；
 8. 执行 `prisma migrate deploy`；
 9. 启动 Worker，等待标准 gRPC health 为 `SERVING`；
-10. 按 API → EvalScope → Web 启动其余应用服务；
+10. 启用时先启动 Swift Studio，再按 API → EvalScope → Web 启动其余应用服务；
 11. 执行 doctor、Caddy proxy、MCP SDK/companion、固定数据集和 `basic-clean@1` 生命周期 smoke；
 12. 安装 `/usr/local/bin/databenchctl`。
 
@@ -425,6 +440,7 @@ sudo databenchctl logs
 sudo databenchctl logs api
 sudo databenchctl logs worker
 sudo databenchctl logs evalscope
+sudo databenchctl logs swift-studio
 sudo databenchctl logs web
 sudo databenchctl logs postgres
 sudo databenchctl logs minio
@@ -438,7 +454,8 @@ sudo databenchctl logs minio
 sudo databenchctl restart
 ```
 
-该命令先停止 Web、drain EvalScope，再停止 API/EvalScope/Worker；随后按 Worker → API → EvalScope → Web
+该命令先确认 Swift 没有原生任务、停止 Web、drain EvalScope，再停止 API/EvalScope/Worker/Swift；
+随后按 Worker → Swift → API → EvalScope → Web
 启动，等待健康后运行 doctor。
 它不会删除或重建数据。
 
@@ -449,7 +466,7 @@ sudo systemctl is-enabled docker
 sudo systemctl is-active docker
 docker inspect --format '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' \
   databench-offline-postgres databench-offline-minio databench-offline-worker \
-  databench-offline-evalscope \
+  databench-offline-evalscope databench-offline-swift-studio \
   databench-offline-api databench-offline-web
 ```
 
@@ -461,9 +478,11 @@ docker inspect --format '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' \
 sudo databenchctl backup
 ```
 
-备份会停止 Web admission、drain EvalScope 并停止 API/EvalScope/Worker，依次生成 PostgreSQL custom
-dump、MinIO bucket mirror、EvalScope output/input volume、migration 列表、版本清单、校验文件和加密的
-Databench/MCP/EvalScope 配置 escrow，然后按 Worker → API → EvalScope → Web 重新启动服务并运行 doctor。
+备份会拒绝活动 Swift 原生任务，停止 Web admission、drain EvalScope 并停止 API/EvalScope/Worker/Swift，
+依次生成 PostgreSQL custom dump、MinIO bucket mirror、EvalScope output/input volume、启用时的 Swift Session
+workspace、migration 列表、版本清单、校验文件和加密的 Databench/MCP/EvalScope/Swift 配置 escrow，
+然后按 Worker → Swift → API → EvalScope → Web 重新启动服务并运行 doctor。Swift 模型缓存和
+`/srv/databench/swift-models` 使用独立备份，不会被普通恢复删除。
 
 成功时输出 generation 路径，例如：
 
@@ -534,11 +553,11 @@ Compose 不会加载 `mcp.env`，MCP 随旧版停用。
 升级会：
 
 1. 验证新包、版本范围、PostgreSQL major 和 rollback contract；
-2. 停止 Web、drain EvalScope，active task 归零后停止 API/EvalScope/Worker；
+2. 停止 Web admission，拒绝活动 Swift 原生任务，drain EvalScope，active task 归零后停止 API/EvalScope/Worker/Swift；
 3. 创建并校验升级前一致性备份；
-4. 导入新版本完整镜像集合（当前为七张）；
+4. 导入新版本完整镜像集合（当前为八张）；
 5. 执行 migration；
-6. 按 Worker → API → EvalScope → Web 启动目标版本；
+6. 按 Worker → Swift（启用时）→ API → EvalScope → Web 启动目标版本；
 7. 执行 doctor、gateway、MCP、数据集和 `basic-clean@1` 生命周期 smoke；
 8. 全部成功后才原子切换 `current`。
 
@@ -639,6 +658,11 @@ sudo bash -c 'cd /srv/databench/backups/20260724T120000Z-a1b2c3d4 && sha256sum -
 sudo databenchctl restore 20260724T120000Z-a1b2c3d4 --confirm
 ```
 
+恢复前读取 generation 的 `backup-manifest`。若 `swift_enabled=true`，新机器必须先预置模型并以
+`DATABENCH_ENABLE_SWIFT_GPU=true` 安装同版本；若为 `false`，保持默认关闭。恢复脚本要求当前
+`/etc/databench/swift.env` 的启用状态与 manifest 完全一致，不会把 disabled generation 和已有
+Swift workspace 混在一起。
+
 恢复脚本不会用备份里的 `databench.env.enc` 覆盖新机器当前配置。逻辑数据库 dump 和对象 mirror
 使用新机器安装时生成的凭据恢复；加密配置 escrow 与独立 `backup.key` 用于审计和人工取证，
 不应直接替换新 PostgreSQL/MinIO 已初始化的凭据。
@@ -672,7 +696,7 @@ curl -fsS http://127.0.0.1/api/version
       12 GiB 的最低要求；
 - [ ] 首次安装使用稳定 public base 执行 `install.sh`，并一次成功；
 - [ ] `databenchctl version` 与发布版本一致；
-- [ ] `databenchctl doctor` 的 database/evalscope/store 均为 true；
+- [ ] `databenchctl doctor` 的 database/evalscope/store 均为 true；启用 Swift 时 `swift.gpu/ok` 也为 true；
 - [ ] Worker 和 EvalScope 均为 `healthy`，安装 smoke 已完成 `basic-clean@1`、lineage、
       deterministic reuse、EvalScope path-free config、local Plotly 和 operator drain/resume；
 - [ ] `/api/version` 的 `service_version` 正确；
@@ -683,13 +707,13 @@ curl -fsS http://127.0.0.1/api/version
 - [ ] Web 能从可信内网访问；
 - [ ] 服务器和 TCP 80 未暴露公网；如启用了可选 CIDR allowlist，获准/未获准网段验证符合预期；
 - [ ] 50051、5432、8000、9000、9001 未发布到宿主机；
-- [ ] `/etc/databench` 的 `databench.env`、`mcp.env`、`evalscope.env`、`backup.key` 四个文件权限均为
+- [ ] `/etc/databench` 的 `databench.env`、`mcp.env`、`evalscope.env`、`swift.env`、`backup.key` 五个文件权限均为
       `0600`；
 - [ ] 已创建一份一致性备份并校验；
 - [ ] backup generation、匹配发布包和 `backup.key` 已异机保存；
 - [ ] 已在测试机演练升级失败自动恢复；
 - [ ] 已在测试机演练原机或干净机器恢复；
-- [ ] 宿主机重启后 Worker、API、EvalScope、Web、PostgreSQL、MinIO 服务和数据恢复；
+- [ ] 宿主机重启后 Worker、API、EvalScope、Web、PostgreSQL、MinIO 及启用的 Swift 服务和数据恢复；
 - [ ] 已记录服务器地址、版本、Git SHA、备份位置；如启用了可选 CIDR allowlist，也已记录其范围。
 
 生产交付记录只有在以上现场项目全部完成后才能签署。Mac 上的 amd64 仿真和 Compose 集成

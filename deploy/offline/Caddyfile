@@ -18,6 +18,16 @@
 		reverse_proxy api:8000
 	}
 
+	@swiftStudio path /swift-studio /swift-studio/*
+	handle @swiftStudio {
+		reverse_proxy api:8000
+	}
+
+	@swiftStudioRuntime path /swift-studio-runtime /swift-studio-runtime/*
+	handle @swiftStudioRuntime {
+		reverse_proxy api:8000
+	}
+
 	handle_path /api/* {
 		reverse_proxy api:8000
 	}

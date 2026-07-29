@@ -152,6 +152,51 @@ services:
       retries: 12
       start_period: 30s
 
+  swift-studio:
+    <<: *service-defaults
+    profiles: ["swift-gpu"]
+    image: ${DATABENCH_SWIFT_IMAGE:?missing DATABENCH_SWIFT_IMAGE}
+    container_name: databench-offline-swift-studio
+    restart: unless-stopped
+    init: true
+    env_file:
+      - /etc/databench/swift.env
+    environment:
+      DATABENCH_API_BASE_URL: http://api:8000
+      DATABENCH_SWIFT_ROOT_PATH: /swift-studio
+      DATABENCH_SWIFT_SESSION_LABEL: Databench Offline GPU Studio
+      DATABENCH_SWIFT_WORKSPACE_ROOT: /var/lib/databench-swift-studio
+      HF_HOME: /var/lib/databench-swift-studio/cache/huggingface
+      HOME: /var/lib/databench-swift-studio/home
+      MODELSCOPE_CACHE: /var/lib/databench-swift-studio/cache/modelscope
+      SWIFT_UI_LANG: zh
+      WEBUI_SHARE: "false"
+    volumes:
+      - /srv/databench/swift-studio:/var/lib/databench-swift-studio
+      - /srv/databench/swift-models:/opt/databench-models:ro
+    tmpfs:
+      - /tmp:size=8g,mode=1777
+    shm_size: 8gb
+    stop_grace_period: 120s
+    pids_limit: 4096
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${DATABENCH_SWIFT_GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import json,urllib.request; body=json.load(urllib.request.urlopen('http://127.0.0.1:7861/runtime',timeout=3)); raise SystemExit(0 if body.get('ready') is True and body.get('gpu_available') is True else 1)\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 90s
+
   api:
     <<: *service-defaults
     image: ${DATABENCH_API_IMAGE:?missing DATABENCH_API_IMAGE}
@@ -160,11 +205,18 @@ services:
     env_file:
       - /etc/databench/databench.env
       - /etc/databench/mcp.env
+      - /etc/databench/swift.env
     environment:
       DATABENCH_OPENAPI_SERVER_URL: "/api"
       DATABENCH_EVALSCOPE_ENABLED: "true"
       DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: "http://evalscope:9000"
       DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: "/app/evalscope-api-routes.json"
+      DATABENCH_SWIFT_STUDIO_ENABLED: "${DATABENCH_SWIFT_ENABLED:-false}"
+      DATABENCH_SWIFT_STUDIO_DATABENCH_BASE_URL: "http://api:8000"
+      DATABENCH_SWIFT_STUDIO_IMAGE_DIGEST: "${DATABENCH_SWIFT_IMAGE_DIGEST:?missing DATABENCH_SWIFT_IMAGE_DIGEST}"
+      DATABENCH_SWIFT_STUDIO_INTERNAL_BASE_URL: "http://swift-studio:7860"
+      DATABENCH_SWIFT_STUDIO_PROVIDER_BASE_URL: "http://swift-studio:7861"
+      DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST: "/app/swift-studio-gradio-routes.json"
       DATABENCH_WORKER_ENABLED: "true"
       DATABENCH_WORKER_TARGET: "worker:50051"
       NODE_ENV: production

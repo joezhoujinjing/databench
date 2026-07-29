@@ -28,6 +28,13 @@ validate_release_contract "$RELEASE_DIR"
 if release_has_evalscope "$RELEASE_DIR"; then
   validate_evalscope_config
 fi
+if release_has_swift "$RELEASE_DIR"; then
+  validate_swift_config
+fi
+BACKUP_SWIFT_ENABLED=false
+if release_swift_enabled "$RELEASE_DIR"; then
+  BACKUP_SWIFT_ENABLED=true
+fi
 
 GENERATION="$(date -u '+%Y%m%dT%H%M%SZ')-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
 FINAL_DIR="${DATABENCH_DATA_ROOT}/backups/${GENERATION}"
@@ -54,6 +61,11 @@ if [ "$API_ALREADY_STOPPED" = false ]; then
   log "stopping API writes for a consistent backup"
   stop_application_services "$RELEASE_DIR"
   RESTART_API=true
+fi
+if release_has_swift "$RELEASE_DIR"; then
+  assert_swift_session_transition_compatible \
+    "$RELEASE_DIR" "$RELEASE_DIR" "$BACKUP_SWIFT_ENABLED" ||
+    die "Swift Studio Session state is not compatible with this backup"
 fi
 
 wait_container_healthy databench-offline-postgres 60 || die "PostgreSQL is not healthy"
@@ -90,6 +102,18 @@ if release_has_evalscope "$RELEASE_DIR"; then
   validate_evalscope_volume_archive "$RELEASE_DIR" "${TEMP_DIR}/evalscope-volume.tar"
 fi
 
+if [ "$BACKUP_SWIFT_ENABLED" = true ]; then
+  log "capturing the persistent Swift Studio Session workspace"
+  require_command tar
+  assert_swift_volume_tree_safe
+  tar --numeric-owner --format=posix \
+    --exclude='./cache' \
+    --exclude='./home' \
+    -C "${DATABENCH_DATA_ROOT}/swift-studio" \
+    -cpf "${TEMP_DIR}/swift-studio-workspace.tar" .
+  validate_swift_volume_archive "${TEMP_DIR}/swift-studio-workspace.tar"
+fi
+
 openssl enc -aes-256-cbc -pbkdf2 -salt \
   -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \
   -in "$DATABENCH_CONFIG_FILE" \
@@ -104,6 +128,12 @@ if release_has_evalscope "$RELEASE_DIR"; then
     -in "$DATABENCH_EVALSCOPE_CONFIG_FILE" \
     -out "${TEMP_DIR}/evalscope.env.enc"
 fi
+if release_has_swift "$RELEASE_DIR"; then
+  openssl enc -aes-256-cbc -pbkdf2 -salt \
+    -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \
+    -in "$DATABENCH_SWIFT_CONFIG_FILE" \
+    -out "${TEMP_DIR}/swift.env.enc"
+fi
 
 BUNDLE_NAME="$(sed -n '1p' "${RELEASE_DIR}/release-bundle.name")"
 BUNDLE_SHA256="$(sed -n '1p' "${RELEASE_DIR}/release-bundle.sha256")"
@@ -117,6 +147,7 @@ git_sha=${MANIFEST_GIT_SHA}
 bundle_name=${BUNDLE_NAME}
 bundle_sha256=${BUNDLE_SHA256}
 postgres_major=${MANIFEST_POSTGRES_MAJOR}
+swift_enabled=${BACKUP_SWIFT_ENABLED}
 EOF
 
 (
