@@ -17,6 +17,7 @@
   EvalScope E9 修订进一步加入 pinned backend-only EvalScope，当前为七镜像、
   Worker → API → EvalScope → Web 生命周期、drain、三数据面备份和旧五/六镜像回滚兼容。目标机只
   `docker load` 预构建镜像；真实 Ubuntu 22.04 amd64 断网 install/eval/report/upgrade/rollback 仍待验收。
+  Owner 于 2026-07-29 批准先合并，并由 owner 后续手工补该目标机证据；GE9 不因此标记为 passed。
 - ADR 0017 EvalScope 原生 UI 集成已接受并开始实施。E0 已固定 upstream commit、183 个 Web source
   文件、60 个能力、default-deny API 路由、五类 Benchmark fixture 和 Plotly 证据；E1 已完成
   `evalscope-general-qa@1.0.0` 三种 reference profile、确定性 JSONL、eligibility/fidelity 与真实 exact

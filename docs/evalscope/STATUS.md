@@ -22,7 +22,7 @@ e7_gate: passed
 e8_implementation: complete
 e8_gate: passed
 e9_implementation: complete
-e9_gate: pending_target
+e9_gate: owner_deferred_target
 -->
 
 ## 当前检查点
@@ -43,7 +43,7 @@ e9_gate: pending_target
   `linux/amd64` 七镜像 bundle 已实际生成并通过 inner/outer checksum、gzip/tar 可读性与 image smoke
 - **GE9 待验收:** 仍需在真实 Ubuntu 22.04 amd64 目标机断网执行 install → Dataset evaluation →
   native report/compare/performance → callback/archive → restart/reconcile → upgrade → rollback；本机
-  Docker 验证不替代该目标 gate
+  Docker 验证不替代该目标 gate。Owner 于 2026-07-29 批准先合并，并由 owner 后续手工执行该验证
 - **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
 
 ## Step 状态
@@ -59,7 +59,7 @@ e9_gate: pending_target
 | E6 | Reports、Details 与 Predictions | ✅ | GE6 | catalogue、overview/details、逐样本与富内容 |
 | E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ✅ | GE7 | 完整 UI 复刻唯一 gate 已通过 |
 | E8 | 结果归档与 retention | ✅ | GE8 | deterministic archive、immutable object、exact cleanup |
-| E9 | 安全、容量、离线与最终集成 gate | 🔄 目标机待验收 | GE9 | 本地实现完成；真实断网目标 gate pending |
+| E9 | 安全、容量、离线与最终集成 gate | 🔄 owner 后验 | GE9 | 本地实现与 bundle 完成；owner 批准先合并并自行补目标机验证 |
 
 ## E0 交付
 
@@ -362,5 +362,6 @@ E8 不启用 runtime，也不改变 UI parity、V16/V17 或公共云 D3。下一
 
 本地验证结果与目标机缺口见
 [E9-SECURITY-CAPACITY-RELEASE.md](evidence/E9-SECURITY-CAPACITY-RELEASE.md)。当前 E9
-`implementation=complete`，但 GE9 必须保持 `pending_target`，不得标记为通过。该状态不完成 V16/V17，
-也不解除公共云 D3。
+`implementation=complete`；owner 于 2026-07-29 批准在 GE9 目标机证据未补齐时先合并，并自行执行真实
+断网安装验证，因此 gate 记录为 `owner_deferred_target` 而不是 passed。该状态不完成 V16/V17，也不解除
+公共云 D3。

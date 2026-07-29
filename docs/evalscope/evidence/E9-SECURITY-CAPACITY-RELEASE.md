@@ -2,7 +2,7 @@
 
 - Date: 2026-07-29
 - Upstream: `modelscope/evalscope@b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60`
-- State: local implementation complete; real disconnected target gate pending
+- State: local implementation complete; owner-approved merge with disconnected target validation deferred
 
 ## Release boundary
 
@@ -137,5 +137,7 @@ DNS-rebinding/redirect/metadata and zero-external-asset negative checks under th
 record the released bundle checksum, all seven image digests, task/run/report/archive identifiers, backup generation,
 upgrade/rollback versions and console/network evidence.
 
-Until that evidence is attached, `e9_implementation` is `complete` and `e9_gate` is `pending_target`. E9 does not
-complete Databench V16/V17 and does not resolve the public-cloud D3 owner decision.
+On 2026-07-29 the owner approved merging the implementation and will execute this disconnected target validation
+manually. Until that evidence is attached, `e9_implementation` is `complete` and `e9_gate` is
+`owner_deferred_target`, not passed. E9 does not complete Databench V16/V17 and does not resolve the public-cloud D3
+owner decision.
