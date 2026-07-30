@@ -11,7 +11,9 @@
 > ADR 0017 的预构建镜像边界：当前离线包同时包含 pinned backend-only EvalScope，目标机不执行源码
 > build，但 install/start/eval/report/upgrade/rollback 必须全程断网。ADR 0018 的 2026-07-29
 > 离线修订再加入第八张、默认关闭的 Swift CUDA 镜像；operator 可在 NVIDIA 目标机显式启用，
-> 本机发布 gate 只验证 CPU 启动与接口，真实训练由内网 GPU 机完成。
+> 本机发布 gate 只验证 CPU 启动与接口，真实训练由内网 GPU 机完成。Owner 于 2026-07-30
+> 追加精确基线绑定的增量发布通道：完整包继续负责首次安装和恢复基线，普通代码小改只传输
+> 变化的应用镜像。
 
 ## 1. 结论
 
@@ -62,6 +64,7 @@ npm registry 或其他公网服务。
 - 联网环境构建 API/Web/Worker/EvalScope/Swift Studio 应用镜像；
 - 拉取并锁定 PostgreSQL、MinIO、MinIO Client 等第三方镜像；
 - 将所有镜像和部署资产组装为一个带校验值的离线包；
+- 基于已安装完整八镜像 release 生成只包含变化应用镜像的增量升级包；
 - 在干净 Ubuntu 上一键导入、初始化、迁移、启动和冒烟；
 - 首次安装自动生成密码并写入服务器 `.env`；
 - 后续离线升级、失败回滚、备份和恢复；
@@ -171,10 +174,13 @@ API 通过 Compose DNS
 ```text
 databench-offline-<app-version>-linux-<arch>.tar.gz
 databench-offline-<app-version>-linux-<arch>.tar.gz.sha256
+databench-offline-update-<base-version>-to-<target-version>-linux-<arch>.tar.gz
+databench-offline-update-<base-version>-to-<target-version>-linux-<arch>.tar.gz.sha256
 ```
 
 版本必须是无前导零的三段数字 `major.minor.patch`，且必须唯一；禁止覆盖已经生成的同名
-发布物。
+发布物。`databench-offline-*` 是可独立首次安装的完整包；`databench-offline-update-*` 是只能
+应用到精确基线的增量包。
 
 ### 5.2 包内结构
 
@@ -217,6 +223,25 @@ databench-offline-<app-version>-linux-amd64/
 ```
 
 外层 `.sha256` 在解包前校验整个发布物；`SHA256SUMS` 在解包后再次校验关键文件。
+
+增量包结构更小：
+
+```text
+databench-offline-update-<base>-to-<target>-linux-amd64/
+├── images.tar                 # 只包含变化的应用镜像
+├── changed-images.lock        # 变化镜像的 name/tag/digest/platform
+├── update-manifest.json       # 精确 base version、base bundle SHA 与目标版本
+├── upgrade.sh                 # 只有升级入口；不含 install.sh
+├── README.zh-CN.md
+├── lib/
+├── RELEASE.txt
+└── SHA256SUMS
+```
+
+目标机校验当前安装的 `release-bundle.sha256` 与增量包声明完全一致，然后从当前 release 复用
+未变化镜像和部署资产、替换变化镜像，合成目标版本完整的 `release.env`、八镜像
+`images.lock` 与 schema v1 `release-manifest.json`。因此现有备份、migration、rollback 和
+restore 边界保持不变。
 
 `release-manifest.json` 使用以下 versioned strict contract；缺字段、未知字段、类型错误或值不
 匹配包名、`release.env`、`images.lock` 时一律拒绝安装/升级：
@@ -270,6 +295,24 @@ Swift 镜像始终进入 `images.tar`，但 `swift-studio` service 只有在 `/e
 ```bash
 deploy/offline/build-bundle.sh <version>
 ```
+
+普通代码小改使用：
+
+```bash
+deploy/offline/build-update-bundle.sh <base-version> <target-version>
+```
+
+默认从基线 API 镜像的 OCI revision 自动分析 Git diff，只构建受影响的
+`api,web,worker,evalscope,swift`。也可以显式指定：
+
+```bash
+deploy/offline/build-update-bundle.sh 0.7.5 0.7.6 --components web
+deploy/offline/build-update-bundle.sh 0.7.6 0.7.7 --components api,web \
+  --base-checksum output/offline/databench-offline-update-0.7.5-to-0.7.6-linux-amd64.tar.gz.sha256
+```
+
+增量构建必须找到精确基线包的 `.sha256`。Compose、安装器、基础镜像、服务集合、持久化布局、
+对象布局或其他离线运行契约变化时，自动检测会拒绝增量构建，必须生成新的完整包。
 
 首版固定在当前联网 Apple Silicon Mac 上使用 Docker Buildx 构建 `linux/amd64`。脚本必须：
 
@@ -426,6 +469,11 @@ PORT=8000
 sudo ./upgrade.sh
 ```
 
+完整包和增量包在目标机都使用这个入口。增量包不提供 `install.sh`，并额外要求当前版本和
+安装记录中的原始 bundle SHA-256 与 `update-manifest.json` 的精确基线一致；不允许跨版本跳装。
+校验通过后只 `docker load` 变化镜像，但仍执行完整停写、备份、migration、健康检查、生命周期
+smoke 和失败自动恢复。
+
 升级顺序：
 
 1. 校验新包与目标平台；
@@ -496,7 +544,8 @@ EvalScope volume 和 Swift Session workspace 并验证后再恢复服务。备�
 
 完整离线发布包按版本在外部备份位置只保存一份，普通数据备份只引用其文件名和 SHA-256，
 不得为每个 backup generation 重复复制数百 MB 镜像包。恢复前必须同时找到匹配 SHA-256
-的发布包。
+的发布包。增量版本还必须保留最近完整包和从该完整版本到目标版本的连续增量包；干净机器恢复
+时先安装完整包，再按版本顺序应用增量包。
 
 `restore.sh` 是破坏性操作，必须要求显式 `--confirm`，恢复前再次备份当前状态，并在恢复
 完成后运行完整生命周期冒烟。上线门要求在一台干净测试机上成功做过至少一次恢复演练。
@@ -584,6 +633,9 @@ deploy/offline/
 ├── Caddyfile
 ├── Dockerfile.web
 ├── build-bundle.sh
+├── build-update-bundle.sh
+├── upgrade-update.sh
+├── README-UPDATE.zh-CN.md
 ├── install.sh
 ├── upgrade.sh
 ├── rollback.sh
@@ -601,6 +653,7 @@ deploy/offline/
     ├── config.sh
     ├── health.sh
     ├── manifest.sh
+    ├── update-manifest.sh
     └── preflight.sh
 
 .github/workflows/

@@ -44,6 +44,20 @@ ROLLBACK_MODE=restore-backup \
 deploy/offline/build-bundle.sh 2.0.0
 ```
 
+已经有完整八镜像基线后，普通代码小改使用增量构建，不再重新归档 4.9 GB 左右的 Swift 镜像：
+
+```bash
+# 自动根据基线 Git revision 判断变化的应用组件
+deploy/offline/build-update-bundle.sh 0.7.5 0.7.6
+
+# 或明确只更新 Web
+deploy/offline/build-update-bundle.sh 0.7.5 0.7.6 --components web
+```
+
+可选组件是 `api,web,worker,evalscope,swift`。增量构建要求基线完整包的 `.sha256` 仍在
+`output/offline/`；如果基线本身是上一份增量包，使用 `--base-checksum <文件>` 指定。Compose、
+安装器、基础镜像、服务集合或持久化布局变化时必须重新构建完整包。
+
 ## 首次安装
 
 目标机前置条件：Ubuntu 22.04 LTS amd64、Docker Engine 24+、Compose plugin 2.20+、至少
@@ -164,6 +178,19 @@ bucket mirror、EvalScope output/input volume、启用时的 Swift Session works
 cd databench-offline-1.1.0-linux-amd64
 sudo ./upgrade.sh
 ```
+
+增量升级包的目标机操作相同：
+
+```bash
+sha256sum -c databench-offline-update-0.7.5-to-0.7.6-linux-amd64.tar.gz.sha256
+tar -xzf databench-offline-update-0.7.5-to-0.7.6-linux-amd64.tar.gz
+cd databench-offline-update-0.7.5-to-0.7.6-linux-amd64
+sudo ./upgrade.sh
+```
+
+增量包没有 `install.sh`，不能安装到空机器，也不能跨版本跳装。它会核对当前安装版本和原始
+基线包 SHA-256，只导入变化镜像；停写、备份、migration、健康检查、smoke 和失败恢复仍与完整
+升级一致。新机重装或灾难恢复必须保留最近完整包和之后的连续增量包，并按版本顺序执行。
 
 上式适用于已经存在 `/etc/databench/mcp.env` 的版本。首次从不含 MCP 配置的旧版升级时，必须
 和首次安装一样显式提供一次稳定 public base：

@@ -18,6 +18,10 @@
 - **UI-only 修订:** owner 于 2026-07-30 要求控制面保留完整 Swift Studio 页面但不训练。
   `DATABENCH_SWIFT_ENABLED=true` 不再等同于必须申请 GPU；`runtime_mode=ui-only` 启动完整
   Provider/Gradio、跳过 NVIDIA 与模型预置检查，`runtime_mode=gpu` 才保留原 GPU gate。
+- **增量发布修订:** owner 于 2026-07-30 要求代码小改不再重复构建和传输完整八镜像包。
+  完整包继续作为首次安装、运行契约变化和周期性恢复基线；新增精确绑定
+  `base_version + base bundle SHA-256` 的增量升级包，只携带变化的应用镜像。增量包没有
+  `install.sh`，只能在已安装精确基线的目标机执行 `upgrade.sh`。
 - **详细方案:**
   [内网单机离线发布方案](../deployment/offline-single-host-plan.zh-CN.md)
 
@@ -57,8 +61,11 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
 5. PostgreSQL、MinIO 与 API workspace 使用 `/srv/databench` 下的持久目录；Worker 无持久
    数据目录。secret 位于 `/etc/databench/databench.env`，首次安装由 CSPRNG 生成，升级不得
    覆盖。
-6. 每个版本交付完整镜像集合、精确平台/digest 锁、release manifest 与双层 SHA-256。
-   目标机安装和运行不得 pull、build、安装 npm 包或访问公网。
+6. 每个可首次安装的完整版本交付完整镜像集合、精确平台/digest 锁、release manifest 与双层
+   SHA-256。已经安装完整八镜像基线后，允许交付精确基线绑定的增量升级包；它只包含变化的
+   API/Web/Worker/EvalScope/Swift 应用镜像，目标机把它与已安装 release 合成为新的完整
+   `release.env`、八镜像 lock 和 rollback 记录。增量包不得增加/删除服务、改变 Compose、基础
+   镜像、持久化布局或安装契约。目标机安装和运行不得 pull、build、安装 npm 包或访问公网。
 7. 普通升级允许维护停机：依次停止 Web/API/Worker，生成同一 generation 的 PG+MinIO 备份，
    执行 migration，先启动并确认 Worker capability，再切换 API/Web，最后运行 doctor、固定
    数据集、MCP 与 `basic-clean` canonical lifecycle smoke。保留当前版、上一版和一个已知稳定
@@ -76,5 +83,7 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
 - Worker 镜像固定 CPU-only Torch；Swift CUDA runtime 是独立第八张镜像和可选 profile，不能把
   Worker 改成 CUDA Worker。启用 Swift 的目标机还必须预装兼容 NVIDIA driver 与 NVIDIA
   Container Toolkit，并为镜像、模型缓存、Session output 和 Adapter 预留额外磁盘。
+- 增量版本不是独立恢复基线。新机安装或灾难恢复必须保留最近完整包，以及从该完整版本到目标
+  版本的连续增量包，并按版本顺序应用；运行契约变化时必须重新发布完整包。
 - 本 ADR 不解决现有公共云 API 托管平台 D3，也不授权修改现有 ECS/OSS workflow。
 - 本地跨架构构建必须在 Docker amd64 仿真和真实 Ubuntu 22.04 amd64 上分别验收。

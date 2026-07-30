@@ -147,6 +147,22 @@ git status --short
 构建正式包必须来自已提交、可追溯的干净工作树。提交或妥善处理改动后重新构建；不要修改构建
 脚本绕过检查。
 
+### 3.5 增量包提示基线版本或 bundle SHA 不匹配
+
+增量包只能应用到 `update-manifest.json` 声明的精确基线。先检查：
+
+```bash
+sudo databenchctl version
+cat update-manifest.json
+sudo cat /opt/databench-offline/current/release-bundle.sha256
+```
+
+版本不一致时不要跳过中间包；先按顺序应用缺失的增量版本，或改用一个更高版本的完整包。版本
+相同但 SHA 不一致，说明目标机安装的不是构建时指定的那个基线发布物；不要编辑 manifest 或
+`release-bundle.sha256` 绕过，应重新生成绑定正确基线的增量包，或者发布完整包。
+
+增量包目录中没有 `install.sh` 是正常行为。空机器必须先安装完整离线包。
+
 ## 4. 镜像导入或平台校验失败
 
 ### 4.1 `bundle image was not loaded`

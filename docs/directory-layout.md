@@ -552,6 +552,10 @@ docs/mcp/
 ```text
 deploy/offline/
 ├─ compose.yml                    私网 Worker → optional Swift → API → EvalScope → Web 生命周期
+├─ build-bundle.sh                可首次安装的完整八镜像发布包
+├─ build-update-bundle.sh         精确基线绑定、只含变化应用镜像的增量包
+├─ upgrade-update.sh              增量包内重命名为 upgrade.sh 的目标机入口
+├─ README-UPDATE.zh-CN.md         增量包独立操作边界
 ├─ mcp.env.example                匿名可信内网 MCP 配置示例
 ├─ evalscope.env.example          EvalScope stable secret、allowlist 与容量示例
 ├─ swift.env.example              默认关闭的单 GPU Studio 与双向 Provider credential
@@ -564,6 +568,7 @@ deploy/offline/
 ├─ install.sh · upgrade.sh        显式创建或复用 MCP/EvalScope/Swift 配置
 ├─ rollback.sh                    停服务前校验 current/target 所需配置
 ├─ lib/config.sh                  public base、EvalScope/Swift stable secret 与原子配置
+├─ lib/update-manifest.sh         增量 manifest、变化 lock 与完整 target release 合成
 ├─ lib/health.sh                  GPU 快检、Swift idle、Provider/Gradio doctor 与 workspace archive gate
 ├─ lib/preflight.sh               CPU/RAM、磁盘和显式 NVIDIA profile 前置检查
 └─ smoke/

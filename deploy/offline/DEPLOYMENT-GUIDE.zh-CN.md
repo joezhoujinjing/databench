@@ -43,6 +43,15 @@ databench-offline-1.0.0-linux-amd64.tar.gz.sha256
 CPU-only Worker、backend-only EvalScope、CUDA Swift Studio、PostgreSQL、MinIO、MinIO Client）、Compose、安装脚本、运维脚本、固定
 smoke fixtures 和本文档。
 
+已安装完整八镜像基线后的普通代码更新可以改用：
+
+```text
+databench-offline-update-0.7.5-to-0.7.6-linux-amd64.tar.gz
+databench-offline-update-0.7.5-to-0.7.6-linux-amd64.tar.gz.sha256
+```
+
+增量包只包含变化的应用镜像和 `upgrade.sh`，不包含 `install.sh`，不能用于首次安装。
+
 历史五镜像包实测：
 
 - `images.tar`：约 412 MB；
@@ -146,6 +155,29 @@ deploy/offline/build-bundle.sh 2.0.0
 
 这种发布的回滚会恢复升级前备份，停机更长。PostgreSQL major、MinIO 数据格式或对象布局迁移
 不属于通用升级，必须单独设计，不能只修改这两个变量。
+
+### 3.4 构建增量升级包
+
+保留最近完整包的 `.sha256` 后，可以自动分析基线 Git revision 与当前提交之间的变化：
+
+```bash
+deploy/offline/build-update-bundle.sh 0.7.5 0.7.6
+```
+
+也可以显式限制组件：
+
+```bash
+deploy/offline/build-update-bundle.sh 0.7.5 0.7.6 --components web
+deploy/offline/build-update-bundle.sh 0.7.5 0.7.6 --components api,web
+```
+
+允许的组件为 `api,web,worker,evalscope,swift`。脚本只构建、smoke、保存列出的镜像，并生成
+`changed-images.lock` 和精确绑定基线 bundle SHA-256 的 `update-manifest.json`。如果本地没有
+基线 API 镜像，可加 `--base-ref <git-ref>`；如果基线校验文件不在默认输出目录，可加
+`--base-checksum <path>`。
+
+增量包只适用于应用镜像内容变化。Compose、安装/升级基础框架、第三方基础镜像、服务集合、
+持久化布局或对象迁移变化时必须构建新的完整包。
 
 ## 4. 目标 Ubuntu 安装前检查
 
@@ -525,7 +557,8 @@ sudo install -m 0600 /etc/databench/backup.key <SECURE_KEY_MOUNT>/databench-back
 ```
 
 不要把唯一的 `backup.key` 与唯一备份放在同一块服务器磁盘。普通 generation 不需要重复复制
-`images.tar`；按版本保存一份匹配的完整离线包即可。
+`images.tar`。完整版本保存一份匹配完整包；增量版本必须同时保存最近完整包，以及从该完整
+版本到当前版本的连续增量包。
 
 ## 11. 离线升级
 
@@ -543,11 +576,23 @@ sudo databenchctl doctor
 sha256sum -c databench-offline-1.1.0-linux-amd64.tar.gz.sha256
 ```
 
+若使用增量包，还必须确认当前版本就是文件名中的 base version；脚本会进一步校验当前安装记录中
+原始发布包的 SHA-256，不能跨版本跳装。
+
 ### 11.2 执行升级
 
 ```bash
 tar -xzf databench-offline-1.1.0-linux-amd64.tar.gz
 cd databench-offline-1.1.0-linux-amd64
+sudo ./upgrade.sh
+```
+
+增量包使用完全相同的入口：
+
+```bash
+sha256sum -c databench-offline-update-0.7.5-to-0.7.6-linux-amd64.tar.gz.sha256
+tar -xzf databench-offline-update-0.7.5-to-0.7.6-linux-amd64.tar.gz
+cd databench-offline-update-0.7.5-to-0.7.6-linux-amd64
 sudo ./upgrade.sh
 ```
 
@@ -567,7 +612,7 @@ Compose 不会加载 `mcp.env`，MCP 随旧版停用。
 1. 验证新包、版本范围、PostgreSQL major 和 rollback contract；
 2. 停止 Web admission，拒绝活动 Swift 原生任务，drain EvalScope，active task 归零后停止 API/EvalScope/Worker/Swift；
 3. 创建并校验升级前一致性备份；
-4. 导入新版本完整镜像集合（当前为八张）；
+4. 完整包导入八张镜像；增量包只导入变化镜像，并与已安装基线合成新的完整八镜像 release lock；
 5. 执行 migration；
 6. 按 Worker → Swift（启用时）→ API → EvalScope → Web 启动目标版本；
 7. 执行 doctor、gateway、MCP、数据集和 `basic-clean@1` 生命周期 smoke；

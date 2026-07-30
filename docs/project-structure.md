@@ -196,6 +196,9 @@ packages/<name>/
   output/input volume、稳定 operator/HMAC 配置、drain 生命周期与 4 CPU / 12 GiB 容量边界。
 - 离线 Swift：作为第八张 pinned CUDA 镜像随 bundle 交付，默认关闭；operator 显式启用单 GPU
   profile，模型从 `/srv/databench/swift-models` 只读挂载，Session workspace 独立持久化。
+- 离线增量发布：`build-update-bundle.sh` 只构建变化的应用镜像，并精确绑定已安装
+  `base_version + bundle SHA-256`；目标机 `upgrade.sh` 合成完整八镜像 release。它不提供首次
+  安装能力，运行契约变化仍发布完整包。
 - 离线备份覆盖 PostgreSQL、MinIO、EvalScope volume、启用时的 Swift Session workspace 和四份
   加密配置 escrow；模型 cache/权重不进入每代业务备份。
 - OpenAPI：API Zod route → `openapi/openapi.json` →

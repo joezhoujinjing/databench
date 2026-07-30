@@ -121,6 +121,16 @@ grep -Fq 'saving eight images' "${SCRIPT_DIR}/build-bundle.sh" ||
 grep -Fq 'Swift Studio Provider and native Gradio readiness smoke without a GPU' \
   "${SCRIPT_DIR}/build-bundle.sh" ||
   fail 'offline bundle builder does not smoke the packaged native Swift runtime'
+grep -Fq 'build-update-bundle.sh' "${SCRIPT_DIR}/README.zh-CN.md" ||
+  fail 'offline README does not document the incremental build command'
+grep -Fq '增量升级包' "${SCRIPT_DIR}/DEPLOYMENT-GUIDE.zh-CN.md" ||
+  fail 'deployment guide does not document incremental updates'
+[ -f "${SCRIPT_DIR}/build-update-bundle.sh" ] ||
+  fail 'offline incremental bundle builder is missing'
+[ -f "${SCRIPT_DIR}/upgrade-update.sh" ] ||
+  fail 'offline incremental target upgrade entrypoint is missing'
+[ -f "${SCRIPT_DIR}/lib/update-manifest.sh" ] ||
+  fail 'offline incremental update manifest validator is missing'
 [ "$(grep -Ec '^[[:space:]]*log([[:space:]]|$)' "${SCRIPT_DIR}/Caddyfile")" -eq 1 ] ||
   fail 'Caddy must configure exactly one redacted runtime logger and no access logger'
 grep -Fq 'format filter' "${SCRIPT_DIR}/Caddyfile" ||
