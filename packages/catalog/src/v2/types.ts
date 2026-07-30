@@ -279,6 +279,8 @@ export type CatalogEvaluationArchiveStatusV2 =
 export interface CatalogEvaluationMetricV2 {
   readonly dataset: string
   readonly subset: string | null
+  readonly metricId: string | null
+  readonly outputKey: string | null
   readonly metric: string
   readonly score: number | null
   readonly sampleCount: number | null
@@ -295,7 +297,11 @@ export interface CreateEvaluationRunV2 {
   readonly namespaceId: string
   readonly provider: 'evalscope'
   readonly providerTaskId: string
-  readonly createProfile: 'evaluation-run-create-v1' | 'evaluation-run-create-v2'
+  readonly createProfile:
+    | 'evaluation-run-create-v1'
+    | 'evaluation-run-create-v2'
+    | 'evaluation-run-create-v3'
+    | 'evaluation-run-create-v4'
   readonly createRequestDigest: string
   readonly datasetVersion: string
   readonly sourceRef: string | null
@@ -309,6 +315,9 @@ export interface CreateEvaluationRunV2 {
   readonly modelArtifactId: string | null
   readonly modelDeploymentDigest: string | null
   readonly evalscopeCommit: string | null
+  readonly scoringConfig: Readonly<Record<string, CatalogJsonValueV2>> | null
+  readonly primaryMetricId: string | null
+  readonly primaryOutputKey: string | null
 }
 
 export interface CatalogEvaluationRunRowV2 extends CreateEvaluationRunV2 {

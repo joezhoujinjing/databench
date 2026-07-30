@@ -28,6 +28,7 @@ from .documents import (
     sanitize_text,
 )
 from .errors import RuntimePolicyError, UpstreamProtocolError
+from .metrics import MetricCatalogue, ResolvedMetricSelection
 from .security import EndpointPolicy, validate_dataset_args, validate_task_id
 from .storage import TaskManifestStore, config_digest
 
@@ -54,6 +55,7 @@ _QUERY_FIELDS: dict[str, frozenset[str]] = {
     '/api/v1/eval/log': frozenset({'task_id', 'start_line', 'page'}),
     '/api/v1/eval/report': frozenset({'task_id'}),
     '/api/v1/eval/benchmarks': frozenset({'type', 'all'}),
+    '/api/v1/eval/metrics': frozenset({'benchmark'}),
     '/api/v1/perf/stop': frozenset({'task_id'}),
     '/api/v1/perf/progress': frozenset({'task_id'}),
     '/api/v1/perf/log': frozenset({'task_id', 'start_line', 'page'}),
@@ -92,6 +94,7 @@ _QUERY_FIELDS: dict[str, frozenset[str]] = {
 }
 _JSON_PROXY_ROUTES = frozenset(set(_QUERY_FIELDS) - set(_DOCUMENT_KINDS) - {
     '/api/v1/eval/stop',
+    '/api/v1/eval/metrics',
     '/api/v1/perf/stop',
     '/api/v1/reports/media/file',
 })
@@ -104,6 +107,7 @@ _POST_ROUTES = frozenset({
 _GET_ROUTES = frozenset({
     '/health',
     '/api/v1/config',
+    '/api/v1/eval/metrics',
     '/api/v1/reports/media/file',
     _PLOTLY_ASSET_ROUTE,
     *_JSON_PROXY_ROUTES,
@@ -178,6 +182,7 @@ def create_app(
         runtime.endpoint_allowlist,
         redirect_max_hops=runtime.model_redirect_max_hops,
     )
+    metric_catalogue = MetricCatalogue.load()
     EndpointPolicy(runtime.dataset_endpoint_allowlist)
     upstream = _load_upstream(runtime) if upstream_app is None else upstream_app
     databench = databench_client or DatabenchClient(runtime, manifests)
@@ -189,6 +194,7 @@ def create_app(
         'manifests': manifests,
         'documents': documents,
         'databench': databench,
+        'metric_catalogue': metric_catalogue,
         'upstream': upstream,
     }
     evaluation_slots = threading.BoundedSemaphore(runtime.max_concurrent_evals)
@@ -267,6 +273,7 @@ def create_app(
                 'reports',
                 'databench-dataset',
                 'databench-model-deployment',
+                'metric-selection',
                 'generated-documents',
             ],
             'reports_configured': True,
@@ -287,6 +294,7 @@ def create_app(
             upstream,
             deployment_endpoints,
             deployment_endpoint_lock,
+            metric_catalogue,
         )
 
     @app.post('/api/v1/perf/invoke')
@@ -302,7 +310,21 @@ def create_app(
             upstream,
             deployment_endpoints,
             deployment_endpoint_lock,
+            metric_catalogue,
         )
+
+    @app.get('/api/v1/eval/metrics')
+    def eval_metrics():
+        query = _validated_query('/api/v1/eval/metrics')
+        benchmark = query.get('benchmark')
+        if benchmark is None:
+            raise RuntimePolicyError(
+                'query_field_required',
+                'benchmark is required',
+                422,
+                '/query/benchmark',
+            )
+        return jsonify(metric_catalogue.response(benchmark))
 
     def stop(kind: str):
         path = f'/api/v1/{"eval" if kind == "evaluation" else "perf"}/stop'
@@ -498,6 +520,7 @@ def _invoke(
     upstream: Flask,
     deployment_endpoints: dict[str, str],
     deployment_endpoint_lock: threading.Lock,
+    metric_catalogue: MetricCatalogue,
 ):
     path = '/api/v1/eval/invoke' if kind == 'evaluation' else '/api/v1/perf/invoke'
     _reject_query(path, frozenset())
@@ -523,6 +546,24 @@ def _invoke(
             '/dataset_args',
         )
     deployment_id = _model_deployment_id(payload, kind)
+    if kind == 'performance':
+        if 'metric_selection' in payload:
+            raise RuntimePolicyError(
+                'metric_selection_unsupported',
+                'Metric selection is only supported for evaluation tasks',
+                422,
+                '/metric_selection',
+            )
+        execution_payload = copy.deepcopy(payload)
+        metric_selection = None
+    else:
+        benchmark = _evaluation_benchmark(payload, source)
+        has_existing_claim = manifests.has_claim(task_id)
+        execution_payload, metric_selection = metric_catalogue.apply(
+            payload,
+            benchmark,
+            enforce_availability=not has_existing_claim,
+        )
     endpoint_field = 'api_url' if kind == 'evaluation' else 'url'
     endpoint = payload.get(endpoint_field)
     if deployment_id is None:
@@ -533,9 +574,15 @@ def _invoke(
                 422,
                 f'/{endpoint_field}',
             )
-    digest = config_digest({'task_kind': kind, 'payload': payload}, runtime.task_hmac_key)
+    digest = config_digest(
+        {
+            'task_kind': kind,
+            'payload': execution_payload,
+            'scoring_config': None if metric_selection is None else metric_selection.scoring_config,
+        },
+        runtime.task_hmac_key,
+    )
     deployment = None
-    execution_payload = copy.deepcopy(payload)
     if not manifests.has_claim(task_id):
         if deployment_id is None:
             endpoint_policy.authorize_connection(endpoint)
@@ -547,7 +594,10 @@ def _invoke(
             execution_payload.pop('databench_deployment_id', None)
             execution_payload['api_url'] = deployment.endpoint_base_url
             execution_payload['model'] = deployment.served_model_name
-        _validate_task_capacity(kind, execution_payload, runtime)
+        capacity_payload = execution_payload
+        if kind == 'evaluation' and source is not None and 'datasets' not in execution_payload:
+            capacity_payload = {**execution_payload, 'datasets': ['general_qa']}
+        _validate_task_capacity(kind, capacity_payload, runtime)
         _assert_disk_capacity(runtime)
     if not slots.acquire(blocking=False):
         raise RuntimePolicyError(
@@ -583,6 +633,7 @@ def _invoke(
                 execution_payload,
                 source,
                 deployment,
+                None if metric_selection is None else metric_selection.scoring_config,
             )
             execution_payload = prepared.payload
         _cancel_if_requested(manifests, task_id)
@@ -604,10 +655,14 @@ def _invoke(
         if payload_response.get('task_id') != task_id:
             raise UpstreamProtocolError('EvalScope returned a mismatched task identifier')
         if status < 300 and payload_response.get('status') == 'completed':
+            metrics = _extract_evaluation_metrics(payload_response) if kind == 'evaluation' else []
+            if metric_selection is not None:
+                metrics = metric_catalogue.bind_outputs(metric_selection, metrics)
+                metric_catalogue.assert_outputs(metric_selection, metrics)
             manifest = manifests.record_terminal(
                 task_id,
                 'completed',
-                metrics=_extract_evaluation_metrics(payload_response) if kind == 'evaluation' else [],
+                metrics=metrics,
                 provider_report_ids=[task_id] if kind == 'evaluation' else [],
             )
         else:
@@ -639,7 +694,13 @@ def _invoke(
         except RuntimePolicyError:
             raise error
         if current['phase'] not in {'completed', 'failed', 'cancelled'}:
-            phase = 'provider_run' if current['phase'] == 'running' else 'provider_prepare'
+            phase = (
+                'metric'
+                if error.code == 'metric_execution_failed'
+                else 'provider_run'
+                if current['phase'] == 'running'
+                else 'provider_prepare'
+            )
             manifest = manifests.record_terminal(
                 task_id,
                 'failed',
@@ -684,6 +745,36 @@ def _invoke(
         if admitted:
             admission.finish_task()
         slots.release()
+
+
+def _evaluation_benchmark(
+    payload: dict[str, Any],
+    source: DatabenchSource | None,
+) -> str:
+    datasets = payload.get('datasets')
+    if source is not None:
+        if datasets is not None:
+            raise RuntimePolicyError(
+                'databench_source_invalid',
+                'Databench source tasks derive their Benchmark from the converter',
+                422,
+                '/datasets',
+            )
+        return 'general_qa'
+    if (
+        not isinstance(datasets, list)
+        or len(datasets) != 1
+        or not isinstance(datasets[0], str)
+        or not datasets[0].strip()
+        or len(datasets[0].encode('utf-8')) > 256
+    ):
+        raise RuntimePolicyError(
+            'single_benchmark_required',
+            'Evaluation tasks require exactly one Benchmark',
+            422,
+            '/datasets',
+        )
+    return datasets[0]
 
 
 def _model_deployment_id(payload: dict[str, Any], kind: str) -> str | None:
@@ -866,11 +957,10 @@ def _validate_task_capacity(kind: str, payload: dict[str, Any], runtime: Runtime
             '/model',
         )
     datasets = payload.get('datasets')
-    if datasets is not None:
+    if kind == 'evaluation':
         if (
             not isinstance(datasets, list)
-            or not datasets
-            or len(datasets) > 64
+            or len(datasets) != 1
             or any(
                 not isinstance(item, str)
                 or not item.strip()
@@ -879,8 +969,8 @@ def _validate_task_capacity(kind: str, payload: dict[str, Any], runtime: Runtime
             )
         ):
             raise RuntimePolicyError(
-                'task_capacity_invalid',
-                'Dataset selection exceeds its configured bound',
+                'single_benchmark_required',
+                'Evaluation tasks require exactly one Benchmark',
                 422,
                 '/datasets',
             )

@@ -3,7 +3,6 @@ FROM ${PYTHON_IMAGE}
 
 ARG UV_VERSION=0.11.1
 ARG EVALSCOPE_SOURCE_SHA256=39073ef3b55906cef8fc072a4851ee27e3efa064fd9289f84837a67730ed1579
-ARG EVALSCOPE_PATCH_SHA256=16a2abea1319d8e9df320e94ff98a6160717e24d2662c53c15c4fe101d94f26c
 ARG PLOTLY_SHA256=6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603
 ARG PLOTLY_LICENSE_SHA256=67a26cf80f03ff388f26945dfc1f6caed1a0746ff43871190339b3aee49b94bb
 ARG NLTK_PUNKT_TAB_SHA256=e57f64187974277726a3417ca6f181ec5403676c717672eef6a748a7b20e0106
@@ -29,6 +28,7 @@ COPY deploy/evalscope/vendor/evalscope-upstream.tar.gz /workspace/deploy/evalsco
 RUN printf '%s  %s\n' "${EVALSCOPE_SOURCE_SHA256}" /workspace/deploy/evalscope/vendor/evalscope-upstream.tar.gz | sha256sum -c - \
     && uv sync --frozen --no-dev --no-install-package evalscope
 
+ARG EVALSCOPE_PATCH_SHA256=5d451bf7f8e6da2ea62f4b65b36290369380a2b9e9e7ce0f6578651835e50fee
 COPY deploy/evalscope/vendor/plotly-2.35.2.min.js /opt/vendor/plotly-2.35.2.min.js
 COPY deploy/evalscope/vendor/plotly-LICENSE.txt /opt/vendor/plotly-LICENSE.txt
 COPY deploy/evalscope/vendor/punkt_tab.zip /opt/vendor/punkt_tab.zip

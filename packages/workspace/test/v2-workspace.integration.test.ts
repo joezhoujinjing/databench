@@ -1734,13 +1734,121 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       model_deployment_id: deployment.id,
       model_name: 'integration-lora-v1',
     })
+    const metricScoring = {
+      schema_version: 1 as const,
+      mode: 'explicit' as const,
+      evalscope_commit: 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
+      benchmark: 'general_qa',
+      metrics: [
+        {
+          id: 'exact_match',
+          implementation_digest: 'd'.repeat(64),
+          parameters: {},
+          output_keys: ['exact_match'],
+        },
+      ],
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    }
+    const manualMetricRun = await deploymentWorkspace.createEvaluationRun({
+      provider: 'evalscope',
+      provider_task_id: `task-manual-metric-${randomUUID()}`,
+      dataset_version: published.dataset_version,
+      source_ref: null,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: evaluationPlan.fidelity_digest,
+      model_name: 'integration-manual-model',
+      model_deployment_id: null,
+      evalscope_commit: metricScoring.evalscope_commit,
+      scoring_config: metricScoring,
+    })
+    expect(manualMetricRun).toMatchObject({
+      create_profile: 'evaluation-run-create-v3',
+      scoring_config: metricScoring,
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    })
+    await deploymentWorkspace.startEvaluationRun(manualMetricRun.id, {})
+    await expect(
+      deploymentWorkspace.completeEvaluationRun(manualMetricRun.id, {
+        metrics: [
+          {
+            dataset: 'general_qa',
+            subset: 'databench',
+            metric_id: 'exact_match',
+            output_key: 'exact_match',
+            metric: 'exact_match',
+            score: 1,
+            sample_count: 1,
+            categories: [],
+          },
+        ],
+        provider_report_ids: ['manual-metric-integration-report'],
+        scoring_config: metricScoring,
+        primary_metric_id: 'exact_match',
+        primary_output_key: 'exact_match',
+      }),
+    ).resolves.toMatchObject({
+      create_profile: 'evaluation-run-create-v3',
+      status: 'completed',
+      metrics: [expect.objectContaining({ metric_id: 'exact_match' })],
+    })
+    const metricRun = await deploymentWorkspace.createEvaluationRun({
+      provider: 'evalscope',
+      provider_task_id: `task-model-deployment-metric-${randomUUID()}`,
+      dataset_version: published.dataset_version,
+      source_ref: null,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: evaluationPlan.fidelity_digest,
+      model_name: null,
+      model_deployment_id: deployment.id,
+      evalscope_commit: metricScoring.evalscope_commit,
+      scoring_config: metricScoring,
+    })
+    expect(metricRun).toMatchObject({
+      create_profile: 'evaluation-run-create-v4',
+      scoring_config: metricScoring,
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    })
+    await deploymentWorkspace.startEvaluationRun(metricRun.id, {})
+    await expect(
+      deploymentWorkspace.completeEvaluationRun(metricRun.id, {
+        metrics: [
+          {
+            dataset: 'general_qa',
+            subset: 'databench',
+            metric_id: 'exact_match',
+            output_key: 'exact_match',
+            metric: 'exact_match',
+            score: 1,
+            sample_count: 1,
+            categories: [],
+          },
+        ],
+        provider_report_ids: ['metric-integration-report'],
+        scoring_config: metricScoring,
+        primary_metric_id: 'exact_match',
+        primary_output_key: 'exact_match',
+      }),
+    ).resolves.toMatchObject({
+      status: 'completed',
+      metrics: [expect.objectContaining({ metric_id: 'exact_match' })],
+    })
     await expect(
       deploymentWorkspace.listEvaluationRuns({
         model_deployment_id: deployment.id,
         cursor: null,
         limit: 20,
       }),
-    ).resolves.toMatchObject({ items: [expect.objectContaining({ id: run.id })] })
+    ).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ id: run.id }),
+        expect.objectContaining({ id: metricRun.id }),
+      ]),
+    })
   })
 
   test('production open composes Catalog, S3, and file-backed Store end to end', async () => {

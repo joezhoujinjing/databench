@@ -2434,6 +2434,25 @@ interface FakeFailures {
   audit?: unknown
 }
 
+function scoringConfig(evalscopeCommit = 'c'.repeat(40)) {
+  return {
+    schema_version: 1 as const,
+    mode: 'explicit' as const,
+    evalscope_commit: evalscopeCommit,
+    benchmark: 'general_qa',
+    metrics: [
+      {
+        id: 'exact_match',
+        implementation_digest: 'd'.repeat(64),
+        parameters: {},
+        output_keys: ['exact_match'],
+      },
+    ],
+    primary_metric_id: 'exact_match',
+    primary_output_key: 'exact_match',
+  }
+}
+
 describe('V2Workspace evaluation runs', () => {
   test('re-inspects the exact Dataset, stores the normalized plan, and replays create by provider task', async () => {
     const rig = createRig()
@@ -2503,6 +2522,76 @@ describe('V2Workspace evaluation runs', () => {
     ).rejects.toMatchObject({
       code: 'evaluation_run_state_conflict',
       detail: { reason: 'create_request_mismatch', requested_status: null },
+    })
+  })
+
+  test('binds explicit scoring identity and rejects mismatched completion callbacks', async () => {
+    const rig = createRig()
+    const dataset = makeDataset('a', 'Metric-aware evaluation prompt.')
+    rig.seed(dataset)
+    const inspected = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    const scoring = scoringConfig()
+    const run = await rig.workspace.createEvaluationRun({
+      provider: 'evalscope',
+      provider_task_id: 'task-metric-aware',
+      dataset_version: dataset.version,
+      source_ref: null,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: inspected.fidelity_digest,
+      model_name: 'metric-model',
+      model_deployment_id: null,
+      evalscope_commit: scoring.evalscope_commit,
+      scoring_config: scoring,
+    })
+    expect(run).toMatchObject({
+      create_profile: 'evaluation-run-create-v3',
+      scoring_config: scoring,
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    })
+    await rig.workspace.startEvaluationRun(run.id, {})
+    const completion = {
+      metrics: [
+        {
+          dataset: 'general_qa',
+          subset: 'databench',
+          metric_id: 'exact_match',
+          output_key: 'exact_match',
+          metric: 'exact_match',
+          score: 1,
+          sample_count: 1,
+          categories: [],
+        },
+      ],
+      provider_report_ids: ['metric-report'],
+      scoring_config: scoring,
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    }
+    await expect(
+      rig.workspace.completeEvaluationRun(run.id, {
+        ...completion,
+        scoring_config: {
+          ...scoring,
+          metrics: [{ ...scoring.metrics[0], implementation_digest: 'e'.repeat(64) }],
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'evaluation_run_state_conflict',
+      detail: { reason: 'terminal_body_mismatch' },
+    })
+    await expect(
+      rig.workspace.completeEvaluationRun(run.id, {
+        ...completion,
+        scoring_config: { ...scoring, metrics: [{ ...scoring.metrics[0], parameters: {} }] },
+      }),
+    ).resolves.toMatchObject({
+      status: 'completed',
+      metrics: [expect.objectContaining({ metric_id: 'exact_match' })],
     })
   })
 
@@ -2819,6 +2908,25 @@ describe('V2Workspace Model Deployments', () => {
       model_name: 'deployable-lora-v1',
       model_deployment_id: deployment.id,
       model_artifact_id: artifactId,
+    })
+    const metricRun = await rig.workspace.createEvaluationRun({
+      provider: 'evalscope',
+      provider_task_id: 'task-deployment-metric-lineage',
+      dataset_version: dataset.version,
+      source_ref: null,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: inspected.fidelity_digest,
+      model_name: null,
+      model_deployment_id: deployment.id,
+      evalscope_commit: 'c'.repeat(40),
+      scoring_config: scoringConfig(),
+    })
+    expect(metricRun).toMatchObject({
+      create_profile: 'evaluation-run-create-v4',
+      model_deployment_id: deployment.id,
+      model_artifact_id: artifactId,
+      primary_metric_id: 'exact_match',
     })
     await expect(rig.workspace.disableModelDeployment(deployment.id)).resolves.toMatchObject({
       status: 'disabled',
@@ -3216,7 +3324,10 @@ class FakeCatalog implements V2WorkspaceCatalog {
           row.providerTaskId === input.providerTaskId,
       )
       if (existing) return existing
-      if (input.createProfile === 'evaluation-run-create-v2') {
+      if (
+        input.createProfile === 'evaluation-run-create-v2' ||
+        input.createProfile === 'evaluation-run-create-v4'
+      ) {
         const deployment = this.modelDeployments.get(input.modelDeploymentId ?? '')
         if (deployment?.status === 'disabled') {
           throw new V2CatalogModelDeploymentAdmissionError('disabled', deployment.id)

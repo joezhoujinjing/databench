@@ -2,8 +2,12 @@ import type { CatalogEvaluationMetricV2, CatalogEvaluationRunRowV2 } from '@data
 import {
   hashV2EvaluationRunCreate,
   hashV2EvaluationRunCreateWithDeployment,
+  hashV2EvaluationRunCreateWithDeploymentAndMetrics,
+  hashV2EvaluationRunCreateWithMetrics,
   V2_EVALUATION_RUN_CREATE_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
   V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
 } from '@databench/hashing'
 import {
   type ConverterNameV2,
@@ -54,6 +58,24 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
     model_name: row.modelName,
     evalscope_commit: row.evalscopeCommit,
   }
+  const deploymentIdentity =
+    row.modelDeploymentId !== null &&
+    row.modelArtifactId !== null &&
+    row.modelDeploymentDigest !== null
+      ? {
+          model_deployment_id: row.modelDeploymentId,
+          model_artifact_id: row.modelArtifactId,
+          model_deployment_digest: row.modelDeploymentDigest,
+        }
+      : null
+  const scoringIdentity =
+    row.scoringConfig !== null && row.primaryMetricId !== null && row.primaryOutputKey !== null
+      ? {
+          scoring_config: row.scoringConfig,
+          primary_metric_id: row.primaryMetricId,
+          primary_output_key: row.primaryOutputKey,
+        }
+      : null
   const recomputedDigest =
     row.createProfile === V2_EVALUATION_RUN_CREATE_PROFILE
       ? hashV2EvaluationRunCreate({
@@ -61,17 +83,30 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
           ...baseIdentity,
         })
       : row.createProfile === V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE &&
-          row.modelDeploymentId !== null &&
-          row.modelArtifactId !== null &&
-          row.modelDeploymentDigest !== null
+          deploymentIdentity !== null
         ? hashV2EvaluationRunCreateWithDeployment({
             evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
             ...baseIdentity,
-            model_deployment_id: row.modelDeploymentId,
-            model_artifact_id: row.modelArtifactId,
-            model_deployment_digest: row.modelDeploymentDigest,
+            ...deploymentIdentity,
           })
-        : null
+        : row.createProfile === V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE &&
+            scoringIdentity !== null
+          ? hashV2EvaluationRunCreateWithMetrics({
+              evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
+              ...baseIdentity,
+              ...scoringIdentity,
+            })
+          : row.createProfile === V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE &&
+              deploymentIdentity !== null &&
+              scoringIdentity !== null
+            ? hashV2EvaluationRunCreateWithDeploymentAndMetrics({
+                evaluation_run_create_profile:
+                  V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
+                ...baseIdentity,
+                ...deploymentIdentity,
+                ...scoringIdentity,
+              })
+            : null
   if (recomputedDigest !== row.createRequestDigest) {
     throw new IntegrityError('Stored evaluation run create digest is inconsistent', {
       reason: 'evaluation_create_digest_mismatch',
@@ -96,6 +131,9 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
     model_deployment_id: row.modelDeploymentId,
     model_artifact_id: row.modelArtifactId,
     evalscope_commit: row.evalscopeCommit,
+    scoring_config: row.scoringConfig,
+    primary_metric_id: row.primaryMetricId,
+    primary_output_key: row.primaryOutputKey,
     status: row.status,
     metrics: row.metrics?.map((metric) => metricFromCatalog(metric)) ?? null,
     error: row.error,
@@ -135,6 +173,8 @@ function metricFromCatalog(metric: CatalogEvaluationMetricV2) {
   return {
     dataset: metric.dataset,
     subset: metric.subset,
+    metric_id: metric.metricId,
+    output_key: metric.outputKey,
     metric: metric.metric,
     score: metric.score,
     sample_count: metric.sampleCount,

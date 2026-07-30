@@ -18,6 +18,7 @@ const configFixture = {
     'reports',
     'databench-dataset',
     'databench-model-deployment',
+    'metric-selection',
     'generated-documents',
   ],
   reports_configured: true,

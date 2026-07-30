@@ -1,12 +1,91 @@
 diff --git a/evalscope/benchmarks/general_qa/general_qa_adapter.py b/evalscope/benchmarks/general_qa/general_qa_adapter.py
 --- a/evalscope/benchmarks/general_qa/general_qa_adapter.py
 +++ b/evalscope/benchmarks/general_qa/general_qa_adapter.py
-@@ -89 +89,4 @@
+@@ -6,7 +6,7 @@
+ from evalscope.api.evaluator import TaskState
+ from evalscope.api.messages import ChatMessageSystem, ChatMessageUser, dict_to_chat_message
+ from evalscope.api.metric import Score
+-from evalscope.api.registry import register_benchmark
++from evalscope.api.registry import get_metric, register_benchmark
+ from evalscope.constants import Tags
+ from evalscope.utils.logger import get_logger
+
+@@ -86,7 +86,10 @@
+             if system_prompt:
+                 message_list.append(ChatMessageSystem(content=system_prompt))
+             message_list.append(ChatMessageUser(content=query))
+
 -        return Sample(input=message_list, target=answer or '')
 +        databench_metadata = record.get('_databench')
 +        if not isinstance(databench_metadata, dict):
 +            databench_metadata = {}
 +        return Sample(input=message_list, target=answer or '', metadata={'_databench': databench_metadata})
+
+     def match_score(
+@@ -102,6 +105,7 @@
+
+         # Calculate scores for each configured metric
+         for metric in self.metric_list:
++            metric_name = metric if isinstance(metric, str) else next(iter(metric))
+             try:
+                 if metric == 'Rouge':
+                     from evalscope.metrics.utils.rouge import compute_rouge_score_one_sample_zh
+@@ -111,9 +115,23 @@
+                     from evalscope.metrics import bleu_ngram_one_sample
+
+                     score.value.update(bleu_ngram_one_sample(filtered_prediction, reference))
++                else:
++                    metric_cls = get_metric(metric_name)
++                    metric_func = metric_cls() if isinstance(metric, str) else metric_cls(**metric[metric_name])
++                    score.value[metric_name] = metric_func(
++                        prediction=filtered_prediction,
++                        reference=reference,
++                    )
+             except Exception as e:
+                 logger.error(f'Error calculating metric {metric}: {e}')
++                if self._benchmark_meta.metric_failure_is_fatal:
++                    raise
+                 return None
+
+-        score.main_score_name = 'Rouge-L-R'
++        primary_output_key = self._benchmark_meta.primary_output_key
++        if primary_output_key and self._benchmark_meta.aggregation:
++            aggregation_prefix = f'{self._benchmark_meta.aggregation}_'
++            if primary_output_key.startswith(aggregation_prefix):
++                primary_output_key = primary_output_key[len(aggregation_prefix):]
++        score.main_score_name = primary_output_key or 'Rouge-L-R'
+         return score
+diff --git a/evalscope/api/benchmark/meta.py b/evalscope/api/benchmark/meta.py
+--- a/evalscope/api/benchmark/meta.py
++++ b/evalscope/api/benchmark/meta.py
+@@ -82,6 +82,15 @@
+     metric_list: List[Union[str, Dict[str, Any]]] = field(default_factory=list)
+     """ List of metrics to evaluate the benchmark."""
+
++    primary_metric_id: Optional[str] = None
++    """Canonical Metric identifier selected by the caller."""
++
++    primary_output_key: Optional[str] = None
++    """Metric output key used as the report's primary score."""
++
++    metric_failure_is_fatal: bool = False
++    """Whether a Metric exception must fail the evaluation instead of producing a zero."""
++
+     aggregation: str = 'mean'
+     """ Aggregation function for the metrics. Default is 'mean'. Can be 'mean', 'pass@<k>' or a custom function name."""
+
+diff --git a/evalscope/api/benchmark/adapters/default_data_adapter.py b/evalscope/api/benchmark/adapters/default_data_adapter.py
+--- a/evalscope/api/benchmark/adapters/default_data_adapter.py
++++ b/evalscope/api/benchmark/adapters/default_data_adapter.py
+@@ -660,6 +660,8 @@
+                 score.value[metric_name] = metric_score
+             except Exception as e:
+                 logger.error(f'Error calculating metric {metric}: {e}')
++                if self._benchmark_meta.metric_failure_is_fatal:
++                    raise
+                 score.value[metric_name] = 0
+                 score.metadata[metric_name] = f'error: {str(e)}'
+
 diff --git a/evalscope/constants.py b/evalscope/constants.py
 --- a/evalscope/constants.py
 +++ b/evalscope/constants.py
@@ -47,6 +126,19 @@ diff --git a/evalscope/service/blueprints/reports.py b/evalscope/service/bluepri
  import mimetypes
  import os
  import plotly.express as px
+@@ -175,7 +176,11 @@
+
+     avg_score = round(score_sum / len(report_list), 4) if report_list else 0.0
+     timestamp = _extract_timestamp(report_name, root)
+-    metric_names = [r.metrics[0].name for r in report_list if r.metrics]
++    metric_names = [
++        primary_metric.name
++        for r in report_list
++        if (primary_metric := r.get_primary_metric()) is not None
++    ]
+     metric_name = metric_names[0] if len(metric_names) == len(report_list) and all(
+         name == metric_names[0] for name in metric_names
+     ) else ''
 @@ -419,6 +420,10 @@ def get_predictions():
          report_name  (str): report identifier
          dataset_name (str): dataset name
@@ -142,6 +234,112 @@ diff --git a/evalscope/service/blueprints/reports.py b/evalscope/service/bluepri
  @bp_reports.route('/analysis', methods=['GET'])
  def get_analysis():
      """Get the AI analysis text for a dataset.
+diff --git a/evalscope/report/report.py b/evalscope/report/report.py
+--- a/evalscope/report/report.py
++++ b/evalscope/report/report.py
+@@ -145,6 +145,8 @@
+     model_name: str = 'default_model'
+     score: float = 0.0
+     metrics: List[Metric] = Field(default_factory=list)
++    primary_metric_id: Optional[str] = None
++    primary_output_key: Optional[str] = None
+     analysis: str = 'N/A'
+     # compare=False equivalent: excluded from model equality via model_config
+     perf_metrics: Optional[Dict[str, Any]] = Field(default=None)
+@@ -153,23 +155,30 @@
+
+     @model_validator(mode='after')
+     def _set_score(self) -> Self:
+-        if self.metrics:
+-            self.score = self.metrics[0].score  # NOTE: only use the first metric by default
++        primary_metric = self.get_primary_metric()
++        if primary_metric is not None:
++            self.score = primary_metric.score
+         return self
+
++    def get_primary_metric(self) -> Optional[Metric]:
++        """Resolve the explicit primary output, falling back only for legacy reports."""
++        if self.primary_output_key:
++            return next((metric for metric in self.metrics if metric.name == self.primary_output_key), None)
++        return self.metrics[0] if self.metrics else None
++
+     @computed_field
+     @property
+     def num(self) -> int:
+-        """Total sample count derived from the first metric's subsets.
++        """Total sample count derived from the primary metric's subsets.
+
+-        Using the first metric avoids double-counting datasets that have
++        Using one metric avoids double-counting datasets that have
+         multiple metrics over the same sample set (e.g. multi_if has 12
+         metrics all evaluated on the same 6 samples).
+         """
+-        first = self.metrics[0] if self.metrics else None
+-        if first is None:
++        primary_metric = self.get_primary_metric()
++        if primary_metric is None:
+             return 0
+-        return sum(s.num for c in first.categories for s in c.subsets if not s.is_aggregate)
++        return sum(s.num for c in primary_metric.categories for s in c.subsets if not s.is_aggregate)
+
+     def to_dict(self) -> Dict[str, Any]:
+         # model_dump includes computed_field 'num' automatically
+diff --git a/evalscope/report/generator.py b/evalscope/report/generator.py
+--- a/evalscope/report/generator.py
++++ b/evalscope/report/generator.py
+@@ -126,6 +126,8 @@
+             dataset_name=dataset_name,
+             model_name=model_name,
+             dataset_description=data_adapter.description,
+-            dataset_pretty_name=data_adapter.pretty_name
++            dataset_pretty_name=data_adapter.pretty_name,
++            primary_metric_id=data_adapter._benchmark_meta.primary_metric_id,
++            primary_output_key=data_adapter._benchmark_meta.primary_output_key,
+         )
+         return report
+diff --git a/evalscope/report/renderer.py b/evalscope/report/renderer.py
+--- a/evalscope/report/renderer.py
++++ b/evalscope/report/renderer.py
+@@ -227,8 +227,9 @@
+             rpt: Optional[Report] = info['model_reports'].get(model)
+             if rpt is None:
+                 continue
+-            main_metric_name = rpt.metrics[0].name if rpt.metrics else 'N/A'
+-            num = sum(cat.num for cat in rpt.metrics[0].categories) if rpt.metrics else 0
++            primary_metric = rpt.get_primary_metric()
++            main_metric_name = primary_metric.name if primary_metric else 'N/A'
++            num = sum(cat.num for cat in primary_metric.categories) if primary_metric else 0
+             summary_rows.append(dict(dataset=pretty, model=model, metric=main_metric_name, score=rpt.score, num=num))
+         first: Optional[Report] = next(iter(info['model_reports'].values()), None)
+         if first is not None:
+@@ -261,7 +262,9 @@
+                 )
+                 continue
+
+-            main_metric = rpt.metrics[0]
++            main_metric = rpt.get_primary_metric()
++            if main_metric is None:
++                continue
+             subset_rows: List[dict] = []
+             subset_labels: List[str] = []
+             subset_scores: List[float] = []
+diff --git a/evalscope/utils/data_utils.py b/evalscope/utils/data_utils.py
+--- a/evalscope/utils/data_utils.py
++++ b/evalscope/utils/data_utils.py
+@@ -96,11 +96,12 @@
+                     }
+                     data_dict.append(item)
+         else:
++            primary_metric = report.get_primary_metric()
+             item = {
+                 ReportKey.model_name: report.model_name,
+                 ReportKey.dataset_name: report.dataset_name,
+                 ReportKey.score: report.score,
+-                ReportKey.num: report.metrics[0].num,
++                ReportKey.num: primary_metric.num if primary_metric else 0,
+             }
+             data_dict.append(item)
+     df = pd.DataFrame.from_dict(data_dict, orient='columns')
 diff --git a/evalscope/service/utils/process.py b/evalscope/service/utils/process.py
 --- a/evalscope/service/utils/process.py
 +++ b/evalscope/service/utils/process.py

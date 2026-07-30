@@ -93,6 +93,8 @@ E7 Dashboard、Compare、Performance、Benchmarks、Viewer
 E8 完整结果归档与 retention
  ↓
 E9 安全复核、离线、升级与最终 parity gate
+ ↓
+E10 单 Benchmark 原生 Metric 选择与显式主指标
 ```
 
 | Step | 单次交付 | 主要落点 | Gate |
@@ -107,6 +109,7 @@ E9 安全复核、离线、升级与最终 parity gate
 | E7 | 剩余全部 upstream 业务页面与全量 parity | apps/web | GE7 |
 | E8 | metrics callback、result archive、online/archive states | store、workspace、API、EvalScope | GE8 |
 | E9 | security revalidation、capacity、offline、upgrade/rollback、final review | deploy、docs、full system | GE9 |
+| E10 | 原生 Metric Catalog、显式选择、scoring identity 与报告主指标 | Web、EvalScope、schema/hashing/catalog/workspace | GE10 |
 
 ## 4. Step 交付与 Gate
 
@@ -415,6 +418,33 @@ GE7 是“最新 UI 功能完整迁移”的唯一 gate。E4-E6 不得提前宣�
 > 零外部 asset request 的负面验证；全 parity、安全、容量、bundle、全仓 gates 和独立 review 无 blocker。
 
 GE9 只发布 ADR 0017 范围，不自动完成 V16/V17 或公共云 D3。
+
+### E10 — 单 Benchmark 原生 Metric 选择与显式主指标
+
+交付：
+
+- Evaluation task 固定一次只选择一个 Benchmark；
+- checked-in Descriptor Manifest 覆盖锁定 commit 的全部 27 个原生 Metric，返回兼容性、依赖和离线
+  资产 readiness；
+- `GET /api/v1/eval/metrics?benchmark=...` 进入 exact-path gateway 和隔离 Zod client；
+- Benchmark 默认/显式选择两种模式；显式模式支持 1–16 个 Metric、typed parameters 和主指标；
+- 不可用 Metric 保留展示并给出稳定原因；本期不接受自定义代码、在线安装或运行时下载；
+- Provider-owned envelope 编译到 `dataset_args.<benchmark>.metric_list`，拒绝双重配置 authority；
+- Metric 异常、声明 output 缺失或 non-finite score 使整个 task 失败；
+- 显式模式为 output 绑定 canonical `metric_id/output_key`，过滤 provider 内部附加 output；
+- `evaluation-run-create-v3/v4` 和 migration 0014 固定 scoring identity，同时兼容旧 v1/v2 run 与六字段
+  Metric summary；
+- EvalScope Report 与 Databench Web 的 Dashboard/Reports/Compare 使用显式主指标；旧报告才按第一项
+  回退；
+- capability manifest 增加独立 Databench extension，不提高 upstream UI parity coverage。
+
+> **GE10:** 27 个 Descriptor completeness/availability、alias/parameter/output 冲突、单 Benchmark、
+> default/explicit payload、单选/多选主指标、Metric failure、callback replay/mismatch、v3/v4 fixed vector、
+> fresh migration、真实 Postgres/MinIO lifecycle、报告主指标、OpenAPI、patch dry-run、parity 和全仓 gates
+> 通过。手机版竖屏不在本 gate；E9 目标机后验状态不变。
+
+E10 是 E9 后的增量产品能力，不重开已关闭的 E7 UI parity，也不把 owner-deferred GE9 目标机验收
+误标为 passed。
 
 ### Swift S4 交叉扩展 — opaque Model Deployment
 

@@ -209,6 +209,7 @@ class DatabenchClient:
         payload: dict[str, Any],
         source: DatabenchSource,
         deployment: ResolvedModelDeployment | None = None,
+        scoring_config: dict[str, Any] | None = None,
     ) -> PreparedDatabenchEvaluation:
         model_name = (
             deployment.served_model_name
@@ -216,7 +217,15 @@ class DatabenchClient:
             else _bounded_optional_string(payload.get('model'), 'model')
         )
         integration = {
-            'schema_version': 2 if deployment is not None else 1,
+            'schema_version': (
+                4
+                if deployment is not None and scoring_config is not None
+                else 3
+                if scoring_config is not None
+                else 2
+                if deployment is not None
+                else 1
+            ),
             'task_id': task_id,
             'run_id': None,
             'source_ref': source.source_ref,
@@ -228,6 +237,8 @@ class DatabenchClient:
             'evalscope_commit': EVALSCOPE_COMMIT,
             'input_filename': 'databench.jsonl',
         }
+        if scoring_config is not None:
+            integration['scoring_config'] = scoring_config
         if deployment is not None:
             integration.update({
                 'model_deployment_id': deployment.deployment_id,
@@ -263,6 +274,8 @@ class DatabenchClient:
             'model_name': None if deployment is not None else model_name,
             'evalscope_commit': EVALSCOPE_COMMIT,
         }
+        if scoring_config is not None:
+            create_body['scoring_config'] = scoring_config
         if deployment is not None:
             create_body['model_deployment_id'] = deployment.deployment_id
         run = self._json_request(
@@ -288,12 +301,21 @@ class DatabenchClient:
         injected.pop('databench_source', None)
         injected.pop('databench_deployment_id', None)
         injected['datasets'] = ['general_qa']
-        injected['dataset_args'] = {
-            'general_qa': {
-                'local_path': str(input_file.parent),
-                'subset_list': ['databench'],
-            }
-        }
+        dataset_args = injected.setdefault('dataset_args', {})
+        if not isinstance(dataset_args, dict):
+            raise RuntimePolicyError('task_config_invalid', 'dataset_args must be an object', 422, '/dataset_args')
+        general_qa_args = dataset_args.setdefault('general_qa', {})
+        if not isinstance(general_qa_args, dict):
+            raise RuntimePolicyError(
+                'task_config_invalid',
+                'general_qa dataset_args must be an object',
+                422,
+                '/dataset_args/general_qa',
+            )
+        general_qa_args.update({
+            'local_path': str(input_file.parent),
+            'subset_list': ['databench'],
+        })
         return PreparedDatabenchEvaluation(payload=injected, run_id=run_id, input_file=input_file)
 
     def resolve_model_deployment(self, deployment_id: str) -> ResolvedModelDeployment:
@@ -324,6 +346,13 @@ class DatabenchClient:
                 'metrics': terminal.get('metrics') or [],
                 'provider_report_ids': terminal.get('provider_report_ids') or [],
             }
+            scoring_config = integration.get('scoring_config')
+            if isinstance(scoring_config, dict):
+                body.update({
+                    'scoring_config': scoring_config,
+                    'primary_metric_id': scoring_config.get('primary_metric_id'),
+                    'primary_output_key': scoring_config.get('primary_output_key'),
+                })
         elif status in {'failed', 'cancelled'}:
             body = {'error': terminal.get('error')}
         else:
@@ -516,10 +545,17 @@ class DatabenchClient:
             'converter': integration.get('converter'),
             'converter_options': integration.get('options'),
             'accepted_fidelity_digest': integration.get('accepted_fidelity_digest'),
-            'model_name': None if integration.get('schema_version') == 2 else integration.get('model_name'),
+            'model_name': (
+                None
+                if integration.get('schema_version') in {2, 4}
+                else integration.get('model_name')
+            ),
             'evalscope_commit': integration.get('evalscope_commit'),
         }
-        if integration.get('schema_version') == 2:
+        scoring_config = integration.get('scoring_config')
+        if isinstance(scoring_config, dict):
+            create_body['scoring_config'] = scoring_config
+        if integration.get('schema_version') in {2, 4}:
             create_body['model_deployment_id'] = integration.get('model_deployment_id')
         run = self._json_request(
             'POST',

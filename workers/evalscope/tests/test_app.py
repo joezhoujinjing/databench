@@ -223,6 +223,7 @@ def test_backend_only_exact_route_and_config_boundary(runtime_config) -> None:
             'reports',
             'databench-dataset',
             'databench-model-deployment',
+            'metric-selection',
             'generated-documents',
         ],
         'reports_configured': True,
@@ -329,6 +330,92 @@ def test_completed_evaluation_normalizes_evalscope_metrics_for_databench(runtime
         'sample_count': 2,
         'categories': ['qa'],
     }]
+
+
+def test_metric_catalogue_and_explicit_selection_compile_into_upstream_config(runtime_config) -> None:
+    received: list[dict[str, Any]] = []
+    result = {
+        'general_qa': {
+            'dataset_name': 'general_qa',
+            'metrics': [{
+                'name': 'mean_exact_match',
+                'score': 1.0,
+                'num': 1,
+                'categories': [{
+                    'name': ['qa'],
+                    'subsets': [{
+                        'name': 'default',
+                        'score': 1.0,
+                        'num': 1,
+                        'is_aggregate': False,
+                    }],
+                }],
+            }],
+        },
+    }
+    app = create_app(
+        runtime_config,
+        upstream_app=upstream_app(received=received, evaluation_result=result),
+        databench_client=FakeDatabench(),
+        reconcile_on_start=False,
+    )
+    client = app.test_client()
+    catalogue = client.get('/api/v1/eval/metrics?benchmark=general_qa')
+    assert catalogue.status_code == 200
+    exact_match = next(
+        metric for metric in catalogue.get_json()['metrics'] if metric['id'] == 'exact_match'
+    )
+    assert exact_match['availability']['selectable'] is True
+
+    payload = eval_payload()
+    payload['metric_selection'] = {
+        'mode': 'explicit',
+        'metric_ids': ['exact_match'],
+        'primary_metric_id': 'exact_match',
+        'parameters': {},
+    }
+    response = client.post(
+        '/api/v1/eval/invoke',
+        json=payload,
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert response.status_code == 200
+    assert response.get_json()['terminal']['status'] == 'completed'
+    assert response.get_json()['terminal']['metrics'][0] == {
+        'categories': ['qa'],
+        'dataset': 'general_qa',
+        'metric': 'exact_match',
+        'metric_id': 'exact_match',
+        'output_key': 'exact_match',
+        'sample_count': 1,
+        'score': 1.0,
+        'subset': 'default',
+    }
+    assert received[0]['dataset_args']['general_qa'] == {
+        'metric_list': ['exact_match'],
+        'metric_failure_is_fatal': True,
+        'primary_metric_id': 'exact_match',
+        'primary_output_key': 'mean_exact_match',
+    }
+    assert 'metric_selection' not in received[0]
+
+
+def test_evaluation_rejects_more_than_one_benchmark(runtime_config) -> None:
+    app = create_app(
+        runtime_config,
+        upstream_app=upstream_app(),
+        databench_client=FakeDatabench(),
+        reconcile_on_start=False,
+    )
+    payload = eval_payload()
+    payload['datasets'] = ['general_qa', 'gsm8k']
+    response = app.test_client().post(
+        '/api/v1/eval/invoke',
+        json=payload,
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert response.status_code == 422
+    assert response.get_json()['error']['code'] == 'single_benchmark_required'
 
 
 def test_databench_evaluation_rejects_no_reference_scoring(runtime_config) -> None:

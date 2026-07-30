@@ -544,15 +544,29 @@ def _validate_terminal(value: dict[str, Any]) -> None:
 
 
 def _validate_metric(value: Any) -> None:
-    if not isinstance(value, dict) or set(value) != {
+    legacy_fields = {
         'dataset',
         'subset',
         'metric',
         'score',
         'sample_count',
         'categories',
-    }:
+    }
+    metric_fields = legacy_fields | {'metric_id', 'output_key'}
+    fields = set(value) if isinstance(value, dict) else set()
+    if not isinstance(value, dict) or (fields != legacy_fields and fields != metric_fields):
         raise RuntimePolicyError('task_manifest_invalid', 'Task metric fields are invalid', 500)
+    if fields == metric_fields:
+        metric_id = value.get('metric_id')
+        output_key = value.get('output_key')
+        if (metric_id is None) != (output_key is None):
+            raise RuntimePolicyError('task_manifest_invalid', 'Task Metric identity is invalid', 500)
+        if metric_id is not None and (
+            not isinstance(metric_id, str)
+            or not _SAFE_TOKEN.fullmatch(metric_id)
+            or not _bounded_text(output_key, 128)
+        ):
+            raise RuntimePolicyError('task_manifest_invalid', 'Task Metric identity is invalid', 500)
     for field, maximum in (('dataset', 512), ('metric', 512)):
         if not _bounded_text(value.get(field), maximum):
             raise RuntimePolicyError('task_manifest_invalid', 'Task metric text is invalid', 500)
@@ -622,7 +636,18 @@ def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
         'model_artifact_id',
         'model_deployment_digest',
     }
-    expected = common if version == 1 else common | deployment_fields if version == 2 else set()
+    scoring_fields = {'scoring_config'}
+    expected = (
+        common
+        if version == 1
+        else common | deployment_fields
+        if version == 2
+        else common | scoring_fields
+        if version == 3
+        else common | deployment_fields | scoring_fields
+        if version == 4
+        else set()
+    )
     if set(value) != expected:
         raise RuntimePolicyError('task_integration_invalid', 'Task integration fields are invalid', 500)
     validate_task_id(value.get('task_id'))
@@ -653,7 +678,7 @@ def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
         item = value.get(field)
         if item is not None and not _bounded_text(item, 512):
             raise RuntimePolicyError('task_integration_invalid', f'Task integration {field} is invalid', 500)
-    if version == 2:
+    if version in {2, 4}:
         for field in ('model_deployment_id', 'model_artifact_id'):
             item = value.get(field)
             if not isinstance(item, str) or not _RUN_ID.fullmatch(item):
@@ -675,7 +700,77 @@ def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
                 'Task integration served model is invalid',
                 500,
             )
+    if version in {3, 4}:
+        _validate_scoring_config(value.get('scoring_config'))
     return copy.deepcopy(value)
+
+
+def _validate_scoring_config(value: Any) -> None:
+    if not isinstance(value, dict) or set(value) != {
+        'schema_version',
+        'mode',
+        'evalscope_commit',
+        'benchmark',
+        'metrics',
+        'primary_metric_id',
+        'primary_output_key',
+    }:
+        raise RuntimePolicyError('task_integration_invalid', 'Task scoring config is invalid', 500)
+    if (
+        value.get('schema_version') != 1
+        or value.get('mode') != 'explicit'
+        or value.get('evalscope_commit') != 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60'
+        or not _bounded_text(value.get('benchmark'), 256)
+        or not _bounded_text(value.get('primary_metric_id'), 128)
+        or not _bounded_text(value.get('primary_output_key'), 128)
+    ):
+        raise RuntimePolicyError('task_integration_invalid', 'Task scoring config header is invalid', 500)
+    metrics = value.get('metrics')
+    if not isinstance(metrics, list) or not 1 <= len(metrics) <= 16:
+        raise RuntimePolicyError('task_integration_invalid', 'Task scoring metrics are invalid', 500)
+    metric_ids: list[str] = []
+    output_keys: set[str] = set()
+    primary_output_keys: set[str] = set()
+    for metric in metrics:
+        if not isinstance(metric, dict) or set(metric) != {
+            'id',
+            'implementation_digest',
+            'parameters',
+            'output_keys',
+        }:
+            raise RuntimePolicyError('task_integration_invalid', 'Task scoring Metric is invalid', 500)
+        metric_id = metric.get('id')
+        if (
+            not isinstance(metric_id, str)
+            or not _SAFE_TOKEN.fullmatch(metric_id)
+            or not isinstance(metric.get('implementation_digest'), str)
+            or not _DIGEST.fullmatch(metric['implementation_digest'])
+            or not isinstance(metric.get('parameters'), dict)
+            or not isinstance(metric.get('output_keys'), list)
+            or not metric['output_keys']
+            or len(metric['output_keys']) > 32
+        ):
+            raise RuntimePolicyError('task_integration_invalid', 'Task scoring Metric is invalid', 500)
+        metric_ids.append(metric_id)
+        for key, parameter in metric['parameters'].items():
+            if (
+                not isinstance(key, str)
+                or not _SAFE_TOKEN.fullmatch(key)
+                or not isinstance(parameter, (str, int, float, bool))
+                or (isinstance(parameter, float) and not _finite(parameter))
+                or (isinstance(parameter, str) and not _bounded_text(parameter, 512))
+            ):
+                raise RuntimePolicyError('task_integration_invalid', 'Task scoring parameters are invalid', 500)
+        for output_key in metric['output_keys']:
+            if not _bounded_text(output_key, 128) or output_key in output_keys:
+                raise RuntimePolicyError('task_integration_invalid', 'Task scoring outputs are invalid', 500)
+            output_keys.add(output_key)
+            if metric_id == value['primary_metric_id']:
+                primary_output_keys.add(output_key)
+    if metric_ids != sorted(metric_ids) or len(set(metric_ids)) != len(metric_ids):
+        raise RuntimePolicyError('task_integration_invalid', 'Task scoring Metrics are not canonical', 500)
+    if value['primary_metric_id'] not in metric_ids or value['primary_output_key'] not in primary_output_keys:
+        raise RuntimePolicyError('task_integration_invalid', 'Task scoring primary Metric is invalid', 500)
 
 
 class ProcessRegistry:

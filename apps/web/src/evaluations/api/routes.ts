@@ -11,6 +11,7 @@ import {
   loadMultiReportResponseSchema,
   loadReportResponseSchema,
   logResponseSchema,
+  metricsResponseSchema,
   perfDetailResponseSchema,
   perfRequestsResponseSchema,
   perfRunsListResponseSchema,
@@ -89,6 +90,13 @@ export const EVALSCOPE_JSON_OPERATIONS = {
     path: '/eval/benchmarks',
     query: ['type', 'all'],
     schema: benchmarksResponseSchema,
+    scope: 'api',
+  }),
+  metrics: operation({
+    method: 'GET',
+    path: '/eval/metrics',
+    query: ['benchmark'],
+    schema: metricsResponseSchema,
     scope: 'api',
   }),
   perfInvoke: operation({

@@ -12,6 +12,8 @@ const taskMetricSchema = z
   .object({
     dataset: z.string(),
     subset: z.string().nullable(),
+    metric_id: z.string().nullable().optional(),
+    output_key: z.string().nullable().optional(),
     metric: z.string(),
     score: z.number().finite().nullable(),
     sample_count: z.number().int().nonnegative().nullable(),
@@ -89,3 +91,62 @@ export const benchmarksResponseSchema = z.object({
 
 export type BenchmarkEntry = z.infer<typeof benchmarkEntrySchema>
 export type BenchmarksResponse = z.infer<typeof benchmarksResponseSchema>
+
+const metricParameterSchema = z
+  .object({
+    type: z.enum(['boolean', 'number', 'string']),
+    default: z.union([z.boolean(), z.number().finite(), z.string()]).optional(),
+    minimum: z.number().finite().optional(),
+    maximum: z.number().finite().optional(),
+    choices: z.array(z.union([z.boolean(), z.number().finite(), z.string()])).optional(),
+  })
+  .strict()
+
+export const metricDescriptorSchema = z
+  .object({
+    id: z.string().min(1).max(128),
+    label: z.string().min(1).max(256),
+    aliases: z.array(z.string().min(1).max(128)),
+    input_contract: z.string().min(1).max(128),
+    output_keys: z.array(z.string().min(1).max(128)).min(1).max(32),
+    primary_output_key: z.string().min(1).max(128),
+    parameters: z.record(z.string(), metricParameterSchema),
+    implementation: z
+      .object({
+        source: z.literal('evalscope-native'),
+        evalscope_commit: z.string().regex(/^[0-9a-f]{40}$/u),
+        implementation_digest: z.string().regex(/^[0-9a-f]{64}$/u),
+      })
+      .strict(),
+    availability: z
+      .object({
+        registered: z.boolean(),
+        compatible: z.boolean(),
+        dependency_ready: z.boolean(),
+        asset_ready: z.boolean(),
+        selectable: z.boolean(),
+        reasons: z.array(
+          z.enum([
+            'metric_not_registered',
+            'metric_incompatible',
+            'metric_dependency_missing',
+            'metric_asset_missing',
+          ]),
+        ),
+      })
+      .strict(),
+  })
+  .strict()
+
+export const metricsResponseSchema = z
+  .object({
+    schema_version: z.literal(1),
+    evalscope_commit: z.string().regex(/^[0-9a-f]{40}$/u),
+    benchmark: z.string().min(1).max(256),
+    default_mode_available: z.boolean(),
+    metrics: z.array(metricDescriptorSchema),
+  })
+  .strict()
+
+export type MetricDescriptor = z.infer<typeof metricDescriptorSchema>
+export type MetricsResponse = z.infer<typeof metricsResponseSchema>

@@ -72,13 +72,17 @@ import {
   createArtifactHasher,
   hashV2EvaluationRunCreate,
   hashV2EvaluationRunCreateWithDeployment,
+  hashV2EvaluationRunCreateWithDeploymentAndMetrics,
+  hashV2EvaluationRunCreateWithMetrics,
   hashV2ModelArtifactImportCreate,
   hashV2ModelDeploymentCreate,
   hashV2SwiftStudioOutputHandle,
   hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
   V2_EVALUATION_RUN_CREATE_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
   V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
   V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
@@ -1249,6 +1253,22 @@ export class V2Workspace {
     )
     assertExportFidelityAcceptedV2(plan, request.accepted_fidelity_digest)
     const benchmark = evaluationBenchmarkFromPlanV2(plan)
+    if (
+      request.scoring_config !== null &&
+      (request.scoring_config.benchmark !== benchmark ||
+        request.scoring_config.evalscope_commit !== request.evalscope_commit)
+    ) {
+      throw new ValidationError('Scoring config does not match the evaluation runtime', {
+        issues: [
+          {
+            path: '/scoring_config',
+            line: null,
+            code: 'evaluation_scoring_config_mismatch',
+            message: 'Scoring config Benchmark and EvalScope commit must match the run',
+          },
+        ],
+      })
+    }
     const namespaceId = await this.#namespace(context.signal)
     const modelDeployment =
       request.model_deployment_id === null
@@ -1265,8 +1285,12 @@ export class V2Workspace {
     }
     const createProfile =
       modelDeployment === null
-        ? V2_EVALUATION_RUN_CREATE_PROFILE
-        : V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE
+        ? request.scoring_config === null
+          ? V2_EVALUATION_RUN_CREATE_PROFILE
+          : V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE
+        : request.scoring_config === null
+          ? V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE
+          : V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE
     const modelName = modelDeployment?.servedModelName ?? request.model_name
     const modelDeploymentId = modelDeployment?.id ?? null
     const modelArtifactId = modelDeployment?.artifactId ?? null
@@ -1284,19 +1308,43 @@ export class V2Workspace {
       model_name: modelName,
       evalscope_commit: request.evalscope_commit,
     }
+    const scoringIdentity =
+      request.scoring_config === null
+        ? null
+        : {
+            scoring_config: request.scoring_config,
+            primary_metric_id: request.scoring_config.primary_metric_id,
+            primary_output_key: request.scoring_config.primary_output_key,
+          }
     const createRequestDigest =
       modelDeployment === null
-        ? hashV2EvaluationRunCreate({
-            evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
-            ...baseIdentity,
-          })
-        : hashV2EvaluationRunCreateWithDeployment({
-            evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
-            ...baseIdentity,
-            model_deployment_id: modelDeployment.id,
-            model_artifact_id: modelDeployment.artifactId,
-            model_deployment_digest: modelDeployment.createDigest,
-          })
+        ? scoringIdentity === null
+          ? hashV2EvaluationRunCreate({
+              evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
+              ...baseIdentity,
+            })
+          : hashV2EvaluationRunCreateWithMetrics({
+              evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
+              ...baseIdentity,
+              ...scoringIdentity,
+            })
+        : scoringIdentity === null
+          ? hashV2EvaluationRunCreateWithDeployment({
+              evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+              ...baseIdentity,
+              model_deployment_id: modelDeployment.id,
+              model_artifact_id: modelDeployment.artifactId,
+              model_deployment_digest: modelDeployment.createDigest,
+            })
+          : hashV2EvaluationRunCreateWithDeploymentAndMetrics({
+              evaluation_run_create_profile:
+                V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
+              ...baseIdentity,
+              model_deployment_id: modelDeployment.id,
+              model_artifact_id: modelDeployment.artifactId,
+              model_deployment_digest: modelDeployment.createDigest,
+              ...scoringIdentity,
+            })
     let row: CatalogEvaluationRunRowV2
     try {
       row = await waitWithAbort(
@@ -1318,6 +1366,9 @@ export class V2Workspace {
           modelArtifactId,
           modelDeploymentDigest,
           evalscopeCommit: request.evalscope_commit,
+          scoringConfig: request.scoring_config,
+          primaryMetricId: request.scoring_config?.primary_metric_id ?? null,
+          primaryOutputKey: request.scoring_config?.primary_output_key ?? null,
         }),
         context.signal,
       )
@@ -1443,6 +1494,22 @@ export class V2Workspace {
     context.signal?.throwIfAborted()
     const id = EvaluationRunIdV2Schema.parse(idInput)
     const request = CompleteEvaluationRunRequestV2Schema.parse(requestInput)
+    const existing = await this.getEvaluationRun(id, context)
+    if (existing === null) {
+      throw new NotFoundError(`Evaluation run was not found: ${id}`, { run_id: id })
+    }
+    if (
+      canonicalJsonV2(existing.scoring_config) !== canonicalJsonV2(request.scoring_config) ||
+      existing.primary_metric_id !== request.primary_metric_id ||
+      existing.primary_output_key !== request.primary_output_key
+    ) {
+      throw new EvaluationRunStateConflictErrorV2({
+        reason: 'terminal_body_mismatch',
+        run_id: id,
+        status: existing.status,
+        requested_status: 'completed',
+      })
+    }
     return await this.#transitionEvaluationRun(
       {
         namespaceId: await this.#namespace(context.signal),
@@ -1451,6 +1518,8 @@ export class V2Workspace {
         metrics: request.metrics.map((metric) => ({
           dataset: metric.dataset,
           subset: metric.subset,
+          metricId: metric.metric_id,
+          outputKey: metric.output_key,
           metric: metric.metric,
           score: metric.score,
           sampleCount: metric.sample_count,
@@ -4918,6 +4987,8 @@ function evaluationTransitionBodyMatches(
           input.metrics.map((metric) => ({
             dataset: metric.dataset,
             subset: metric.subset,
+            metric_id: metric.metricId,
+            output_key: metric.outputKey,
             metric: metric.metric,
             score: metric.score,
             sample_count: metric.sampleCount,

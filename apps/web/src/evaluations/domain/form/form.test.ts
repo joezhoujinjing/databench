@@ -18,7 +18,7 @@ describe('EvalScope task form domain', () => {
       ...EVALUATION_FORM_DEFAULTS,
       apiUrl: 'http://model.test/v1',
       datasetArgs: '{"gsm8k":{"few_shot_num":4}}',
-      datasets: 'gsm8k, arc',
+      datasets: 'gsm8k',
       model: 'Qwen/Qwen3',
       stream: true,
       temperature: '0.7',
@@ -26,10 +26,11 @@ describe('EvalScope task form domain', () => {
     expect(buildEvaluationPayload(values, 'benchmark')).toEqual({
       api_url: 'http://model.test/v1',
       dataset_args: { gsm8k: { few_shot_num: 4 } },
-      datasets: ['gsm8k', 'arc'],
+      datasets: ['gsm8k'],
       eval_batch_size: 16,
       generation_config: { temperature: 0.7 },
       model: 'Qwen/Qwen3',
+      metric_selection: { mode: 'benchmark_default' },
       stream: true,
       timeout: 300,
     })
@@ -54,6 +55,7 @@ describe('EvalScope task form domain', () => {
     )
     expect(payload).not.toHaveProperty('datasets')
     expect(payload).not.toHaveProperty('dataset_args')
+    expect(payload).toHaveProperty('metric_selection', { mode: 'benchmark_default' })
     expect(payload).toHaveProperty('databench_source', {
       accepted_fidelity_digest: 'b'.repeat(64),
       converter: 'evalscope-general-qa',
@@ -102,6 +104,7 @@ describe('EvalScope task form domain', () => {
     expect(payload).toMatchObject({
       databench_deployment_id: '123e4567-e89b-42d3-a456-426614174099',
       datasets: ['gsm8k'],
+      metric_selection: { mode: 'benchmark_default' },
     })
     expect(payload).not.toHaveProperty('model')
     expect(payload).not.toHaveProperty('api_url')
@@ -145,15 +148,45 @@ describe('EvalScope task form domain', () => {
       'ifeval',
       'truthfulqa',
     ]
-    expect(benchmarkSuggestions('gsm8k, m', names)).toEqual([
-      'gsm8k',
-      'mmmu',
-      'math',
-      'mmlu',
-      'humaneval',
-    ])
+    expect(benchmarkSuggestions('m', names)).toEqual(['gsm8k', 'mmmu', 'math', 'mmlu', 'humaneval'])
     expect(benchmarkSuggestions('a', names)).toHaveLength(6)
-    expect(replaceLastBenchmark('gsm8k, mm', 'mmmu')).toBe('gsm8k, mmmu')
+    expect(replaceLastBenchmark('mm', 'mmmu')).toBe('mmmu')
+  })
+
+  it('submits an explicit Metric set and primary Metric', () => {
+    const payload = buildEvaluationPayload(
+      {
+        ...EVALUATION_FORM_DEFAULTS,
+        apiUrl: 'http://model.test/v1',
+        datasets: 'general_qa',
+        metricIds: ['anls', 'exact_match'],
+        metricMode: 'explicit',
+        metricParameters: { anls: { threshold: 0.7 } },
+        model: 'Qwen/Qwen3',
+        primaryMetricId: 'exact_match',
+      },
+      'benchmark',
+    )
+    expect(payload).toHaveProperty('metric_selection', {
+      mode: 'explicit',
+      metric_ids: ['anls', 'exact_match'],
+      parameters: { anls: { threshold: 0.7 } },
+      primary_metric_id: 'exact_match',
+    })
+  })
+
+  it('rejects multiple Benchmarks before building an evaluation payload', () => {
+    const validation = validateEvaluationForm(
+      {
+        ...EVALUATION_FORM_DEFAULTS,
+        apiUrl: 'http://model.test/v1',
+        datasets: 'gsm8k,arc',
+        model: 'Qwen/Qwen3',
+      },
+      'benchmark',
+    )
+    expect(validation.ok).toBe(false)
+    expect(validation.errors).toHaveProperty('eval-datasets')
   })
 
   it('validates and serializes the complete performance form', () => {

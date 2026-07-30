@@ -2,7 +2,7 @@
 
 > [`project-structure.md`](project-structure.md) 定义包边界与依赖方向；本文记录当前
 > v2-only 文件落点。历史 v1 迁移文件表只在 `docs/migration/` 中保留。MCP M0-M3 已完成；
-> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E8 gate
+> 通用 runtime 保持 disabled-by-default，ADR 0012 离线包通过独立配置显式启用。EvalScope E0-E8/E10 gate
 > 已完成，E9 本地实现完成、真实目标 gate pending：backend-only runtime、gateway、Evaluation 路由、
 > Tasks、Databench Dataset、Reports、Predictions、Dashboard、Compare、Performance、Benchmarks、安全
 > Viewer 与完整结果归档已实现，完整 UI 功能迁移和归档 gate 已关闭；七张基础镜像加一张默认关闭的
@@ -189,7 +189,7 @@ apps/web/
 │  │  ├─ shell/                 数据集侧栏、路由映射、连接设置与语言切换
 │  │  ├─ common/                状态、JSON、复制
 │  │  └─ ui/                    基础 UI primitives
-│  ├─ evaluations/              ADR 0017；E4-E7 complete Evaluation UI
+│  ├─ evaluations/              ADR 0017；E4-E7 UI + E10 Metric selection
 │  │  ├─ api/                   exact-operation Zod client、report schemas、typed errors
 │  │  ├─ components/            capability boundary、breadcrumb、source refresh、安全 document frame
 │  │  ├─ domain/                route key、report、metric、task state 与 AgentTrace 纯逻辑
@@ -438,7 +438,8 @@ prisma/
    ├─ 0010_evaluation_runs_v2/
    ├─ 0011_swift_studio_sessions_v2/
    ├─ 0012_model_artifacts_v2/
-   └─ 0013_model_deployments_v2/
+   ├─ 0013_model_deployments_v2/
+   └─ 0014_evaluation_metric_selection_v2/
 ```
 
 EvalScope E0 另有：
@@ -462,6 +463,7 @@ docs/evalscope/evidence/E6-REPORTS-PREDICTIONS.md
 docs/evalscope/evidence/E7-COMPLETE-UI-PARITY.md
 docs/evalscope/evidence/E8-RESULT-ARCHIVE.md
 docs/evalscope/evidence/E9-SECURITY-CAPACITY-RELEASE.md
+docs/evalscope/evidence/E10-METRIC-SELECTION.md
 THIRD_PARTY_NOTICES.md
 ```
 
@@ -473,6 +475,7 @@ workers/evalscope/
 ├─ src/databench_evalscope/
 │  ├─ app.py · wsgi.py · config.py
 │  ├─ databench.py · archive.py · storage.py
+│  ├─ metrics.py · metric-descriptors.json
 │  └─ security.py · documents.py · volume_backup.py · errors.py
 └─ tests/                      Python runtime/security tests
 
@@ -497,6 +500,10 @@ converter/export 与 Workspace/REST/OpenAPI 数据链没有被 Python service �
 E8 result archive 通过 `databench.py`/`archive.py` 调用 Databench prepare/finalize/fail REST。Python service
 只接收 attempt-scoped conditional PUT descriptor；BLAKE3/size 校验、immutable publication、PG locator 与
 exact staging cleanup 仍由 Store/Workspace/Catalog 边界拥有。
+
+E10 的 `metrics.py` 只加载 checked-in Descriptor、计算 runtime readiness 并把 Provider-owned selection
+编译为 EvalScope `dataset_args`；显式 scoring identity 与 canonical result output 仍经
+Schema/Hashing/Catalog/Workspace 和 Databench REST 持久化。
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。

@@ -113,6 +113,12 @@ describe('EvalScope same-origin gateway', () => {
       request('/evalscope-api/api/v1/reports/list?search=%0Asecret'),
     )
     expect(controlCharacter.status).toBe(422)
+    const missingMetricBenchmark = await app.fetch(request('/evalscope-api/api/v1/eval/metrics'))
+    expect(missingMetricBenchmark.status).toBe(422)
+    const invalidMetricBenchmark = await app.fetch(
+      request('/evalscope-api/api/v1/eval/metrics?benchmark=general_qa%0Asecret'),
+    )
+    expect(invalidMetricBenchmark.status).toBe(422)
     const invalidPredictionMode = await app.fetch(
       request(
         '/evalscope-api/api/v1/reports/predictions?report_name=run/model&dataset_name=general_qa&subset_name=databench&mode=near',
@@ -126,6 +132,28 @@ describe('EvalScope same-origin gateway', () => {
     )
     expect(conflictingPredictionLocator.status).toBe(422)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('forwards the Metric catalogue for one bounded Benchmark', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input)
+      expect(url.pathname).toBe('/api/v1/eval/metrics')
+      expect(url.searchParams.get('benchmark')).toBe('general_qa')
+      return Response.json({
+        schema_version: 1,
+        evalscope_commit: 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
+        benchmark: 'general_qa',
+        default_mode_available: true,
+        metrics: [],
+      })
+    })
+    const app = createTestApp({ evalscope: config(), evalscopeFetch: fetchMock as typeof fetch })
+    const response = await app.fetch(
+      request('/evalscope-api/api/v1/eval/metrics?benchmark=general_qa'),
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ benchmark: 'general_qa' })
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 
   test('bounds invoke JSON and strips browser credentials and cookies', async () => {

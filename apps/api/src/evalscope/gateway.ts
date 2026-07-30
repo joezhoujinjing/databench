@@ -265,6 +265,7 @@ function validateQueryValues(path: string, query: URLSearchParams): void {
     '/api/v1/eval/progress': ['task_id'],
     '/api/v1/eval/log': ['task_id'],
     '/api/v1/eval/report': ['task_id'],
+    '/api/v1/eval/metrics': ['benchmark'],
     '/api/v1/perf/stop': ['task_id'],
     '/api/v1/perf/progress': ['task_id'],
     '/api/v1/perf/log': ['task_id'],
@@ -353,9 +354,9 @@ function validateQueryValues(path: string, query: URLSearchParams): void {
       throw new TypeError(`Invalid EvalScope ${field}`)
     }
   }
-  for (const field of ['search', 'dataset_name', 'subset_name']) {
+  for (const field of ['search', 'dataset_name', 'subset_name', 'benchmark']) {
     const value = query.get(field)
-    if (value !== null) assertBoundedText(value, field, 4096)
+    if (value !== null) assertBoundedText(value, field, field === 'benchmark' ? 256 : 4096)
   }
   for (const field of ['models', 'datasets']) {
     const value = query.get(field)

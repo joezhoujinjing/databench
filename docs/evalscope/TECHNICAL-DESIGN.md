@@ -1,6 +1,7 @@
 # EvalScope 功能等价 UI 迁移技术方案
 
-- **状态:** Accepted——owner 于 2026-07-27 确认方案 review 问题修复并要求开始实施
+- **状态:** Accepted——owner 于 2026-07-27 确认原方案并要求开始实施；2026-07-30 接受 §19 的
+  单 Benchmark、原生 Metric 选择与显式主指标扩展
 - **日期:** 2026-07-27
 - **Databench 代码基线:** `databench-ts@25130a2ecba8075435b4c1aa20f3f6438193ef23`
 - **EvalScope 代码基线:** `modelscope/evalscope@b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60`
@@ -17,6 +18,7 @@
 4. Databench Dataset exact version 成为 Evaluation task form 的第一类数据源；
 5. EvalScope Python service 继续负责执行、指标、Judge 和报告 API，不迁成 TypeScript；
 6. Databench 保存 Dataset/run 关系和有界摘要，完整结果归档到 object store。
+7. Evaluation 启动前可查看全部原生 Metric、选择当前可用项，并在所有结果页面使用同一显式主指标。
 
 “功能等价”按锁定基线逐项验收，至少同时满足：
 
@@ -155,7 +157,10 @@ upstream UI primitives      → Databench primitives or themed domain primitives
 
 ```text
 model
-datasets autocomplete + multi-value
+datasets autocomplete
+metric mode: benchmark default / explicit selection
+metrics multi-select + availability reason
+primary metric
 api_url
 api_key
 limit
@@ -171,10 +176,24 @@ dataset_args JSON
 validation + first-invalid focus + advanced section expansion
 ```
 
-锁定基线的 autocomplete 只从 text + multimodal 列表产生建议，但输入仍允许任意合法 Benchmark name 和
-逗号多值；ArrowUp/ArrowDown/Enter/Escape、active option、最多 8 个建议、outside-click close 也属于
-`upstream-parity`。若以后把 agent/aigc 加入建议列表，应标记为 `databench-extension`，不得静默改变
-pinned parity fixture。
+锁定基线的 autocomplete 只从 text + multimodal 列表产生建议；ArrowUp/ArrowDown/Enter/Escape、active
+option、最多 8 个建议和 outside-click close 仍属于 `upstream-parity`。2026-07-30 的产品决策将逗号多值
+改为单值：Web 只允许一个 Benchmark，wire 仍发送 `datasets: [benchmark]`，Provider 对数组长度严格校验
+为 1。该变化在 E10 capability manifest 中标记为 owner-approved product replacement，不得继续保留一个
+前端多选、后端单选的分裂契约。若以后把 agent/aigc 加入建议列表，应标记为
+`databench-extension`，不得静默改变 pinned parity fixture。
+
+Metric 区域依赖已选 Benchmark：
+
+- 默认是“使用 Benchmark 默认指标”，不改写 upstream 默认行为；
+- 切换为显式模式后，展示锁定 commit 的全部原生 Metric；不可用项保留展示并说明
+  incompatible、dependency missing 或 asset missing；
+- 至少选择一个、最多 16 个；选择一个时自动成为主指标，选择多个时必须显式选择主指标；
+- 用户选择的是 canonical Metric，不选择或编辑 Python callable；参数只按 Descriptor 的 typed schema
+  显示；
+- Benchmark、Metric mode、Metric 列表、参数或主指标变化后，旧的 compatibility result 必须失效并重新
+  查询，提交按钮在新结果返回前保持禁用；
+- 当前 Benchmark 不在 Descriptor coverage 内时只能使用 Benchmark 默认模式，不能猜测兼容关系。
 
 `dataset_args` 继续是任意 JSON object 编辑器，保留 raw input、JSON-object validation、first-invalid focus
 和 payload shape；但 server-side admission 增加明确的 `security-replacement`：
@@ -621,6 +640,7 @@ Dataset detail
   → 显示 Ref（若存在）和 exact version
   → 选择 target source
   → inspect eligibility/fidelity
+  → 选择 Benchmark 默认指标，或选择一个/多个原生 Metric 和主指标
   → 配置模型和 EvalScope 参数
   → 启动
   → progress/log/stop
@@ -636,14 +656,15 @@ Dataset detail
 
 ```text
 EvalScope Benchmark
-  └── upstream datasets autocomplete + dataset_args
+  └── 单 Benchmark autocomplete + Metric selection + dataset_args
 
 Databench Dataset
-  └── Ref/version/task type/target/inspect/fidelity
+  └── Ref/version/task type/target/inspect/fidelity + Metric selection
 ```
 
 两种来源共享模型、API、generation 和运行监控表单。切换来源时不得把一类来源的 raw local path 或
-dataset_args 静默带入另一类 payload。
+dataset_args 静默带入另一类 payload。两种来源都只能提交一个 Benchmark；Databench Dataset 当前由 task
+type 固定解析为 `general_qa`。
 
 ### 6.3 性能压测
 
@@ -834,6 +855,7 @@ EvalScope 后端生成：
 | `GET` | `/api/v1/eval/log` | 有界增量日志 |
 | `GET` | `/api/v1/eval/report` | opaque report locator，不返回 filesystem path |
 | `GET` | `/api/v1/eval/benchmarks` | all/text/multimodal/agent/aigc schema |
+| `GET` | `/api/v1/eval/metrics` | 按单 Benchmark 返回 Descriptor Catalog、兼容性与离线 readiness |
 | `POST` | `/api/v1/perf/invoke` | blocking performance invoke |
 | `POST` | `/api/v1/perf/stop` | 先持久化 stop intent，再停止 |
 | `GET` | `/api/v1/perf/progress` | progress polling |
@@ -898,6 +920,8 @@ Plotly 边界全部保持不变。
 - EvalScope 后端执行 character/length/basename allowlist；
 - `EvalScope-Task-Id` 是 provider task locator，不是授权凭据，也不单独构成幂等键；
 - Databench source payload 包含 integration envelope，EvalScope 在 `TaskConfig.from_dict()` 前移除；
+- E10 后的新 Evaluation payload 还可包含 Provider-owned `metric_selection`；它必须在
+  `TaskConfig.from_dict()` 前 resolve、校验和移除，不能依赖 `TaskConfig` 保存未知字段；
 - native Benchmark/perf payload 保持 upstream schema；唯一例外是 §3.1 的 recursive
   `dataset_args_locator_forbidden` security admission，必须在 TaskConfig/path/network access 之前执行；
 - API key 只从 browser 经 protected same-origin gateway 到 EvalScope，不写日志、PG、archive 或 URL；
@@ -944,6 +968,27 @@ Integration envelope：
 
 EvalScope 忽略 browser 提供的 base URL、local path、storage URL 或 run ID。
 
+Metric envelope：
+
+```json
+{
+  "metric_selection": {
+    "mode": "explicit",
+    "metric_ids": ["exact_match", "rouge"],
+    "primary_metric_id": "exact_match",
+    "parameters": {
+      "rouge": {"rouge_types": ["rougeL"]}
+    }
+  }
+}
+```
+
+`mode=benchmark_default` 时不允许同时提供 `metric_ids`、`primary_metric_id` 或 `parameters`。
+`mode=explicit` 时 Provider 先通过 checked-in Descriptor 将 alias 解析为 canonical ID，按 canonical ID
+排序形成与 UI 点选顺序无关的执行集合，再验证兼容性、依赖、资产、参数和输出 key；主指标独立保存，
+不得通过把它移到数组第一项表达。请求同时在 `dataset_args.<benchmark>.metric_list` 提供值时返回
+`422 metric_selection_conflict`，避免两套 authority。
+
 ### 8.3 Databench source preparation
 
 EvalScope backend 对 Databench source 按顺序执行：
@@ -953,7 +998,8 @@ validate task/config + atomic task claim
 → create evaluation run (prepared)
 → stream exact export to task-local partial
 → fsync + rename
-→ inject general_qa TaskConfig
+→ resolve/validate/strip metric_selection
+→ merge general_qa local_path/subset_list + compiled metric_list into TaskConfig
 → transition run to running
 → run upstream evaluation
 → normalize metrics + provider report IDs
@@ -967,6 +1013,19 @@ normalization 从 blocking invoke 的 `result` 中递归识别 report，展开 m
 `EvaluationMetricV2`；aggregate-only metric 回退为 `subset=null`。输出最多 10,000 项，只保留有限
 dataset/subset/metric/category、finite score 和安全 sample count。样本、prompt、prediction 和嵌套
 provider result 不进入 Postgres。
+
+EvalScope 的 aggregate report key 固定为 sample output key 的 `mean_*` 形式，例如
+`exact_match → mean_exact_match`。该名称只属于 Provider 执行与报告边界：
+`TaskConfig.primary_output_key` 使用 `mean_exact_match` 选择 EvalScope 主输出；callback 前再按
+Descriptor binding 归一化为 canonical `metric_id=exact_match`、`output_key=exact_match` 和
+`metric=exact_match`。scoring identity、Postgres、Databench REST 与 Web 不保存或依赖 Provider
+前缀，也不允许用删除任意 `mean_` 前缀的启发式规则代替 Descriptor binding。
+
+显式 Metric 模式下，任一请求 Metric 抛异常、缺少 Descriptor 声明的必需输出、返回 non-finite 值或被
+upstream 静默跳过，都使任务失败，错误固定为
+`phase=metric, code=metric_execution_failed`；不得用 0、空数组或部分成功完成回调替代失败。Descriptor
+明确声明为 aggregate-only 的 Metric 可以没有逐样本分数，此时 Prediction `NScore=null`，但报告主分数
+必须存在。
 
 普通 Evaluation 默认关闭 upstream `analysis_report`，避免 benchmark 完成后再发起一次未显式请求的模型
 调用；只有请求体中的 literal boolean `analysis_report=true` 才启用分析。Web 当前不提交该字段。
@@ -1001,7 +1060,9 @@ downstream patch 限定在：
 8. task atomic claim、stop intent、startup/manual reconciliation；
 9. generated HTML/chart isolation、本地 Plotly 资产和无路径 config schema；
 10. native `dataset_args` locator admission；
-11. model endpoint policy、production WSGI/health/config hardening。
+11. model endpoint policy、production WSGI/health/config hardening；
+12. checked-in Metric Descriptor、Catalog endpoint、Provider-owned selection compiler 和显式主指标报告
+    metadata。
 
 不再修改 EvalScope React source selector；该功能完全在 Databench Web 实现。
 
@@ -1030,6 +1091,9 @@ model V2EvaluationRun {
   modelArtifactId            String?   @map("model_artifact_id") @db.Uuid
   modelDeploymentDigest      String?   @map("model_deployment_digest") @db.Char(64)
   evalscopeCommit            String?   @map("evalscope_commit")
+  scoringConfig              Json?     @map("scoring_config_json")
+  primaryMetricId            String?   @map("primary_metric_id")
+  primaryOutputKey           String?   @map("primary_output_key")
   status                     String
   metrics                    Json?     @map("metrics_json")
   error                      Json?     @map("error_json")
@@ -1066,7 +1130,9 @@ model V2EvaluationRun {
 
 Migration 使用 raw CHECK 固定 provider、status、archive status、digest、terminal timestamp、JSON shape
 和 result artifact 三字段同空/同非空。Deployment、Artifact 与 Deployment digest 三字段也必须同空/同非空，
-并通过同 namespace 的 composite FK 固定。所有 FK 显式 `RESTRICT`。
+并通过同 namespace 的 composite FK 固定。E10 additive migration 再要求
+`scoring_config_json / primary_metric_id / primary_output_key` 三者同空或同非空，并限制 JSON depth、
+entries、strings 和参数 shape；旧行保持三者为 null。所有 FK 显式 `RESTRICT`。
 
 `source_ref` 只是启动时 display locator，不与 mutable Ref 建 FK。真正 binding 只认 exact
 `dataset_version`。
@@ -1113,6 +1179,8 @@ Execution completed 不依赖 archive available。
 type EvaluationMetricV2 = {
   dataset: string
   subset: string | null
+  metric_id: string | null
+  output_key: string | null
   metric: string
   score: number | null
   sample_count: number | null
@@ -1121,7 +1189,8 @@ type EvaluationMetricV2 = {
 ```
 
 最多 10,000 项；strings/categories 有界；score finite。禁止 input、target、prediction、prompt、API key、
-header 或任意嵌套对象。模型配置只保存 allowlist 摘要。
+header 或任意嵌套对象。模型配置只保存 allowlist 摘要。E10 新任务的 `metric_id/output_key` 必填；旧
+callback 和旧行解析时允许为 null。`metric` 继续保存 provider report label，不能代替 canonical ID。
 
 ### 9.5 Manual 与 Deployment 两个 create identity profile
 
@@ -1129,6 +1198,13 @@ header 或任意嵌套对象。模型配置只保存 allowlist 摘要。
 - `evaluation-run-create-v2` 用于 Databench Deployment：Workspace 从 active Deployment 读取 served model、
   Artifact ID 与 Deployment create digest，忽略浏览器提供的 model material，并把三者加入 canonical
   identity；
+- E10 中显式选择 Metric 的新任务使用 `evaluation-run-create-v3`（manual model）或
+  `evaluation-run-create-v4`（Databench Deployment），把 canonical Metric ID 集合、typed parameters、
+  `primary_metric_id`、`primary_output_key`、EvalScope commit 和每项 implementation digest 写入 RFC 8785
+  identity；同一 Metric 集合不因 UI 点选顺序产生不同 digest；
+- Benchmark 默认模式没有冻结具体 canonical Metric 集合，因此不回填或虚构 scoring config；manual /
+  Deployment 的新任务继续分别使用 v1/v2。旧任务也继续按原 profile 读取和重放，不静默扩大 identity
+  envelope；
 - 同一个 `(namespace, provider, provider_task_id)` 不能在两个 profile 或两个 Deployment 之间漂移，
   mismatch 稳定返回 409；
 - Deployment disable 后允许读取和重放已经存在的 Run；只拒绝新的 provider task admission，返回 422
@@ -1187,7 +1263,9 @@ Deployment 仍为 active，并以复合 FK 保存 exact Deployment/Artifact/crea
 Dataset、Deployment 和 status filter，避免翻页时切换 lineage 范围。
 
 Complete 接受 bounded metrics 和 provider report IDs，不接受 URL、filesystem path、完整 result 或日志。
-Fail/cancel 只接受 bounded phase/code/sanitized message。
+E10 Complete 还要求 scoring config、`primary_metric_id`、`primary_output_key` 与 metric outputs 完全对应；
+主输出缺失或冲突时拒绝 complete 并由 Provider 走 metric failure callback。Fail/cancel 只接受 bounded
+phase/code/sanitized message。
 
 ### 10.3 Model Deployment API 与 internal resolve
 
@@ -1580,6 +1658,7 @@ fetch explicit upstream commit
 | progress/log 暂时失败 | bounded retry，保留最后状态并显示 degraded |
 | stop 与 invoke failure 竞态/返回丢失 | stop intent 先落盘；cancel 优先；provider stop + callback 幂等重放 |
 | EvalScope 运行失败 | fail callback；sanitized error；原生日志留受控 volume |
+| 用户请求的任一 Metric 失败或主输出缺失 | 整体 fail callback；`phase=metric, code=metric_execution_failed`；不生成 0 分或 partial completed |
 | complete callback 丢失 | task-local integration manifest 重放 |
 | provider report unavailable | run/summary仍可见；在线报告标记 unavailable；archive 状态独立 |
 | archive PUT/finalize 失败 | execution 不变，新 attempt 或 idempotent finalize |

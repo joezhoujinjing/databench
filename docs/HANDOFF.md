@@ -42,14 +42,20 @@
   provider-interrupt/same-ID gate；E6 已完成 Reports catalogue、Overview/Details/Predictions、逐样本导航、
   legacy/structured/AgentTrace 展示、富内容渲染与 configured source refresh；E7 已完成 Dashboard、
   Evaluation Compare、Performance catalogue/detail/runs/requests/compare、五类 Benchmark 目录/详情和安全
-  Viewer。60 个 capability 已全部 green，其中 58 个 target capability 已实现、2 个为 Databench shell
+  Viewer。E10 后 61 个 capability 已全部 green，其中 59 个 target capability 已实现、2 个为 Databench shell
   exclusion，锁定 React 基线的完整 UI 功能迁移 gate 已关闭。E8 已完成 deterministic result archive、
   attempt-scoped conditional upload、BLAKE3 content-addressed immutable object、PG locator、exact cleanup、
   online/archive 独立状态与 retention。Owner 于 2026-07-28 明确手机版竖屏不属于
   当前 Web gate，并明确
   offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
   `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E8 已关闭，E9 本地实现完成、
-  真实 Ubuntu 22.04 amd64 目标机 gate pending。
+  真实 Ubuntu 22.04 amd64 目标机 gate pending。E10 已在锁定 commit 上增加单 Benchmark 的 27 个原生
+  Metric Descriptor、default/explicit 选择、typed parameters、显式主指标、fatal Metric failure、
+  v3/v4 scoring identity 和 canonical result output；Benchmark 默认模式继续使用 v1/v2，不伪造
+  scoring config。EvalScope Report 与 Databench 报告/比较统一使用 `primary_output_key`，自定义 Metric
+  代码执行仍只保留扩展边界、不在本期开放。EvalScope 聚合报告的 `mean_*` output 通过 Descriptor
+  binding 在 Provider 边界归一化为 canonical output；当前分支 ARM64 镜像已用本地
+  `qwen2.5:0.5b` 跑通 Web 发起、callback、PostgreSQL、归档和报告详情真实闭环。
 - Owner 于 2026-07-30 接受 generated document 的受控内网 HTTP 兼容：通用 gateway 默认仍要求
   `Sec-Fetch-Dest: iframe`；只有 ADR 0012 离线 Compose 显式启用 metadata 整组缺失、同源 HTTP
   `/evaluations/*` Referer fallback。明确顶层 destination、无/跨源 Referer 和非 Evaluation 页面继续

@@ -16,7 +16,7 @@ import {
 import { evalScopeClient } from '../../api/client.js'
 import type { ReportData } from '../../api/schemas.js'
 import { boundedMetricRatio, formatMetricValue } from '../../domain/metric.js'
-import { subsetRows } from '../../domain/reports.js'
+import { resolvePrimaryMetric, subsetRows } from '../../domain/reports.js'
 import { RichContent } from '../content/RichContent.js'
 import { PerfMetricsPanel } from './PerfMetricsPanel.js'
 
@@ -70,7 +70,7 @@ export function DetailsTab({
       key,
       order: current.key === key && current.order === 'desc' ? 'asc' : 'desc',
     }))
-  const metricName = report?.metrics[0]?.name ?? 'score'
+  const metricName = report ? (resolvePrimaryMetric(report)?.name ?? 'score') : 'score'
   const ratio = boundedMetricRatio(metricName, report?.score)
   if (query.isLoading)
     return (

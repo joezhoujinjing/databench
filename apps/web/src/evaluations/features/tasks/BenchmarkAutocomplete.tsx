@@ -101,7 +101,7 @@ export function BenchmarkAutocomplete({
         }}
         onFocus={() => setOpen(suggestions.length > 0)}
         onKeyDown={onKeyDown}
-        placeholder="gsm8k, arc"
+        placeholder="general_qa"
         role="combobox"
         value={value}
       />

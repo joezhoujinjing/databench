@@ -3,8 +3,8 @@
 > 每个 E Step 完成后更新真实状态、提交与 gate。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- evalscope-status
-current_step: E9
-last_completed_step: E8
+current_step: E10
+last_completed_step: E10
 runtime_enabled: false
 offline_runtime_enabled: true
 ui_routes_enabled: true
@@ -23,17 +23,20 @@ e8_implementation: complete
 e8_gate: passed
 e9_implementation: complete
 e9_gate: owner_deferred_target
+e10_implementation: complete
+e10_gate: passed
 -->
 
 ## 当前检查点
 
-- **当前分支:** `main`（包含 Swift S4 交叉扩展）
-- **当前 Step:** E9 安全复核、容量、离线与最终集成 gate
+- **当前分支:** `feat/evalscope-metric-selection`（基于 `main@0c0d014`）
+- **当前 Step:** E10 单 Benchmark 原生 Metric 选择与显式主指标已完成
 - **已完成:** E0 决策/来源/能力基线；E1 `evalscope-general-qa@1.0.0` projection；E2 Evaluation Run
   控制面；E3 backend-only runtime、安全 gateway 与真实执行闭环；E4 Databench Evaluation UI foundation；
   E5 Tasks、Databench Dataset、task monitor 与安全报告入口；E6 Reports、Details、Predictions 与逐样本内容展示；
   E7 Dashboard、Evaluation Compare、Performance、Benchmarks 与安全 Viewer 完整业务面；E8 deterministic
-  `tar.zst`、attempt-scoped upload、immutable result object、归档状态与 retention
+  `tar.zst`、attempt-scoped upload、immutable result object、归档状态与 retention；E10 27 个原生 Metric
+  Descriptor、单 Benchmark 显式选择、scoring identity、fatal failure 与显式报告主指标
 - **产品状态:** backend-only image 与 same-origin gateway 仍 disabled-by-default；`/evaluations/*` 原生
   lazy routes 已开放；锁定 React 基线的全部业务页面已按 Databench 风格迁入唯一 SPA，E7 完整复刻 gate 已关闭
 - **GE8:** deterministic archive、secret/oversize/wrong digest/expired URL、replay/PG failure/exact cleanup、
@@ -62,6 +65,7 @@ e9_gate: owner_deferred_target
 | E7 | Dashboard、Compare、Performance、Benchmarks、Viewer | ✅ | GE7 | 完整 UI 复刻唯一 gate 已通过 |
 | E8 | 结果归档与 retention | ✅ | GE8 | deterministic archive、immutable object、exact cleanup |
 | E9 | 安全、容量、离线与最终集成 gate | 🔄 owner 后验 | GE9 | 本地实现与 bundle 完成；owner 批准先合并并自行补目标机验证 |
+| E10 | 原生 Metric 选择与显式主指标 | ✅ | GE10 | 27 个 Descriptor、v3/v4 identity、主指标贯穿执行与报告 |
 
 ## E0 交付
 
@@ -430,3 +434,28 @@ Web Evaluation 85 tests、API gateway 7 tests和 Web/API typecheck 通过；down
 
 该修复只解决内网 HTTP 报告/图表 HTML 查看，不改变 EvalScope 任务、模型、Dataset、指标、归档、
 V16/V17 或公共云 D3 状态。
+
+## E10 原生 Metric 选择与显式主指标
+
+- Evaluation 表单现在只接受一个 Benchmark，并在选定后读取锁定 commit 的 27 个原生 Metric Descriptor；
+  不兼容、缺依赖或缺离线资产的项仍显示稳定原因，但不可选择；
+- Benchmark 默认模式保持上游默认行为；显式模式支持 1–16 个 Metric、typed parameters 和主指标。单选
+  自动成为主指标，多选要求用户明确选择；
+- Browser 的 `metric_selection` 由 Provider 校验、canonicalize 并编译为
+  `dataset_args.<benchmark>.metric_list`；不开放 callable、自定义代码、在线依赖安装或运行时资产下载；
+- 显式 Metric 异常、必需 output 缺失、null/NaN/infinity 统一使任务以
+  `phase=metric, code=metric_execution_failed` 失败，不记录 0 分或 partial completed；
+- migration 0014、create profile v3/v4 与 hashing fixed vector 已加入；default 模式继续使用 v1/v2，
+  不伪造未冻结的 scoring config；
+- completion callback 与 Postgres summary 保存 canonical `metric_id/output_key`，同时保持旧六字段行可读；
+- EvalScope 聚合报告的 `mean_<output_key>` 仅保留在 Provider 边界，并通过 Descriptor binding 归一化
+  回 canonical output；scoring identity、callback、Postgres 与 Web 不依赖 Provider 前缀；
+- EvalScope Report、Dashboard、Reports、Details 和 Compare 使用 `primary_output_key`；旧报告才回退第一项；
+- capability registry 新增 `extension.metric-selection`，仍不计入上游 UI parity coverage。
+
+GE10 已通过 Worker、Schema/Hashing/Catalog/Workspace/API/Web、fresh 14 migrations、真实 PostgreSQL +
+MinIO v4 lifecycle、OpenAPI、patch dry-run、parity 和全仓静态/测试 gate；当前分支 ARM64 EvalScope
+镜像还通过了 Web → API → EvalScope → 本地 `qwen2.5:0.5b` → callback → PostgreSQL → archive 的真实
+单样本 Exact Match 闭环，并验收 Reports 列表与详情。详细证据见
+[E10-METRIC-SELECTION.md](evidence/E10-METRIC-SELECTION.md)。手机版竖屏未纳入本轮实现或验收；
+GE9 的 Ubuntu 22.04 amd64 断网目标机后验状态保持不变。

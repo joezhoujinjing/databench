@@ -3,7 +3,7 @@
 > 本文描述当前 v2-only 实现的目录与依赖方向。历史迁移布局见 `docs/migration/`，
 > v2 协议与身份规则见 `docs/v2/`，产品切换决策见 ADR 0013。MCP M0-M3 已完成；通用
 > runtime 仍默认关闭，ADR 0012 离线包通过独立配置在匿名可信内网显式启用。实施状态见
-> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E8 gate 已完成，E9 本地实现已完成：backend-only
+> `docs/mcp/`。EvalScope ADR 0017 已接受，E0-E8 与 E10 gate 已完成，E9 本地实现已完成：backend-only
 > runtime、disabled-by-default
 > gateway、Evaluation 原生路由、UI foundation、Tasks、Databench Dataset、Reports、逐样本、Dashboard、
 > 比较、Performance、Benchmark、安全 Viewer 和完整结果归档已实现；锁定 React 基线的完整 UI 功能迁移
@@ -140,7 +140,9 @@ EvalScope 通过 Databench REST exact inspect/export 获取，API 不直连下�
 client。E5 在该边界实现 Tasks 与 exact Dataset 闭环；E6 实现 Reports catalogue、详情、Predictions、
 样本形态与富内容展示；E7 完成 Dashboard、Evaluation Compare、Performance 全业务面、Benchmark 与
 安全 Viewer。E8 在同一 Workspace 边界加入 attempt-scoped result staging、BLAKE3 immutable archive、PG
-locator 和 exact cleanup；EvalScope 不持有长期 object-store credential。UI 对 Databench `/v2/*` 仍只用
+locator 和 exact cleanup；E10 在 Provider-owned Descriptor Catalog 中加入原生 Metric 选择，并沿
+`schema → hashing → catalog → workspace → API/OpenAPI/generated Web` 保存显式 scoring identity 与
+canonical result output；EvalScope 不持有长期 object-store credential。UI 对 Databench `/v2/*` 仍只用
 generated client；EvalScope client 只能访问
 `deploy/evalscope/api-routes.json` 明确允许的方法与精确路径，不能成为通用反向代理。
 
@@ -224,7 +226,7 @@ endpoint 写进浏览器、OpenAPI public projection 或 task integration manife
 
 ## 当前发布边界
 
-产品切换 R0-R5、MCP M0-M3、EvalScope E0-E8 与 Swift S0-S4 non-GPU gate 已完成。Swift S1-S4 的真实
+产品切换 R0-R5、MCP M0-M3、EvalScope E0-E8/E10 与 Swift S0-S4 non-GPU gate 已完成。Swift S1-S4 的真实
 NVIDIA LoRA/Infer/serving/evaluation gate 按 owner 决策后置且尚未关闭；S4 状态固定为
 `non-GPU contract green / GPU deferred`。runtime 保持
 disabled-by-default，`/training` 在未启用时显示明确 unavailable

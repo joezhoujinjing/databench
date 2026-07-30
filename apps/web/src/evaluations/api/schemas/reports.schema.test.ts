@@ -74,6 +74,25 @@ describe('EvalScope report response compatibility', () => {
     ).toMatchObject({ source_ref: 'support-qa' })
   })
 
+  it('requires explicit primary Metric metadata to resolve to a report output', () => {
+    const value = {
+      dataset_name: 'general_qa',
+      metrics: [{ categories: [], name: 'exact_match', num: 1, score: 1 }],
+      model_name: 'GLM',
+      name: 'eval-report',
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+      score: 1,
+    }
+    expect(reportDataSchema.safeParse(value).success).toBe(true)
+    expect(reportDataSchema.safeParse({ ...value, primary_output_key: 'missing' }).success).toBe(
+      false,
+    )
+    expect(reportDataSchema.safeParse({ ...value, primary_metric_id: undefined }).success).toBe(
+      false,
+    )
+  })
+
   it('rejects schema mismatches in identity and normalized score fields', () => {
     expect(reportDataSchema.safeParse({ dataset_name: 'gsm8k', score: '0.5' }).success).toBe(false)
     expect(predictionRowSchema.safeParse({ Index: '0', NScore: 'high' }).success).toBe(false)

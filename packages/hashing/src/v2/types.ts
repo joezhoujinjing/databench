@@ -158,6 +158,27 @@ export interface EvaluationRunCreateIdentityV2
   readonly model_deployment_digest: string
 }
 
+export const V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE = 'evaluation-run-create-v3' as const
+
+export interface EvaluationRunCreateIdentityV3
+  extends Omit<EvaluationRunCreateIdentityV1, 'evaluation_run_create_profile'> {
+  readonly evaluation_run_create_profile: typeof V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE
+  readonly scoring_config: CanonicalJsonObject
+  readonly primary_metric_id: string
+  readonly primary_output_key: string
+}
+
+export const V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE =
+  'evaluation-run-create-v4' as const
+
+export interface EvaluationRunCreateIdentityV4
+  extends Omit<EvaluationRunCreateIdentityV3, 'evaluation_run_create_profile'> {
+  readonly evaluation_run_create_profile: typeof V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE
+  readonly model_deployment_id: string
+  readonly model_artifact_id: string
+  readonly model_deployment_digest: string
+}
+
 export const V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE = 'swift-studio-session-create-v1' as const
 
 export interface SwiftStudioSessionCreateIdentityV1 {

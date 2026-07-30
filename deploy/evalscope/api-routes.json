@@ -52,6 +52,12 @@
       "response": "five-category-catalogue"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/eval/metrics",
+      "classification": "allowed-patched",
+      "response": "versioned-metric-descriptor-catalogue"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/eval/resume/invoke",
       "classification": "blocked",

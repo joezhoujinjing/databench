@@ -18,6 +18,7 @@ import { evalScopeClient } from '../../api/client.js'
 import { SafeGeneratedDocumentFrame } from '../../components/SafeGeneratedDocumentFrame.js'
 import type { TaggedReportData } from '../../domain/compare.js'
 import { formatMetricValue, metricSupportsRadar } from '../../domain/metric.js'
+import { resolvePrimaryMetric } from '../../domain/reports.js'
 
 export function ScoreComparison({
   commonDatasets,
@@ -30,7 +31,8 @@ export function ScoreComparison({
 }) {
   const { t } = useTranslation()
   const [visualization, setVisualization] = useState<'chart' | 'table'>('table')
-  const metric = rows[0]?.metrics[0]?.name ?? 'score'
+  const firstRow = rows[0]
+  const metric = firstRow ? (resolvePrimaryMetric(firstRow)?.name ?? 'score') : 'score'
   const supportsRadar = metricSupportsRadar(commonDatasets.map(() => metric))
   const chartType = supportsRadar ? 'radar' : 'grouped_bar'
   const chart = useQuery({
@@ -95,7 +97,12 @@ export function ScoreComparison({
                 const row = scores[name]?.get(dataset)
                 return (
                   <TableCell className="text-right font-mono" key={name}>
-                    {formatMetricValue(row?.metrics[0]?.name ?? metric, row?.score).primary}
+                    {
+                      formatMetricValue(
+                        row ? (resolvePrimaryMetric(row)?.name ?? metric) : metric,
+                        row?.score,
+                      ).primary
+                    }
                   </TableCell>
                 )
               })}

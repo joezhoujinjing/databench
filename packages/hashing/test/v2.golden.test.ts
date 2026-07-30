@@ -19,6 +19,8 @@ import {
   hashV2DatasetIdentityFromSortedRecordDigests,
   hashV2EvaluationRunCreate,
   hashV2EvaluationRunCreateWithDeployment,
+  hashV2EvaluationRunCreateWithDeploymentAndMetrics,
+  hashV2EvaluationRunCreateWithMetrics,
   hashV2ExportFidelity,
   hashV2IdentityClaimKey,
   hashV2IdentityRequest,
@@ -34,7 +36,9 @@ import {
   type SourceRootSeedV1,
   type TransformCacheIdentityV1,
   V2_EVALUATION_RUN_CREATE_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
   V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
   V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
   V2_MODEL_DEPLOYMENT_CREATE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
@@ -335,6 +339,56 @@ describe('v2 identity and version fixed vectors', () => {
         model_deployment_digest: 'f'.repeat(64),
       }),
     ).not.toBe(hashV2EvaluationRunCreateWithDeployment(evaluation))
+  })
+
+  test('locks explicit Metric identities for manual and Deployment-bound evaluations', () => {
+    const scoringConfig = {
+      schema_version: 1,
+      mode: 'explicit',
+      evalscope_commit: 'c'.repeat(40),
+      benchmark: 'general_qa',
+      metrics: [
+        {
+          id: 'exact_match',
+          implementation_digest: 'd'.repeat(64),
+          parameters: {},
+          output_keys: ['exact_match'],
+        },
+      ],
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    }
+    const base = {
+      provider: 'evalscope' as const,
+      provider_task_id: 'task-metric-fixed-1',
+      dataset_version: 'a'.repeat(64),
+      source_ref: 'main',
+      converter: 'evalscope-general-qa' as const,
+      converter_version: '1.0.0',
+      normalized_options: { target_source: 'selected-candidate' },
+      fidelity_digest: 'b'.repeat(64),
+      benchmark: 'general_qa',
+      model_name: 'Qwen/Qwen3-8B',
+      evalscope_commit: 'c'.repeat(40),
+      scoring_config: scoringConfig,
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    }
+    expect(
+      hashV2EvaluationRunCreateWithMetrics({
+        evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
+        ...base,
+      }),
+    ).toBe('b083482e7331fb58f927b627093e81dbec651d137d286fe2535f4fb9901b6295')
+    expect(
+      hashV2EvaluationRunCreateWithDeploymentAndMetrics({
+        evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
+        ...base,
+        model_deployment_id: '33333333-3333-4333-8333-333333333333',
+        model_artifact_id: '22222222-2222-4222-8222-222222222222',
+        model_deployment_digest: 'e'.repeat(64),
+      }),
+    ).toBe('9c935d12e8330d68a836a2fec3b280b66e823eb69eb2a5e45ee06488e732d6ba')
   })
 
   test('locks the canonical Swift Studio Session create domain and excludes display metadata', () => {

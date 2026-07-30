@@ -3,6 +3,7 @@
   "upstream_commit": "b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60",
   "capability_ids": [
     "extension.databench-dataset-source",
+    "extension.metric-selection",
     "foundation.api-contracts",
     "foundation.locale-content",
     "foundation.metric-native-format",

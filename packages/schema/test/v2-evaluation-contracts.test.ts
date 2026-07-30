@@ -33,6 +33,7 @@ describe('V2 evaluation contracts', () => {
     expect(CreateEvaluationRunRequestV2Schema.parse(createRequest())).toEqual({
       ...createRequest(),
       model_deployment_id: null,
+      scoring_config: null,
     })
     for (const invalid of [
       { ...createRequest(), provider: 'other' },
@@ -78,7 +79,17 @@ describe('V2 evaluation contracts', () => {
       ],
       provider_report_ids: ['report-1'],
     }
-    expect(CompleteEvaluationRunRequestV2Schema.parse(completion)).toEqual(completion)
+    expect(CompleteEvaluationRunRequestV2Schema.parse(completion)).toEqual({
+      ...completion,
+      metrics: completion.metrics.map((metric) => ({
+        ...metric,
+        metric_id: null,
+        output_key: null,
+      })),
+      primary_metric_id: null,
+      primary_output_key: null,
+      scoring_config: null,
+    })
     expect(
       CompleteEvaluationRunRequestV2Schema.safeParse({
         ...completion,
@@ -137,6 +148,9 @@ describe('V2 evaluation contracts', () => {
       model_deployment_id: null,
       model_artifact_id: null,
       evalscope_commit: null,
+      scoring_config: null,
+      primary_metric_id: null,
+      primary_output_key: null,
       status: 'prepared',
       metrics: null,
       error: null,
@@ -163,6 +177,86 @@ describe('V2 evaluation contracts', () => {
       EvaluationRunV2Schema.safeParse({
         ...prepared,
         result_artifact_key: 'objects/result.tar.zst',
+      }).success,
+    ).toBe(false)
+  })
+
+  test('binds explicit scoring config, primary Metric, and required outputs', () => {
+    const scoringConfig = {
+      schema_version: 1,
+      mode: 'explicit',
+      evalscope_commit: 'c'.repeat(40),
+      benchmark: 'general_qa',
+      metrics: [
+        {
+          id: 'anls',
+          implementation_digest: 'd'.repeat(64),
+          parameters: { threshold: 0.7 },
+          output_keys: ['anls'],
+        },
+        {
+          id: 'exact_match',
+          implementation_digest: 'e'.repeat(64),
+          parameters: {},
+          output_keys: ['exact_match'],
+        },
+      ],
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    } as const
+    expect(
+      CreateEvaluationRunRequestV2Schema.safeParse({
+        ...createRequest(),
+        scoring_config: scoringConfig,
+      }).success,
+    ).toBe(true)
+    const completion = {
+      metrics: [
+        {
+          dataset: 'general_qa',
+          subset: 'databench',
+          metric_id: 'anls',
+          output_key: 'anls',
+          metric: 'anls',
+          score: 0.8,
+          sample_count: 2,
+          categories: [],
+        },
+        {
+          dataset: 'general_qa',
+          subset: 'databench',
+          metric_id: 'exact_match',
+          output_key: 'exact_match',
+          metric: 'exact_match',
+          score: 0.5,
+          sample_count: 2,
+          categories: [],
+        },
+      ],
+      provider_report_ids: ['report-1'],
+      scoring_config: scoringConfig,
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    }
+    expect(CompleteEvaluationRunRequestV2Schema.safeParse(completion).success).toBe(true)
+    expect(
+      CompleteEvaluationRunRequestV2Schema.safeParse({
+        ...completion,
+        metrics: completion.metrics.filter((metric) => metric.metric !== 'anls'),
+      }).success,
+    ).toBe(false)
+    expect(
+      CompleteEvaluationRunRequestV2Schema.safeParse({
+        ...completion,
+        primary_metric_id: 'anls',
+      }).success,
+    ).toBe(false)
+    expect(
+      CompleteEvaluationRunRequestV2Schema.safeParse({
+        ...completion,
+        metrics: completion.metrics.map((metric) =>
+          metric.metric_id === 'anls' ? { ...metric, metric_id: 'exact_match' } : metric,
+        ),
       }).success,
     ).toBe(false)
   })

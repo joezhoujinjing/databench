@@ -216,6 +216,9 @@ model V2EvaluationRun {
   modelArtifactId         String?   @map("model_artifact_id") @db.Uuid
   modelDeploymentDigest   String?   @map("model_deployment_digest") @db.Char(64)
   evalscopeCommit         String?   @map("evalscope_commit")
+  scoringConfig           Json?     @map("scoring_config_json")
+  primaryMetricId         String?   @map("primary_metric_id")
+  primaryOutputKey        String?   @map("primary_output_key")
   status                  String
   metrics                 Json?     @map("metrics_json")
   error                   Json?     @map("error_json")

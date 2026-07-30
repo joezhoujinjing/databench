@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   DatabenchReportSource,
   DataFrameResponse,
+  MetricData,
   PredictionRow,
   ReportData,
 } from '../api/schemas.js'
@@ -73,16 +74,23 @@ export type ReportSummaryStats = {
   readonly worst: { readonly dataset: string; readonly score: number } | null
 }
 
+export function resolvePrimaryMetric(report: ReportData): MetricData | undefined {
+  if (report.primary_output_key != null) {
+    return report.metrics.find((metric) => metric.name === report.primary_output_key)
+  }
+  return report.metrics[0]
+}
+
 export function summarizeReportData(reports: readonly ReportData[]): ReportSummaryStats | null {
   if (reports.length === 0) return null
-  const metricNames = reports.map((report) => report.metrics[0]?.name ?? 'score')
+  const metricNames = reports.map((report) => resolvePrimaryMetric(report)?.name ?? 'score')
   const comparable = metricsAreComparable(metricNames)
   const metricName = metricNames[0] ?? 'score'
   const totalSamples = reports.reduce(
     (sum, report) =>
       sum +
-      (report.metrics[0]?.num ??
-        report.metrics[0]?.categories.reduce((n, category) => n + category.num, 0) ??
+      (resolvePrimaryMetric(report)?.num ??
+        resolvePrimaryMetric(report)?.categories.reduce((n, category) => n + category.num, 0) ??
         0),
     0,
   )
@@ -114,8 +122,8 @@ export type OverviewRow = {
 export function reportOverviewRows(reports: readonly ReportData[]): OverviewRow[] {
   return reports.map((report) => ({
     dataset: report.dataset_name,
-    metric: report.metrics[0]?.name ?? 'score',
-    samples: report.metrics[0]?.num ?? 0,
+    metric: resolvePrimaryMetric(report)?.name ?? 'score',
+    samples: resolvePrimaryMetric(report)?.num ?? 0,
     score: report.score,
   }))
 }
@@ -217,6 +225,8 @@ export function messageText(message: ChatMessage): string {
 }
 
 export function reportMetricsAreHomogeneous(reports: readonly ReportData[]): boolean {
-  const keys = reports.map((report) => resolveMetricKey(report.metrics[0]?.name ?? 'score'))
+  const keys = reports.map((report) =>
+    resolveMetricKey(resolvePrimaryMetric(report)?.name ?? 'score'),
+  )
   return keys.length > 0 && keys.every((key) => key === keys[0])
 }

@@ -6,6 +6,7 @@ import {
   findPredictionByIndex,
   findPredictionByMessagePrefix,
   predictionCounts,
+  resolvePrimaryMetric,
   subsetRows,
   summarizeReportData,
   toggleCurrentPageSelection,
@@ -54,6 +55,20 @@ describe('EvalScope reports domain', () => {
       worst: { dataset: 'a', score: 0.2 },
     })
     expect(summarizeReportData([report('a', 0.2), report('b', 12, 'latency')])?.average).toBeNull()
+  })
+
+  it('resolves an explicit primary output without depending on Metric array order', () => {
+    const value: ReportData = {
+      ...report('general_qa', 0.8, 'bleu-1'),
+      metrics: [
+        { categories: [], name: 'bleu-1', num: 2, score: 0.2 },
+        { categories: [], name: 'exact_match', num: 2, score: 0.8 },
+      ],
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    }
+    expect(resolvePrimaryMetric(value)?.name).toBe('exact_match')
+    expect(summarizeReportData([value])?.metricName).toBe('exact_match')
   })
 
   it('derives unique valid subsets and ignores aggregate rows', () => {

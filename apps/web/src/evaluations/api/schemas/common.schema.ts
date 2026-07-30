@@ -24,6 +24,7 @@ export const evalScopePublicConfigSchema = z
         'reports',
         'databench-dataset',
         'databench-model-deployment',
+        'metric-selection',
         'generated-documents',
       ]),
     ),

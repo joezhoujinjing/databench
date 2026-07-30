@@ -306,6 +306,19 @@
             "maxItems": 10000,
             "type": "array"
           },
+          "primary_metric_id": {
+            "default": null,
+            "nullable": true,
+            "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "primary_output_key": {
+            "default": null,
+            "maxLength": 128,
+            "minLength": 1,
+            "nullable": true,
+            "type": "string"
+          },
           "provider_report_ids": {
             "items": {
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,511}$",
@@ -313,6 +326,9 @@
             },
             "maxItems": 32,
             "type": "array"
+          },
+          "scoring_config": {
+            "$ref": "#/components/schemas/EvaluationScoringConfigV2"
           }
         },
         "required": [
@@ -483,6 +499,9 @@
           "provider_task_id": {
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$",
             "type": "string"
+          },
+          "scoring_config": {
+            "$ref": "#/components/schemas/EvaluationScoringConfigV2"
           },
           "source_ref": {
             "nullable": true,
@@ -1101,6 +1120,19 @@
             "minLength": 1,
             "type": "string"
           },
+          "metric_id": {
+            "default": null,
+            "nullable": true,
+            "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "output_key": {
+            "default": null,
+            "maxLength": 128,
+            "minLength": 1,
+            "nullable": true,
+            "type": "string"
+          },
           "sample_count": {
             "minimum": 0,
             "nullable": true,
@@ -1380,7 +1412,9 @@
           "create_profile": {
             "enum": [
               "evaluation-run-create-v1",
-              "evaluation-run-create-v2"
+              "evaluation-run-create-v2",
+              "evaluation-run-create-v3",
+              "evaluation-run-create-v4"
             ],
             "type": "string"
           },
@@ -1439,6 +1473,17 @@
             "nullable": true,
             "type": "string"
           },
+          "primary_metric_id": {
+            "nullable": true,
+            "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "primary_output_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "nullable": true,
+            "type": "string"
+          },
           "provider": {
             "enum": [
               "evalscope"
@@ -1473,6 +1518,9 @@
             "minimum": 0,
             "nullable": true,
             "type": "integer"
+          },
+          "scoring_config": {
+            "$ref": "#/components/schemas/EvaluationScoringConfigV2"
           },
           "source_ref": {
             "nullable": true,
@@ -1515,6 +1563,9 @@
           "model_deployment_id",
           "model_artifact_id",
           "evalscope_commit",
+          "scoring_config",
+          "primary_metric_id",
+          "primary_output_key",
           "status",
           "metrics",
           "error",
@@ -1528,6 +1579,107 @@
           "started_at",
           "finished_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "EvaluationScoringConfigV2": {
+        "additionalProperties": false,
+        "nullable": true,
+        "properties": {
+          "benchmark": {
+            "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "evalscope_commit": {
+            "pattern": "^[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationScoringMetricV2"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "explicit"
+            ],
+            "type": "string"
+          },
+          "primary_metric_id": {
+            "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "primary_output_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "schema_version": {
+            "enum": [
+              1
+            ],
+            "type": "number"
+          }
+        },
+        "required": [
+          "schema_version",
+          "mode",
+          "evalscope_commit",
+          "benchmark",
+          "metrics",
+          "primary_metric_id",
+          "primary_output_key"
+        ],
+        "type": "object"
+      },
+      "EvaluationScoringMetricV2": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "implementation_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "output_keys": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "type": "array"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "maxLength": 512,
+                  "minLength": 0,
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "implementation_digest",
+          "parameters",
+          "output_keys"
         ],
         "type": "object"
       },

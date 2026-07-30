@@ -21,10 +21,12 @@ export interface SelectOption<T extends string | number> {
 }
 
 export interface SelectInputProps<T extends string | number> {
-  'aria-label'?: string
-  className?: string
-  disabled?: boolean
-  id?: string
+  'aria-describedby'?: string | undefined
+  'aria-invalid'?: boolean | undefined
+  'aria-label'?: string | undefined
+  className?: string | undefined
+  disabled?: boolean | undefined
+  id?: string | undefined
   onValueChange: (value: T) => void
   options: readonly SelectOption<T>[]
   value: T
@@ -39,6 +41,8 @@ export function TextArea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
 }
 
 export function SelectInput<T extends string | number>({
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
   'aria-label': ariaLabel,
   className,
   disabled = false,
@@ -109,8 +113,10 @@ export function SelectInput<T extends string | number>({
     <div className={cn('relative inline-block min-w-0', className)} ref={rootRef}>
       <button
         aria-controls={open ? id : undefined}
+        aria-describedby={ariaDescribedBy}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-invalid={ariaInvalid}
         aria-label={ariaLabel}
         className={cn(
           controlClass,

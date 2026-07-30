@@ -1299,6 +1299,32 @@
       "status": "green"
     },
     {
+      "parity_id": "extension.metric-selection",
+      "classification": "databench-extension",
+      "upstream_routes": [],
+      "upstream_sources": [],
+      "capability": "evaluation-scoring-selection",
+      "contract": "Expose the pinned EvalScope native Metric catalogue after one Benchmark is selected, allow one or more available Metrics, typed parameters and an explicit primary Metric, and preserve that identity through execution and reports.",
+      "default_or_rule": "Benchmark default keeps upstream behavior. One explicit Metric becomes primary automatically; multiple Metrics require an explicit primary choice. Unavailable Metrics remain visible with a stable reason and never contribute to upstream parity coverage.",
+      "responsive_a11y": "Metric mode, multi-select, unavailable reasons, parameter controls and primary selection are labelled, keyboard operable and expose field-specific validation.",
+      "api_operations": [
+        "GET /api/v1/eval/metrics",
+        "POST /api/v1/eval/invoke",
+        "Databench generated /v2/evaluation-runs client"
+      ],
+      "target": "apps/web/src/evaluations/features/tasks/MetricSelector.tsx",
+      "upstream_coverage": false,
+      "tests": [
+        "test-file:apps/web/src/evaluations/domain/form/metrics.test.ts",
+        "test-file:apps/web/src/evaluations/domain/form/form.test.ts",
+        "test-file:workers/evalscope/tests/test_metrics.py",
+        "test-file:workers/evalscope/tests/test_app.py",
+        "test-file:packages/workspace/test/v2-workspace.integration.test.ts"
+      ],
+      "browser_evidence": ["browser-file:docs/evalscope/evidence/E10-METRIC-SELECTION.md"],
+      "status": "green"
+    },
+    {
       "parity_id": "extension.databench-dataset-source",
       "classification": "databench-extension",
       "upstream_routes": [],

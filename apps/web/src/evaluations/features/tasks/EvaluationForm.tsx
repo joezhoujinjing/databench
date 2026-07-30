@@ -1,8 +1,10 @@
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, Play } from 'lucide-react'
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button.js'
 import { SelectInput, TextInput } from '@/components/ui/input.js'
+import { evalScopeClient } from '../../api/client.js'
 import {
   EVALUATION_ADVANCED_FIELDS,
   EVALUATION_FIELD_IDS,
@@ -15,6 +17,7 @@ import {
 import type { TaskRunnerError } from '../../domain/tasks/state.js'
 import { BenchmarkAutocomplete } from './BenchmarkAutocomplete.js'
 import { DatasetArgsEditor } from './DatasetArgsEditor.js'
+import { MetricSelector } from './MetricSelector.js'
 import { fieldAria, TaskFormField } from './TaskFormField.js'
 
 export function EvaluationForm({
@@ -49,12 +52,46 @@ export function EvaluationForm({
   })
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({})
   const [advanced, setAdvanced] = useState(false)
+  const activeBenchmark = source === 'databench' ? 'general_qa' : values.datasets.trim()
+  const metricBenchmarkRef = useRef(activeBenchmark)
+  const metricCatalogue = useQuery({
+    enabled: activeBenchmark !== '' && !activeBenchmark.includes(','),
+    queryFn: ({ signal }) =>
+      evalScopeClient.request('metrics', {
+        query: { benchmark: activeBenchmark },
+        signal,
+      }),
+    queryKey: ['evalscope', 'metrics', activeBenchmark],
+    retry: false,
+  })
+  const metricCatalogueReady =
+    metricCatalogue.data?.benchmark === activeBenchmark &&
+    !metricCatalogue.isFetching &&
+    metricCatalogue.error === null
 
   useEffect(() => {
     if (initialBenchmark !== undefined) {
       setValues((current) => ({ ...current, datasets: initialBenchmark }))
     }
   }, [initialBenchmark])
+
+  useEffect(() => {
+    if (metricBenchmarkRef.current === activeBenchmark) return
+    metricBenchmarkRef.current = activeBenchmark
+    setValues((current) => ({
+      ...current,
+      metricIds: [],
+      metricMode: 'benchmark_default',
+      metricParameters: {},
+      primaryMetricId: '',
+    }))
+    setErrors((current) => {
+      const next = { ...current }
+      delete next[EVALUATION_FIELD_IDS.metricIds]
+      delete next[EVALUATION_FIELD_IDS.primaryMetricId]
+      return next
+    })
+  }, [activeBenchmark])
 
   useEffect(() => {
     const field = serverError?.field
@@ -96,6 +133,21 @@ export function EvaluationForm({
       return
     }
     onSubmit(values)
+  }
+
+  const changeMetrics = (
+    selection: Pick<
+      EvaluationFormValues,
+      'metricIds' | 'metricMode' | 'metricParameters' | 'primaryMetricId'
+    >,
+  ) => {
+    setValues((current) => ({ ...current, ...selection }))
+    setErrors((current) => {
+      const next = { ...current }
+      delete next[EVALUATION_FIELD_IDS.metricIds]
+      delete next[EVALUATION_FIELD_IDS.primaryMetricId]
+      return next
+    })
   }
 
   return (
@@ -237,6 +289,28 @@ export function EvaluationForm({
         />
       </div>
 
+      {metricCatalogue.isLoading || metricCatalogue.isFetching ? (
+        <p className="text-muted-foreground text-sm" role="status">
+          {t('evaluations.eval.loadingMetrics')}
+        </p>
+      ) : metricCatalogue.error ? (
+        <div
+          className="rounded-[5px] border border-danger/35 bg-danger/10 px-4 py-3 text-danger text-sm"
+          role="alert"
+        >
+          {t('evaluations.eval.metricLoadError')}
+        </div>
+      ) : metricCatalogue.data ? (
+        <MetricSelector
+          descriptors={metricCatalogue.data.metrics}
+          disabled={disabled}
+          metricError={errors[EVALUATION_FIELD_IDS.metricIds]}
+          onChange={changeMetrics}
+          primaryMetricError={errors[EVALUATION_FIELD_IDS.primaryMetricId]}
+          value={values}
+        />
+      ) : null}
+
       <button
         aria-expanded={advanced}
         className="flex min-h-9 items-center gap-1.5 font-medium text-primary text-sm hover:underline"
@@ -342,7 +416,7 @@ export function EvaluationForm({
         </div>
       ) : null}
 
-      <Button disabled={disabled || !canSubmit} type="submit">
+      <Button disabled={disabled || !canSubmit || !metricCatalogueReady} type="submit">
         <Play aria-hidden="true" size={15} />
         {t('evaluations.eval.startEval')}
       </Button>

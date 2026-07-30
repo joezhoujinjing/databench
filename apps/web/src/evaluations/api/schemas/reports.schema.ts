@@ -59,15 +59,39 @@ export const databenchReportSourceSchema = z.object({
   benchmark: z.literal('general_qa'),
 })
 
-export const reportDataSchema = z.object({
-  name: z.string(),
-  dataset_name: z.string(),
-  model_name: z.string(),
-  score: z.number(),
-  analysis: z.string().default(''),
-  metrics: z.array(metricDataSchema).default([]),
-  perf_metrics: perfMetricsSchema.nullable().optional(),
-})
+export const reportDataSchema = z
+  .object({
+    name: z.string(),
+    dataset_name: z.string(),
+    model_name: z.string(),
+    score: z.number(),
+    analysis: z.string().default(''),
+    metrics: z.array(metricDataSchema).default([]),
+    primary_metric_id: z.string().nullable().optional(),
+    primary_output_key: z.string().nullable().optional(),
+    perf_metrics: perfMetricsSchema.nullable().optional(),
+  })
+  .superRefine((report, context) => {
+    const hasMetricId = report.primary_metric_id != null
+    const hasOutputKey = report.primary_output_key != null
+    if (hasMetricId !== hasOutputKey) {
+      context.addIssue({
+        code: 'custom',
+        path: ['primary_metric_id'],
+        message: 'Primary Metric metadata must be complete',
+      })
+    }
+    if (
+      hasOutputKey &&
+      !report.metrics.some((metric) => metric.name === report.primary_output_key)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['primary_output_key'],
+        message: 'Primary output is missing from report metrics',
+      })
+    }
+  })
 
 export const loadReportResponseSchema = z.object({
   report_list: z.array(reportDataSchema),
@@ -225,6 +249,7 @@ export type ContentBlock = z.infer<typeof contentBlockSchema>
 export type DatabenchReportSource = z.infer<typeof databenchReportSourceSchema>
 export type ListReportsResponse = z.infer<typeof listReportsResponseSchema>
 export type LoadReportResponse = z.infer<typeof loadReportResponseSchema>
+export type MetricData = z.infer<typeof metricDataSchema>
 export type PerfMetrics = z.infer<typeof perfMetricsSchema>
 export type PredictionRow = z.infer<typeof predictionRowSchema>
 export type ReportData = z.infer<typeof reportDataSchema>

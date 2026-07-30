@@ -21,6 +21,7 @@ export const EVALSCOPE_PROXY_ROUTES = [
   route('GET', '/api/v1/eval/log', ['task_id', 'start_line', 'page']),
   route('GET', '/api/v1/eval/report', ['task_id']),
   route('GET', '/api/v1/eval/benchmarks', ['type', 'all']),
+  route('GET', '/api/v1/eval/metrics', ['benchmark']),
   route('POST', '/api/v1/perf/invoke', [], 'json', 'json', true),
   route('POST', '/api/v1/perf/stop', ['task_id']),
   route('GET', '/api/v1/perf/progress', ['task_id']),

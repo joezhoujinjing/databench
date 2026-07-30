@@ -3,7 +3,7 @@
 - **状态:** Accepted——owner 于 2026-07-27 确认方案 review 问题修复并要求开始实施；2026-07-28
   确认预构建镜像离线交付口径，并接受 ms-swift S4 的 opaque Model Deployment 扩展；2026-07-29
   接受测评工作区桌面侧栏与窄屏横向导航；2026-07-30 接受受控内网 HTTP 下 generated document
-  缺失 Fetch Metadata 的同源 Viewer 兼容
+  缺失 Fetch Metadata 的同源 Viewer 兼容，并接受单 Benchmark、原生 Metric 选择与显式主指标扩展
 - **日期:** 2026-07-27
 - **决策者:** owner
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
@@ -242,6 +242,39 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
   API、capability 或安全边界；
 - Evaluation 页面继续 route-level lazy load，不把完整测评词典、图表或富内容依赖拉入数据集首屏。
 
+### 13. 单 Benchmark 任务可显式选择 EvalScope 原生 Metric
+
+- Evaluation 每次只允许一个 Benchmark。Web 改为单选，wire 继续使用
+  `datasets: [benchmark]` 兼容 EvalScope；Provider 对数组长度执行严格 `== 1` 校验，多个 Benchmark
+  返回 422，不把一套 Metric 配置隐式应用到多个语义不同的 Benchmark；
+- 表单在 Benchmark 确定后显示 Metric Catalog。用户可保持“Benchmark 默认指标”，也可显式选择一个或
+  多个当前可用 Metric；单个 Metric 自动成为主指标，多个 Metric 必须选定主指标；
+- 本期 Catalog 覆盖锁定 EvalScope commit 中的全部原生 Metric。已注册但与当前 Benchmark 不兼容、
+  依赖未安装或离线资产未就绪的 Metric 仍展示，但必须带稳定原因且不可选择；
+- Metric Catalog 的实现真源是仓库内 checked-in Metric Descriptor Manifest。EvalScope registry 和
+  `benchmarks/_meta/*.json` 只用于 completeness gate，不能仅靠运行时反射推断任意 Metric 都兼容当前
+  Benchmark；
+- Descriptor 必须固定 canonical ID、显式 aliases、执行接口、输入/输出、参数 schema、主输出、
+  Benchmark family、adapter override、依赖和资产要求。原生 Metric 以
+  `evalscope_commit + implementation_digest` 标识实现，不虚构独立 `1.0.0`；
+- Browser 提交的 `metric_selection` 是 Databench Provider-owned envelope，不是 EvalScope
+  `TaskConfig` 字段。Provider 必须在 `TaskConfig.from_dict()` 前完成
+  resolve → validate → strip → inject，并把编译结果合并到
+  `dataset_args.<benchmark>.metric_list`；Databench Dataset 的 `local_path/subset_list` 注入不得覆盖
+  Metric 配置；
+- `primary_metric_id` 与 `primary_output_key` 是报告显式契约。EvalScope `Report.score`、Dashboard、
+  Reports、Details、Predictions 和 Compare 必须共同解析该契约；只有旧报告缺少字段时才回退到第一项
+  Metric，不允许新报告靠数组顺序表达主指标；
+- 任一用户显式请求的 Metric 执行失败时，整个任务以
+  `phase=metric, code=metric_execution_failed` 失败，不得将异常、缺依赖、非法输出或 NaN 记成 0 分；
+- Native Benchmark 的选择写入 EvalScope task claim、执行配置和原生 report；Databench Dataset 还要写入
+  `evaluation_runs_v2`。新的 Metric-aware Databench run 使用新的 create identity profile，旧 run 和旧
+  report 继续按原 profile/首项回退读取；
+- runtime availability 分为 `registered / compatible / dependency_ready / asset_ready / selectable`。
+  运行任务时不得临时联网下载 Metric 模型或权重；离线镜像未携带或未挂载所需资产时，只能禁用该项；
+- 本期不实现自定义 Metric 上传、编辑或执行。Descriptor/Catalog 保留 future source/version 扩展点，
+  但浏览器和 Provider 均不得执行用户提供的 Python、JavaScript、module path、URL 或任意 callable。
+
 ## 非目标
 
 - 迁移或继续维护 v1.6.1 Gradio UI；
@@ -253,6 +286,7 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
 - 让 EvalScope 直连 Databench DB/object credentials；
 - 首期实现完整多实例 scheduler、task lease 或恢复运行中的子进程；单实例启动扫描、terminal callback
   重放、失联任务 `provider_interrupted` 收敛和 operator 手动 reconcile 仍属于必需正确性边界；
+- 本期实现自定义 Metric 代码、在线安装 Metric 依赖或运行时下载 Metric 模型资产；
 - 因 UI 迁移修改 canonical identity、record schema、layout 或 Dataset version 公式。
 
 ## 后果
@@ -260,6 +294,7 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
 - **+** 用户只面对 Databench，一套导航、路由、视觉、语言和访问控制覆盖完整测评功能；
 - **+** 最新 EvalScope 的任务、报告、逐样本、比较、性能和 Benchmark 能力得到保留；
 - **+** Databench Dataset exact version、projection 和结果摘要进入持久化审计边界；
+- **+** 用户可在任务启动前选择原生 Metric，并在全部报告页面得到一致的显式主指标；
 - **+** EvalScope 后端 patch 比 iframe 方案中的前后端双 patch 更小；
 - **+** same-origin gateway 和原生页面消除 SPA iframe、跨域、双登录和双应用壳问题；生成报告只在
   单独的无 same-origin sandbox 安全边界中显示；
@@ -268,3 +303,4 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
 - **−** EvalScope external API 没有正式 OpenAPI，需要维护 pinned Zod contract fixtures；
 - **−** 首期仍依赖 EvalScope persistent volume 和单实例进程状态；
 - **−** 新服务和前端依赖会扩大离线包、bundle、安全、容量和升级 gate。
+- **−** Metric Descriptor、依赖/资产 readiness 和 upstream registry completeness 成为新的升级维护成本。

@@ -127,6 +127,9 @@ function evaluationRunInput(namespaceId: string, providerTaskId: string) {
     modelArtifactId: null,
     modelDeploymentDigest: null,
     evalscopeCommit: 'a'.repeat(40),
+    scoringConfig: null,
+    primaryMetricId: null,
+    primaryOutputKey: null,
   }
 }
 
@@ -1505,6 +1508,48 @@ describe('V2Catalog evaluation runs', () => {
     ).rejects.toThrow()
   })
 
+  test('persists complete Metric scoring identity and rejects partial database shapes', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const scoringConfig = {
+      schema_version: 1,
+      mode: 'explicit',
+      evalscope_commit: 'a'.repeat(40),
+      benchmark: 'general_qa',
+      metrics: [
+        {
+          id: 'exact_match',
+          implementation_digest: 'd'.repeat(64),
+          parameters: {},
+          output_keys: ['exact_match'],
+        },
+      ],
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    }
+    const prepared = await v2Catalog.createOrReadEvaluationRun({
+      ...evaluationRunInput(namespaceId, 'task-metric-persistence'),
+      createProfile: 'evaluation-run-create-v3',
+      scoringConfig,
+      primaryMetricId: 'exact_match',
+      primaryOutputKey: 'exact_match',
+    })
+    expect(prepared).toMatchObject({
+      createProfile: 'evaluation-run-create-v3',
+      scoringConfig,
+      primaryMetricId: 'exact_match',
+      primaryOutputKey: 'exact_match',
+    })
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: prepared.id },
+        data: { primaryMetricId: null },
+      }),
+    ).rejects.toThrow()
+  })
+
   test('serializes archive attempts and replays concurrent finalize without changing the locator', async () => {
     await v2Catalog.registerCommittedLayout(
       registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
@@ -1590,6 +1635,8 @@ describe('V2Catalog evaluation runs', () => {
         {
           dataset: 'general_qa',
           subset: 'databench',
+          metricId: null,
+          outputKey: null,
           metric: 'accuracy',
           score: 1,
           sampleCount: 1,

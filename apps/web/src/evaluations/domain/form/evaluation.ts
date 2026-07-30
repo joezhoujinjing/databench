@@ -9,6 +9,8 @@ import {
 export type EvaluationSourceKind = 'benchmark' | 'databench'
 export type EvaluationModelSourceKind = 'manual' | 'databench-deployment'
 export type DatabenchTargetSource = 'selected-candidate' | 'verification-ground-truth'
+export type EvaluationMetricMode = 'benchmark_default' | 'explicit'
+export type EvaluationMetricParameter = boolean | number | string
 
 export interface EvaluationFormValues {
   readonly apiKey: string
@@ -18,7 +20,13 @@ export interface EvaluationFormValues {
   readonly evalBatchSize: string
   readonly limit: string
   readonly maxTokens: string
+  readonly metricIds: readonly string[]
+  readonly metricMode: EvaluationMetricMode
+  readonly metricParameters: Readonly<
+    Record<string, Readonly<Record<string, EvaluationMetricParameter>>>
+  >
   readonly model: string
+  readonly primaryMetricId: string
   readonly repeats: string
   readonly stream: boolean
   readonly temperature: string
@@ -35,7 +43,11 @@ export const EVALUATION_FORM_DEFAULTS: EvaluationFormValues = {
   evalBatchSize: '16',
   limit: '',
   maxTokens: '',
+  metricIds: [],
+  metricMode: 'benchmark_default',
+  metricParameters: {},
   model: '',
+  primaryMetricId: '',
   repeats: '1',
   stream: false,
   temperature: '',
@@ -52,7 +64,11 @@ export const EVALUATION_FIELD_IDS = {
   evalBatchSize: 'eval-batch-size',
   limit: 'eval-limit',
   maxTokens: 'eval-max-tokens',
+  metricIds: 'eval-metrics',
+  metricMode: 'eval-metric-mode',
+  metricParameters: 'eval-metric-parameters',
   model: 'eval-model',
+  primaryMetricId: 'eval-primary-metric',
   repeats: 'eval-repeats',
   stream: 'eval-stream',
   temperature: 'eval-temperature',
@@ -64,6 +80,9 @@ export const EVALUATION_FIELD_IDS = {
 export const EVALUATION_FIELD_ORDER = [
   EVALUATION_FIELD_IDS.model,
   EVALUATION_FIELD_IDS.datasets,
+  EVALUATION_FIELD_IDS.metricMode,
+  EVALUATION_FIELD_IDS.metricIds,
+  EVALUATION_FIELD_IDS.primaryMetricId,
   EVALUATION_FIELD_IDS.apiUrl,
   EVALUATION_FIELD_IDS.apiKey,
   EVALUATION_FIELD_IDS.limit,
@@ -126,6 +145,15 @@ export function validateEvaluationForm(
   }
   if (source === 'benchmark' && values.datasets.trim() === '') {
     errors[EVALUATION_FIELD_IDS.datasets] = TASK_FORM_MESSAGES.required
+  } else if (source === 'benchmark' && splitDatasets(values.datasets).length !== 1) {
+    errors[EVALUATION_FIELD_IDS.datasets] = 'Choose exactly one Benchmark.'
+  }
+  if (values.metricMode === 'explicit') {
+    if (values.metricIds.length === 0) {
+      errors[EVALUATION_FIELD_IDS.metricIds] = TASK_FORM_MESSAGES.required
+    } else if (!values.metricIds.includes(values.primaryMetricId)) {
+      errors[EVALUATION_FIELD_IDS.primaryMetricId] = TASK_FORM_MESSAGES.required
+    }
   }
   const numericChecks = [
     [EVALUATION_FIELD_IDS.limit, values.limit, { min: 1 }],
@@ -188,7 +216,7 @@ export function buildEvaluationPayload(
     payload.databench_deployment_id = modelBinding.deploymentId
   }
   if (source === 'benchmark') {
-    payload.datasets = splitDatasets(values.datasets)
+    payload.datasets = [values.datasets.trim()]
     if (validation.datasetArgs !== undefined) payload.dataset_args = validation.datasetArgs
   } else {
     if (binding === undefined) throw new TypeError('Databench evaluation binding is required')
@@ -206,6 +234,20 @@ export function buildEvaluationPayload(
       accepted_fidelity_digest: binding.acceptedFidelityDigest,
     }
   }
+  payload.metric_selection =
+    values.metricMode === 'benchmark_default'
+      ? { mode: 'benchmark_default' }
+      : {
+          mode: 'explicit',
+          metric_ids: [...values.metricIds],
+          primary_metric_id: values.primaryMetricId,
+          parameters: Object.fromEntries(
+            values.metricIds.flatMap((metricId) => {
+              const parameters = values.metricParameters[metricId]
+              return parameters === undefined ? [] : [[metricId, parameters] as const]
+            }),
+          ),
+        }
   if (values.repeats !== '' && Number(values.repeats) > 1) {
     payload.repeats = Number(values.repeats)
   }

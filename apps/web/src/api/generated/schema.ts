@@ -894,7 +894,12 @@ export interface components {
     CloseSwiftStudioSessionRequestV2: Record<string, never>
     CompleteEvaluationRunRequestV2: {
       metrics: components['schemas']['EvaluationMetricV2'][]
+      /** @default null */
+      primary_metric_id: string | null
+      /** @default null */
+      primary_output_key: string | null
       provider_report_ids: string[]
+      scoring_config?: components['schemas']['EvaluationScoringConfigV2']
     }
     ConverterDescriptorV2: {
       /** @enum {string} */
@@ -941,6 +946,7 @@ export interface components {
       /** @enum {string} */
       provider: 'evalscope'
       provider_task_id: string
+      scoring_config?: components['schemas']['EvaluationScoringConfigV2']
       source_ref: string | null
     }
     CreateModelArtifactImportRequestV2: {
@@ -1080,6 +1086,10 @@ export interface components {
       categories: string[]
       dataset: string
       metric: string
+      /** @default null */
+      metric_id: string | null
+      /** @default null */
+      output_key: string | null
       sample_count: number | null
       score: number | null
       subset: string | null
@@ -1150,7 +1160,11 @@ export interface components {
       }
       converter_version: string
       /** @enum {string} */
-      create_profile: 'evaluation-run-create-v1' | 'evaluation-run-create-v2'
+      create_profile:
+        | 'evaluation-run-create-v1'
+        | 'evaluation-run-create-v2'
+        | 'evaluation-run-create-v3'
+        | 'evaluation-run-create-v4'
       create_request_digest: string
       created_at: string
       dataset_version: string
@@ -1166,6 +1180,8 @@ export interface components {
       /** Format: uuid */
       model_deployment_id: string | null
       model_name: string | null
+      primary_metric_id: string | null
+      primary_output_key: string | null
       /** @enum {string} */
       provider: 'evalscope'
       provider_report_ids: string[] | null
@@ -1173,11 +1189,31 @@ export interface components {
       result_artifact_digest: string | null
       result_artifact_key: string | null
       result_artifact_size_bytes: number | null
+      scoring_config: components['schemas']['EvaluationScoringConfigV2']
       source_ref: string | null
       started_at: string | null
       /** @enum {string} */
       status: 'prepared' | 'running' | 'completed' | 'failed' | 'cancelled'
       updated_at: string
+    }
+    EvaluationScoringConfigV2: {
+      benchmark: string
+      evalscope_commit: string
+      metrics: components['schemas']['EvaluationScoringMetricV2'][]
+      /** @enum {string} */
+      mode: 'explicit'
+      primary_metric_id: string
+      primary_output_key: string
+      /** @enum {number} */
+      schema_version: 1
+    } | null
+    EvaluationScoringMetricV2: {
+      id: string
+      implementation_digest: string
+      output_keys: string[]
+      parameters: {
+        [key: string]: boolean | number | string
+      }
     }
     ExportPlanV2: {
       config_hints: {

@@ -241,6 +241,9 @@ interface EvaluationRunSqlRow {
   readonly model_artifact_id: string | null
   readonly model_deployment_digest: string | null
   readonly evalscope_commit: string | null
+  readonly scoring_config_json: Prisma.JsonValue | null
+  readonly primary_metric_id: string | null
+  readonly primary_output_key: string | null
   readonly status: string
   readonly metrics_json: Prisma.JsonValue | null
   readonly error_json: Prisma.JsonValue | null
@@ -378,7 +381,8 @@ const EVALUATION_RUN_COLUMNS = Prisma.sql`
   "provider_report_ids_json", "dataset_version", "source_ref", "converter",
   "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
   "model_name", "model_deployment_id", "model_artifact_id", "model_deployment_digest",
-  "evalscope_commit", "status", "metrics_json", "error_json",
+  "evalscope_commit", "scoring_config_json", "primary_metric_id", "primary_output_key",
+  "status", "metrics_json", "error_json",
   "archive_status", "archive_attempt", "result_artifact_key", "result_artifact_digest",
   "result_artifact_size_bytes", "archive_error_json", "created_at", "started_at",
   "finished_at", "updated_at"
@@ -681,7 +685,10 @@ export class V2Catalog {
       }
       if (existing[0]) return sqlRowToEvaluationRun(existing[0])
 
-      if (input.createProfile === 'evaluation-run-create-v2') {
+      if (
+        input.createProfile === 'evaluation-run-create-v2' ||
+        input.createProfile === 'evaluation-run-create-v4'
+      ) {
         const deployments = await tx.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
           SELECT ${MODEL_DEPLOYMENT_COLUMNS}
           FROM "model_deployments_v2"
@@ -713,13 +720,16 @@ export class V2Catalog {
 
       const id = randomUUID()
       const converterOptionsJson = JSON.stringify(input.converterOptions)
+      const scoringConfigJson =
+        input.scoringConfig === null ? null : JSON.stringify(input.scoringConfig)
       const inserted = await tx.$queryRaw<EvaluationRunSqlRow[]>(Prisma.sql`
         INSERT INTO "evaluation_runs_v2" (
           "id", "namespace_id", "provider", "provider_task_id", "create_profile",
           "create_request_digest", "dataset_version", "source_ref", "converter",
           "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
           "model_name", "model_deployment_id", "model_artifact_id",
-          "model_deployment_digest", "evalscope_commit", "status"
+          "model_deployment_digest", "evalscope_commit", "scoring_config_json",
+          "primary_metric_id", "primary_output_key", "status"
         )
         VALUES (
           ${id}::uuid, ${input.namespaceId}::uuid, ${input.provider}, ${input.providerTaskId},
@@ -727,7 +737,9 @@ export class V2Catalog {
           ${input.sourceRef}, ${input.converter}, ${input.converterVersion},
           ${converterOptionsJson}::jsonb, ${input.fidelityDigest}, ${input.benchmark},
           ${input.modelName}, ${input.modelDeploymentId}::uuid, ${input.modelArtifactId}::uuid,
-          ${input.modelDeploymentDigest}, ${input.evalscopeCommit}, 'prepared'
+          ${input.modelDeploymentDigest}, ${input.evalscopeCommit},
+          ${scoringConfigJson}::jsonb, ${input.primaryMetricId}, ${input.primaryOutputKey},
+          'prepared'
         )
         ON CONFLICT ("namespace_id", "provider", "provider_task_id") DO NOTHING
         RETURNING ${EVALUATION_RUN_COLUMNS}
@@ -847,6 +859,8 @@ export class V2Catalog {
         input.metrics.map((metric) => ({
           dataset: metric.dataset,
           subset: metric.subset,
+          metric_id: metric.metricId,
+          output_key: metric.outputKey,
           metric: metric.metric,
           score: metric.score,
           sample_count: metric.sampleCount,
@@ -3499,6 +3513,10 @@ function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRo
   const error = parseStoredEvaluationError(row.error_json, 'execution')
   const archiveStatus = parseEvaluationArchiveStatus(row.archive_status)
   const archiveError = parseStoredEvaluationError(row.archive_error_json, 'archive')
+  const scoringConfig =
+    row.scoring_config_json === null
+      ? null
+      : parseStoredJsonObject(row.scoring_config_json, 'Evaluation scoring config')
   if (row.provider !== 'evalscope') {
     throw new V2CatalogConsistencyError('Stored evaluation run provider is invalid')
   }
@@ -3552,6 +3570,9 @@ function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRo
     modelArtifactId: row.model_artifact_id,
     modelDeploymentDigest: row.model_deployment_digest,
     evalscopeCommit: row.evalscope_commit,
+    scoringConfig,
+    primaryMetricId: row.primary_metric_id,
+    primaryOutputKey: row.primary_output_key,
     status,
     metrics,
     error,
@@ -3899,7 +3920,12 @@ function parseStoredSwiftStudioSessionFailure(
 function parseEvaluationRunCreateProfile(
   value: string,
 ): CatalogEvaluationRunRowV2['createProfile'] {
-  if (value === 'evaluation-run-create-v1' || value === 'evaluation-run-create-v2') {
+  if (
+    value === 'evaluation-run-create-v1' ||
+    value === 'evaluation-run-create-v2' ||
+    value === 'evaluation-run-create-v3' ||
+    value === 'evaluation-run-create-v4'
+  ) {
     return value
   }
   throw new V2CatalogConsistencyError('Stored evaluation run create profile is invalid')
@@ -3953,13 +3979,18 @@ function parseStoredEvaluationMetrics(
     throw new V2CatalogConsistencyError('Stored evaluation metrics are invalid')
   }
   const metrics = value.map((item) => {
+    const keys = item === null || typeof item !== 'object' ? [] : Object.keys(item)
+    const legacyShape = keys.length === 6
+    const metricShape = keys.length === 8
     if (
       item === null ||
       typeof item !== 'object' ||
       Array.isArray(item) ||
-      Object.keys(item).length !== 6 ||
+      (!legacyShape && !metricShape) ||
       typeof item.dataset !== 'string' ||
       (item.subset !== null && typeof item.subset !== 'string') ||
+      (metricShape && item.metric_id !== null && typeof item.metric_id !== 'string') ||
+      (metricShape && item.output_key !== null && typeof item.output_key !== 'string') ||
       typeof item.metric !== 'string' ||
       (item.score !== null && typeof item.score !== 'number') ||
       (item.sample_count !== null && typeof item.sample_count !== 'number') ||
@@ -3971,6 +4002,8 @@ function parseStoredEvaluationMetrics(
     return {
       dataset: item.dataset,
       subset: item.subset,
+      metricId: metricShape ? (item.metric_id as string | null) : null,
+      outputKey: metricShape ? (item.output_key as string | null) : null,
       metric: item.metric,
       score: item.score,
       sampleCount: item.sample_count,
@@ -5108,9 +5141,12 @@ function validateCreateEvaluationRun(input: CreateEvaluationRunV2): void {
     throw new V2CatalogInputError('Evaluation Model Deployment binding is incomplete')
   }
   if (
-    (input.createProfile === 'evaluation-run-create-v2') !== hasDeployment ||
+    (input.createProfile === 'evaluation-run-create-v2' ||
+      input.createProfile === 'evaluation-run-create-v4') !== hasDeployment ||
     (input.createProfile !== 'evaluation-run-create-v1' &&
-      input.createProfile !== 'evaluation-run-create-v2')
+      input.createProfile !== 'evaluation-run-create-v2' &&
+      input.createProfile !== 'evaluation-run-create-v3' &&
+      input.createProfile !== 'evaluation-run-create-v4')
   ) {
     throw new V2CatalogInputError('Evaluation create profile does not match its Deployment binding')
   }
@@ -5158,6 +5194,37 @@ function validateCreateEvaluationRun(input: CreateEvaluationRunV2): void {
   if (input.modelName !== null) validateEvaluationText(input.modelName, 512, 'model name')
   if (input.evalscopeCommit !== null && !GIT_COMMIT.test(input.evalscopeCommit)) {
     throw new V2CatalogInputError('EvalScope commit is invalid')
+  }
+  const scoringFields = [input.scoringConfig, input.primaryMetricId, input.primaryOutputKey]
+  const hasScoring = scoringFields.every((value) => value !== null)
+  const metricProfile =
+    input.createProfile === 'evaluation-run-create-v3' ||
+    input.createProfile === 'evaluation-run-create-v4'
+  if (
+    hasScoring !== scoringFields.some((value) => value !== null) ||
+    metricProfile !== hasScoring
+  ) {
+    throw new V2CatalogInputError('Evaluation scoring identity is incomplete')
+  }
+  if (input.scoringConfig !== null) {
+    if (
+      input.primaryMetricId === null ||
+      input.primaryOutputKey === null ||
+      !SAFE_EVALUATION_NAME.test(input.primaryMetricId)
+    ) {
+      throw new V2CatalogInputError('Evaluation primary Metric is invalid')
+    }
+    validateEvaluationText(input.primaryOutputKey, 128, 'primary Metric output')
+    const scoringJson = JSON.stringify(input.scoringConfig)
+    if (
+      Buffer.byteLength(scoringJson) > MAX_EVALUATION_OPTIONS_BYTES ||
+      input.scoringConfig.primary_metric_id !== input.primaryMetricId ||
+      input.scoringConfig.primary_output_key !== input.primaryOutputKey ||
+      input.scoringConfig.benchmark !== input.benchmark ||
+      input.scoringConfig.evalscope_commit !== input.evalscopeCommit
+    ) {
+      throw new V2CatalogInputError('Evaluation scoring config is invalid')
+    }
   }
 }
 
@@ -5240,6 +5307,15 @@ function validateEvaluationMetrics(metrics: readonly CatalogEvaluationMetricV2[]
   for (const metric of metrics) {
     validateEvaluationText(metric.dataset, 512, 'metric dataset')
     if (metric.subset !== null) validateEvaluationText(metric.subset, 512, 'metric subset')
+    if ((metric.metricId === null) !== (metric.outputKey === null)) {
+      throw new V2CatalogInputError('Evaluation Metric identity is incomplete')
+    }
+    if (metric.metricId !== null) {
+      if (!SAFE_EVALUATION_NAME.test(metric.metricId)) {
+        throw new V2CatalogInputError('Evaluation Metric ID is invalid')
+      }
+      validateEvaluationText(metric.outputKey as string, 128, 'metric output key')
+    }
     validateEvaluationText(metric.metric, 512, 'metric name')
     if (metric.score !== null && !Number.isFinite(metric.score)) {
       throw new V2CatalogInputError('Evaluation metric score must be finite')

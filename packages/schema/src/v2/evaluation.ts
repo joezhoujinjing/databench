@@ -75,6 +75,8 @@ export type EvaluationRunStatusV2 = z.infer<typeof EvaluationRunStatusV2Schema>
 export const EvaluationRunCreateProfileV2Schema = z.enum([
   'evaluation-run-create-v1',
   'evaluation-run-create-v2',
+  'evaluation-run-create-v3',
+  'evaluation-run-create-v4',
 ])
 export type EvaluationRunCreateProfileV2 = z.infer<typeof EvaluationRunCreateProfileV2Schema>
 
@@ -89,17 +91,112 @@ export type EvaluationArchiveStatusV2 = z.infer<typeof EvaluationArchiveStatusV2
 
 const MetricLabelV2Schema = utf8BoundedString(512)
 const MetricCategoryV2Schema = utf8BoundedString(128)
+const MetricIdentityV2Schema = z.string().regex(SAFE_TOKEN)
+const MetricOutputKeyV2Schema = utf8BoundedString(128)
+const MetricParameterValueV2Schema = z.union([
+  z.boolean(),
+  z.number().finite(),
+  utf8BoundedString(512, true),
+])
+
+export const EvaluationScoringMetricV2Schema = z
+  .strictObject({
+    id: MetricIdentityV2Schema,
+    implementation_digest: DigestHexSchema,
+    parameters: z.record(MetricIdentityV2Schema, MetricParameterValueV2Schema),
+    output_keys: z.array(MetricOutputKeyV2Schema).min(1).max(32),
+  })
+  .superRefine((metric, context) => {
+    if (new Set(metric.output_keys).size !== metric.output_keys.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['output_keys'],
+        message: 'Metric output keys must be unique',
+      })
+    }
+    if (Object.keys(metric.parameters).length > 32) {
+      context.addIssue({
+        code: 'custom',
+        path: ['parameters'],
+        message: 'Metric parameters exceed the field bound',
+      })
+    }
+  })
+  .meta({ id: 'EvaluationScoringMetricV2' })
+export type EvaluationScoringMetricV2 = z.infer<typeof EvaluationScoringMetricV2Schema>
+
+export const EvaluationScoringConfigV2Schema = z
+  .strictObject({
+    schema_version: z.literal(1),
+    mode: z.literal('explicit'),
+    evalscope_commit: z.string().regex(GIT_COMMIT),
+    benchmark: z.string().regex(SAFE_TOKEN),
+    metrics: z.array(EvaluationScoringMetricV2Schema).min(1).max(16),
+    primary_metric_id: MetricIdentityV2Schema,
+    primary_output_key: MetricOutputKeyV2Schema,
+  })
+  .superRefine((config, context) => {
+    const metricIds = config.metrics.map((metric) => metric.id)
+    if (
+      new Set(metricIds).size !== metricIds.length ||
+      metricIds.some((metricId, index) => index > 0 && metricId <= (metricIds[index - 1] ?? ''))
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['metrics'],
+        message: 'Scoring Metrics must be unique and sorted by canonical ID',
+      })
+    }
+    const outputOwners = new Map<string, string>()
+    for (const metric of config.metrics) {
+      for (const outputKey of metric.output_keys) {
+        if (outputOwners.has(outputKey)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['metrics'],
+            message: 'Scoring Metric output keys must not overlap',
+          })
+        }
+        outputOwners.set(outputKey, metric.id)
+      }
+    }
+    if (!metricIds.includes(config.primary_metric_id)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['primary_metric_id'],
+        message: 'Primary Metric must be selected',
+      })
+    }
+    if (outputOwners.get(config.primary_output_key) !== config.primary_metric_id) {
+      context.addIssue({
+        code: 'custom',
+        path: ['primary_output_key'],
+        message: 'Primary output must belong to the primary Metric',
+      })
+    }
+  })
+  .meta({ id: 'EvaluationScoringConfigV2' })
+export type EvaluationScoringConfigV2 = z.infer<typeof EvaluationScoringConfigV2Schema>
 
 export const EvaluationMetricV2Schema = z
   .strictObject({
     dataset: MetricLabelV2Schema,
     subset: MetricLabelV2Schema.nullable(),
+    metric_id: MetricIdentityV2Schema.nullable().default(null),
+    output_key: MetricOutputKeyV2Schema.nullable().default(null),
     metric: MetricLabelV2Schema,
     score: z.number().finite().nullable(),
     sample_count: z.number().int().safe().nonnegative().nullable(),
     categories: z.array(MetricCategoryV2Schema).max(64),
   })
   .superRefine((metric, context) => {
+    if ((metric.metric_id === null) !== (metric.output_key === null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['metric_id'],
+        message: 'Metric ID and output key must be both null or both present',
+      })
+    }
     if (new Set(metric.categories).size !== metric.categories.length) {
       context.addIssue({
         code: 'custom',
@@ -155,6 +252,7 @@ export const CreateEvaluationRunRequestV2Schema = z
     model_name: utf8BoundedString(512).nullable(),
     model_deployment_id: ModelDeploymentIdV2Schema.nullable().default(null),
     evalscope_commit: z.string().regex(GIT_COMMIT).nullable(),
+    scoring_config: EvaluationScoringConfigV2Schema.nullable().default(null),
   })
   .superRefine((request, context) => {
     if (request.model_deployment_id !== null && request.model_name !== null) {
@@ -197,6 +295,73 @@ export const CompleteEvaluationRunRequestV2Schema = z
   .strictObject({
     metrics: EvaluationMetricsV2Schema,
     provider_report_ids: EvaluationProviderReportIdsV2Schema,
+    scoring_config: EvaluationScoringConfigV2Schema.nullable().default(null),
+    primary_metric_id: MetricIdentityV2Schema.nullable().default(null),
+    primary_output_key: MetricOutputKeyV2Schema.nullable().default(null),
+  })
+  .superRefine((request, context) => {
+    const scoringFields = [
+      request.scoring_config,
+      request.primary_metric_id,
+      request.primary_output_key,
+    ]
+    const present = scoringFields.filter((value) => value !== null).length
+    if (present !== 0 && present !== scoringFields.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['scoring_config'],
+        message: 'Scoring completion fields must be all null or all present',
+      })
+      return
+    }
+    if (
+      request.scoring_config !== null &&
+      (request.primary_metric_id !== request.scoring_config.primary_metric_id ||
+        request.primary_output_key !== request.scoring_config.primary_output_key)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['primary_metric_id'],
+        message: 'Completion primary Metric must match the scoring config',
+      })
+    }
+    if (request.scoring_config !== null) {
+      const expectedOutputs = new Map<string, string>()
+      for (const metric of request.scoring_config.metrics) {
+        for (const outputKey of metric.output_keys) {
+          expectedOutputs.set(outputKey, metric.id)
+        }
+      }
+      const observedOutputs = new Map<string, number[]>()
+      for (const metric of request.metrics) {
+        if (
+          metric.metric_id === null ||
+          metric.output_key === null ||
+          expectedOutputs.get(metric.output_key) !== metric.metric_id
+        ) {
+          context.addIssue({
+            code: 'custom',
+            path: ['metrics'],
+            message: 'Completed Metric output does not match the scoring config',
+          })
+          continue
+        }
+        if (metric.score !== null) {
+          const scores = observedOutputs.get(metric.output_key) ?? []
+          scores.push(metric.score)
+          observedOutputs.set(metric.output_key, scores)
+        }
+      }
+      for (const outputKey of expectedOutputs.keys()) {
+        if ((observedOutputs.get(outputKey)?.length ?? 0) === 0) {
+          context.addIssue({
+            code: 'custom',
+            path: ['metrics'],
+            message: `Requested Metric output is missing: ${outputKey}`,
+          })
+        }
+      }
+    }
   })
   .meta({ id: 'CompleteEvaluationRunRequestV2' })
 export type CompleteEvaluationRunRequestV2 = z.infer<typeof CompleteEvaluationRunRequestV2Schema>
@@ -293,6 +458,9 @@ export const EvaluationRunV2Schema = z
     model_deployment_id: ModelDeploymentIdV2Schema.nullable(),
     model_artifact_id: ModelArtifactIdV2Schema.nullable(),
     evalscope_commit: z.string().regex(GIT_COMMIT).nullable(),
+    scoring_config: EvaluationScoringConfigV2Schema.nullable(),
+    primary_metric_id: MetricIdentityV2Schema.nullable(),
+    primary_output_key: MetricOutputKeyV2Schema.nullable(),
     status: EvaluationRunStatusV2Schema,
     metrics: EvaluationMetricsV2Schema.nullable(),
     error: EvaluationRunErrorV2Schema.nullable(),
@@ -316,11 +484,42 @@ export const EvaluationRunV2Schema = z
         message: 'Deployment-bound runs require both Deployment and Artifact IDs',
       })
     }
-    if ((run.create_profile === 'evaluation-run-create-v2') !== hasDeployment) {
+    const deploymentProfile =
+      run.create_profile === 'evaluation-run-create-v2' ||
+      run.create_profile === 'evaluation-run-create-v4'
+    if (deploymentProfile !== hasDeployment) {
       context.addIssue({
         code: 'custom',
         path: ['create_profile'],
-        message: 'Only evaluation-run-create-v2 can bind a Model Deployment',
+        message: 'Only Deployment evaluation profiles can bind a Model Deployment',
+      })
+    }
+    const metricProfile =
+      run.create_profile === 'evaluation-run-create-v3' ||
+      run.create_profile === 'evaluation-run-create-v4'
+    const scoringFields = [run.scoring_config, run.primary_metric_id, run.primary_output_key]
+    const hasScoringConfig = scoringFields.every((value) => value !== null)
+    if (
+      hasScoringConfig !== scoringFields.some((value) => value !== null) ||
+      metricProfile !== hasScoringConfig
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['scoring_config'],
+        message: 'Metric-aware profiles require a complete scoring identity',
+      })
+    }
+    if (
+      run.scoring_config !== null &&
+      (run.primary_metric_id !== run.scoring_config.primary_metric_id ||
+        run.primary_output_key !== run.scoring_config.primary_output_key ||
+        run.benchmark !== run.scoring_config.benchmark ||
+        run.evalscope_commit !== run.scoring_config.evalscope_commit)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['scoring_config'],
+        message: 'Stored scoring identity must match the evaluation run',
       })
     }
     const terminal =
