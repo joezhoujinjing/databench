@@ -17,6 +17,7 @@ const configFixture = {
     'performance',
     'reports',
     'databench-dataset',
+    'databench-model-deployment',
     'generated-documents',
   ],
   reports_configured: true,

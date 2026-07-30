@@ -18,7 +18,14 @@ export const evalScopePublicConfigSchema = z
     service_version: z.string().min(1).max(64),
     evalscope_commit: z.literal(EVALSCOPE_UPSTREAM_COMMIT),
     capabilities: z.array(
-      z.enum(['evaluation', 'performance', 'reports', 'databench-dataset', 'generated-documents']),
+      z.enum([
+        'evaluation',
+        'performance',
+        'reports',
+        'databench-dataset',
+        'databench-model-deployment',
+        'generated-documents',
+      ]),
     ),
     reports_configured: z.boolean(),
     report_root_generation: z.string().regex(/^(?:0|[1-9][0-9]{0,19})$/u),
