@@ -6,7 +6,9 @@ offline_preflight() {
   local docker_version compose_version free_kb min_free_kb published data_probe cpu_count
   local memory_kb min_memory_kb
   local workspace_free_kb min_workspace_free_kb
+  local default_min_cpus default_min_memory_gb
   local min_cpus min_memory_gb min_free_gb min_workspace_free_gb
+  local swift_requested swift_mode
   [ -r /etc/os-release ] || die "cannot identify the target operating system"
   # shellcheck disable=SC1091
   source /etc/os-release
@@ -24,8 +26,16 @@ offline_preflight() {
   version_ge "$docker_version" '24.0.0' || die "Docker Engine 24 or newer is required"
   version_ge "$compose_version" '2.20.0' || die "Docker Compose 2.20 or newer is required"
 
-  min_cpus="${DATABENCH_MIN_CPUS:-12}"
-  min_memory_gb="${DATABENCH_MIN_MEMORY_GB:-40}"
+  swift_requested="$(requested_swift_enabled_state)"
+  swift_mode="$(requested_swift_runtime_mode)"
+  default_min_cpus=6
+  default_min_memory_gb=15
+  if [ "$swift_requested" = 'true' ] && [ "$swift_mode" = 'gpu' ]; then
+    default_min_cpus=12
+    default_min_memory_gb=40
+  fi
+  min_cpus="${DATABENCH_MIN_CPUS:-$default_min_cpus}"
+  min_memory_gb="${DATABENCH_MIN_MEMORY_GB:-$default_min_memory_gb}"
   min_free_gb="${DATABENCH_MIN_FREE_GB:-60}"
   min_workspace_free_gb="${DATABENCH_MIN_WORKSPACE_FREE_GB:-12}"
   for value in "$min_cpus" "$min_memory_gb" "$min_free_gb" "$min_workspace_free_gb"; do
@@ -58,19 +68,7 @@ offline_preflight() {
   published="$(docker ps --filter publish=80 --format '{{.Names}}' | grep -v '^databench-offline-web$' || true)"
   [ -z "$published" ] || die "TCP port 80 is already published by another container: $published"
 
-  local swift_requested=false
-  case "${DATABENCH_ENABLE_SWIFT_GPU:-}" in
-    true) swift_requested=true ;;
-    false) ;;
-    '')
-      if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ] &&
-        grep -qx 'DATABENCH_SWIFT_ENABLED=true' "$DATABENCH_SWIFT_CONFIG_FILE"; then
-        swift_requested=true
-      fi
-      ;;
-    *) die "DATABENCH_ENABLE_SWIFT_GPU must be true or false" ;;
-  esac
-  if [ "$swift_requested" = true ]; then
+  if [ "$swift_requested" = 'true' ] && [ "$swift_mode" = 'gpu' ]; then
     [ -n "${DATABENCH_SWIFT_IMAGE:-}" ] ||
       die "Swift GPU was requested, but this release does not contain the Swift image"
     require_command nvidia-smi

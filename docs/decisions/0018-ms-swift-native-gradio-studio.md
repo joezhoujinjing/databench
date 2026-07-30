@@ -225,6 +225,24 @@ owner 于 2026-07-28 明确要求“GPU 先跳过，后面再弄，先继续”�
 
 这是实施顺序修订，不是验收标准删除。
 
+### 12. Owner 修订：离线 UI-only 模式
+
+owner 于 2026-07-30 明确要求内网控制面“Swift 保持开启、能看到完整界面、但不训练”，且升级不检查
+NVIDIA。因此离线部署把 Studio enabled 与 GPU runtime 分离：
+
+- `DATABENCH_SWIFT_ENABLED=true` 只表示 Provider、完整 Gradio 和 Databench Gateway 已启用；
+- `DATABENCH_SWIFT_RUNTIME_MODE=ui-only` 不申请 NVIDIA device，不执行 `nvidia-smi`、容器 CUDA 和
+  模型预置检查；Provider `ready=true` 即可通过健康检查；
+- UI-only 仍保留七个原生业务面和 callback，页面明确显示 GPU 不可用，不声明训练、推理或部署可用；
+- `runtime_mode=gpu` 继续使用 NVIDIA Compose overlay、严格 `gpu_available=true` 健康检查、模型预置和
+  安装期 CUDA 快检；
+- 旧 `swift.env` 缺少 mode 时在新版本升级中迁移为 `ui-only`，启用状态和 Provider credential 不变；
+- 非 GPU/UI-only 安装与升级默认资源门槛为 6 logical CPUs/15 GiB RAM；GPU mode 保留
+  12 logical CPUs/40 GiB RAM。
+
+该修订只改变离线运行 profile 和升级前置条件，不改变 Session、Dataset、Artifact、Deployment 或
+EvalScope 契约，也不把 UI-only 误报为 GPU gate green。
+
 ## 非目标
 
 - 首期复刻 ms-swift React UI；

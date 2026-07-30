@@ -251,6 +251,7 @@ cp -a \
   deploy/offline/mcp.env.example \
   deploy/offline/evalscope.env.example \
   deploy/offline/swift.env.example \
+  deploy/offline/compose.swift-gpu.yml \
   deploy/offline/Caddyfile \
   deploy/offline/install.sh \
   deploy/offline/upgrade.sh \

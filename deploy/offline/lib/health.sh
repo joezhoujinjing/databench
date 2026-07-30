@@ -21,7 +21,7 @@ wait_container_healthy() {
 
 verify_swift_gpu_runtime() {
   local release_dir="$1" image device_id
-  release_swift_enabled "$release_dir" || return 0
+  release_swift_gpu_enabled "$release_dir" || return 0
   validate_swift_config
   image="$(sed -n 's/^DATABENCH_SWIFT_IMAGE=//p' "${release_dir}/release.env")"
   device_id="$(grep -E '^DATABENCH_SWIFT_GPU_DEVICE_ID=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
@@ -40,7 +40,7 @@ print(torch.cuda.get_device_name(0))
 
 verify_swift_model_preload() {
   local release_dir="$1" model_root model_entry
-  release_swift_enabled "$release_dir" || return 0
+  release_swift_gpu_enabled "$release_dir" || return 0
   model_root="${DATABENCH_DATA_ROOT}/swift-models"
   [ -d "$model_root" ] ||
     die "Swift Studio offline model directory is missing: $model_root"
@@ -211,17 +211,22 @@ validate_volume_archive(Path(sys.argv[1]))
 
 doctor_report() {
   local release_dir="$1"
+  local swift_gpu_required=false
+  if release_swift_gpu_enabled "$release_dir"; then
+    swift_gpu_required=true
+  fi
   if release_has_evalscope "$release_dir" && release_swift_enabled "$release_dir"; then
     compose_for_release "$release_dir" run --rm --no-deps \
+      --env "DATABENCH_DOCTOR_SWIFT_GPU_REQUIRED=${swift_gpu_required}" \
       --entrypoint /bin/sh api -ec '
       databench ref show system-offline-smoke-v2 >/dev/null
       databench dataset audit system-offline-smoke-v2 >/dev/null
       node -e "Promise.all([
         fetch(\"http://evalscope:9000/health\").then(async response=>{const body=await response.json();if(!response.ok||body.ready!==true)throw new Error()}),
-        fetch(\"http://swift-studio:7861/runtime\").then(async response=>{const body=await response.json();if(!response.ok||body.ready!==true||body.gpu_available!==true)throw new Error()}),
+        fetch(\"http://swift-studio:7861/runtime\").then(async response=>{const body=await response.json();if(!response.ok||body.ready!==true||(process.env.DATABENCH_DOCTOR_SWIFT_GPU_REQUIRED===\"true\"&&body.gpu_available!==true))throw new Error()}),
         fetch(\"http://swift-studio:7860/config\").then(async response=>{const body=await response.json();const root=new URL(body.root,\"http://swift-studio\").pathname.replace(/\\/$/,\"\");if(!response.ok||root!==\"/swift-studio\")throw new Error()}),
       ]).then(()=>process.exit(0)).catch(()=>process.exit(1))"
-      printf "%s\n" "{\"database\":{\"ok\":true},\"evalscope\":{\"ok\":true},\"store\":{\"ok\":true},\"swift\":{\"gpu\":true,\"ok\":true}}"
+      printf "%s\n" "{\"database\":{\"ok\":true},\"evalscope\":{\"ok\":true},\"store\":{\"ok\":true},\"swift\":{\"gpu\":$DATABENCH_DOCTOR_SWIFT_GPU_REQUIRED,\"ok\":true}}"
       '
   elif release_has_evalscope "$release_dir"; then
     compose_for_release "$release_dir" run --rm --no-deps \
@@ -233,14 +238,15 @@ doctor_report() {
       '
   elif release_swift_enabled "$release_dir"; then
     compose_for_release "$release_dir" run --rm --no-deps \
+      --env "DATABENCH_DOCTOR_SWIFT_GPU_REQUIRED=${swift_gpu_required}" \
       --entrypoint /bin/sh api -ec '
         databench ref show system-offline-smoke-v2 >/dev/null
         databench dataset audit system-offline-smoke-v2 >/dev/null
         node -e "Promise.all([
-          fetch(\"http://swift-studio:7861/runtime\").then(async response=>{const body=await response.json();if(!response.ok||body.ready!==true||body.gpu_available!==true)throw new Error()}),
+          fetch(\"http://swift-studio:7861/runtime\").then(async response=>{const body=await response.json();if(!response.ok||body.ready!==true||(process.env.DATABENCH_DOCTOR_SWIFT_GPU_REQUIRED===\"true\"&&body.gpu_available!==true))throw new Error()}),
           fetch(\"http://swift-studio:7860/config\").then(async response=>{const body=await response.json();const root=new URL(body.root,\"http://swift-studio\").pathname.replace(/\\/$/,\"\");if(!response.ok||root!==\"/swift-studio\")throw new Error()}),
         ]).then(()=>process.exit(0)).catch(()=>process.exit(1))"
-        printf "%s\n" "{\"database\":{\"ok\":true},\"store\":{\"ok\":true},\"swift\":{\"gpu\":true,\"ok\":true}}"
+        printf "%s\n" "{\"database\":{\"ok\":true},\"store\":{\"ok\":true},\"swift\":{\"gpu\":$DATABENCH_DOCTOR_SWIFT_GPU_REQUIRED,\"ok\":true}}"
       '
   else
     compose_for_release "$release_dir" run --rm --no-deps \
@@ -254,15 +260,18 @@ doctor_report() {
 
 run_doctor() {
   local release_dir="$1"
-  local report
+  local report swift_gpu_required=false
+  if release_swift_gpu_enabled "$release_dir"; then
+    swift_gpu_required=true
+  fi
   report="$(doctor_report "$release_dir")" || return 1
   printf '%s\n' "$report"
   if release_has_evalscope "$release_dir" && release_swift_enabled "$release_dir"; then
-    [ "$report" = '{"database":{"ok":true},"evalscope":{"ok":true},"store":{"ok":true},"swift":{"gpu":true,"ok":true}}' ]
+    [ "$report" = "{\"database\":{\"ok\":true},\"evalscope\":{\"ok\":true},\"store\":{\"ok\":true},\"swift\":{\"gpu\":${swift_gpu_required},\"ok\":true}}" ]
   elif release_has_evalscope "$release_dir"; then
     [ "$report" = '{"database":{"ok":true},"evalscope":{"ok":true},"store":{"ok":true}}' ]
   elif release_swift_enabled "$release_dir"; then
-    [ "$report" = '{"database":{"ok":true},"store":{"ok":true},"swift":{"gpu":true,"ok":true}}' ]
+    [ "$report" = "{\"database\":{\"ok\":true},\"store\":{\"ok\":true},\"swift\":{\"gpu\":${swift_gpu_required},\"ok\":true}}" ]
   else
     [ "$report" = '{"database":{"ok":true},"store":{"ok":true}}' ]
   fi
@@ -300,7 +309,7 @@ wait_gateway() {
           Promise.all([
             fetch("http://web/swift-studio-runtime/runtime").then(async response => {
               const body = await response.json()
-              if (!response.ok || body?.ready !== true || body?.gpu_available !== true) throw new Error()
+              if (!response.ok || body?.ready !== true) throw new Error()
             }),
             fetch("http://web/swift-studio/config").then(async response => {
               const body = await response.json()

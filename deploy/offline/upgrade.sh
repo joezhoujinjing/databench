@@ -25,7 +25,10 @@ offline_preflight
 acquire_operation_lock
 ensure_secret_config
 ensure_mcp_config
-if ! release_has_swift "$SCRIPT_DIR" && [ -n "${DATABENCH_ENABLE_SWIFT_GPU:-}" ]; then
+if ! release_has_swift "$SCRIPT_DIR" &&
+  { [ -n "${DATABENCH_ENABLE_SWIFT_STUDIO:-}" ] ||
+    [ -n "${DATABENCH_ENABLE_SWIFT_GPU:-}" ] ||
+    [ -n "${DATABENCH_SWIFT_RUNTIME_MODE:-}" ]; }; then
   die "this release does not contain the Swift GPU runtime"
 fi
 
@@ -33,15 +36,17 @@ PREVIOUS_RELEASE="$(current_release_dir)"
 load_release_env "${PREVIOUS_RELEASE}/release.env"
 PREVIOUS_VERSION="$DATABENCH_VERSION"
 PREVIOUS_SWIFT_ENABLED=false
+PREVIOUS_SWIFT_MODE='ui-only'
 if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
   validate_swift_config
   PREVIOUS_SWIFT_ENABLED="$(
     grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-
   )"
+  PREVIOUS_SWIFT_MODE="$(swift_runtime_mode)"
 fi
 TARGET_SWIFT_ENABLED=false
 if release_has_swift "$SCRIPT_DIR"; then
-  TARGET_SWIFT_ENABLED="${DATABENCH_ENABLE_SWIFT_GPU:-$PREVIOUS_SWIFT_ENABLED}"
+  TARGET_SWIFT_ENABLED="$(requested_swift_enabled_state)"
 fi
 ensure_evalscope_config
 version_gt "$TARGET_VERSION" "$PREVIOUS_VERSION" ||
@@ -86,6 +91,8 @@ recover_previous_release() {
   if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
     set_swift_enabled_state "$PREVIOUS_SWIFT_ENABLED" >/dev/null 2>&1 ||
       warn "failed to restore the previous Swift enabled state"
+    set_swift_runtime_mode_state "$PREVIOUS_SWIFT_MODE" >/dev/null 2>&1 ||
+      warn "failed to restore the previous Swift runtime mode"
   fi
 
   if [ "$TARGET_ROLLBACK_MODE" = 'restore-backup' ] && [ -n "$BACKUP_GENERATION" ]; then
@@ -134,7 +141,7 @@ log "loading target images"
 docker load --input "${SCRIPT_DIR}/images.tar" >/dev/null
 validate_images_lock \
   "${SCRIPT_DIR}/images.lock" true "$(release_image_count "$SCRIPT_DIR")"
-if release_swift_enabled "$TARGET_RELEASE"; then
+if release_swift_gpu_enabled "$TARGET_RELEASE"; then
   verify_swift_model_preload "$TARGET_RELEASE"
   verify_swift_gpu_runtime "$TARGET_RELEASE"
 fi

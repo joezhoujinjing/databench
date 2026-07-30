@@ -316,7 +316,8 @@ sudo ./install.sh
 `install.sh` 按以下顺序执行：
 
 1. 确认传输阶段已校验外层 SHA-256，并校验包内 `SHA256SUMS`；
-2. 检查 Ubuntu 版本、CPU 架构、Docker Engine、Compose、12 logical CPUs、40 GiB 可见 RAM、
+2. 检查 Ubuntu 版本、CPU 架构、Docker Engine、Compose；UI-only/不训练模式使用
+   6 logical CPUs、15 GiB 可见 RAM，
    60 GiB 系统盘、12 GiB Databench 数据文件系统可用空间和端口；
 3. 拒绝含 `build:`、`latest`、缺失本地镜像或允许 pull 的离线配置；
 4. `docker load` 导入全部镜像；
@@ -410,11 +411,12 @@ PORT=8000
 
 ## 8. Docker Engine 前置条件
 
-目标 Ubuntu 已安装 Docker，首版不提供 bootstrap 包。安装器只做只读 preflight，最低要求
-Docker Engine 24、Docker Compose plugin 2.20、12 logical CPUs、40 GiB 可见 RAM、60 GiB
-系统盘和 12 GiB Databench 数据文件系统可用空间；版本或容量不足时明确失败，不在离线安装过程中
-擅自升级宿主机 Docker。启用 Swift 时还要求 `nvidia-smi` 可枚举所选 GPU，并要求 NVIDIA
-Container Toolkit 能让打包镜像执行 `torch.cuda.is_available()`；安装器不做耗时训练验证。
+目标 Ubuntu 已安装 Docker，首版不提供 bootstrap 包。安装器只做只读 preflight，UI-only/不训练
+模式最低要求 Docker Engine 24、Docker Compose plugin 2.20、6 logical CPUs、15 GiB 可见 RAM、
+60 GiB 系统盘和 12 GiB Databench 数据文件系统可用空间；版本或容量不足时明确失败，不在离线安装
+过程中擅自升级宿主机 Docker。只有 Swift `runtime_mode=gpu` 才提高为 12 logical CPUs/40 GiB，
+要求 `nvidia-smi` 可枚举所选 GPU，并要求 NVIDIA Container Toolkit 能让打包镜像执行
+`torch.cuda.is_available()`；UI-only 不执行 NVIDIA 检查，安装器也不做耗时训练验证。
 
 ## 9. 升级、回滚和版本保留
 

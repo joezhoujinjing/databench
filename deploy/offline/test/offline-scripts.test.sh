@@ -22,7 +22,8 @@ node --check "${SCRIPT_DIR}/smoke/upstream-failure.mjs"
 node --check "${SCRIPT_DIR}/smoke/worker.mjs"
 
 if rg -n 'docker compose down -v|image:.*latest|build:' \
-  "${SCRIPT_DIR}/compose.yml" "${SCRIPT_DIR}"/*.sh "${SCRIPT_DIR}/databenchctl"; then
+  "${SCRIPT_DIR}/compose.yml" "${SCRIPT_DIR}/compose.swift-gpu.yml" \
+  "${SCRIPT_DIR}"/*.sh "${SCRIPT_DIR}/databenchctl"; then
   fail 'offline runtime contains a forbidden destructive, latest, or build directive'
 fi
 
@@ -60,16 +61,20 @@ grep -Fq 'image: ${DATABENCH_EVALSCOPE_IMAGE:?missing DATABENCH_EVALSCOPE_IMAGE}
   "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the EvalScope image'
 grep -Fq 'image: ${DATABENCH_SWIFT_IMAGE:?missing DATABENCH_SWIFT_IMAGE}' \
   "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the Swift Studio image'
-grep -Fq 'profiles: ["swift-gpu"]' "${SCRIPT_DIR}/compose.yml" ||
-  fail 'offline Swift Studio is not isolated behind its explicit GPU profile'
+grep -Fq 'profiles: ["swift-studio"]' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline Swift Studio is not isolated behind its explicit Studio profile'
 grep -Fq '/srv/databench/swift-studio:/var/lib/databench-swift-studio' \
   "${SCRIPT_DIR}/compose.yml" || fail 'Swift Studio Session workspace is not persistent'
 grep -Fq '/srv/databench/swift-models:/opt/databench-models:ro' \
   "${SCRIPT_DIR}/compose.yml" || fail 'offline models are not mounted read-only into Swift Studio'
 grep -Fq 'shm_size: 8gb' "${SCRIPT_DIR}/compose.yml" ||
   fail 'offline Swift Studio does not reserve enough shared memory for PyTorch workers'
-grep -Fq 'gpu_available' "${SCRIPT_DIR}/compose.yml" ||
-  fail 'Swift Studio health does not require the selected GPU'
+grep -Fq 'body.get('\''ready'\'') is True' "${SCRIPT_DIR}/compose.yml" ||
+  fail 'Swift Studio UI-only health does not require the native Studio runtime'
+grep -Fq 'gpu_available' "${SCRIPT_DIR}/compose.swift-gpu.yml" ||
+  fail 'Swift Studio GPU overlay health does not require the selected GPU'
+grep -Fq 'driver: nvidia' "${SCRIPT_DIR}/compose.swift-gpu.yml" ||
+  fail 'Swift Studio GPU overlay does not request the NVIDIA runtime'
 if sed -n '/^  swift-studio:/,/^  api:/p' "${SCRIPT_DIR}/compose.yml" |
   grep -Eq '^[[:space:]]+ports:'; then
   fail 'offline Swift Studio publishes a host port'
@@ -212,6 +217,7 @@ for bundle_asset in \
   deploy/offline/mcp.env.example \
   deploy/offline/evalscope.env.example \
   deploy/offline/swift.env.example \
+  deploy/offline/compose.swift-gpu.yml \
   docs/deployment/offline-single-host-plan.zh-CN.md \
   docs/decisions/0012-offline-single-host-deployment.md \
   docs/decisions/0018-ms-swift-native-gradio-studio.md \
@@ -222,7 +228,7 @@ done
 for release_asset in DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
   MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
   SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md mcp.env.example evalscope.env.example \
-  swift.env.example docs; do
+  swift.env.example compose.swift-gpu.yml docs; do
   grep -Fq "$release_asset" "${SCRIPT_DIR}/lib/common.sh" ||
     fail "installed release does not preserve: $release_asset"
 done
@@ -366,10 +372,12 @@ grep -Fq 'DATABENCH_MCP_AUTH_MODE=none' "${SCRIPT_DIR}/mcp.env.example" ||
   fail 'offline MCP example does not declare anonymous mode'
 grep -Fq 'DATABENCH_MIN_WORKSPACE_FREE_GB' "${SCRIPT_DIR}/lib/preflight.sh" ||
   fail 'offline preflight does not check the Databench data filesystem'
-grep -Fq 'DATABENCH_MIN_CPUS:-12' "${SCRIPT_DIR}/lib/preflight.sh" ||
-  fail 'offline preflight does not enforce the Worker and EvalScope CPU floor'
-grep -Fq 'DATABENCH_MIN_MEMORY_GB:-40' "${SCRIPT_DIR}/lib/preflight.sh" ||
-  fail 'offline preflight does not enforce the Worker and EvalScope memory floor'
+grep -Fq 'default_min_cpus=6' "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline UI-only preflight does not use the control-plane CPU floor'
+grep -Fq 'default_min_memory_gb=15' "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline UI-only preflight does not use the control-plane memory floor'
+grep -Fq "swift_mode\" = 'gpu'" "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline preflight does not retain the explicit GPU capacity branch'
 grep -Fq 'DATABENCH_MIN_FREE_GB:-60' "${SCRIPT_DIR}/lib/preflight.sh" ||
   fail 'offline preflight does not enforce the installation disk floor'
 for lifecycle_script in install.sh upgrade.sh rollback.sh backup.sh restore.sh databenchctl; do
@@ -604,6 +612,7 @@ grep -Fq -- \
 mkdir -p "${TEMP_DIR}/model-data/swift-models/Qwen-test"
 cat > "${TEMP_DIR}/model-swift.env" <<'EOF'
 DATABENCH_SWIFT_ENABLED=true
+DATABENCH_SWIFT_RUNTIME_MODE=gpu
 EOF
 (
   source "${SCRIPT_DIR}/lib/common.sh"
@@ -646,6 +655,7 @@ fi
 RECOVERY_CALLS="${TEMP_DIR}/recovery-calls"
 cat > "${TEMP_DIR}/swift.env" <<'EOF'
 DATABENCH_SWIFT_ENABLED=true
+DATABENCH_SWIFT_RUNTIME_MODE=ui-only
 DATABENCH_SWIFT_GPU_DEVICE_ID=0
 DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 DATABENCH_SWIFT_PROVIDER_CREDENTIAL=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -700,6 +710,7 @@ fi
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   cp "${SCRIPT_DIR}/compose.yml" "${TEMP_DIR}/release/compose.yml"
+  cp "${SCRIPT_DIR}/compose.swift-gpu.yml" "${TEMP_DIR}/release/compose.swift-gpu.yml"
   sed -i.bak "s#/etc/databench/databench.env#${TEMP_DIR}/databench.env#g" \
     "${TEMP_DIR}/release/compose.yml"
   sed -i.bak "s#/etc/databench/mcp.env#${TEMP_DIR}/mcp.env#g" \
@@ -805,9 +816,25 @@ EOF
       fail 'ambient variables overrode the selected EvalScope release'
     grep -q 'image: databench-swift-studio:1.2.3' <<< "$rendered" ||
       fail 'ambient variables overrode the selected Swift release'
+    ! grep -q 'driver: nvidia' <<< "$rendered" ||
+      fail 'UI-only Swift mode unexpectedly requested an NVIDIA device'
     ! grep -q 'ambient-variable-must-not-win' <<< "$rendered" ||
       fail 'ambient release variables leaked into Compose interpolation'
   )
+  sed -i.bak 's/DATABENCH_SWIFT_RUNTIME_MODE=ui-only/DATABENCH_SWIFT_RUNTIME_MODE=gpu/' \
+    "${TEMP_DIR}/swift.env"
+  (
+    source "${SCRIPT_DIR}/lib/common.sh"
+    export DATABENCH_CONFIG_FILE="${TEMP_DIR}/databench.env"
+    export DATABENCH_SWIFT_CONFIG_FILE="${TEMP_DIR}/swift.env"
+    rendered="$(compose_for_release "${TEMP_DIR}/release" config)"
+    grep -q 'driver: nvidia' <<< "$rendered" ||
+      fail 'GPU Swift mode did not apply the NVIDIA Compose overlay'
+    grep -q 'gpu_available' <<< "$rendered" ||
+      fail 'GPU Swift mode did not apply the strict GPU healthcheck'
+  )
+  sed -i.bak 's/DATABENCH_SWIFT_RUNTIME_MODE=gpu/DATABENCH_SWIFT_RUNTIME_MODE=ui-only/' \
+    "${TEMP_DIR}/swift.env"
   sed -i.bak 's/DATABENCH_SWIFT_ENABLED=true/DATABENCH_SWIFT_ENABLED=false/' \
     "${TEMP_DIR}/swift.env"
   (

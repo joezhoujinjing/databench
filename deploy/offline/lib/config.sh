@@ -385,7 +385,7 @@ ensure_evalscope_swift_allowlist() {
 }
 
 validate_swift_config() {
-  local key count enabled device_id api_credential provider_credential
+  local key count enabled mode mode_count device_id api_credential provider_credential
   [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ] ||
     die "Swift configuration is missing: $DATABENCH_SWIFT_CONFIG_FILE"
   for key in DATABENCH_SWIFT_ENABLED DATABENCH_SWIFT_GPU_DEVICE_ID \
@@ -396,6 +396,14 @@ validate_swift_config() {
   enabled="$(grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
   [ "$enabled" = 'true' ] || [ "$enabled" = 'false' ] ||
     die "DATABENCH_SWIFT_ENABLED must be true or false"
+  mode_count="$(grep -Ec '^DATABENCH_SWIFT_RUNTIME_MODE=.+' "$DATABENCH_SWIFT_CONFIG_FILE" || true)"
+  [ "$mode_count" -le 1 ] ||
+    die "Swift configuration must contain at most one DATABENCH_SWIFT_RUNTIME_MODE"
+  mode="$(sed -n 's/^DATABENCH_SWIFT_RUNTIME_MODE=//p' "$DATABENCH_SWIFT_CONFIG_FILE")"
+  case "$mode" in
+    ''|ui-only|gpu) ;;
+    *) die "DATABENCH_SWIFT_RUNTIME_MODE must be ui-only or gpu" ;;
+  esac
   device_id="$(grep -E '^DATABENCH_SWIFT_GPU_DEVICE_ID=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
   [[ "$device_id" =~ ^(0|[1-9][0-9]*)$ ]] && [ "${#device_id}" -le 4 ] ||
     die "DATABENCH_SWIFT_GPU_DEVICE_ID must be a canonical non-negative integer"
@@ -411,24 +419,85 @@ validate_swift_config() {
     die "Swift configuration owner must be root:root: $DATABENCH_SWIFT_CONFIG_FILE"
 }
 
-ensure_swift_config() {
-  local requested enabled device_id credential temp
-  requested="${DATABENCH_ENABLE_SWIFT_GPU:-}"
-  case "$requested" in
+requested_swift_enabled_state() {
+  local studio_requested legacy_requested
+  studio_requested="${DATABENCH_ENABLE_SWIFT_STUDIO:-}"
+  legacy_requested="${DATABENCH_ENABLE_SWIFT_GPU:-}"
+  case "$studio_requested" in
+    ''|true|false) ;;
+    *) die "DATABENCH_ENABLE_SWIFT_STUDIO must be true or false" ;;
+  esac
+  case "$legacy_requested" in
     ''|true|false) ;;
     *) die "DATABENCH_ENABLE_SWIFT_GPU must be true or false" ;;
   esac
+  if [ -n "$studio_requested" ]; then
+    printf '%s\n' "$studio_requested"
+  elif [ -n "$legacy_requested" ]; then
+    # Preserve the historical install input: true enabled the GPU Studio and
+    # false disabled it.
+    printf '%s\n' "$legacy_requested"
+  elif [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
+    sed -n 's/^DATABENCH_SWIFT_ENABLED=//p' "$DATABENCH_SWIFT_CONFIG_FILE"
+  else
+    printf '%s\n' 'false'
+  fi
+}
+
+requested_swift_runtime_mode() {
+  local mode_requested studio_requested legacy_requested configured
+  mode_requested="${DATABENCH_SWIFT_RUNTIME_MODE:-}"
+  studio_requested="${DATABENCH_ENABLE_SWIFT_STUDIO:-}"
+  legacy_requested="${DATABENCH_ENABLE_SWIFT_GPU:-}"
+  case "$mode_requested" in
+    ''|ui-only|gpu) ;;
+    *) die "DATABENCH_SWIFT_RUNTIME_MODE must be ui-only or gpu" ;;
+  esac
+  if [ -n "$mode_requested" ]; then
+    printf '%s\n' "$mode_requested"
+    return
+  fi
+  if [ -n "$legacy_requested" ]; then
+    if [ -n "$studio_requested" ]; then
+      [ "$legacy_requested" = 'true' ] && printf '%s\n' 'gpu' || printf '%s\n' 'ui-only'
+      return
+    fi
+    if [ "$legacy_requested" = 'true' ]; then
+      printf '%s\n' 'gpu'
+      return
+    fi
+  fi
+  if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
+    configured="$(sed -n 's/^DATABENCH_SWIFT_RUNTIME_MODE=//p' "$DATABENCH_SWIFT_CONFIG_FILE")"
+    if [ -n "$configured" ]; then
+      printf '%s\n' "$configured"
+      return
+    fi
+  fi
+  printf '%s\n' 'ui-only'
+}
+
+ensure_swift_config() {
+  local enabled mode current_enabled current_mode device_id credential temp
+  enabled="$(requested_swift_enabled_state)"
+  mode="$(requested_swift_runtime_mode)"
   if [ -e "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
     validate_swift_config
-    enabled="$(grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-)"
-    if [ -n "$requested" ] && [ "$requested" != "$enabled" ]; then
-      set_swift_enabled_state "$requested"
+    current_enabled="$(
+      grep -E '^DATABENCH_SWIFT_ENABLED=' "$DATABENCH_SWIFT_CONFIG_FILE" | cut -d= -f2-
+    )"
+    current_mode="$(swift_runtime_mode)"
+    if [ "$enabled" != "$current_enabled" ]; then
+      set_swift_enabled_state "$enabled"
+    fi
+    if [ "$mode" != "$current_mode" ] ||
+      ! grep -q '^DATABENCH_SWIFT_RUNTIME_MODE=' "$DATABENCH_SWIFT_CONFIG_FILE"; then
+      set_swift_runtime_mode_state "$mode"
     fi
     validate_swift_config
     return
   fi
 
-  enabled="${requested:-false}"
   device_id="${DATABENCH_SWIFT_GPU_DEVICE_ID:-0}"
   [[ "$device_id" =~ ^(0|[1-9][0-9]*)$ ]] && [ "${#device_id}" -le 4 ] ||
     die "DATABENCH_SWIFT_GPU_DEVICE_ID must be a canonical non-negative integer"
@@ -437,6 +506,7 @@ ensure_swift_config() {
   umask 077
   {
     printf 'DATABENCH_SWIFT_ENABLED=%s\n' "$enabled"
+    printf 'DATABENCH_SWIFT_RUNTIME_MODE=%s\n' "$mode"
     printf 'DATABENCH_SWIFT_GPU_DEVICE_ID=%s\n' "$device_id"
     printf 'DATABENCH_SWIFT_STUDIO_PROVIDER_CREDENTIAL=%s\n' "$credential"
     printf 'DATABENCH_SWIFT_PROVIDER_CREDENTIAL=%s\n' "$credential"
@@ -446,6 +516,34 @@ ensure_swift_config() {
   mv -f "$temp" "$DATABENCH_SWIFT_CONFIG_FILE"
   validate_swift_config
   log "wrote Swift GPU runtime configuration to $DATABENCH_SWIFT_CONFIG_FILE"
+}
+
+set_swift_runtime_mode_state() {
+  local mode="$1" temp
+  [ "$mode" = 'ui-only' ] || [ "$mode" = 'gpu' ] ||
+    die "Swift runtime mode must be ui-only or gpu"
+  [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ] ||
+    die "Swift configuration is missing: $DATABENCH_SWIFT_CONFIG_FILE"
+  temp="${DATABENCH_SWIFT_CONFIG_FILE}.tmp.$$"
+  umask 077
+  if grep -q '^DATABENCH_SWIFT_RUNTIME_MODE=' "$DATABENCH_SWIFT_CONFIG_FILE"; then
+    awk -v value="$mode" '
+      /^DATABENCH_SWIFT_RUNTIME_MODE=/ {
+        print "DATABENCH_SWIFT_RUNTIME_MODE=" value
+        next
+      }
+      { print }
+    ' "$DATABENCH_SWIFT_CONFIG_FILE" > "$temp"
+  else
+    {
+      printf 'DATABENCH_SWIFT_RUNTIME_MODE=%s\n' "$mode"
+      cat "$DATABENCH_SWIFT_CONFIG_FILE"
+    } > "$temp"
+  fi
+  chown root:root "$temp"
+  chmod 0600 "$temp"
+  mv -f "$temp" "$DATABENCH_SWIFT_CONFIG_FILE"
+  log "updated Swift runtime mode to $mode"
 }
 
 set_swift_enabled_state() {

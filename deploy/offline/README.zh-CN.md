@@ -47,7 +47,7 @@ deploy/offline/build-bundle.sh 2.0.0
 ## 首次安装
 
 目标机前置条件：Ubuntu 22.04 LTS amd64、Docker Engine 24+、Compose plugin 2.20+、至少
-12 logical CPUs、40 GiB 可见 RAM、60 GiB 系统盘和 12 GiB Databench 数据文件系统可用空间。
+6 logical CPUs、15 GiB 可见 RAM、60 GiB 系统盘和 12 GiB Databench 数据文件系统可用空间。
 Docker 的安装和升级不属于本发布包。
 
 将 `.tar.gz` 和 `.sha256` 一起复制到服务器。服务器必须位于不暴露公网的可信内网；当前没有
@@ -61,11 +61,23 @@ cd databench-offline-1.0.0-linux-amd64
 sudo env DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api ./install.sh
 ```
 
-在已安装 NVIDIA 驱动和 NVIDIA Container Toolkit 的 GPU 机上，一次性显式启用 Swift Studio：
+只查看完整原生 Swift Studio UI、不训练时，启用 UI-only 模式：
 
 ```bash
 sudo env \
   DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api \
+  DATABENCH_ENABLE_SWIFT_STUDIO=true \
+  DATABENCH_SWIFT_RUNTIME_MODE=ui-only \
+  ./install.sh
+```
+
+UI-only 不检查 NVIDIA、不要求预置模型，页面会明确显示“未检测到 GPU”。需要真实训练时才在已安装
+NVIDIA 驱动和 NVIDIA Container Toolkit 的 GPU 机上启用 GPU 模式：
+
+```bash
+sudo env \
+  DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api \
+  DATABENCH_ENABLE_SWIFT_STUDIO=true \
   DATABENCH_ENABLE_SWIFT_GPU=true \
   ./install.sh
 ```
@@ -100,9 +112,10 @@ MinIO 和 v2 cursor secret，直接写入 `/etc/databench/databench.env`，权�
 allowlist 和容量上限。该文件同样是 `root:root 0600`；native Benchmark 的远程 Dataset allowlist 在离线
 通道中固定为空。
 
-安装器总会生成 `/etc/databench/swift.env`；默认 `DATABENCH_SWIFT_ENABLED=false`。只有安装命令显式
-传入 `DATABENCH_ENABLE_SWIFT_GPU=true` 时才启动 `swift-gpu` profile。启用状态和 Provider credential
-在后续重启、备份和升级中保持稳定。
+安装器总会生成 `/etc/databench/swift.env`；默认 `DATABENCH_SWIFT_ENABLED=false`。显式
+`DATABENCH_ENABLE_SWIFT_STUDIO=true` 可启用完整 UI，`DATABENCH_SWIFT_RUNTIME_MODE=ui-only`
+不申请 GPU；只有 `runtime mode=gpu` 才执行 NVIDIA、CUDA 和离线模型检查。旧配置缺少 mode 时在升级中
+迁移为 `ui-only`。启用状态、mode 和 Provider credential 在后续重启、备份和升级中保持稳定。
 
 `DATABENCH_MCP_PUBLIC_BASE_URL=...` 只在首次创建 `/etc/databench/mcp.env` 时需要提供。文件一旦
 存在，重跑安装和正常升级都不需要再次传入。需要重跑安装时：

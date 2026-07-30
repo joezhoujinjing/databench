@@ -256,6 +256,31 @@ release_swift_enabled() {
     grep -qx 'DATABENCH_SWIFT_ENABLED=true' "$DATABENCH_SWIFT_CONFIG_FILE"
 }
 
+swift_runtime_mode() {
+  local mode
+  if [ ! -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
+    printf '%s\n' 'ui-only'
+    return
+  fi
+  mode="$(sed -n 's/^DATABENCH_SWIFT_RUNTIME_MODE=//p' "$DATABENCH_SWIFT_CONFIG_FILE")"
+  case "$mode" in
+    ''|ui-only) printf '%s\n' 'ui-only' ;;
+    gpu) printf '%s\n' 'gpu' ;;
+    *) die "Swift runtime mode must be ui-only or gpu" ;;
+  esac
+}
+
+release_swift_gpu_enabled() {
+  local release_dir="$1"
+  release_swift_enabled "$release_dir" && [ "$(swift_runtime_mode)" = 'gpu' ]
+}
+
+release_supports_swift_ui_only() {
+  local release_dir="$1"
+  [ -f "${release_dir}/compose.swift-gpu.yml" ] &&
+    grep -Fq 'profiles: ["swift-studio"]' "${release_dir}/compose.yml"
+}
+
 swift_container_exists() {
   docker inspect databench-offline-swift-studio >/dev/null 2>&1
 }
@@ -398,21 +423,31 @@ compose_for_release() {
     unset DATABENCH_VERSION DATABENCH_API_IMAGE DATABENCH_WEB_IMAGE DATABENCH_WORKER_IMAGE
     unset DATABENCH_EVALSCOPE_IMAGE DATABENCH_SWIFT_IMAGE DATABENCH_SWIFT_IMAGE_DIGEST
     unset DATABENCH_POSTGRES_IMAGE DATABENCH_MINIO_IMAGE DATABENCH_MINIO_MC_IMAGE
-    unset DATABENCH_SWIFT_ENABLED DATABENCH_SWIFT_GPU_DEVICE_ID
+    unset DATABENCH_SWIFT_ENABLED DATABENCH_SWIFT_RUNTIME_MODE DATABENCH_SWIFT_GPU_DEVICE_ID
     compose_args=(
       --project-name databench-offline \
       --env-file "${release_dir}/release.env" \
       --env-file "$DATABENCH_CONFIG_FILE" \
+      --file "${release_dir}/compose.yml" \
     )
     if release_has_swift "$release_dir"; then
       [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ] ||
         die "Swift configuration is missing: $DATABENCH_SWIFT_CONFIG_FILE"
       compose_args+=(--env-file "$DATABENCH_SWIFT_CONFIG_FILE")
       if release_swift_enabled "$release_dir"; then
-        compose_args+=(--profile swift-gpu)
+        if release_supports_swift_ui_only "$release_dir"; then
+          compose_args+=(--profile swift-studio)
+          if release_swift_gpu_enabled "$release_dir"; then
+            compose_args+=(--file "${release_dir}/compose.swift-gpu.yml")
+          fi
+        else
+          # Historical releases only have the old GPU profile. Keep it
+          # addressable for stop/backup/rollback compatibility.
+          compose_args+=(--profile swift-gpu)
+        fi
       fi
     fi
-    docker compose "${compose_args[@]}" --file "${release_dir}/compose.yml" "$@"
+    docker compose "${compose_args[@]}" "$@"
   )
 }
 
@@ -450,7 +485,7 @@ copy_release_assets() {
   local release_dir="$2"
   local item
   install -d -m 0755 "$release_dir"
-  for item in compose.yml release.env release-manifest.json images.lock SHA256SUMS RELEASE.txt \
+  for item in compose.yml compose.swift-gpu.yml release.env release-manifest.json images.lock SHA256SUMS RELEASE.txt \
     env.example mcp.env.example evalscope.env.example swift.env.example install.sh upgrade.sh rollback.sh backup.sh \
     restore.sh smoke.sh \
     databenchctl Caddyfile README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md \

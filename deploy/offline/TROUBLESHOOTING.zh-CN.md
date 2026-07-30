@@ -85,9 +85,9 @@ getconf _NPROCESSORS_ONLN
 awk '/^MemTotal:/ {printf "%.1f GiB\n", $2/1024/1024}' /proc/meminfo
 ```
 
-完整 Worker + EvalScope 离线部署最低要求 12 logical CPUs 和 40 GiB 可见 RAM。不要通过改脚本或
-环境变量绕过后继续作为生产安装；资源不足会让 Data-Juicer 作业、评测/压测、API 和存储服务争抢
-资源。应调整目标机规格后重跑安装。
+不训练、Swift UI-only 的控制面最低要求为 6 logical CPUs 和 15 GiB 可见 RAM；安装和升级默认使用
+这个门槛。显式 GPU mode 仍要求 12 logical CPUs 和 40 GiB。15 GiB 规格下不要同时运行大型
+Data-Juicer 转换和大型 EvalScope 压测，否则服务会争抢资源。
 
 ### 2.6 磁盘不足
 
@@ -371,7 +371,14 @@ df -h /srv/databench/evalscope
 
 ### 7.6 Swift GPU、Studio 或训练页面不可用
 
-安装时报 NVIDIA/CUDA 错误时检查：
+只有 `DATABENCH_SWIFT_RUNTIME_MODE=gpu` 才执行 NVIDIA/CUDA 检查。只查看界面时确认：
+
+```bash
+sudo grep '^DATABENCH_SWIFT_' /etc/databench/swift.env
+```
+
+其中应包含 `DATABENCH_SWIFT_ENABLED=true` 和
+`DATABENCH_SWIFT_RUNTIME_MODE=ui-only`。GPU mode 安装报 NVIDIA/CUDA 错误时再检查：
 
 ```bash
 nvidia-smi -L
@@ -545,9 +552,10 @@ grep '^swift_enabled=' /srv/databench/backups/<generation>/backup-manifest
 sudo grep '^DATABENCH_SWIFT_ENABLED=' /etc/databench/swift.env
 ```
 
-两者必须一致。干净机器恢复 enabled generation 时，先预置离线模型并以
-`DATABENCH_ENABLE_SWIFT_GPU=true` 安装匹配 release；disabled generation 使用默认关闭安装。不要绕过
-该检查，否则 Catalog Session 与本地 workspace 可能来自不同 generation。
+两者必须一致。干净机器恢复 enabled generation 时，可以先用
+`DATABENCH_ENABLE_SWIFT_STUDIO=true DATABENCH_SWIFT_RUNTIME_MODE=ui-only` 安装匹配 release；
+只有恢复后要训练时才预置模型并切换 `gpu`。disabled generation 使用默认关闭安装。不要绕过该检查，
+否则 Catalog Session 与本地 workspace 可能来自不同 generation。
 
 ## 11. 升级和回滚问题
 

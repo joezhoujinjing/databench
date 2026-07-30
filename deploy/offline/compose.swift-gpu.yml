@@ -1,0 +1,15 @@
+services:
+  swift-studio:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${DATABENCH_SWIFT_GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import json,urllib.request; body=json.load(urllib.request.urlopen('http://127.0.0.1:7861/runtime',timeout=3)); raise SystemExit(0 if body.get('ready') is True and body.get('gpu_available') is True else 1)\"",
+        ]

@@ -155,15 +155,16 @@ deploy/offline/build-bundle.sh 2.0.0
 - `uname -m` 为 `x86_64`；
 - Docker Engine 24.0.0 或更新版本；
 - Docker Compose plugin 2.20.0 或更新版本；
-- 至少 12 logical CPUs；
-- `/proc/meminfo` 至少显示 40 GiB RAM；
+- UI-only/不训练模式至少 6 logical CPUs；
+- UI-only/不训练模式下 `/proc/meminfo` 至少显示 15 GiB RAM；
 - 根文件系统至少 60 GiB 可用空间；
 - `/srv/databench` 所在文件系统至少 12 GiB 可用空间；
 - TCP 80 未被其他容器发布；
 - 已确定 agent 可达的稳定内网 IP 或 DNS，用于 `http(s)://<host>/api`；
 - 管理员具备 `sudo` 权限。
 
-启用 Swift GPU 时还要求 NVIDIA 驱动、NVIDIA Container Toolkit 和已经离线预置的模型目录；安装器会
+显式启用 Swift GPU mode 时提高到 12 logical CPUs/40 GiB RAM，并要求 NVIDIA 驱动、NVIDIA
+Container Toolkit 和已经离线预置的模型目录；安装器会
 运行一次短暂 `torch.cuda.is_available()` 检查，不执行训练。
 
 试运行容量建议为 12 vCPU、48 GiB RAM、100 GiB 系统盘。真实生产规格应根据最大数据集、
@@ -190,7 +191,7 @@ docker ps --filter publish=80 --format 'table {{.Names}}\t{{.Ports}}'
 - `x86_64`；
 - Docker server 不低于 24；
 - Compose 不低于 2.20；
-- logical CPUs 不低于 12，RAM 不低于 40 GiB；
+- UI-only/不训练模式 logical CPUs 不低于 6，RAM 不低于 15 GiB；
 - 根文件系统可用空间不低于 60 GiB；
 - `/srv/databench` 所在文件系统可用空间不低于 12 GiB；
 - 端口检查没有其他容器占用 80。
@@ -249,7 +250,18 @@ GPU 机显式启用：
 ```bash
 sudo env \
   DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api \
+  DATABENCH_ENABLE_SWIFT_STUDIO=true \
   DATABENCH_ENABLE_SWIFT_GPU=true \
+  ./install.sh
+```
+
+控制面只需要显示 Swift 原生界面时使用：
+
+```bash
+sudo env \
+  DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api \
+  DATABENCH_ENABLE_SWIFT_STUDIO=true \
+  DATABENCH_SWIFT_RUNTIME_MODE=ui-only \
   ./install.sh
 ```
 
@@ -692,7 +704,8 @@ curl -fsS http://127.0.0.1/api/version
 - [ ] 归档外层 SHA-256 为 `OK`；
 - [ ] 目标机为 Ubuntu 22.04 amd64；
 - [ ] Docker/Compose 版本满足最低要求；
-- [ ] CPU、RAM、系统盘、Databench 数据盘可用空间分别满足 12 logical CPUs、40 GiB、60 GiB、
+- [ ] UI-only/不训练模式的 CPU、RAM、系统盘、Databench 数据盘可用空间分别满足 6 logical CPUs、
+      15 GiB、60 GiB、
       12 GiB 的最低要求；
 - [ ] 首次安装使用稳定 public base 执行 `install.sh`，并一次成功；
 - [ ] `databenchctl version` 与发布版本一致；

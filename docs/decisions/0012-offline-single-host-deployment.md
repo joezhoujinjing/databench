@@ -15,6 +15,9 @@
 - **Swift 修订:** [ADR 0018](0018-ms-swift-native-gradio-studio.md) 的离线交付修订增加
   第八张、默认关闭的 Swift CUDA 镜像。它只在 operator 显式启用 `swift-gpu` profile 时使用
   NVIDIA GPU，不替换第六张 CPU-only Worker；模型权重由 operator 预置，不进入通用发布包
+- **UI-only 修订:** owner 于 2026-07-30 要求控制面保留完整 Swift Studio 页面但不训练。
+  `DATABENCH_SWIFT_ENABLED=true` 不再等同于必须申请 GPU；`runtime_mode=ui-only` 启动完整
+  Provider/Gradio、跳过 NVIDIA 与模型预置检查，`runtime_mode=gpu` 才保留原 GPU gate。
 - **详细方案:**
   [内网单机离线发布方案](../deployment/offline-single-host-plan.zh-CN.md)
 
@@ -33,8 +36,8 @@ Ubuntu 服务器；Docker 已预装，允许维护停机，数据规模初期较
    显式启用单 dispatcher/单 Worker 的 `basic-clean@1`。Worker 不持有数据库或对象存储长期
    凭据，只使用 API 签发的 exact-key 短期 URL；临时任务文件位于有界 tmpfs。发布包仍不包含
    Docker bootstrap。ADR 0018 允许发布包额外携带 Swift Studio CUDA 镜像；runtime 默认关闭，
-   `DATABENCH_ENABLE_SWIFT_GPU=true` 时才启用单实例、单 GPU Studio。安装器只做一次快速
-   NVIDIA/容器内 Torch CUDA 检查，不在安装期执行真实训练。
+   `DATABENCH_ENABLE_SWIFT_STUDIO=true` 时可启用单实例 Studio。默认 UI-only mode 不申请 GPU；
+   显式 `runtime_mode=gpu` 时才做一次快速 NVIDIA/容器内 Torch CUDA 检查，不在安装期执行真实训练。
 3. ADR 0008 的 production OSS 选择继续适用于现有阿里云环境；本 ADR 允许 MinIO 作为隔离
    内网单机 production 数据面。业务代码仍只通过 `Store` 接口和
    `DATABENCH_OBJECT_STORE=s3` 选择后端。MinIO bucket 不启用 versioning，API 使用

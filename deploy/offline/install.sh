@@ -41,7 +41,7 @@ log "loading offline images"
 docker load --input "${SCRIPT_DIR}/images.tar" >/dev/null
 validate_images_lock \
   "${SCRIPT_DIR}/images.lock" true "$(release_image_count "$SCRIPT_DIR")"
-if release_swift_enabled "$RELEASE_DIR"; then
+if release_swift_gpu_enabled "$RELEASE_DIR"; then
   verify_swift_model_preload "$RELEASE_DIR"
   verify_swift_gpu_runtime "$RELEASE_DIR"
 fi
@@ -78,8 +78,11 @@ printf '\nDatabench installation succeeded\n\n'
 printf 'URL: %s\n' "${MCP_PUBLIC_BASE_URL%/api}"
 printf 'Configuration: %s\n' "$DATABENCH_CONFIG_FILE"
 if release_swift_enabled "$RELEASE_DIR"; then
-  printf 'Swift GPU configuration: %s\n' "$DATABENCH_SWIFT_CONFIG_FILE"
-  printf 'Offline model directory: %s/swift-models\n' "$DATABENCH_DATA_ROOT"
+  printf 'Swift Studio configuration: %s\n' "$DATABENCH_SWIFT_CONFIG_FILE"
+  printf 'Swift runtime mode: %s\n' "$(swift_runtime_mode)"
+  if release_swift_gpu_enabled "$RELEASE_DIR"; then
+    printf 'Offline model directory: %s/swift-models\n' "$DATABENCH_DATA_ROOT"
+  fi
 fi
 printf 'MCP endpoint: %s/mcp\n' "$MCP_PUBLIC_BASE_URL"
 printf 'Data: %s\n' "$DATABENCH_DATA_ROOT"

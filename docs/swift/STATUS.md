@@ -33,10 +33,14 @@ integration_mode: native-full-gradio
 - **控制面状态:** 没有 Training Run/Attempt；原生任务仍由 ms-swift Gradio 管理
 - **发布声明:** 不改变 V16/V17、公共云 D3、ADR 0012 或 EvalScope E8/E9
 - **离线交付:** ADR 0012 通道已接入第八张、默认关闭的 Swift CUDA 镜像；显式
-  `DATABENCH_ENABLE_SWIFT_GPU=true` 才启用 `swift-gpu` profile。API 使用当次 bundle 的真实 local
-  image digest；Caddy、Provider/Gradio doctor、NVIDIA 快检、旧五/六/七镜像回滚、原生任务 idle
+  `DATABENCH_ENABLE_SWIFT_STUDIO=true` 可启用 UI-only Studio，只有 `runtime_mode=gpu` 才叠加
+  NVIDIA profile。API 使用当次 bundle 的真实 local image digest；Caddy、Provider/Gradio doctor、
+  GPU mode NVIDIA 快检、旧五/六/七镜像回滚、原生任务 idle
   fence、Session workspace 备份/恢复和 EvalScope 私网 Deployment allowlist 均已接通。基础模型权重
   不进入 bundle，由 operator 预置到 `/srv/databench/swift-models`
+- **UI-only 修订:** owner 于 2026-07-30 要求控制面保持 Studio 可见但不训练。离线配置新增
+  `DATABENCH_SWIFT_RUNTIME_MODE=ui-only|gpu`；UI-only 保持 enabled、完整 Gradio/Gateway/Session，
+  不申请或检查 NVIDIA，GPU mode 保留原 CUDA、模型预置与严格健康 gate。
 
 ## Owner 决策
 

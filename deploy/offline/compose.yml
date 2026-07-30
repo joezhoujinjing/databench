@@ -154,7 +154,7 @@ services:
 
   swift-studio:
     <<: *service-defaults
-    profiles: ["swift-gpu"]
+    profiles: ["swift-studio"]
     image: ${DATABENCH_SWIFT_IMAGE:?missing DATABENCH_SWIFT_IMAGE}
     container_name: databench-offline-swift-studio
     restart: unless-stopped
@@ -179,18 +179,11 @@ services:
     shm_size: 8gb
     stop_grace_period: 120s
     pids_limit: 4096
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["${DATABENCH_SWIFT_GPU_DEVICE_ID:-0}"]
-              capabilities: [gpu]
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import json,urllib.request; body=json.load(urllib.request.urlopen('http://127.0.0.1:7861/runtime',timeout=3)); raise SystemExit(0 if body.get('ready') is True and body.get('gpu_available') is True else 1)\"",
+          "python -c \"import json,urllib.request; body=json.load(urllib.request.urlopen('http://127.0.0.1:7861/runtime',timeout=3)); raise SystemExit(0 if body.get('ready') is True else 1)\"",
         ]
       interval: 15s
       timeout: 5s
