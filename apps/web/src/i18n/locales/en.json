@@ -220,10 +220,17 @@
       "trashEmpty": "Trash is empty.",
       "restore": "Restore",
       "restoring": "Restoring…",
-      "loadMore": "Load more",
       "loadingMore": "Loading more datasets…",
       "loadedCount": "{{count}} datasets loaded",
-      "totalCount": "{{count}} datasets"
+      "totalCount": "{{count}} datasets",
+      "copyName": "Copy dataset name",
+      "copyNameSuccess": "Dataset name copied",
+      "openDataset": "Open dataset {{name}}",
+      "pagination": "Dataset pagination",
+      "previousPage": "Previous",
+      "nextPage": "Next",
+      "pageStatus": "Page {{current}} of {{total}}",
+      "pageStatusMore": "Page {{current}} of {{total}}+"
     },
     "common": {
       "none": "None",

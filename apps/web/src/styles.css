@@ -1,31 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
-  --background: #010202;
-  --foreground: #f3f1ea;
-  --surface: #060707;
-  --surface-raised: #090a0d;
-  --surface-soft: #0d0f13;
-  --surface-hover: #11141a;
-  --border: #20242b;
-  --border-strong: #343846;
-  --primary: #f08a3c;
-  --primary-hover: #ff9f5a;
-  --primary-foreground: #160b05;
-  --accent: #29150b;
-  --accent-foreground: #ffc49a;
-  --muted-foreground: #aaa69f;
-  --dim-foreground: #77736b;
-  --success: #36d07d;
-  --warning: #f4c95d;
-  --danger: #ff6b6b;
-  --code: #050607;
-  --code-gutter: #0a0b0e;
+  color-scheme: light;
+  --background: #f3efe5;
+  --chrome: #faf7ef;
+  --foreground: #211f1a;
+  --surface: #fffcf5;
+  --surface-raised: #fffdf8;
+  --surface-soft: #eee8dc;
+  --surface-hover: #e8e0d2;
+  --border: #d7cdbb;
+  --border-strong: #beb29d;
+  --primary: #c95f17;
+  --primary-hover: #ad4d0e;
+  --primary-foreground: #ffffff;
+  --accent: #f2dfcf;
+  --accent-foreground: #8b3e10;
+  --muted-foreground: #675f53;
+  --dim-foreground: #857b6c;
+  --success: #168a4b;
+  --warning: #a86b00;
+  --danger: #c83f3f;
+  --code: #f0ebe0;
+  --code-gutter: #e4dccf;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-chrome: var(--chrome);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
@@ -58,10 +60,10 @@ html::before {
   pointer-events: none;
   content: "";
   background:
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.035), transparent 6.5rem),
-    radial-gradient(120rem 72rem at 50% -30rem, rgba(240, 138, 60, 0.14), transparent 52%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.52), transparent 6.5rem),
+    radial-gradient(120rem 72rem at 50% -30rem, rgba(201, 95, 23, 0.08), transparent 52%),
+    linear-gradient(90deg, rgba(33, 31, 26, 0.025) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(33, 31, 26, 0.02) 1px, transparent 1px);
   background-size:
     auto,
     auto,

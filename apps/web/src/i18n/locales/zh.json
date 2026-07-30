@@ -220,10 +220,17 @@
       "trashEmpty": "回收站为空。",
       "restore": "恢复",
       "restoring": "正在恢复…",
-      "loadMore": "加载更多",
       "loadingMore": "正在加载更多数据集…",
       "loadedCount": "已加载 {{count}} 个数据集",
-      "totalCount": "共 {{count}} 个数据集"
+      "totalCount": "共 {{count}} 个数据集",
+      "copyName": "复制数据集名称",
+      "copyNameSuccess": "已复制数据集名称",
+      "openDataset": "打开数据集 {{name}}",
+      "pagination": "数据集分页",
+      "previousPage": "上一页",
+      "nextPage": "下一页",
+      "pageStatus": "第 {{current}} / {{total}} 页",
+      "pageStatusMore": "第 {{current}} / {{total}}+ 页"
     },
     "common": {
       "none": "无",

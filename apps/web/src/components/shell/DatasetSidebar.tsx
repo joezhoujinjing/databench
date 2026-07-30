@@ -13,7 +13,7 @@ export function DatasetSidebar({ activeSection }: { activeSection: DatasetNaviga
   const { t } = useTranslation()
 
   return (
-    <aside className="sticky top-20 min-h-[calc(100dvh-5rem)] self-start border-border border-r py-10 pr-7 max-lg:static max-lg:min-h-0 max-lg:border-r-0 max-lg:border-b max-lg:py-0 max-lg:pr-0">
+    <aside className="sticky top-20 min-h-[calc(100dvh-5rem)] self-start border-border border-r bg-chrome/45 py-10 pr-7 max-lg:static max-lg:min-h-0 max-lg:border-r-0 max-lg:border-b max-lg:bg-transparent max-lg:py-0 max-lg:pr-0">
       <p className="mb-7 px-3 font-semibold text-base tracking-tight max-lg:sr-only">
         {t('nav.datasets')}
       </p>

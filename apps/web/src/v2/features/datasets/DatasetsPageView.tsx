@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { Database, Plus, RotateCcw, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Database, Plus, RotateCcw, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { CopyTextButton } from '@/components/common/CopyTextButton.js'
 import { EmptyState, ErrorState, Spinner } from '@/components/common/State.js'
 import { Badge } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
@@ -14,34 +15,46 @@ import { V2MutationError } from '../../components/V2MutationError.js'
 export type DatasetListMode = 'active' | 'trash'
 
 export function V2DatasetsPageView({
+  canNextPage,
+  canPreviousPage,
+  currentPage,
   error,
   filter,
-  hasNextPage,
+  hasMoreData,
   isError,
   isFetchingNextPage,
   isLoading,
+  loadedPageCount,
   mode,
   onFilterChange,
-  onLoadMore,
   onModeChange,
+  onNextPage,
+  onPreviousPage,
   onRestore,
   restoreError,
   restoringName,
+  rowCount,
   rows,
 }: {
+  canNextPage: boolean
+  canPreviousPage: boolean
+  currentPage: number
   error: unknown
   filter: string
-  hasNextPage: boolean
+  hasMoreData: boolean
   isError: boolean
   isFetchingNextPage: boolean
   isLoading: boolean
+  loadedPageCount: number
   mode: DatasetListMode
   onFilterChange(value: string): void
-  onLoadMore(): void
   onModeChange(value: DatasetListMode): void
+  onNextPage(): void
+  onPreviousPage(): void
   onRestore(row: DeletedRefMetadataV2): void
   restoreError: unknown
   restoringName: string | null
+  rowCount: number
   rows: readonly (DeletedRefMetadataV2 | RefMetadataV2)[]
 }) {
   const { t } = useTranslation()
@@ -89,9 +102,9 @@ export function V2DatasetsPageView({
           />
         </div>
         <div className="shrink-0 text-base text-muted-foreground tabular-nums max-sm:hidden">
-          {hasNextPage
-            ? t('v2.datasets.loadedCount', { count: formatInteger(rows.length) })
-            : t('v2.datasets.totalCount', { count: formatInteger(rows.length) })}
+          {hasMoreData
+            ? t('v2.datasets.loadedCount', { count: formatInteger(rowCount) })
+            : t('v2.datasets.totalCount', { count: formatInteger(rowCount) })}
         </div>
       </div>
 
@@ -116,24 +129,37 @@ export function V2DatasetsPageView({
         ) : null}
         {rows.map((row) =>
           mode === 'active' || !('deleted_at' in row) ? (
-            <Link
-              className={`grid min-h-16 ${gridClass} items-center gap-5 border-border border-b px-6 py-4 transition-colors last:border-b-0 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none max-md:grid-cols-1`}
+            <div
+              className={`group relative grid min-h-16 ${gridClass} items-center gap-5 border-border border-b px-6 py-4 last:border-b-0 max-md:grid-cols-1`}
               key={row.name}
-              params={{ ref: row.name }}
-              to="/datasets/$ref"
             >
-              <DatasetIdentityCells row={row} />
-              <span className="text-[0.95rem] text-muted-foreground">
+              <Link
+                aria-label={t('v2.datasets.openDataset', { name: row.name })}
+                className="absolute inset-0 z-0 transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-inset"
+                params={{ ref: row.name }}
+                to="/datasets/$ref"
+              />
+              <DatasetIdentityCells
+                copiedLabel={t('v2.datasets.copyNameSuccess')}
+                copyLabel={t('v2.datasets.copyName')}
+                row={row}
+              />
+              <span className="pointer-events-none relative z-10 text-[0.95rem] text-muted-foreground">
                 {row.updated_at}
                 {row.message ? <Badge className="ml-2">{row.message}</Badge> : null}
               </span>
-            </Link>
+            </div>
           ) : (
             <div
-              className={`grid min-h-16 ${gridClass} items-center gap-5 border-border border-b px-6 py-4 last:border-b-0 max-md:grid-cols-1`}
+              className={`group grid min-h-16 ${gridClass} items-center gap-5 border-border border-b px-6 py-4 last:border-b-0 max-md:grid-cols-1`}
               key={row.name}
             >
-              <DatasetIdentityCells row={row} versionLink />
+              <DatasetIdentityCells
+                copiedLabel={t('v2.datasets.copyNameSuccess')}
+                copyLabel={t('v2.datasets.copyName')}
+                row={row}
+                versionLink
+              />
               <span className="text-[0.95rem] text-muted-foreground">{row.deleted_at}</span>
               <Button
                 disabled={restoringName === row.name}
@@ -150,32 +176,87 @@ export function V2DatasetsPageView({
         )}
       </Surface>
 
-      {hasNextPage ? (
-        <Button disabled={isFetchingNextPage} onClick={onLoadMore} type="button" variant="outline">
-          {isFetchingNextPage ? t('v2.datasets.loadingMore') : t('v2.datasets.loadMore')}
-        </Button>
+      {!isLoading && !isError && rowCount > 0 ? (
+        <nav
+          aria-label={t('v2.datasets.pagination')}
+          className="flex items-center justify-end gap-3"
+        >
+          <Button
+            aria-label={t('v2.datasets.previousPage')}
+            disabled={!canPreviousPage || isFetchingNextPage}
+            onClick={onPreviousPage}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <ChevronLeft aria-hidden="true" size={15} />
+            {t('v2.datasets.previousPage')}
+          </Button>
+          <span
+            aria-live="polite"
+            className="min-w-32 text-center text-muted-foreground text-sm tabular-nums"
+          >
+            {isFetchingNextPage
+              ? t('v2.datasets.loadingMore')
+              : hasMoreData
+                ? t('v2.datasets.pageStatusMore', {
+                    current: currentPage,
+                    total: loadedPageCount,
+                  })
+                : t('v2.datasets.pageStatus', {
+                    current: currentPage,
+                    total: loadedPageCount,
+                  })}
+          </span>
+          <Button
+            aria-label={t('v2.datasets.nextPage')}
+            disabled={!canNextPage || isFetchingNextPage}
+            onClick={onNextPage}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {t('v2.datasets.nextPage')}
+            <ChevronRight aria-hidden="true" size={15} />
+          </Button>
+        </nav>
       ) : null}
     </PageShell>
   )
 }
 
 function DatasetIdentityCells({
+  copiedLabel,
+  copyLabel,
   row,
   versionLink = false,
 }: {
+  copiedLabel: string
+  copyLabel: string
   row: DeletedRefMetadataV2 | RefMetadataV2
   versionLink?: boolean
 }) {
   const version = (
-    <span className="min-w-0 font-mono text-dim-foreground text-sm" title={row.version}>
+    <span
+      className={`relative z-10 min-w-0 font-mono text-dim-foreground text-sm ${versionLink ? '' : 'pointer-events-none'}`}
+      title={row.version}
+    >
       {ellipsizeMiddle(row.version, 16)}
     </span>
   )
   return (
     <>
-      <span className="flex items-center gap-3 font-medium text-base">
+      <span className="pointer-events-none relative z-10 flex min-w-0 items-center gap-3 font-medium text-base">
         <Database aria-hidden="true" className="text-primary" size={16} />
-        {row.name}
+        <span className="min-w-0 truncate" title={row.name}>
+          {row.name}
+        </span>
+        <CopyTextButton
+          className="pointer-events-auto -mr-1"
+          copiedLabel={copiedLabel}
+          label={copyLabel}
+          text={row.name}
+        />
       </span>
       {versionLink ? (
         <Link params={{ ref: row.version }} to="/datasets/$ref">

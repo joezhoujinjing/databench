@@ -5,17 +5,20 @@ import { cn } from '@/lib/utils.js'
 export function CopyTextButton({
   children,
   className,
+  copiedLabel,
   label = 'Copy',
   onClick,
   text,
 }: {
   children?: ReactNode
   className?: string
+  copiedLabel?: string
   label?: string
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void
   text: string
 }) {
   const [copied, setCopied] = useState(false)
+  const currentLabel = copied ? (copiedLabel ?? `${label} copied`) : label
 
   function handleClick(event: MouseEvent<HTMLButtonElement>) {
     onClick?.(event)
@@ -29,14 +32,14 @@ export function CopyTextButton({
 
   return (
     <button
-      aria-label={copied ? `${label} copied` : label}
+      aria-label={currentLabel}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-[4px] text-dim-foreground transition hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary',
         children ? 'h-10 gap-2 px-3 text-sm' : 'size-7',
         className,
       )}
       onClick={handleClick}
-      title={copied ? `${label} copied` : label}
+      title={currentLabel}
       type="button"
     >
       {copied ? (
