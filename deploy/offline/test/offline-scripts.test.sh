@@ -84,6 +84,9 @@ grep -Fq 'DATABENCH_EVALSCOPE_ENABLED: "true"' "${SCRIPT_DIR}/compose.yml" ||
 grep -Fq 'DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS: "true"' \
   "${SCRIPT_DIR}/compose.yml" ||
   fail 'offline API does not enable the reviewed intranet HTTP document fallback'
+grep -Fq 'ENV DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS=true' \
+  "${SCRIPT_DIR}/Dockerfile.api" ||
+  fail 'offline API image does not preserve the intranet HTTP document fallback across incremental updates'
 grep -Fq 'DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: "http://evalscope:9000"' \
   "${SCRIPT_DIR}/compose.yml" || fail 'offline API does not use the private EvalScope origin'
 grep -Fq '/srv/databench/evalscope/outputs:/var/lib/evalscope/outputs' \
