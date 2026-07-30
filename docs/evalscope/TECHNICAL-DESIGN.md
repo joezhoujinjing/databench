@@ -855,7 +855,9 @@ EvalScope 内部处理边界。
 
 ### 8.2 Task ID 和 invoke
 
-- Web 使用 `crypto.randomUUID()` 构造 `eval_<uuid>` / `perf_<uuid>`，不再使用毫秒时间戳；
+- Web 使用 Web Crypto 构造 `eval_<uuid>` / `perf_<uuid>`：优先调用
+  `crypto.randomUUID()`；在受控内网 HTTP 等不暴露该方法的上下文中，使用
+  `crypto.getRandomValues()` 生成同格式 UUID v4；禁止退化为毫秒时间戳或 `Math.random()`；
 - EvalScope 后端执行 character/length/basename allowlist；
 - `EvalScope-Task-Id` 是 provider task locator，不是授权凭据，也不单独构成幂等键；
 - Databench source payload 包含 integration envelope，EvalScope 在 `TaskConfig.from_dict()` 前移除；

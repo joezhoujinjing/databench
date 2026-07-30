@@ -227,8 +227,9 @@ v2-status/peers/offline/parity 和 `git diff --check` 均通过；`evalscope:par
   outside-click；native `dataset_args` 保留 raw JSON，服务端 locator admission error 可回到嵌套字段；
 - Databench Dataset source 完成 Ref → exact version → inspect eligibility/fidelity → reference target →
   provider re-inspect/export → callback 的闭环；Dataset detail 可直接进入已预选的 Evaluation task；
-- task runner 使用 UUID、重复提交保护、invoke/polling AbortController、增量 log、degraded state、stop、
-  terminal report 和刷新恢复；服务重启后 persisted terminal 重放，失联任务确定性收敛为
+- task runner 使用 Web Crypto UUID（`randomUUID()` 可用时优先，否则由 `getRandomValues()` 生成同格式
+  UUID v4，以兼容受控内网 HTTP）、重复提交保护、invoke/polling AbortController、增量 log、degraded
+  state、stop、terminal report 和刷新恢复；服务重启后 persisted terminal 重放，失联任务确定性收敛为
   `provider_interrupted`；
 - 报告新标签页只进入 Databench opaque viewer；iframe 固定 `sandbox="allow-scripts"`，Plotly 使用本地固定
   asset、nonce CSP 和 `displaylogo=false`；

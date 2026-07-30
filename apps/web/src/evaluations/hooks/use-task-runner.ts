@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { type EvalScopeClient, evalScopeClient } from '../api/client.js'
 import { EvalScopeApiError, isEvalScopeApiError } from '../api/errors.js'
 import type { GeneratedDocumentDescriptor } from '../api/schemas.js'
+import { createProviderTaskId } from '../domain/tasks/id.js'
 import {
   INITIAL_TASK_RUNNER_STATE,
   isTerminalPhase,
@@ -172,7 +173,7 @@ export function useTaskRunner({
       if (submissionLockedRef.current) return null
       submissionLockedRef.current = true
       abortActiveRequests()
-      const taskId = `${kind}_${crypto.randomUUID()}`
+      const taskId = createProviderTaskId(kind)
       activeTaskRef.current = taskId
       dispatch({ resumed: false, taskId, type: 'start' })
       onTaskIdChange?.(taskId)

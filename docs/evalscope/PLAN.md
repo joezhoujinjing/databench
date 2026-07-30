@@ -262,7 +262,8 @@ E4 只建立可信迁移底座，不用占位页冒充功能 parity。
 - Databench Dataset source selector：Ref/exact version/task type/target；
 - inspect eligibility/fidelity review；
 - source switch payload isolation；
-- `crypto.randomUUID()` provider task IDs；
+- Web Crypto provider task IDs：优先 `crypto.randomUUID()`，受控内网 HTTP 下使用
+  `crypto.getRandomValues()` 生成同格式 UUID v4，禁止时间戳或 `Math.random()` fallback；
 - invoke/progress/log/stop/report；
 - report action 不生成 raw HTML URL；保留上游“在新标签页打开”，使用
   `<a target="_blank" rel="noopener noreferrer">` 打开 Databench `/evaluations/viewer?document=<opaque-id>`
