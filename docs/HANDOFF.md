@@ -25,7 +25,8 @@
   Owner 于 2026-07-29 批准先合并，并由 owner 后续手工补该目标机证据；GE9 不因此标记为 passed。
   Owner 于 2026-07-30 追加精确基线绑定的增量发布：完整八镜像包继续负责首次安装与恢复基线，
   `build-update-bundle.sh` 只构建变化的应用镜像；目标机仍执行 `upgrade.sh` 并合成完整可回滚
-  release。增量包不能空机安装或跨版本跳装。
+  release。增量包不能空机安装或跨版本跳装。同日 owner 确认升级不再重复执行首次安装的
+  CPU/RAM/磁盘固定容量 gate；平台、Docker/Compose、端口和显式 GPU runtime 检查保持。
 - ADR 0017 EvalScope 原生 UI 集成已接受并开始实施。E0 已固定 upstream commit、183 个 Web source
   文件、60 个能力、default-deny API 路由、五类 Benchmark fixture 和 Plotly 证据；E1 已完成
   `evalscope-general-qa@1.0.0` 三种 reference profile、确定性 JSONL、eligibility/fidelity 与真实 exact

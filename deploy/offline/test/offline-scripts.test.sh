@@ -137,6 +137,14 @@ grep -Fq '增量升级包' "${SCRIPT_DIR}/DEPLOYMENT-GUIDE.zh-CN.md" ||
   fail 'offline incremental target upgrade entrypoint is missing'
 [ -f "${SCRIPT_DIR}/lib/update-manifest.sh" ] ||
   fail 'offline incremental update manifest validator is missing'
+grep -Fq 'offline_preflight install' "${SCRIPT_DIR}/install.sh" ||
+  fail 'offline install does not enforce the installation capacity preflight'
+grep -Fq 'offline_preflight upgrade' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline full upgrade does not select the upgrade preflight'
+grep -Fq 'offline_preflight upgrade' "${SCRIPT_DIR}/upgrade-update.sh" ||
+  fail 'offline incremental upgrade does not select the upgrade preflight'
+grep -Fq 'if [ "$operation" = '\''install'\'' ]; then' "${SCRIPT_DIR}/lib/preflight.sh" ||
+  fail 'offline preflight does not limit fixed capacity gates to installation'
 [ "$(grep -Ec '^[[:space:]]*log([[:space:]]|$)' "${SCRIPT_DIR}/Caddyfile")" -eq 1 ] ||
   fail 'Caddy must configure exactly one redacted runtime logger and no access logger'
 grep -Fq 'format filter' "${SCRIPT_DIR}/Caddyfile" ||

@@ -19,7 +19,7 @@ verify_outer_bundle "$SCRIPT_DIR"
 verify_inner_bundle "$SCRIPT_DIR"
 validate_release_contract "$SCRIPT_DIR"
 TARGET_VERSION="$DATABENCH_VERSION"
-offline_preflight
+offline_preflight install
 acquire_operation_lock
 
 if [ -L "$DATABENCH_CURRENT_LINK" ]; then

@@ -461,6 +461,11 @@ PORT=8000
 要求 `nvidia-smi` 可枚举所选 GPU，并要求 NVIDIA Container Toolkit 能让打包镜像执行
 `torch.cuda.is_available()`；UI-only 不执行 NVIDIA 检查，安装器也不做耗时训练验证。
 
+已经安装并正常运行的环境在普通完整包或增量包升级时不再执行 CPU/RAM/磁盘固定容量门槛；
+升级仍硬性检查 Ubuntu/amd64、Docker/Compose 版本、端口冲突，以及显式 GPU mode 的 NVIDIA
+runtime。备份或镜像写入实际空间不足仍会在激活目标版本前失败并恢复旧版；容量规划由
+operator 持续监控，不通过修改升级脚本绕过其他检查。
+
 ## 9. 升级、回滚和版本保留
 
 ### 9.1 升级入口

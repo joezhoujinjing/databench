@@ -85,9 +85,11 @@ getconf _NPROCESSORS_ONLN
 awk '/^MemTotal:/ {printf "%.1f GiB\n", $2/1024/1024}' /proc/meminfo
 ```
 
-不训练、Swift UI-only 的控制面最低要求为 6 logical CPUs 和 15 GiB 可见 RAM；安装和升级默认使用
-这个门槛。显式 GPU mode 仍要求 12 logical CPUs 和 40 GiB。15 GiB 规格下不要同时运行大型
-Data-Juicer 转换和大型 EvalScope 压测，否则服务会争抢资源。
+不训练、Swift UI-only 的控制面首次安装最低要求为 6 logical CPUs 和 15 GiB 可见 RAM；显式
+GPU mode 首次安装要求 12 logical CPUs 和 40 GiB。已经正常运行的安装环境在升级时不再执行
+CPU/RAM/磁盘固定容量门槛，但仍检查系统、架构、Docker 和端口；备份或镜像写入实际空间不足
+仍会使升级失败并恢复旧版。15 GiB 规格下不要同时运行大型 Data-Juicer 转换和大型 EvalScope
+压测，否则服务会争抢资源。
 
 ### 2.6 磁盘不足
 

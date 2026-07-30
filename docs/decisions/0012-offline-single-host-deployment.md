@@ -22,6 +22,9 @@
   完整包继续作为首次安装、运行契约变化和周期性恢复基线；新增精确绑定
   `base_version + base bundle SHA-256` 的增量升级包，只携带变化的应用镜像。增量包没有
   `install.sh`，只能在已安装精确基线的目标机执行 `upgrade.sh`。
+- **升级 preflight 修订:** owner 于 2026-07-30 确认已经运行的安装环境升级时不再重复执行
+  CPU/RAM/磁盘固定容量门槛。首次安装仍保留容量 gate；完整包和增量包升级继续硬性检查
+  平台、Docker/Compose、端口，以及显式 GPU mode 的 NVIDIA runtime。
 - **详细方案:**
   [内网单机离线发布方案](../deployment/offline-single-host-plan.zh-CN.md)
 

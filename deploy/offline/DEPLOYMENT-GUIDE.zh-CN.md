@@ -579,6 +579,10 @@ sha256sum -c databench-offline-1.1.0-linux-amd64.tar.gz.sha256
 若使用增量包，还必须确认当前版本就是文件名中的 base version；脚本会进一步校验当前安装记录中
 原始发布包的 SHA-256，不能跨版本跳装。
 
+升级不再执行首次安装的 CPU/RAM/磁盘固定容量门槛。它仍会检查 Ubuntu/amd64、
+Docker/Compose 版本、TCP 80，以及显式 GPU mode 所需的 NVIDIA runtime；备份或镜像写入实际
+空间不足仍会在激活目标版本前失败并恢复旧版。
+
 ### 11.2 执行升级
 
 ```bash

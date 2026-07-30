@@ -37,7 +37,7 @@ INSTALLED_BASE_SHA256="$(sed -n '1p' "${PREVIOUS_RELEASE}/release-bundle.sha256"
 [ "$INSTALLED_BASE_SHA256" = "$UPDATE_BASE_BUNDLE_SHA256" ] ||
   die "installed release differs from the exact base bundle required by this update"
 
-offline_preflight
+offline_preflight upgrade
 acquire_operation_lock
 ensure_secret_config
 ensure_mcp_config

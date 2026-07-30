@@ -21,7 +21,7 @@ validate_release_contract "$SCRIPT_DIR"
 TARGET_VERSION="$DATABENCH_VERSION"
 TARGET_ROLLBACK_MODE="$MANIFEST_ROLLBACK_MODE"
 TARGET_MIN_UPGRADE_FROM="$MANIFEST_MIN_UPGRADE_FROM"
-offline_preflight
+offline_preflight upgrade
 acquire_operation_lock
 ensure_secret_config
 ensure_mcp_config
