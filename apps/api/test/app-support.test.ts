@@ -120,6 +120,7 @@ describe('api support', () => {
     }
     expect(loadConfig(base).evalscope).toMatchObject({
       enabled: false,
+      intranetHttpDocuments: false,
       proxyPrefix: '/evalscope-api',
     })
     const manifest = fileURLToPath(
@@ -129,11 +130,13 @@ describe('api support', () => {
       loadConfig({
         ...base,
         DATABENCH_EVALSCOPE_ENABLED: 'true',
+        DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS: 'true',
         DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: 'http://evalscope:9000',
         DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: manifest,
       }).evalscope,
     ).toMatchObject({
       enabled: true,
+      intranetHttpDocuments: true,
       internalBaseUrl: 'http://evalscope:9000',
       routeManifestPath: manifest,
     })

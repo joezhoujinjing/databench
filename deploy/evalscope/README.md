@@ -77,6 +77,12 @@ The manifest is checked against the compiled method/path allowlist at startup. U
 redirects, response media types and oversized bodies fail closed. Browser authorization and cookies are not forwarded.
 The upstream root, `/api/v1/eval/resume/invoke` and `/api/v1/reports/scan` are intentionally unavailable.
 
+`DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS` defaults to `false`. The ADR 0012 trusted-network offline Compose
+sets it to `true` because browsers omit Fetch Metadata on non-loopback plain HTTP origins. That compatibility path
+accepts only requests with all Fetch Metadata absent and a same-origin HTTP `Referer` below `/evaluations`; explicit
+top-level destinations, missing/cross-origin referrers and partial metadata remain forbidden. The gateway still injects
+`Sec-Fetch-Dest: iframe` toward the provider, whose document route remains strict.
+
 The E9 offline Compose enables this gateway only in the ADR 0012 trusted-network release. It loads the digest-locked
 prebuilt image, mounts persistent input/output roots, publishes no EvalScope host port and applies CPU/memory/PID/GPU
 bounds. General deployments remain disabled-by-default; this scoped offline enablement is not public-cloud

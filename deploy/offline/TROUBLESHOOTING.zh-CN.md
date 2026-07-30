@@ -385,7 +385,27 @@ df -h /srv/databench/evalscope
 计划维护默认等待 active task 300 秒。超时会取消维护、恢复 Web/admission；让用户停止或完成任务后重试，
 不要用 `docker kill` 绕过 drain。
 
-### 7.6 Swift GPU、Studio 或训练页面不可用
+### 7.6 内网 HTTP 报告 HTML 空白并返回 403
+
+浏览器 Console 如果显示 `/evalscope-api/generated-documents/<opaque-id>` 返回 `403`，先在 Network 的
+Request Headers 检查 `Sec-Fetch-Dest`。普通 `http://<内网 IP>` 不是 potentially trustworthy origin，
+Chromium 会省略全部 Fetch Metadata；新版本离线 API 会使用受限的同源 `/evaluations/*` Referer
+fallback。
+
+```bash
+docker exec databench-offline-api \
+  printenv DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS
+docker inspect --format '{{.Config.Image}}' databench-offline-api
+grep '^DATABENCH_ORIGIN=' /etc/databench/evalscope.env
+```
+
+- 第一条必须是 `true`；缺失或为 `false` 表示仍是旧 API/Compose release，应使用完整离线包升级；
+- `DATABENCH_ORIGIN` 必须与浏览器地址栏的 scheme、host 和显式 port 完全相同；
+- 请求必须由 `/evaluations` 产品页中的 sandbox iframe 发起。直接粘贴 generated document URL、跨源
+  Referer、非 Evaluation 页面或明确的顶层 `document` 仍会返回 403；
+- 不要通过发布 EvalScope `9000`、关闭 CSP/sandbox 或让 Caddy 伪造浏览器请求头来绕过。
+
+### 7.7 Swift GPU、Studio 或训练页面不可用
 
 只有 `DATABENCH_SWIFT_RUNTIME_MODE=gpu` 才执行 NVIDIA/CUDA 检查。只查看界面时确认：
 

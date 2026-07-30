@@ -49,6 +49,10 @@
   offline release boundary 是 digest-pinned prebuilt image：目标机断网安装/运行仍是 E9 gate，fresh
   `docker build --network=none` 不要求，仓库不携带 wheelhouse/apt mirror。E8 已关闭，E9 本地实现完成、
   真实 Ubuntu 22.04 amd64 目标机 gate pending。
+- Owner 于 2026-07-30 接受 generated document 的受控内网 HTTP 兼容：通用 gateway 默认仍要求
+  `Sec-Fetch-Dest: iframe`；只有 ADR 0012 离线 Compose 显式启用 metadata 整组缺失、同源 HTTP
+  `/evaluations/*` Referer fallback。明确顶层 destination、无/跨源 Referer 和非 Evaluation 页面继续
+  fail closed，内部 EvalScope provider admission 不放宽。
 - ADR 0018 ms-swift 集成已于 2026-07-28 接受，采用完整原生 Gradio iframe 的最小桥接方案：首期只建设
   Studio Session、exact Dataset export、GPU/Session workspace 与 LoRA Model Artifact import，不先建设
   Training Run/Attempt 或接管原生 callback。实施从 EvalScope E7 complete commit `25931d6` 建立独立

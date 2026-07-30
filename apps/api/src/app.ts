@@ -119,6 +119,7 @@ function createRoutedApp(
   registerEvalScopeGateway(app, {
     config: options.evalscope ?? {
       enabled: false,
+      intranetHttpDocuments: false,
       invokeTimeoutMs: 86_400_000,
       proxyPrefix: '/evalscope-api',
       requestMaxBytes: 1024 * 1024,

@@ -413,3 +413,20 @@ E8 不启用 runtime，也不改变 UI parity、V16/V17 或公共云 D3。下一
 本轮只执行评测链路定向验证：EvalScope Worker `test_app.py` 17 tests、Databench/storage 19 tests、
 Web Evaluation 85 tests、API gateway 7 tests和 Web/API typecheck 通过；downstream patch dry-run 通过。
 尚未把这些结果声明为新的 GE9/离线目标机 gate，也未执行新镜像的真实内网模型回归。
+
+## 2026-07-30 内网 HTTP generated document 兼容
+
+真实 Chromium 通过普通 `http://<内网 IP>` 加载 sandbox iframe 时会省略全部 Fetch Metadata，但保留
+同源 `Referer`；原 gateway 对 `Sec-Fetch-Dest: iframe` 的无条件要求因此返回
+`403 generated_document_context_rejected`。Owner 已接受以下窄修复：
+
+- 通用 gateway 默认继续严格要求 `Sec-Fetch-Dest: iframe`；
+- 只有 ADR 0012 可信内网离线 Compose 显式启用 fallback；
+- fallback 只允许 metadata 整组缺失、相同 HTTP origin、`/evaluations` 产品壳 Referer；无 Referer、
+  跨源、非 Evaluation path、HTTPS 缺失 metadata 和明确顶层 `document` 继续 403；
+- gateway 向内部 provider 继续注入 `Sec-Fetch-Dest: iframe`，Python provider admission 不放宽；
+- opaque ID、TTL、sanitizer、`sandbox="allow-scripts"`、nonce CSP、`frame-ancestors`、SAMEORIGIN 和固定
+  Plotly 资产保持不变。
+
+该修复只解决内网 HTTP 报告/图表 HTML 查看，不改变 EvalScope 任务、模型、Dataset、指标、归档、
+V16/V17 或公共云 D3 状态。

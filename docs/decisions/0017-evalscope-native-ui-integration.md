@@ -2,7 +2,8 @@
 
 - **状态:** Accepted——owner 于 2026-07-27 确认方案 review 问题修复并要求开始实施；2026-07-28
   确认预构建镜像离线交付口径，并接受 ms-swift S4 的 opaque Model Deployment 扩展；2026-07-29
-  接受测评工作区桌面侧栏与窄屏横向导航
+  接受测评工作区桌面侧栏与窄屏横向导航；2026-07-30 接受受控内网 HTTP 下 generated document
+  缺失 Fetch Metadata 的同源 Viewer 兼容
 - **日期:** 2026-07-27
 - **决策者:** owner
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
@@ -119,6 +120,11 @@ HTML report viewer
   `reports_configured` 和不含路径的 generation/digest；
 - report/analysis 中的 Markdown 和 HTML 必须清洗；所有报告和图表生成路径只使用镜像内固定版本、
   digest 和许可证的 Plotly 资产，并以 nonce CSP、`nosniff`、精确 content type 和 sandbox frame 隔离；
+- HTTPS/loopback 保持 `Sec-Fetch-Dest: iframe` 的严格 admission。受控内网离线 profile 可显式启用
+  HTTP fallback：只接受 Fetch Metadata 整组缺失、请求与 `Referer` 均为相同 HTTP origin、且
+  `Referer` path 位于 `/evaluations` 产品壳的请求；明确的顶层 `document`、部分 metadata、无
+  `Referer`、跨源或非 Evaluation path 继续 403。Gateway admission 后仍只向内部 provider 注入
+  `Sec-Fetch-Dest: iframe`，provider 本身不放宽；
 - Evaluation `api_url` 和 Performance `url` 只允许 operator 配置的 HTTP(S) host/CIDR/port，DNS 初次及
   每次连接、redirect 每一跳都重新校验；metadata、link-local、Unix socket 和非 HTTP(S) scheme 默认
   拒绝，内网或 localhost 模型服务必须由 operator 显式允许并受容器 egress policy 限制；

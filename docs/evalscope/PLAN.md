@@ -67,6 +67,9 @@ Databench Dataset 闭环：
 19. 本计划不启动或完成 V16/V17，不解除公共云 D3 决策门。
 20. Swift S4 的 Databench Deployment model source 只提交 opaque ID；endpoint/model 只能由 EvalScope
     service-side resolve。该扩展不改变 E8/E9 顺序，也不把 source-less Benchmark task 写成 Databench Run。
+21. generated document 默认严格要求 `Sec-Fetch-Dest: iframe`。ADR 0012 可信内网 HTTP 兼容只能由
+    离线 Compose 显式启用，并同时要求 metadata 整组缺失、同源 HTTP `/evaluations/*` Referer；gateway
+    admission 后内部 provider 仍严格要求 iframe header。
 
 ## 3. 里程碑
 

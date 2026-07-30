@@ -72,7 +72,7 @@ async function proxyEvalScope(
   if (upstreamPath === null) {
     return gatewayError(context, 404, 'not_found', 'Generated document was not found')
   }
-  if (route.response === 'document' && context.req.header('sec-fetch-dest') !== 'iframe') {
+  if (route.response === 'document' && !isGeneratedDocumentViewerRequest(context, config)) {
     return gatewayError(
       context,
       403,
@@ -184,6 +184,43 @@ async function proxyEvalScope(
     status: upstream.status,
     headers: responseHeaders,
   })
+}
+
+function isGeneratedDocumentViewerRequest(
+  context: Context<ApiEnv>,
+  config: EvalScopeGatewayConfig,
+): boolean {
+  const destination = context.req.header('sec-fetch-dest')
+  if (destination === 'iframe') return true
+  if (destination !== undefined || !config.intranetHttpDocuments) return false
+
+  // Chromium omits every Fetch Metadata header on non-loopback plain HTTP
+  // origins. Keep this fallback scoped to the trusted-network release and
+  // reject partially present metadata rather than guessing its intent.
+  for (const name of ['sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-user']) {
+    if (context.req.header(name) !== undefined) return false
+  }
+
+  const requestUrl = new URL(context.req.url)
+  if (requestUrl.protocol !== 'http:') return false
+  const refererHeader = context.req.header('referer')
+  if (refererHeader === undefined) return false
+
+  let referer: URL
+  try {
+    referer = new URL(refererHeader)
+  } catch {
+    return false
+  }
+  if (
+    referer.protocol !== 'http:' ||
+    referer.origin !== requestUrl.origin ||
+    referer.username !== '' ||
+    referer.password !== ''
+  ) {
+    return false
+  }
+  return referer.pathname === '/evaluations' || referer.pathname.startsWith('/evaluations/')
 }
 
 function honoPath(path: string): string {

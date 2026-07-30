@@ -865,6 +865,22 @@ active HTML 类 upstream response 不直接到浏览器。adapter 解析、清�
 `Sec-Fetch-Dest: iframe`，同时以响应 CSP `sandbox allow-scripts` 二次限制；原始 HTML 只存在于
 EvalScope 内部处理边界。
 
+普通 HTTP 的非 loopback 内网 origin 不属于浏览器的 potentially trustworthy origin，Chromium 会把
+`Sec-Fetch-Dest`、`Sec-Fetch-Site` 和 `Sec-Fetch-Mode` 整组省略。ADR 0012 可信内网离线 profile 因此
+显式设置 `DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS=true`，只在 gateway 使用下列 fallback：
+
+- `Sec-Fetch-Dest` 必须是缺失，而不是 `document`、`empty` 或其他明确值；
+- 其他 Fetch Metadata 也必须全部缺失，部分 metadata fail closed；
+- 当前请求和 `Referer` 必须都是相同的普通 HTTP origin；
+- `Referer` path 必须是 `/evaluations` 或 `/evaluations/*`，无 Referer、跨源、其他产品面和 HTTPS
+  缺失 metadata 均拒绝；
+- gateway admission 后仍向内部 EvalScope provider 固定注入 `Sec-Fetch-Dest: iframe`，provider route
+  继续严格要求该值，不把 fallback 扩散到内部服务。
+
+该 fallback 默认关闭，不授权公共云或任意 HTTP 部署；短期不可猜 document ID、sanitizer、frame
+`sandbox="allow-scripts"`、nonce CSP、`frame-ancestors`、`X-Frame-Options: SAMEORIGIN` 和本地固定
+Plotly 边界全部保持不变。
+
 明确阻断且不进入 gateway allowlist：
 
 | Upstream endpoint | 首期决策 |
@@ -1321,7 +1337,8 @@ Cache-Control: private, no-store
 ID 推导。
 
 - raw report URL 永不交给 `<a>`/`window.open`，top-level `Sec-Fetch-Dest: document` 请求 generated document
-  fail closed；viewer 只嵌入经过安全转换的文档；
+  fail closed；可信内网 HTTP 只兼容 metadata 整组缺失且具有同源 `/evaluations/*` Referer 的 Viewer
+  请求，viewer 仍只嵌入经过安全转换的文档；
 - Plotly 只从镜像内固定 asset/spec renderer 重建，禁止 CDN、任意 script URL、inline event handler 和
   upstream script passthrough；所有 report/chart/perf template 路径必须共用同一 renderer；
 - archive packager拒绝 symlink/hardlink/path traversal。

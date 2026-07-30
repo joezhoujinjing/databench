@@ -10,6 +10,7 @@ const DOCUMENT_ID = 'a'.repeat(43)
 function config(overrides: Partial<EvalScopeGatewayConfig> = {}): EvalScopeGatewayConfig {
   return {
     enabled: true,
+    intranetHttpDocuments: false,
     internalBaseUrl: 'http://evalscope:9000',
     invokeTimeoutMs: 60_000,
     proxyPrefix: '/evalscope-api',
@@ -192,6 +193,51 @@ describe('EvalScope same-origin gateway', () => {
     expect(framed.headers.get('content-security-policy')).toContain("default-src 'none'")
     expect(framed.headers.has('set-cookie')).toBe(false)
     expect(framed.headers.has('server')).toBe(false)
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  test('admits only same-origin Evaluation viewers when intranet HTTP omits fetch metadata', async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('sec-fetch-dest')).toBe('iframe')
+      return new Response('<p>safe</p>', {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'content-security-policy': "sandbox; default-src 'none'",
+        },
+      })
+    })
+    const app = createTestApp({
+      evalscope: config({ intranetHttpDocuments: true }),
+      evalscopeFetch: fetchMock as typeof fetch,
+    })
+    const path = `/evalscope-api/generated-documents/${DOCUMENT_ID}`
+    const accepted = await app.fetch(
+      request(path, { headers: { referer: 'http://databench.test/evaluations/reports/run' } }),
+    )
+    expect(accepted.status).toBe(200)
+
+    for (const rejected of [
+      request(path),
+      request(path, { headers: { referer: 'http://evil.test/evaluations/reports/run' } }),
+      request(path, { headers: { referer: 'http://databench.test/datasets' } }),
+      request(path, {
+        headers: {
+          referer: 'http://databench.test/evaluations/reports/run',
+          'sec-fetch-dest': 'document',
+        },
+      }),
+      request(path, {
+        headers: {
+          referer: 'http://databench.test/evaluations/reports/run',
+          'sec-fetch-site': 'same-origin',
+        },
+      }),
+      new Request(`https://databench.test${path}`, {
+        headers: { referer: 'https://databench.test/evaluations/reports/run' },
+      }),
+    ]) {
+      expect((await app.fetch(rejected)).status).toBe(403)
+    }
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 

@@ -7,6 +7,7 @@ const EvalScopeEnvSchema = z
   .object({
     DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: z.string().trim().min(1).optional(),
     DATABENCH_EVALSCOPE_ENABLED: z.enum(['true', 'false']).default('false'),
+    DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS: z.enum(['true', 'false']).default('false'),
     DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: z.string().trim().min(1).optional(),
     DATABENCH_EVALSCOPE_INVOKE_TIMEOUT_MS: z.coerce
       .number()
@@ -49,6 +50,7 @@ const EvalScopeEnvSchema = z
 
 export interface EvalScopeGatewayConfig {
   readonly enabled: boolean
+  readonly intranetHttpDocuments: boolean
   readonly internalBaseUrl?: string
   readonly invokeTimeoutMs: number
   readonly proxyPrefix: '/evalscope-api'
@@ -65,6 +67,7 @@ export function evalScopeGatewayConfigFromEnv(
   if (parsed.DATABENCH_EVALSCOPE_ENABLED !== 'true') {
     return {
       enabled: false,
+      intranetHttpDocuments: parsed.DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS === 'true',
       invokeTimeoutMs: parsed.DATABENCH_EVALSCOPE_INVOKE_TIMEOUT_MS,
       proxyPrefix: parsed.DATABENCH_EVALSCOPE_PROXY_PREFIX,
       requestMaxBytes: parsed.DATABENCH_EVALSCOPE_REQUEST_MAX_BYTES,
@@ -83,6 +86,7 @@ export function evalScopeGatewayConfigFromEnv(
   assertRouteManifest(routeManifestPath)
   return {
     enabled: true,
+    intranetHttpDocuments: parsed.DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS === 'true',
     internalBaseUrl,
     invokeTimeoutMs: parsed.DATABENCH_EVALSCOPE_INVOKE_TIMEOUT_MS,
     proxyPrefix: parsed.DATABENCH_EVALSCOPE_PROXY_PREFIX,

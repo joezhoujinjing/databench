@@ -81,6 +81,9 @@ if sed -n '/^  swift-studio:/,/^  api:/p' "${SCRIPT_DIR}/compose.yml" |
 fi
 grep -Fq 'DATABENCH_EVALSCOPE_ENABLED: "true"' "${SCRIPT_DIR}/compose.yml" ||
   fail 'offline API does not enable the scoped EvalScope gateway'
+grep -Fq 'DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS: "true"' \
+  "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline API does not enable the reviewed intranet HTTP document fallback'
 grep -Fq 'DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: "http://evalscope:9000"' \
   "${SCRIPT_DIR}/compose.yml" || fail 'offline API does not use the private EvalScope origin'
 grep -Fq '/srv/databench/evalscope/outputs:/var/lib/evalscope/outputs' \
