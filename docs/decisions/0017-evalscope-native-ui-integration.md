@@ -140,8 +140,10 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
   inspect proxy blueprint；
 - 真正执行前，EvalScope 后端仍用 operator 配置的固定 Databench base URL 重新校验 exact version、
   converter options 和 fidelity digest，再流式下载输入；
-- 首期新增 `evalscope-general-qa@1.0.0`，对应 `general_qa`，target source 只能显式选择 selected
-  candidate、verification ground truth 或无参考答案；
+- 首期新增 `evalscope-general-qa@1.0.0`，对应 `general_qa`。converter 继续识别 selected candidate、
+  verification ground truth 和无参考答案三种确定性 projection；但在 Judge 指标实现前，产品评测提交
+  只能显式选择 selected candidate 或 verification ground truth，`none` 在 Web 和 provider admission
+  两层 fail closed，避免用空 target 计算 BLEU/ROUGE；
 - native Benchmark 的 `dataset_args` JSON 编辑器、默认值、validation 和 payload shape 保留，但这是明确的
   `security-replacement` 边界：服务端递归拒绝路径/目录/URL locator key、绝对/遍历路径、UNC/drive path
   和 URI-like value，不能借任意 JSON 恢复服务器文件或网络访问；拒绝必须返回字段级错误并保留用户原始

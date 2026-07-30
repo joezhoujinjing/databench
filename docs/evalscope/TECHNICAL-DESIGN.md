@@ -39,11 +39,14 @@ Refresh/Rescan 及原有 reset 语义。除此以外，不能以“Databench 风
 Databench evalscope-general-qa@1.0.0
   → EvalScope general_qa
   → text-only prompt
-  → selected candidate / verification ground truth / no reference
+  → selected candidate / verification ground truth
 ```
 
 “首期 projection 只支持 general_qa”不限制 EvalScope 内置 Benchmark 和 performance UI；这些原生能力
 必须与锁定基线保持完整可用。
+
+`none` 仍是 converter 的已发布确定性输出 profile，供历史 artifact 兼容；在 Judge 指标实现前，它不是
+可提交的 Evaluation target。Web 不提供该选项，provider admission 也拒绝手工构造的 `none` 任务。
 
 ## 2. 已验证的 EvalScope 基线事实
 
@@ -653,6 +656,22 @@ Report catalogue 从 EvalScope configured output root 读取所有 native 和 Da
 功能来源仍是 EvalScope API；Databench DB 只为 Databench-sourced run 增加 exact Dataset 关联、状态和
 archive 信息。UI 可显示 `Databench Dataset` source badge，但不能因为某个报告没有 run row 就隐藏它。
 
+Databench-sourced report 的内部执行标识继续是 `dataset_name=general_qa`，不得改写它来冒充业务数据集名。
+provider gateway 根据 report name 对应的 task integration manifest 增加独立元数据：
+
+```json
+{
+  "databench_source": {
+    "source_ref": "support-qa",
+    "dataset_version": "<64 hex>",
+    "benchmark": "general_qa"
+  }
+}
+```
+
+列表和详情主展示使用 `source_ref`（为空时回退 exact version 短摘要），同时显示 exact version 短摘要和
+`general_qa` Benchmark badge。native EvalScope report 没有该字段，保持原展示。
+
 ## 7. Databench → EvalScope Projection
 
 ### 7.1 Converter Registry
@@ -722,7 +741,9 @@ version/options schema 扩展。
 
 - 每个通过共同准入的 record 一行；
 - JSONL 不输出 `response`；
-- UI 提示需要 Judge，不替用户自动选择 Judge。
+- converter/历史 artifact 继续支持该确定性形态；
+- Judge 指标实现前，Web 不提供该选项，EvalScope provider admission 拒绝新任务，不能用空 target
+  产生 BLEU/ROUGE 分数。
 
 DPO preference 不解释成 QA reference。
 
@@ -829,7 +850,7 @@ EvalScope 后端生成：
 | `GET` | `/api/v1/reports/load` | one report structured data |
 | `GET` | `/api/v1/reports/load_multi` | bounded multi-report data |
 | `GET` | `/api/v1/reports/dataframe` | bounded table data |
-| `GET` | `/api/v1/reports/predictions` | paged predictions |
+| `GET` | `/api/v1/reports/predictions` | server-paged predictions；全量 threshold counts、跨页导航及 index/message-ID 定位 |
 | `GET` | `/api/v1/reports/analysis` | sanitized Markdown/HTML model |
 | `GET` | `/api/v1/reports/html` | safe generated-document descriptor，不透传 raw HTML |
 | `GET` | `/api/v1/reports/chart` | safe generated-document descriptor |
@@ -925,6 +946,18 @@ validate task/config + atomic task claim
 ```
 
 create/callback response 丢失时使用 provider task ID 和 task-local integration manifest 重放。
+
+normalization 从 blocking invoke 的 `result` 中递归识别 report，展开 metric/category/subset leaf 到
+`EvaluationMetricV2`；aggregate-only metric 回退为 `subset=null`。输出最多 10,000 项，只保留有限
+dataset/subset/metric/category、finite score 和安全 sample count。样本、prompt、prediction 和嵌套
+provider result 不进入 Postgres。
+
+普通 Evaluation 默认关闭 upstream `analysis_report`，避免 benchmark 完成后再发起一次未显式请求的模型
+调用；只有请求体中的 literal boolean `analysis_report=true` 才启用分析。Web 当前不提交该字段。
+
+Evaluation 表单的 `limit` 默认留空并从请求中省略，表示评测 inspect 产生的全部 eligible rows；inspect
+完成后 UI 明确显示本次全量样本数。model request `timeout` 默认 300 秒，仍受 provider compile-time
+ceiling 和总 task runtime 上限约束。
 
 service 每次启动都在接受新 invoke 前扫描 task-local manifest：
 

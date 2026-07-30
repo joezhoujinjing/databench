@@ -278,6 +278,35 @@ function validateQueryValues(path: string, query: URLSearchParams): void {
       throw new TypeError(`Invalid EvalScope ${field}`)
     }
   }
+  const threshold = query.get('threshold')
+  if (threshold !== null) {
+    const number = Number(threshold)
+    if (!Number.isFinite(number) || number < 0 || number > 1) {
+      throw new TypeError('Invalid EvalScope threshold')
+    }
+  }
+  const mode = query.get('mode')
+  if (mode !== null && !['all', 'above', 'below'].includes(mode)) {
+    throw new TypeError('Invalid EvalScope prediction mode')
+  }
+  const index = query.get('index')
+  const messagePrefix = query.get('message_id_prefix')
+  if (index !== null && messagePrefix !== null) {
+    throw new TypeError('Only one EvalScope prediction locator is allowed')
+  }
+  for (const [field, value] of [
+    ['index', index],
+    ['message_id_prefix', messagePrefix],
+  ] as const) {
+    if (
+      value !== null &&
+      (value.trim() === '' ||
+        new TextEncoder().encode(value).byteLength > 512 ||
+        hasControlCharacter(value))
+    ) {
+      throw new TypeError(`Invalid EvalScope ${field}`)
+    }
+  }
   for (const field of ['score_min', 'score_max']) {
     const value = query.get(field)
     if (

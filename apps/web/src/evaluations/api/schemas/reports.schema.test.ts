@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { contentBlockSchema, predictionRowSchema, reportDataSchema } from './reports.schema.js'
+import {
+  contentBlockSchema,
+  predictionRowSchema,
+  predictionsResponseSchema,
+  reportDataSchema,
+  reportSummarySchema,
+} from './reports.schema.js'
 
 describe('EvalScope report response compatibility', () => {
   it('fills presentation-safe defaults for a partial report', () => {
@@ -29,6 +35,43 @@ describe('EvalScope report response compatibility', () => {
       Input: '',
       future_score: { value: 2 },
     })
+  })
+
+  it('accepts nullable reasoning tokens and paginated prediction metadata', () => {
+    expect(
+      contentBlockSchema.parse({
+        type: 'reasoning',
+        reasoning: 'thinking',
+        reasoning_tokens: null,
+      }),
+    ).toMatchObject({ reasoning_tokens: null })
+    expect(
+      predictionsResponseSchema.parse({
+        predictions: [],
+        total: 0,
+        page: 1,
+        page_size: 50,
+        counts: { all: 0, above: 0, below: 0 },
+      }),
+    ).toMatchObject({ page: 1, total: 0 })
+  })
+
+  it('keeps Databench source identity separate from the EvalScope benchmark name', () => {
+    expect(
+      reportSummarySchema.parse({
+        dataset_name: 'general_qa',
+        model_name: 'GLM',
+        name: 'eval-report',
+        num_samples: 2,
+        score: 0.5,
+        timestamp: '2026-07-30T12:00:00',
+        databench_source: {
+          benchmark: 'general_qa',
+          dataset_version: 'a'.repeat(64),
+          source_ref: 'support-qa',
+        },
+      }).databench_source,
+    ).toMatchObject({ source_ref: 'support-qa' })
   })
 
   it('rejects schema mismatches in identity and normalized score fields', () => {

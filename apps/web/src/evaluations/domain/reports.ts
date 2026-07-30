@@ -1,8 +1,18 @@
-import type { ChatMessage, DataFrameResponse, PredictionRow, ReportData } from '../api/schemas.js'
+import type {
+  ChatMessage,
+  DatabenchReportSource,
+  DataFrameResponse,
+  PredictionRow,
+  ReportData,
+} from '../api/schemas.js'
 import { metricSpec, metricsAreComparable, resolveMetricKey } from './metric.js'
 
 export const REPORT_PAGE_SIZE = 20
 export const MAX_REPORT_SELECTION = 5
+
+export function databenchDatasetLabel(source: DatabenchReportSource): string {
+  return source.source_ref ?? source.dataset_version.slice(0, 12)
+}
 
 export type PredictionMode = 'all' | 'above' | 'below'
 

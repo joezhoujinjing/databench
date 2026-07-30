@@ -29,10 +29,9 @@ describe('EvalScope task form domain', () => {
       datasets: ['gsm8k', 'arc'],
       eval_batch_size: 16,
       generation_config: { temperature: 0.7 },
-      limit: 5,
       model: 'Qwen/Qwen3',
       stream: true,
-      timeout: 60,
+      timeout: 300,
     })
   })
 
@@ -50,7 +49,7 @@ describe('EvalScope task form domain', () => {
         acceptedFidelityDigest: 'b'.repeat(64),
         datasetVersion: 'a'.repeat(64),
         sourceRef: 'support-qa',
-        targetSource: 'none',
+        targetSource: 'selected-candidate',
       },
     )
     expect(payload).not.toHaveProperty('datasets')
@@ -59,9 +58,28 @@ describe('EvalScope task form domain', () => {
       accepted_fidelity_digest: 'b'.repeat(64),
       converter: 'evalscope-general-qa',
       dataset_version: 'a'.repeat(64),
-      options: { target_source: 'none' },
+      options: { target_source: 'selected-candidate' },
       source_ref: 'support-qa',
     })
+  })
+
+  it('fails closed when a caller tries to submit no-reference scoring', () => {
+    expect(() =>
+      buildEvaluationPayload(
+        {
+          ...EVALUATION_FORM_DEFAULTS,
+          apiUrl: 'http://model.test/v1',
+          model: 'Qwen/Qwen3',
+        },
+        'databench',
+        {
+          acceptedFidelityDigest: 'b'.repeat(64),
+          datasetVersion: 'a'.repeat(64),
+          sourceRef: 'support-qa',
+          targetSource: 'none' as never,
+        },
+      ),
+    ).toThrow('requires a reference answer')
   })
 
   it('submits only an opaque Deployment ID for a Databench model binding', () => {

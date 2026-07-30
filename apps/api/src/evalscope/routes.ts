@@ -48,7 +48,17 @@ export const EVALSCOPE_PROXY_ROUTES = [
   route('GET', '/api/v1/reports/load', ['report_name']),
   route('GET', '/api/v1/reports/load_multi', ['report_names']),
   route('GET', '/api/v1/reports/dataframe', ['report_name', 'type', 'dataset_name']),
-  route('GET', '/api/v1/reports/predictions', ['report_name', 'dataset_name', 'subset_name']),
+  route('GET', '/api/v1/reports/predictions', [
+    'report_name',
+    'dataset_name',
+    'subset_name',
+    'page',
+    'page_size',
+    'mode',
+    'threshold',
+    'index',
+    'message_id_prefix',
+  ]),
   route('GET', '/api/v1/reports/analysis', ['report_name', 'dataset_name']),
   route('GET', '/api/v1/reports/html', ['report_name']),
   route('GET', '/api/v1/reports/chart', [

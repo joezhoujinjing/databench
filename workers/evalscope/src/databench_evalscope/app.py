@@ -72,7 +72,17 @@ _QUERY_FIELDS: dict[str, frozenset[str]] = {
     '/api/v1/reports/load': frozenset({'report_name'}),
     '/api/v1/reports/load_multi': frozenset({'report_names'}),
     '/api/v1/reports/dataframe': frozenset({'report_name', 'type', 'dataset_name'}),
-    '/api/v1/reports/predictions': frozenset({'report_name', 'dataset_name', 'subset_name'}),
+    '/api/v1/reports/predictions': frozenset({
+        'report_name',
+        'dataset_name',
+        'subset_name',
+        'page',
+        'page_size',
+        'mode',
+        'threshold',
+        'index',
+        'message_id_prefix',
+    }),
     '/api/v1/reports/analysis': frozenset({'report_name', 'dataset_name'}),
     '/api/v1/reports/html': frozenset({'report_name'}),
     '/api/v1/reports/chart': frozenset({
@@ -342,6 +352,8 @@ def create_app(
                 runtime.allowed_media_roots,
                 tuple(query.values()),
             )
+            if isinstance(safe, dict):
+                _enrich_databench_report_source(safe, route_path, query, manifests)
             if route_path == '/api/v1/reports/analysis' and isinstance(safe, dict):
                 analysis = safe.get('analysis')
                 if isinstance(analysis, str):
@@ -494,6 +506,13 @@ def _invoke(
     if (kind == 'evaluation') != task_id.startswith('eval_'):
         raise RuntimePolicyError('invalid_task_id', 'Task ID prefix does not match task kind', 400)
     source = DatabenchSource.parse(payload['databench_source']) if 'databench_source' in payload else None
+    if source is not None and source.options['target_source'] == 'none':
+        raise RuntimePolicyError(
+            'databench_target_source_unsupported',
+            'A reference answer is required until judge-based scoring is available',
+            422,
+            '/databench_source/options/target_source',
+        )
     dataset_args = payload.get('dataset_args', {})
     validate_dataset_args(dataset_args)
     if source is not None and 'dataset_args' in payload:
@@ -588,7 +607,7 @@ def _invoke(
             manifest = manifests.record_terminal(
                 task_id,
                 'completed',
-                metrics=[],
+                metrics=_extract_evaluation_metrics(payload_response) if kind == 'evaluation' else [],
                 provider_report_ids=[task_id] if kind == 'evaluation' else [],
             )
         else:
@@ -1265,6 +1284,49 @@ def _validate_query_values(path: str, query: dict[str, str]) -> None:
                 raise RuntimePolicyError('query_field_invalid', f'{key} must be a number', 422, f'/query/{key}') from exc
             if not math.isfinite(value) or value < 0 or value > 1:
                 raise RuntimePolicyError('query_field_invalid', f'{key} must be between 0 and 1', 422, f'/query/{key}')
+    if 'threshold' in query:
+        try:
+            threshold = float(query['threshold'])
+        except ValueError as exc:
+            raise RuntimePolicyError(
+                'query_field_invalid',
+                'threshold must be a number',
+                422,
+                '/query/threshold',
+            ) from exc
+        if not math.isfinite(threshold) or threshold < 0 or threshold > 1:
+            raise RuntimePolicyError(
+                'query_field_invalid',
+                'threshold must be between 0 and 1',
+                422,
+                '/query/threshold',
+            )
+    if query.get('mode', 'all') not in {'all', 'above', 'below'}:
+        raise RuntimePolicyError(
+            'query_field_invalid',
+            'mode is invalid',
+            422,
+            '/query/mode',
+        )
+    if 'index' in query and 'message_id_prefix' in query:
+        raise RuntimePolicyError(
+            'query_field_invalid',
+            'Only one prediction locator may be submitted',
+            422,
+            '/query/index',
+        )
+    for key in ('index', 'message_id_prefix'):
+        if key in query and (
+            not query[key].strip()
+            or len(query[key].encode('utf-8')) > 512
+            or _has_control(query[key])
+        ):
+            raise RuntimePolicyError(
+                'query_field_invalid',
+                f'{key} is invalid',
+                422,
+                f'/query/{key}',
+            )
     for key in ('path', 'run', 'report_name'):
         if key in query:
             _validate_relative(query[key], key)
@@ -1347,6 +1409,188 @@ def _validate_relative(value: str, field: str) -> None:
         or value.startswith(('~', '//'))
     ):
         raise RuntimePolicyError('query_locator_forbidden', f'{field} must be a contained relative locator', 422, f'/query/{field}')
+
+
+def _extract_evaluation_metrics(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize EvalScope report leaves into the bounded Databench metric contract."""
+    reports: list[dict[str, Any]] = []
+
+    def collect(value: Any, depth: int = 0) -> None:
+        if depth > 8 or len(reports) >= 10_000:
+            return
+        if isinstance(value, dict):
+            if isinstance(value.get('metrics'), list) and isinstance(value.get('dataset_name'), str):
+                reports.append(value)
+                return
+            for child in value.values():
+                collect(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child, depth + 1)
+
+    collect(payload.get('result'))
+    normalized: list[dict[str, Any]] = []
+    seen: set[tuple[str, str | None, str, tuple[str, ...]]] = set()
+    for report in reports:
+        dataset = _metric_text(report.get('dataset_name'), 512)
+        if dataset is None:
+            continue
+        for metric_value in report.get('metrics', []):
+            if not isinstance(metric_value, dict):
+                continue
+            metric = _metric_text(metric_value.get('name'), 512)
+            if metric is None:
+                continue
+            emitted_leaf = False
+            categories = metric_value.get('categories')
+            if isinstance(categories, list):
+                for category in categories:
+                    if not isinstance(category, dict):
+                        continue
+                    labels = _metric_categories(category.get('name'))
+                    subsets = category.get('subsets')
+                    if not isinstance(subsets, list):
+                        continue
+                    for subset in subsets:
+                        if not isinstance(subset, dict) or subset.get('is_aggregate') is True:
+                            continue
+                        subset_name = _metric_text(subset.get('name'), 512)
+                        if subset_name is None:
+                            continue
+                        item = _normalized_metric(
+                            dataset,
+                            subset_name,
+                            metric,
+                            subset.get('score'),
+                            subset.get('num'),
+                            labels,
+                        )
+                        key = (dataset, subset_name, metric, tuple(labels))
+                        if item is not None and key not in seen:
+                            normalized.append(item)
+                            seen.add(key)
+                            emitted_leaf = True
+                            if len(normalized) >= 10_000:
+                                return normalized
+            if emitted_leaf:
+                continue
+            item = _normalized_metric(
+                dataset,
+                None,
+                metric,
+                metric_value.get('score'),
+                metric_value.get('num'),
+                [],
+            )
+            key = (dataset, None, metric, ())
+            if item is not None and key not in seen:
+                normalized.append(item)
+                seen.add(key)
+                if len(normalized) >= 10_000:
+                    return normalized
+    return normalized
+
+
+def _normalized_metric(
+    dataset: str,
+    subset: str | None,
+    metric: str,
+    score: Any,
+    sample_count: Any,
+    categories: list[str],
+) -> dict[str, Any] | None:
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
+        normalized_score = None
+    else:
+        normalized_score = float(score)
+    if (
+        isinstance(sample_count, bool)
+        or not isinstance(sample_count, int)
+        or sample_count < 0
+        or sample_count > 9_007_199_254_740_991
+    ):
+        normalized_count = None
+    else:
+        normalized_count = sample_count
+    return {
+        'dataset': dataset,
+        'subset': subset,
+        'metric': metric,
+        'score': normalized_score,
+        'sample_count': normalized_count,
+        'categories': categories,
+    }
+
+
+def _metric_text(value: Any, maximum_bytes: int) -> str | None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value.encode('utf-8')) > maximum_bytes
+        or _has_control(value)
+    ):
+        return None
+    return value
+
+
+def _metric_categories(value: Any) -> list[str]:
+    raw = value if isinstance(value, list) else [value]
+    categories: list[str] = []
+    for item in raw:
+        label = _metric_text(item, 128)
+        if label is not None and label not in categories:
+            categories.append(label)
+        if len(categories) >= 64:
+            break
+    return categories
+
+
+def _enrich_databench_report_source(
+    payload: dict[str, Any],
+    path: str,
+    query: dict[str, str],
+    manifests: TaskManifestStore,
+) -> None:
+    if path == '/api/v1/reports/list':
+        reports = payload.get('reports')
+        if not isinstance(reports, list):
+            return
+        for report in reports:
+            if not isinstance(report, dict):
+                continue
+            source = _report_source_from_name(manifests, report.get('name'))
+            if source is not None:
+                report['databench_source'] = source
+        return
+    if path == '/api/v1/reports/load':
+        source = _report_source_from_name(manifests, query.get('report_name'))
+        if source is not None:
+            payload['databench_source'] = source
+
+
+def _report_source_from_name(
+    manifests: TaskManifestStore,
+    report_name: Any,
+) -> dict[str, str | None] | None:
+    if not isinstance(report_name, str):
+        return None
+    match = re.match(
+        r'^(eval_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:$|[^0-9a-f-])',
+        report_name,
+    )
+    if match is None:
+        return None
+    try:
+        integration = manifests.read_integration(match.group(1))
+    except RuntimePolicyError:
+        return None
+    if integration is None:
+        return None
+    return {
+        'source_ref': integration.get('source_ref'),
+        'dataset_version': integration['dataset_version'],
+        'benchmark': 'general_qa',
+    }
 
 
 def _bounded_integer(value: str, field: str, minimum: int, maximum: int) -> int:

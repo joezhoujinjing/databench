@@ -147,13 +147,14 @@ function EvaluationTaskPanel() {
             (source === 'benchmark' || binding !== null) &&
             (modelSource === 'manual' || deploymentId !== null)
           }
-          databenchSource={
+          databenchSource={(limit) => (
             <DatabenchDatasetSource
               disabled={disabled}
               initialDatasetVersion={search.datasetVersion}
+              limit={limit}
               onBindingChange={onBindingChange}
             />
-          }
+          )}
           deploymentSource={
             <DatabenchDeploymentSource
               deploymentId={deploymentId}

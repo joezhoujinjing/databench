@@ -1305,7 +1305,7 @@
       "upstream_sources": [],
       "capability": "task-source-flow",
       "contract": "Add Databench Dataset exact-version selection, projection eligibility/fidelity and explicit reference-target choice to the Evaluation form.",
-      "default_or_rule": "Source switching isolates payloads; selected, ground truth or no reference is always an explicit user choice.",
+      "default_or_rule": "Source switching isolates payloads; selected candidate or verification ground truth is required. No-reference scoring is unavailable until a judge-based metric is implemented.",
       "responsive_a11y": "Ref, exact version, task type, target and fidelity status form one labelled field group.",
       "api_operations": ["Databench generated /v2 client", "POST /api/v1/eval/invoke"],
       "target": "apps/web/src/evaluations/features/tasks/DatabenchDatasetSource.tsx",

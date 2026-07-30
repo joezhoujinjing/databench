@@ -31,7 +31,7 @@ export function EvaluationForm({
   modelSource,
 }: {
   readonly canSubmit?: boolean
-  readonly databenchSource: ReactNode
+  readonly databenchSource: (limit: string) => ReactNode
   readonly deploymentSource: ReactNode
   readonly disabled: boolean
   readonly initialBenchmark?: string | undefined
@@ -181,7 +181,7 @@ export function EvaluationForm({
             />
           </TaskFormField>
         ) : (
-          <div className="md:col-span-2">{databenchSource}</div>
+          <div className="md:col-span-2">{databenchSource(values.limit)}</div>
         )}
 
         {modelSource === 'manual' ? (

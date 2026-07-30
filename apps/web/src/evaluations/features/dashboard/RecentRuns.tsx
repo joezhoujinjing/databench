@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button.js'
 import { Surface } from '@/components/ui/surface.js'
 import type { DashboardRun } from '../../domain/dashboard.js'
 import { formatMetricValue } from '../../domain/metric.js'
+import { databenchDatasetLabel } from '../../domain/reports.js'
 
 function shortTimestamp(timestamp: string): string {
   if (!timestamp) return '—'
@@ -48,7 +49,9 @@ export function RecentRuns({
           const isEvaluation = item.kind === 'eval'
           const model = isEvaluation ? item.report.model_name : item.run.model
           const dataset = isEvaluation
-            ? item.report.dataset_name
+            ? item.report.databench_source
+              ? databenchDatasetLabel(item.report.databench_source)
+              : item.report.dataset_name
             : item.run.dataset || item.run.api_type
           const result = isEvaluation
             ? formatMetricValue(item.report.metric_name ?? 'score', item.report.score).primary

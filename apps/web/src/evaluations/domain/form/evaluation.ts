@@ -8,7 +8,7 @@ import {
 
 export type EvaluationSourceKind = 'benchmark' | 'databench'
 export type EvaluationModelSourceKind = 'manual' | 'databench-deployment'
-export type DatabenchTargetSource = 'none' | 'selected-candidate' | 'verification-ground-truth'
+export type DatabenchTargetSource = 'selected-candidate' | 'verification-ground-truth'
 
 export interface EvaluationFormValues {
   readonly apiKey: string
@@ -33,13 +33,13 @@ export const EVALUATION_FORM_DEFAULTS: EvaluationFormValues = {
   datasetArgs: '',
   datasets: '',
   evalBatchSize: '16',
-  limit: '5',
+  limit: '',
   maxTokens: '',
   model: '',
   repeats: '1',
   stream: false,
   temperature: '',
-  timeout: '60',
+  timeout: '300',
   topK: '',
   topP: '',
 }
@@ -172,10 +172,11 @@ export function buildEvaluationPayload(
 ): Record<string, unknown> {
   const validation = validateEvaluationForm(values, source, modelBinding.kind)
   if (!validation.ok) throw new TypeError('Evaluation form is invalid')
-  const payload: Record<string, unknown> = {
-    limit: optionalNumber(values.limit),
-    eval_batch_size: optionalNumber(values.evalBatchSize),
-  }
+  const payload: Record<string, unknown> = {}
+  const limit = optionalNumber(values.limit)
+  const evalBatchSize = optionalNumber(values.evalBatchSize)
+  if (limit !== undefined) payload.limit = limit
+  if (evalBatchSize !== undefined) payload.eval_batch_size = evalBatchSize
   if (modelBinding.kind === 'manual') {
     payload.model = values.model
     payload.api_url = values.apiUrl
@@ -191,6 +192,12 @@ export function buildEvaluationPayload(
     if (validation.datasetArgs !== undefined) payload.dataset_args = validation.datasetArgs
   } else {
     if (binding === undefined) throw new TypeError('Databench evaluation binding is required')
+    if (
+      binding.targetSource !== 'selected-candidate' &&
+      binding.targetSource !== 'verification-ground-truth'
+    ) {
+      throw new TypeError('Databench evaluation requires a reference answer')
+    }
     payload.databench_source = {
       source_ref: binding.sourceRef,
       dataset_version: binding.datasetVersion,

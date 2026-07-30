@@ -1,4 +1,5 @@
 import type { PerfRunSummary, ReportSummary } from '../api/schemas.js'
+import { databenchDatasetLabel } from './reports.js'
 
 export const DASHBOARD_PAGE_SIZE = 15
 
@@ -54,7 +55,13 @@ export function filterDashboardRuns(
     if (query === '') return true
     const values =
       item.kind === 'eval'
-        ? [item.report.model_name, item.report.dataset_name]
+        ? [
+            item.report.model_name,
+            item.report.dataset_name,
+            ...(item.report.databench_source
+              ? [databenchDatasetLabel(item.report.databench_source)]
+              : []),
+          ]
         : [
             item.run.model,
             item.run.dataset,

@@ -30,7 +30,7 @@
   "patches": [
     {
       "path": "patches/0001-databench-runtime-boundary.patch",
-      "sha256": "2ab66ebcd8b6a63527bfe17eca6573301e0ebff2cda62935d6feae63677439c9"
+      "sha256": "16a2abea1319d8e9df320e94ff98a6160717e24d2662c53c15c4fe101d94f26c"
     }
   ],
   "license": {

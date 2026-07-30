@@ -218,7 +218,17 @@ export const EVALSCOPE_JSON_OPERATIONS = {
   reportsPredictions: operation({
     method: 'GET',
     path: '/reports/predictions',
-    query: ['report_name', 'dataset_name', 'subset_name'],
+    query: [
+      'report_name',
+      'dataset_name',
+      'subset_name',
+      'page',
+      'page_size',
+      'mode',
+      'threshold',
+      'index',
+      'message_id_prefix',
+    ],
     schema: predictionsResponseSchema,
     scope: 'api',
   }),

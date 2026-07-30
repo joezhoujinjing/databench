@@ -112,6 +112,18 @@ describe('EvalScope same-origin gateway', () => {
       request('/evalscope-api/api/v1/reports/list?search=%0Asecret'),
     )
     expect(controlCharacter.status).toBe(422)
+    const invalidPredictionMode = await app.fetch(
+      request(
+        '/evalscope-api/api/v1/reports/predictions?report_name=run/model&dataset_name=general_qa&subset_name=databench&mode=near',
+      ),
+    )
+    expect(invalidPredictionMode.status).toBe(422)
+    const conflictingPredictionLocator = await app.fetch(
+      request(
+        '/evalscope-api/api/v1/reports/predictions?report_name=run/model&dataset_name=general_qa&subset_name=databench&index=1&message_id_prefix=msg',
+      ),
+    )
+    expect(conflictingPredictionLocator.status).toBe(422)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

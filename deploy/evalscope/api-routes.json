@@ -163,7 +163,7 @@
       "method": "GET",
       "path": "/api/v1/reports/predictions",
       "classification": "allowed-patched",
-      "response": "bounded-predictions"
+      "response": "bounded-paginated-predictions"
     },
     {
       "method": "GET",

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table.js'
 import type { ReportSummary } from '../../api/schemas.js'
 import { boundedMetricRatio, formatMetricValue } from '../../domain/metric.js'
+import { databenchDatasetLabel } from '../../domain/reports.js'
 
 function Score({ metric, value }: { readonly metric: string; readonly value: number }) {
   const ratio = boundedMetricRatio(metric, value)
@@ -108,7 +109,19 @@ export function ReportsCatalogue({
                       {report.model_name}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{report.dataset_name}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {report.databench_source ? (
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span>{databenchDatasetLabel(report.databench_source)}</span>
+                        <Badge tone="muted">{report.databench_source.benchmark}</Badge>
+                        <span className="font-mono text-xs">
+                          {report.databench_source.dataset_version.slice(0, 12)}
+                        </span>
+                      </span>
+                    ) : (
+                      report.dataset_name
+                    )}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap font-mono text-muted-foreground text-xs">
                     {report.timestamp ? report.timestamp.replace('T', ' ').slice(0, 16) : '—'}
                   </TableCell>
@@ -155,8 +168,19 @@ export function ReportsCatalogue({
                 {report.model_name}
               </Link>
               <p className="mt-1 text-muted-foreground text-sm">
-                {report.dataset_name} · {report.num_samples} {t('evaluations.reports.samples')}
+                {report.databench_source
+                  ? databenchDatasetLabel(report.databench_source)
+                  : report.dataset_name}{' '}
+                · {report.num_samples} {t('evaluations.reports.samples')}
               </p>
+              {report.databench_source ? (
+                <p className="mt-1 flex items-center gap-2 text-xs">
+                  <Badge tone="muted">{report.databench_source.benchmark}</Badge>
+                  <span className="font-mono text-muted-foreground">
+                    {report.databench_source.dataset_version.slice(0, 12)}
+                  </span>
+                </p>
+              ) : null}
               <p className="mt-1 font-mono text-muted-foreground text-xs">
                 {report.timestamp?.replace('T', ' ').slice(0, 16)}
               </p>

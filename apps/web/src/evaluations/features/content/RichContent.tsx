@@ -251,7 +251,11 @@ export function ContentBlocks({
       rendered.push(<RichContent content={block.text} key={key} />)
     else if (block.type === 'reasoning' && includeReasoning && block.reasoning) {
       rendered.push(
-        <ReasoningBlock key={key} text={block.reasoning} tokens={block.reasoning_tokens} />,
+        <ReasoningBlock
+          key={key}
+          text={block.reasoning}
+          tokens={block.reasoning_tokens ?? undefined}
+        />,
       )
     } else if (block.type === 'image' && block.image) {
       rendered.push(<SafeMedia format={block.format} key={key} kind="image" source={block.image} />)

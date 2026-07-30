@@ -1,22 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert } from '@/components/ui/alert.js'
 import { Button } from '@/components/ui/button.js'
 import { Skeleton } from '@/components/ui/skeleton.js'
 import { evalScopeClient } from '../../api/client.js'
-import {
-  filterPredictions,
-  findPredictionByIndex,
-  findPredictionByMessagePrefix,
-  type PredictionMode,
-  predictionCounts,
-  subsetRows,
-} from '../../domain/reports.js'
+import { type PredictionMode, subsetRows } from '../../domain/reports.js'
 import { ChatView } from '../sample/ChatView.js'
 import { MessageIdSearch } from './MessageIdSearch.js'
 import { PredictionFilters } from './PredictionFilters.js'
 import { PredictionNavigator } from './PredictionNavigator.js'
+
+const PREDICTION_PAGE_SIZE = 50
 
 export function PredictionsTab({
   datasetName,
@@ -31,8 +26,10 @@ export function PredictionsTab({
   const [subset, setSubset] = useState('')
   const [mode, setMode] = useState<PredictionMode>('all')
   const [threshold, setThreshold] = useState(0.99)
+  const [page, setPage] = useState(1)
   const [position, setPosition] = useState(0)
   const [highlightMessageId, setHighlightMessageId] = useState<string | undefined>()
+  const pendingPosition = useRef<number | 'last' | null>(null)
   const subsetsQuery = useQuery({
     enabled: datasetName !== '',
     queryFn: ({ signal }) =>
@@ -51,6 +48,7 @@ export function PredictionsTab({
     const selected =
       initialSubset && subsets.includes(initialSubset) ? initialSubset : (subsets[0] ?? '')
     setSubset(selected)
+    setPage(1)
     setPosition(0)
     setHighlightMessageId(undefined)
   }, [initialSubset, subsets])
@@ -58,18 +56,33 @@ export function PredictionsTab({
     enabled: subset !== '',
     queryFn: ({ signal }) =>
       evalScopeClient.request('reportsPredictions', {
-        query: { dataset_name: datasetName, report_name: reportName, subset_name: subset },
+        query: {
+          dataset_name: datasetName,
+          mode,
+          page,
+          page_size: PREDICTION_PAGE_SIZE,
+          report_name: reportName,
+          subset_name: subset,
+          threshold,
+        },
         signal,
       }),
-    queryKey: ['evalscope', 'predictions', reportName, datasetName, subset],
+    queryKey: ['evalscope', 'predictions', reportName, datasetName, subset, mode, threshold, page],
     retry: false,
   })
   const predictions = predictionsQuery.data?.predictions ?? []
-  const filtered = useMemo(
-    () => filterPredictions(predictions, mode, threshold),
-    [mode, predictions, threshold],
-  )
-  const counts = useMemo(() => predictionCounts(predictions, threshold), [predictions, threshold])
+  const total = predictionsQuery.data?.total ?? 0
+  const counts = predictionsQuery.data?.counts ?? { above: 0, all: 0, below: 0 }
+  useEffect(() => {
+    if (!predictionsQuery.data) return
+    const requested = pendingPosition.current
+    pendingPosition.current = null
+    setPosition(
+      requested === 'last'
+        ? Math.max(0, predictionsQuery.data.predictions.length - 1)
+        : Math.min(requested ?? 0, Math.max(0, predictionsQuery.data.predictions.length - 1)),
+    )
+  }, [predictionsQuery.data])
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (
@@ -78,27 +91,60 @@ export function PredictionsTab({
         event.target instanceof HTMLSelectElement
       )
         return
-      if (event.key === 'ArrowLeft') setPosition((value) => Math.max(0, value - 1))
-      if (event.key === 'ArrowRight')
-        setPosition((value) => Math.min(Math.max(0, filtered.length - 1), value + 1))
+      if (event.key === 'ArrowLeft') {
+        if (position > 0) setPosition((value) => value - 1)
+        else if (page > 1) {
+          pendingPosition.current = 'last'
+          setPage((value) => value - 1)
+        }
+      }
+      if (event.key === 'ArrowRight') {
+        if (position < predictions.length - 1) setPosition((value) => value + 1)
+        else if (page * PREDICTION_PAGE_SIZE < total) {
+          pendingPosition.current = 0
+          setPage((value) => value + 1)
+        }
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [filtered.length])
-  const row = filtered[position]
-  const searchIndex = (query: string) => {
-    const index = findPredictionByIndex(filtered, query)
-    if (index === null) return t('evaluations.prediction.indexNotFound')
-    setPosition(index)
+  }, [page, position, predictions.length, total])
+  const row = predictions[position]
+  const locate = async (locator: { index: string } | { message_id_prefix: string }) => {
+    const response = await evalScopeClient.request('reportsPredictions', {
+      query: {
+        dataset_name: datasetName,
+        mode,
+        page,
+        page_size: PREDICTION_PAGE_SIZE,
+        report_name: reportName,
+        subset_name: subset,
+        threshold,
+        ...locator,
+      },
+    })
+    const match = response.match
+    if (match?.status !== 'found') return match?.status ?? 'not-found'
+    const nextPosition = (match.position - 1) % response.page_size
+    if (response.page === page) setPosition(nextPosition)
+    else {
+      pendingPosition.current = nextPosition
+      setPage(response.page)
+    }
+    return match
+  }
+  const searchIndex = async (query: string) => {
+    const match = await locate({ index: query.trim() })
+    if (match === 'not-found') return t('evaluations.prediction.indexNotFound')
+    if (match === 'ambiguous') return t('evaluations.prediction.indexAmbiguous')
     setHighlightMessageId(undefined)
     return null
   }
-  const searchMessage = (query: string) => {
-    const result = findPredictionByMessagePrefix(filtered, query)
-    if (result.kind === 'not-found') return t('evaluations.prediction.messageNotFound')
-    if (result.kind === 'ambiguous') return t('evaluations.prediction.messageAmbiguous')
-    setPosition(result.predictionIndex)
-    setHighlightMessageId(result.messageId)
+  const searchMessage = async (query: string) => {
+    const match = await locate({ message_id_prefix: query.trim() })
+    if (match === 'not-found') return t('evaluations.prediction.messageNotFound')
+    if (match === 'ambiguous') return t('evaluations.prediction.messageAmbiguous')
+    setHighlightMessageId(match.message_id)
     return null
   }
   if (subsetsQuery.isLoading) return <Skeleton className="h-60" />
@@ -117,16 +163,19 @@ export function PredictionsTab({
         mode={mode}
         onModeChange={(value) => {
           setMode(value)
+          setPage(1)
           setPosition(0)
           setHighlightMessageId(undefined)
         }}
         onSubsetChange={(value) => {
           setSubset(value)
+          setPage(1)
           setPosition(0)
           setHighlightMessageId(undefined)
         }}
         onThresholdChange={(value) => {
           setThreshold(value)
+          setPage(1)
           setPosition(0)
           setHighlightMessageId(undefined)
         }}
@@ -155,9 +204,9 @@ export function PredictionsTab({
             {t('evaluations.common.retry')}
           </Button>
         </Alert>
-      ) : filtered.length === 0 ? (
+      ) : predictions.length === 0 ? (
         <Alert>
-          {predictions.length === 0
+          {counts.all === 0
             ? t('evaluations.common.noData')
             : t('evaluations.prediction.noFilteredSamples')}
         </Alert>
@@ -165,18 +214,26 @@ export function PredictionsTab({
         <>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <PredictionNavigator
-              current={position + 1}
+              current={(page - 1) * PREDICTION_PAGE_SIZE + position + 1}
               indexValue={row?.Index}
               onIndexSearch={searchIndex}
               onNext={() => {
-                setPosition((value) => Math.min(filtered.length - 1, value + 1))
+                if (position < predictions.length - 1) setPosition((value) => value + 1)
+                else if (page * PREDICTION_PAGE_SIZE < total) {
+                  pendingPosition.current = 0
+                  setPage((value) => value + 1)
+                }
                 setHighlightMessageId(undefined)
               }}
               onPrevious={() => {
-                setPosition((value) => Math.max(0, value - 1))
+                if (position > 0) setPosition((value) => value - 1)
+                else if (page > 1) {
+                  pendingPosition.current = 'last'
+                  setPage((value) => value - 1)
+                }
                 setHighlightMessageId(undefined)
               }}
-              total={filtered.length}
+              total={total}
             />
             <MessageIdSearch onSearch={searchMessage} />
           </div>

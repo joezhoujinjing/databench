@@ -13,7 +13,7 @@ export function PredictionNavigator({
 }: {
   readonly current: number
   readonly indexValue?: string | undefined
-  readonly onIndexSearch: (query: string) => string | null
+  readonly onIndexSearch: (query: string) => Promise<string | null>
   readonly onNext: () => void
   readonly onPrevious: () => void
   readonly total: number
@@ -21,7 +21,17 @@ export function PredictionNavigator({
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const submit = () => setError(onIndexSearch(query))
+  const [searching, setSearching] = useState(false)
+  const submit = async () => {
+    setSearching(true)
+    try {
+      setError(await onIndexSearch(query))
+    } catch (error) {
+      setError(error instanceof Error ? error.message : t('evaluations.common.loadError'))
+    } finally {
+      setSearching(false)
+    }
+  }
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-2">
@@ -66,13 +76,13 @@ export function PredictionNavigator({
                 setError(null)
               }}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') submit()
+                if (event.key === 'Enter') void submit()
               }}
               placeholder={t('evaluations.prediction.searchByIndex')}
               value={query}
             />
           </label>
-          <Button onClick={submit} size="sm" variant="outline">
+          <Button disabled={searching} onClick={() => void submit()} size="sm" variant="outline">
             Go
           </Button>
         </div>

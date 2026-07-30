@@ -6,12 +6,22 @@ import { Button } from '@/components/ui/button.js'
 export function MessageIdSearch({
   onSearch,
 }: {
-  readonly onSearch: (query: string) => string | null
+  readonly onSearch: (query: string) => Promise<string | null>
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const submit = () => setError(onSearch(query))
+  const [searching, setSearching] = useState(false)
+  const submit = async () => {
+    setSearching(true)
+    try {
+      setError(await onSearch(query))
+    } catch (error) {
+      setError(error instanceof Error ? error.message : t('evaluations.common.loadError'))
+    } finally {
+      setSearching(false)
+    }
+  }
   return (
     <div>
       <div className="flex items-center gap-2">
@@ -30,7 +40,7 @@ export function MessageIdSearch({
               setError(null)
             }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') submit()
+              if (event.key === 'Enter') void submit()
             }}
             placeholder={t('evaluations.prediction.searchByMsgId')}
             value={query}
@@ -38,7 +48,8 @@ export function MessageIdSearch({
         </label>
         <Button
           aria-label={t('evaluations.prediction.searchByMsgId')}
-          onClick={submit}
+          disabled={searching}
+          onClick={() => void submit()}
           size="sm"
           variant="outline"
         >

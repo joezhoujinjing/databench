@@ -101,6 +101,7 @@ export function EvaluationReportDetailRoute() {
       />
       <ReportHeader
         activeDataset={dataset}
+        databenchSource={query.data.databench_source}
         datasets={query.data.datasets}
         onDatasetChange={changeDataset}
         reportName={reportName}

@@ -95,24 +95,39 @@ export function ComparePage() {
       Boolean(selectedDataset && selectedSubset) &&
       reportNames.length >= 2,
     queryFn: async ({ signal }) => {
-      const results = await Promise.allSettled(
-        reportNames.map((name) =>
-          evalScopeClient.request('reportsPredictions', {
+      const loadPredictions = async (reportName: string) => {
+        const rows: PredictionRow[] = []
+        let page = 1
+        let total = 0
+        do {
+          const response = await evalScopeClient.request('reportsPredictions', {
             query: {
               dataset_name: selectedDataset,
-              report_name: name,
+              mode: 'all',
+              page,
+              page_size: 100,
+              report_name: reportName,
               subset_name: selectedSubset,
+              threshold: search.threshold,
             },
             signal,
-          }),
-        ),
-      )
+          })
+          if (response.predictions.length === 0 && rows.length < response.total) {
+            throw new Error('EvalScope prediction paging made no progress')
+          }
+          rows.push(...response.predictions)
+          total = response.total
+          page += 1
+        } while (rows.length < total)
+        return rows
+      }
+      const results = await Promise.allSettled(reportNames.map((name) => loadPredictions(name)))
       const byModel: Record<string, readonly PredictionRow[]> = {}
       const errors: Record<string, string> = {}
       results.forEach((result, index) => {
         const name = reportNames[index]
         if (!name) return
-        if (result.status === 'fulfilled') byModel[name] = result.value.predictions
+        if (result.status === 'fulfilled') byModel[name] = result.value
         else
           errors[name] =
             result.reason instanceof Error
@@ -128,6 +143,7 @@ export function ComparePage() {
       reportNames.join(';'),
       selectedDataset,
       selectedSubset,
+      search.threshold,
     ],
     retry: false,
   })

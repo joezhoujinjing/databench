@@ -391,3 +391,25 @@ E8 不启用 runtime，也不改变 UI parity、V16/V17 或公共云 D3。下一
 `implementation=complete`；owner 于 2026-07-29 批准在 GE9 目标机证据未补齐时先合并，并自行执行真实
 断网安装验证，因此 gate 记录为 `owner_deferred_target` 而不是 passed。该状态不完成 V16/V17，也不解除
 公共云 D3。
+
+## 2026-07-30 Evaluation 链路修复
+
+针对 `Databench Dataset → general_qa → OpenAI-compatible model → report/run` 的实际内网测评，已在
+`feat/evalscope-evaluation-fixes` 实现以下修复：
+
+- `reasoning_tokens=null` 在 Web 渲染边界兼容，不再导致整个 Predictions 响应校验失败；
+- EvalScope 完成结果的 metric/category/subset leaf 标准化为 `EvaluationMetricV2`，不再以固定空数组
+  complete Databench run；
+- 普通评测默认关闭 `analysis_report`，避免完成 benchmark 后产生额外模型调用；
+- Judge 指标实现前，产品 UI 和 provider admission 都拒绝无参考答案评测；converter/历史 artifact
+  兼容能力不删除；
+- Predictions 改为每页 50 条的服务端分页，响应携带全量 Above/Below/All 计数，保留跨页导航和
+  index/message-ID 定位；Compare 按有界分页读取完整对齐数据；
+- Evaluation 默认 `limit` 留空表示全量，inspect 后明确显示 eligible sample count；request timeout
+  默认从 60 秒调为 300 秒；
+- Databench report 增加独立 `source_ref + exact dataset version + general_qa benchmark` 元数据，列表和
+  详情不再把内部 benchmark 名当成业务数据集名；native report 保持原展示。
+
+本轮只执行评测链路定向验证：EvalScope Worker `test_app.py` 17 tests、Databench/storage 19 tests、
+Web Evaluation 85 tests、API gateway 7 tests和 Web/API typecheck 通过；downstream patch dry-run 通过。
+尚未把这些结果声明为新的 GE9/离线目标机 gate，也未执行新镜像的真实内网模型回归。

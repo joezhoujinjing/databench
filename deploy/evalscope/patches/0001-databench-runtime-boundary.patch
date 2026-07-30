@@ -23,6 +23,125 @@ diff --git a/evalscope/service/app.py b/evalscope/service/app.py
 -    if os.path.isdir(_WEB_DIST):
 +    serve_web = os.getenv('EVALSCOPE_SERVE_WEB', 'true').strip().lower() == 'true'
 +    if serve_web and os.path.isdir(_WEB_DIST):
+diff --git a/evalscope/service/blueprints/eval.py b/evalscope/service/blueprints/eval.py
+--- a/evalscope/service/blueprints/eval.py
++++ b/evalscope/service/blueprints/eval.py
+@@ -123,5 +123,8 @@ def _build_task_config(data: dict) -> TaskConfig:
+     task_config = TaskConfig.from_dict(data)
+     task_config.no_timestamp = True
+     task_config.enable_progress_tracker = True
+-    task_config.analysis_report = True
++    requested_analysis = data.get('analysis_report', False)
++    if not isinstance(requested_analysis, bool):
++        raise RequestValidationError('analysis_report must be a boolean')
++    task_config.analysis_report = requested_analysis
+     return task_config
+diff --git a/evalscope/service/blueprints/reports.py b/evalscope/service/blueprints/reports.py
+--- a/evalscope/service/blueprints/reports.py
++++ b/evalscope/service/blueprints/reports.py
+@@ -5,6 +5,7 @@
+ direct filesystem access.
+ """
+ import json
++import math
+ import mimetypes
+ import os
+ import plotly.express as px
+@@ -419,6 +420,10 @@ def get_predictions():
+         report_name  (str): report identifier
+         dataset_name (str): dataset name
+         subset_name  (str): subset name
++        page          (int): filtered page number (default: 1)
++        page_size     (int): filtered rows per page (default: 50, maximum: 100)
++        mode          (str): all | above | below (default: all)
++        threshold   (float): score threshold used by counts and filtering
+     """
+     report_name = request.args.get('report_name')
+     dataset_name = request.args.get('dataset_name')
+@@ -432,14 +437,80 @@ def get_predictions():
+         prefix, model_name, _ = process_report_name(report_name)
+         work_dir = os.path.join(root, prefix)
+         df = get_model_prediction(work_dir, model_name, dataset_name, subset_name)
++        records = _df_to_records(df)
++        page = max(1, request.args.get('page', 1, type=int))
++        page_size = max(1, min(100, request.args.get('page_size', 50, type=int)))
++        mode = request.args.get('mode', 'all')
++        if mode not in {'all', 'above', 'below'}:
++            return jsonify({'error': 'mode must be all, above, or below'}), 400
++        threshold = request.args.get('threshold', 0.99, type=float)
++        if threshold is None or not math.isfinite(threshold) or threshold < 0 or threshold > 1:
++            return jsonify({'error': 'threshold must be between 0 and 1'}), 400
++
++        above_count = sum(1 for row in records if float(row.get('NScore', 0)) >= threshold)
++        counts = {
++            'all': len(records),
++            'above': above_count,
++            'below': len(records) - above_count,
++        }
++        if mode == 'above':
++            filtered = [row for row in records if float(row.get('NScore', 0)) >= threshold]
++        elif mode == 'below':
++            filtered = [row for row in records if float(row.get('NScore', 0)) < threshold]
++        else:
++            filtered = records
++
++        match = None
++        index = request.args.get('index')
++        message_prefix = request.args.get('message_id_prefix')
++        if index is not None and message_prefix is not None:
++            return jsonify({'error': 'only one prediction locator may be used'}), 400
++        if index is not None:
++            positions = [offset for offset, row in enumerate(filtered) if str(row.get('Index', '')) == index]
++            match = _prediction_match(positions, page_size)
++        elif message_prefix is not None:
++            positions = []
++            message_ids = []
++            for offset, row in enumerate(filtered):
++                for message in row.get('Messages') or []:
++                    message_id = message.get('id') if isinstance(message, dict) else None
++                    if isinstance(message_id, str) and message_id.startswith(message_prefix):
++                        positions.append(offset)
++                        message_ids.append(message_id)
++            match = _prediction_match(positions, page_size)
++            if match['status'] == 'found':
++                match['message_id'] = message_ids[0]
++        if match is not None and match['status'] == 'found':
++            page = match['page']
++
++        total = len(filtered)
++        start = (page - 1) * page_size
+         return jsonify({
+-            'predictions': _df_to_records(df),
++            'predictions': filtered[start:start + page_size],
++            'total': total,
++            'page': page,
++            'page_size': page_size,
++            'counts': counts,
++            **({} if match is None else {'match': match}),
+         }), 200
+     except Exception as e:
+         logger.error(f'Failed to get predictions: {e}')
+         return jsonify({'error': str(e)}), 500
+-
+-
++
++
++def _prediction_match(positions: list, page_size: int) -> dict:
++    if not positions:
++        return {'status': 'not-found'}
++    if len(positions) > 1:
++        return {'status': 'ambiguous'}
++    position = positions[0]
++    return {
++        'status': 'found',
++        'position': position + 1,
++        'page': position // page_size + 1,
++    }
++
++
+ @bp_reports.route('/analysis', methods=['GET'])
+ def get_analysis():
+     """Get the AI analysis text for a dataset.
 diff --git a/evalscope/service/utils/process.py b/evalscope/service/utils/process.py
 --- a/evalscope/service/utils/process.py
 +++ b/evalscope/service/utils/process.py

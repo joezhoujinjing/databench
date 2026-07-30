@@ -29,10 +29,12 @@ const EXACT_VERSION = /^[0-9a-f]{64}$/u
 export function DatabenchDatasetSource({
   disabled,
   initialDatasetVersion,
+  limit,
   onBindingChange,
 }: {
   readonly disabled: boolean
   readonly initialDatasetVersion?: string | undefined
+  readonly limit: string
   readonly onBindingChange: (binding: DatabenchEvaluationBinding | null) => void
 }) {
   const { t } = useTranslation()
@@ -63,6 +65,11 @@ export function DatabenchDatasetSource({
     if (search === '') return refs.slice(0, 12)
     return refs.filter((ref) => ref.name.toLocaleLowerCase().includes(search)).slice(0, 12)
   }, [refSearch, refs])
+  const parsedLimit = Number(limit)
+  const evaluationSampleCount =
+    plan === null || limit === '' || !Number.isSafeInteger(parsedLimit) || parsedLimit <= 0
+      ? plan?.output_count
+      : Math.min(plan.output_count, parsedLimit)
 
   useEffect(() => {
     if (selectedRef !== null || datasetVersion === '') return
@@ -290,7 +297,6 @@ export function DatabenchDatasetSource({
                 label: t('evaluations.tasks.selectTargetSource'),
                 value: '',
               },
-              { label: t('evaluations.tasks.targetNone'), value: 'none' },
               { label: t('evaluations.tasks.targetSelected'), value: 'selected-candidate' },
               {
                 label: t('evaluations.tasks.targetGroundTruth'),
@@ -344,7 +350,10 @@ export function DatabenchDatasetSource({
           ) : (
             <Alert aria-live="polite">
               <Check aria-hidden="true" className="mr-2 inline text-success" size={15} />
-              {t('evaluations.tasks.eligibleRecords', { count: formatInteger(plan.output_count) })}
+              {t('evaluations.tasks.evaluationSampleCount', {
+                count: formatInteger(evaluationSampleCount ?? plan.output_count),
+                eligible: formatInteger(plan.output_count),
+              })}
             </Alert>
           )}
           <FidelityReview plan={plan} />

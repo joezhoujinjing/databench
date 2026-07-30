@@ -50,6 +50,7 @@ def upstream_app(
     fail_eval: bool = False,
     received: list[dict[str, Any]] | None = None,
     deployment_report_task_id: str | None = None,
+    evaluation_result: dict[str, Any] | None = None,
 ) -> Flask:
     app = Flask('upstream-test')
 
@@ -68,7 +69,10 @@ def upstream_app(
                 'task_id': request.headers['EvalScope-Task-Id'],
                 'error': 'upstream failed',
             }), 500
-        result: dict[str, Any] = {'authorization': 'Bearer secret', 'answer': 'ok'}
+        result: dict[str, Any] = evaluation_result or {
+            'authorization': 'Bearer secret',
+            'answer': 'ok',
+        }
         if submitted.get('model') == 'deployed-lora-v1':
             result.update({
                 'api_url': submitted.get('api_url'),
@@ -116,6 +120,7 @@ def upstream_app(
     @app.get('/api/v1/reports/list')
     def reports_list():
         reports = [] if deployment_report_task_id is None else [{
+            'name': f'{deployment_report_task_id}_model',
             'report_name': deployment_report_task_id,
             'task_config': {
                 'api_url': 'http://127.0.0.1:8001/v1',
@@ -131,6 +136,24 @@ def upstream_app(
             'page': 1,
             'page_size': 20,
             'filters': {},
+        })
+
+    @app.get('/api/v1/reports/load')
+    def reports_load():
+        return jsonify({
+            'report_list': [],
+            'datasets': ['general_qa'],
+            'task_config': {},
+        })
+
+    @app.get('/api/v1/reports/predictions')
+    def reports_predictions():
+        return jsonify({
+            'predictions': [],
+            'total': 0,
+            'page': request.args.get('page', 1, type=int),
+            'page_size': request.args.get('page_size', 50, type=int),
+            'counts': {'all': 0, 'above': 0, 'below': 0},
         })
 
     @app.get('/api/v1/perf/list')
@@ -263,6 +286,120 @@ def test_native_invoke_terminal_replay_mismatch_and_secret_sanitizing(runtime_co
     assert mismatch.get_json()['error']['code'] == 'task_id_conflict'
     manifest = app.extensions['databench_evalscope']['manifests'].read(EVAL_ID)
     assert manifest['phase'] == 'completed'
+
+
+def test_completed_evaluation_normalizes_evalscope_metrics_for_databench(runtime_config) -> None:
+    result = {
+        'general_qa': {
+            'dataset_name': 'general_qa',
+            'metrics': [{
+                'name': 'rouge-l',
+                'score': 0.75,
+                'num': 2,
+                'categories': [{
+                    'name': ['qa'],
+                    'subsets': [{
+                        'name': 'databench',
+                        'score': 0.75,
+                        'num': 2,
+                        'is_aggregate': False,
+                    }],
+                }],
+            }],
+        },
+    }
+    app = create_app(
+        runtime_config,
+        upstream_app=upstream_app(evaluation_result=result),
+        databench_client=FakeDatabench(),
+        reconcile_on_start=False,
+    )
+    response = app.test_client().post(
+        '/api/v1/eval/invoke',
+        json=eval_payload(),
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert response.status_code == 200
+    manifest = app.extensions['databench_evalscope']['manifests'].read(EVAL_ID)
+    assert manifest['terminal']['metrics'] == [{
+        'dataset': 'general_qa',
+        'subset': 'databench',
+        'metric': 'rouge-l',
+        'score': 0.75,
+        'sample_count': 2,
+        'categories': ['qa'],
+    }]
+
+
+def test_databench_evaluation_rejects_no_reference_scoring(runtime_config) -> None:
+    app = create_app(
+        runtime_config,
+        upstream_app=upstream_app(),
+        databench_client=FakeDatabench(),
+        reconcile_on_start=False,
+    )
+    response = app.test_client().post(
+        '/api/v1/eval/invoke',
+        json={
+            'model': 'model',
+            'api_url': 'http://127.0.0.1:8001/v1',
+            'databench_source': {
+                'source_ref': 'support-qa',
+                'dataset_version': 'a' * 64,
+                'converter': 'evalscope-general-qa',
+                'options': {'target_source': 'none'},
+                'accepted_fidelity_digest': 'b' * 64,
+            },
+        },
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert response.status_code == 422
+    assert response.get_json()['error']['code'] == 'databench_target_source_unsupported'
+
+
+def test_reports_expose_databench_source_identity_and_prediction_paging(runtime_config) -> None:
+    app = create_app(
+        runtime_config,
+        upstream_app=upstream_app(deployment_report_task_id=EVAL_ID),
+        databench_client=FakeDatabench(),
+        reconcile_on_start=False,
+    )
+    manifests = app.extensions['databench_evalscope']['manifests']
+    manifests.claim(EVAL_ID, 'evaluation', config_digest({'test': True}, runtime_config.task_hmac_key))
+    manifests.write_integration(EVAL_ID, {
+        'schema_version': 1,
+        'task_id': EVAL_ID,
+        'run_id': '123e4567-e89b-42d3-a456-426614174099',
+        'source_ref': 'support-qa',
+        'dataset_version': 'a' * 64,
+        'converter': 'evalscope-general-qa',
+        'options': {'target_source': 'selected-candidate'},
+        'accepted_fidelity_digest': 'b' * 64,
+        'model_name': 'model',
+        'evalscope_commit': 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
+        'input_filename': 'databench.jsonl',
+    })
+    client = app.test_client()
+    reports = client.get('/api/v1/reports/list').get_json()
+    assert reports['reports'][0]['databench_source'] == {
+        'source_ref': 'support-qa',
+        'dataset_version': 'a' * 64,
+        'benchmark': 'general_qa',
+    }
+    loaded = client.get(f'/api/v1/reports/load?report_name={EVAL_ID}_model').get_json()
+    assert loaded['databench_source'] == reports['reports'][0]['databench_source']
+    predictions = client.get(
+        f'/api/v1/reports/predictions?report_name={EVAL_ID}_model'
+        '&dataset_name=general_qa&subset_name=databench'
+        '&page=2&page_size=50&mode=below&threshold=0.5'
+    )
+    assert predictions.status_code == 200
+    assert predictions.get_json()['page'] == 2
+    assert client.get(
+        f'/api/v1/reports/predictions?report_name={EVAL_ID}_model'
+        '&dataset_name=general_qa&subset_name=databench'
+        '&index=1&message_id_prefix=msg'
+    ).status_code == 422
 
 
 def test_deployment_mode_claims_opaque_payload_before_one_server_side_resolution(runtime_config) -> None:

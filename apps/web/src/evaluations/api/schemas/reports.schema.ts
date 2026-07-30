@@ -53,6 +53,12 @@ export const perfMetricsSummarySchema = z.object({
 
 export const perfMetricsSchema = z.object({ summary: perfMetricsSummarySchema })
 
+export const databenchReportSourceSchema = z.object({
+  source_ref: z.string().nullable(),
+  dataset_version: z.string().regex(/^[0-9a-f]{64}$/u),
+  benchmark: z.literal('general_qa'),
+})
+
 export const reportDataSchema = z.object({
   name: z.string(),
   dataset_name: z.string(),
@@ -67,6 +73,7 @@ export const loadReportResponseSchema = z.object({
   report_list: z.array(reportDataSchema),
   datasets: z.array(z.string()),
   task_config: z.record(z.string(), z.unknown()),
+  databench_source: databenchReportSourceSchema.optional(),
 })
 
 export const loadMultiReportResponseSchema = z.object({
@@ -82,6 +89,7 @@ export const reportSummarySchema = z.object({
   dataset_scores: z.record(z.string(), z.number()).optional(),
   num_samples: z.number(),
   timestamp: z.string(),
+  databench_source: databenchReportSourceSchema.optional(),
 })
 
 export const listReportsResponseSchema = z.object({
@@ -109,7 +117,7 @@ export const contentBlockSchema = z
     type: z.string().min(1).max(64),
     text: z.string().optional(),
     reasoning: z.string().optional(),
-    reasoning_tokens: z.number().optional(),
+    reasoning_tokens: z.number().nullable().optional(),
     image: z.string().optional(),
     audio: z.string().optional(),
     video: z.string().optional(),
@@ -186,6 +194,26 @@ export const predictionRowSchema = z
 
 export const predictionsResponseSchema = z.object({
   predictions: z.array(predictionRowSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  page_size: z.number().int().positive(),
+  counts: z.object({
+    all: z.number().int().nonnegative(),
+    above: z.number().int().nonnegative(),
+    below: z.number().int().nonnegative(),
+  }),
+  match: z
+    .discriminatedUnion('status', [
+      z.object({ status: z.literal('not-found') }),
+      z.object({ status: z.literal('ambiguous') }),
+      z.object({
+        status: z.literal('found'),
+        position: z.number().int().positive(),
+        page: z.number().int().positive(),
+        message_id: z.string().optional(),
+      }),
+    ])
+    .optional(),
 })
 
 export const analysisResponseSchema = z.object({ analysis: z.string() })
@@ -194,6 +222,7 @@ export type AgentTrace = z.infer<typeof agentTraceSchema>
 export type AgentTraceEvent = z.infer<typeof agentTraceEventSchema>
 export type ChatMessage = z.infer<typeof chatMessageSchema>
 export type ContentBlock = z.infer<typeof contentBlockSchema>
+export type DatabenchReportSource = z.infer<typeof databenchReportSourceSchema>
 export type ListReportsResponse = z.infer<typeof listReportsResponseSchema>
 export type LoadReportResponse = z.infer<typeof loadReportResponseSchema>
 export type PerfMetrics = z.infer<typeof perfMetricsSchema>
