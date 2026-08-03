@@ -1,6 +1,6 @@
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { Database } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ConnectionPanel } from '@/components/shell/ConnectionPanel.js'
 import { DatasetSidebar } from '@/components/shell/DatasetSidebar.js'
@@ -14,6 +14,7 @@ export function RootLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const datasetSection = datasetNavigationSection(pathname)
   const isEvaluationWorkspace = pathname.startsWith('/evaluations')
+  const [isDatasetSidebarCollapsed, setIsDatasetSidebarCollapsed] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
   useEffect(() => {
     void pathname
@@ -23,7 +24,7 @@ export function RootLayout() {
   return (
     <div className="min-h-dvh bg-background/95 text-foreground">
       <header className="sticky top-0 z-30 border-border border-b bg-chrome/94 backdrop-blur-xl">
-        <div className="mx-auto grid min-h-20 max-w-[120rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-6 px-8 max-md:gap-x-3 max-md:px-4">
+        <div className="mx-auto grid min-h-16 max-w-[120rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-6 px-8 max-md:gap-x-3 max-md:px-4">
           <Link
             aria-label="Databench"
             className="flex shrink-0 items-center gap-3 font-semibold text-[1.35rem]"
@@ -34,7 +35,7 @@ export function RootLayout() {
           </Link>
           <nav
             aria-label={t('nav.primary')}
-            className="flex h-20 min-w-0 items-center justify-center gap-5 overflow-x-auto max-md:order-3 max-md:col-span-3 max-md:h-12 max-md:justify-start"
+            className="flex h-16 min-w-0 items-center justify-center gap-5 overflow-x-auto max-md:order-3 max-md:col-span-3 max-md:h-12 max-md:justify-start"
           >
             <PrimaryNavLink active={datasetSection !== null} to="/datasets">
               {t('nav.datasets')}
@@ -56,7 +57,12 @@ export function RootLayout() {
         className={cn(
           'mx-auto max-w-[120rem] outline-none',
           datasetSection !== null &&
-            'grid min-h-[calc(100dvh-5rem)] grid-cols-[13.5rem_minmax(0,1fr)] gap-x-8 px-8 max-lg:block max-md:px-4',
+            cn(
+              'grid min-h-[calc(100dvh-4rem)] max-lg:block',
+              isDatasetSidebarCollapsed
+                ? 'grid-cols-[3.25rem_minmax(0,1fr)]'
+                : 'grid-cols-[11.5rem_minmax(0,1fr)]',
+            ),
           datasetSection === null && !isEvaluationWorkspace && 'px-8 py-10 max-md:px-4 max-md:py-7',
         )}
         ref={mainRef}
@@ -68,8 +74,12 @@ export function RootLayout() {
           </PostTrainingV2Gate>
         ) : (
           <>
-            <DatasetSidebar activeSection={datasetSection} />
-            <div className="min-w-0 py-10 max-md:py-7">
+            <DatasetSidebar
+              activeSection={datasetSection}
+              collapsed={isDatasetSidebarCollapsed}
+              onCollapsedChange={setIsDatasetSidebarCollapsed}
+            />
+            <div className="min-w-0 px-8 py-6 max-md:px-4 max-md:py-6">
               <PostTrainingV2Gate>
                 <Outlet />
               </PostTrainingV2Gate>

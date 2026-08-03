@@ -7,26 +7,57 @@ export interface TabItem<T extends string> {
 }
 
 export function SegmentedTabs<T extends string>({
+  ariaLabel,
+  className,
   items,
   onChange,
+  panelId,
   value,
 }: {
+  ariaLabel: string
+  className?: string
   items: readonly TabItem<T>[]
   onChange: (value: T) => void
+  panelId: string
   value: T
 }) {
+  const selected = items.some((item) => item.value === value) ? value : items[0]?.value
+  const refs = useRef(new Map<T, HTMLButtonElement>())
+
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const nextIndex = moveTabIndex(index, items.length, event.key)
+    if (nextIndex === null) return
+    event.preventDefault()
+    const next = items[nextIndex]
+    if (next === undefined) return
+    onChange(next.value)
+    refs.current.get(next.value)?.focus()
+  }
+
   return (
-    <div className="inline-flex rounded-[5px] border border-border bg-background/65 p-1">
-      {items.map((item) => (
+    <div
+      aria-label={ariaLabel}
+      className={cn('flex min-h-10 items-stretch gap-6 border-border border-b', className)}
+      role="tablist"
+    >
+      {items.map((item, index) => (
         <button
+          aria-controls={panelId}
+          aria-selected={item.value === selected}
           className={cn(
-            'h-9 rounded-[4px] px-4 text-sm text-muted-foreground transition',
-            item.value === value &&
-              'bg-accent text-accent-foreground shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]',
-            item.value !== value && 'hover:text-foreground',
+            'relative px-0.5 text-sm text-muted-foreground transition-colors after:absolute after:right-0 after:bottom-[-1px] after:left-0 after:h-0.5 after:origin-center after:scale-x-0 after:bg-primary after:transition-transform hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary',
+            item.value === selected && 'font-medium text-foreground after:scale-x-100',
           )}
+          id={`${panelId}-tab-${item.value}`}
           key={item.value}
           onClick={() => onChange(item.value)}
+          onKeyDown={(event) => onKeyDown(event, index)}
+          ref={(element) => {
+            if (element === null) refs.current.delete(item.value)
+            else refs.current.set(item.value, element)
+          }}
+          role="tab"
+          tabIndex={item.value === selected ? 0 : -1}
           type="button"
         >
           {item.label}

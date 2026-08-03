@@ -3,6 +3,7 @@ import type { DeletedRefMetadataV2, RefMetadataV2 } from '../api/types.js'
 import {
   clampDatasetPageIndex,
   datasetPageCount,
+  datasetPageSizeForViewportHeight,
   filterV2Refs,
   paginateV2Refs,
 } from './datasets.js'
@@ -36,11 +37,11 @@ describe('V2 dataset active/trash filtering', () => {
 describe('V2 dataset pagination', () => {
   const rows = Array.from({ length: 23 }, (_, index) => `dataset-${index + 1}`)
 
-  test('returns stable ten-row pages and the final remainder', () => {
+  test('returns stable eight-row pages and the final remainder', () => {
     expect(datasetPageCount(rows.length)).toBe(3)
-    expect(paginateV2Refs(rows, 0)).toEqual(rows.slice(0, 10))
-    expect(paginateV2Refs(rows, 1)).toEqual(rows.slice(10, 20))
-    expect(paginateV2Refs(rows, 2)).toEqual(rows.slice(20, 23))
+    expect(paginateV2Refs(rows, 0)).toEqual(rows.slice(0, 8))
+    expect(paginateV2Refs(rows, 1)).toEqual(rows.slice(8, 16))
+    expect(paginateV2Refs(rows, 2)).toEqual(rows.slice(16, 23))
   })
 
   test('clamps stale page state after filtering or restoring a row', () => {
@@ -48,5 +49,14 @@ describe('V2 dataset pagination', () => {
     expect(clampDatasetPageIndex(2, 4)).toBe(0)
     expect(clampDatasetPageIndex(-1, rows.length)).toBe(0)
     expect(datasetPageCount(0)).toBe(1)
+  })
+
+  test('uses more rows on taller desktop viewports without crowding short screens', () => {
+    expect(datasetPageSizeForViewportHeight(768)).toBe(8)
+    expect(datasetPageSizeForViewportHeight(879)).toBe(8)
+    expect(datasetPageSizeForViewportHeight(880)).toBe(10)
+    expect(datasetPageSizeForViewportHeight(999)).toBe(10)
+    expect(datasetPageSizeForViewportHeight(1000)).toBe(12)
+    expect(datasetPageSizeForViewportHeight(1200)).toBe(12)
   })
 })

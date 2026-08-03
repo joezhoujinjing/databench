@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useV2DeletedRefs, useV2Refs, useV2RestoreRef } from '../api/hooks.js'
 import type { DeletedRefMetadataV2, RefMetadataV2 } from '../api/types.js'
 import { type DatasetListMode, V2DatasetsPageView } from '../features/datasets/DatasetsPageView.js'
 
-export const DATASET_PAGE_SIZE = 10
+export const DATASET_PAGE_SIZE = 8
 
 export function V2DatasetsPage() {
   const refs = useV2Refs(100)
@@ -12,17 +12,21 @@ export function V2DatasetsPage() {
   const [filter, setFilter] = useState('')
   const [mode, setMode] = useState<DatasetListMode>('active')
   const [requestedPageIndex, setRequestedPageIndex] = useState(0)
+  const pageSize = useDatasetPageSize()
+  useEffect(() => {
+    if (pageSize > 0) setRequestedPageIndex(0)
+  }, [pageSize])
   const query = mode === 'active' ? refs : deletedRefs
   const allRows = query.data?.pages.flatMap((page) => page.items) ?? []
   const rows = useMemo(() => filterV2Refs(allRows, filter), [allRows, filter])
-  const loadedPageCount = datasetPageCount(rows.length)
-  const pageIndex = clampDatasetPageIndex(requestedPageIndex, rows.length)
-  const pageRows = paginateV2Refs(rows, pageIndex)
-  const canNextPage = (pageIndex + 1) * DATASET_PAGE_SIZE < rows.length || query.hasNextPage
+  const loadedPageCount = datasetPageCount(rows.length, pageSize)
+  const pageIndex = clampDatasetPageIndex(requestedPageIndex, rows.length, pageSize)
+  const pageRows = paginateV2Refs(rows, pageIndex, pageSize)
+  const canNextPage = (pageIndex + 1) * pageSize < rows.length || query.hasNextPage
 
   async function handleNextPage() {
     const nextPageIndex = pageIndex + 1
-    if (nextPageIndex * DATASET_PAGE_SIZE < rows.length) {
+    if (nextPageIndex * pageSize < rows.length) {
       setRequestedPageIndex(nextPageIndex)
       return
     }
@@ -35,7 +39,7 @@ export function V2DatasetsPage() {
       result.data?.pages.flatMap((page) => page.items) ?? [],
       filter,
     )
-    if (nextPageIndex * DATASET_PAGE_SIZE < expandedRows.length) {
+    if (nextPageIndex * pageSize < expandedRows.length) {
       setRequestedPageIndex(nextPageIndex)
     }
   }
@@ -73,8 +77,37 @@ export function V2DatasetsPage() {
       restoringName={restoreRef.isPending ? (restoreRef.variables?.name ?? null) : null}
       rowCount={rows.length}
       rows={pageRows}
+      totalRowCount={allRows.length}
     />
   )
+}
+
+function useDatasetPageSize(): number {
+  const [pageSize, setPageSize] = useState(() =>
+    typeof window === 'undefined'
+      ? DATASET_PAGE_SIZE
+      : datasetPageSizeForViewportHeight(window.innerHeight),
+  )
+
+  useEffect(() => {
+    const updatePageSize = () => {
+      const nextPageSize = datasetPageSizeForViewportHeight(window.innerHeight)
+      setPageSize((currentPageSize) =>
+        currentPageSize === nextPageSize ? currentPageSize : nextPageSize,
+      )
+    }
+
+    window.addEventListener('resize', updatePageSize)
+    return () => window.removeEventListener('resize', updatePageSize)
+  }, [])
+
+  return pageSize
+}
+
+export function datasetPageSizeForViewportHeight(viewportHeight: number): number {
+  if (viewportHeight >= 1000) return 12
+  if (viewportHeight >= 880) return 10
+  return DATASET_PAGE_SIZE
 }
 
 export function filterV2Refs<T extends DeletedRefMetadataV2 | RefMetadataV2>(
