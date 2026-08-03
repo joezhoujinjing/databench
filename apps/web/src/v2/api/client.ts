@@ -18,6 +18,7 @@ import type {
   DeleteRefResultV2,
   EvaluationRunPageV2,
   ExportPlanV2,
+  ExportPreviewV2,
   ExportRequestV2,
   IngestResultV2,
   InspectExportRequestV2,
@@ -112,6 +113,10 @@ export interface V2RestoreRefOptions extends V2ReadOptions {
 }
 
 export interface V2InspectExportOptions extends V2DatasetOptions {
+  readonly request: InspectExportRequestV2
+}
+
+export interface V2PreviewExportOptions extends V2DatasetOptions {
   readonly request: InspectExportRequestV2
 }
 
@@ -348,6 +353,24 @@ export async function inspectExportV2(options: V2InspectExportOptions): Promise<
     })
   }
   return plan
+}
+
+export async function previewExportV2(options: V2PreviewExportOptions): Promise<ExportPreviewV2> {
+  const preview = await unwrapOpenApiResponse<ExportPreviewV2>(
+    createApiClient(options).POST('/v2/datasets/{ref_or_version}:preview-export', {
+      ...requestOptions(options.signal),
+      body: options.request,
+      params: { path: { ref_or_version: options.refOrVersion } },
+    }),
+  )
+  if (preview.plan.dataset_version !== options.refOrVersion) {
+    throw new ApiError({
+      code: 'integrity_error',
+      message: 'The export preview does not match the requested immutable dataset version.',
+      status: 500,
+    })
+  }
+  return preview
 }
 
 export function exportDatasetV2Response(options: V2ExportOptions): Promise<Response> {

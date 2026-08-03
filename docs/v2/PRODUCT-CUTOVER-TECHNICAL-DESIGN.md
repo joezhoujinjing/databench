@@ -135,6 +135,14 @@ record ID、record digest、dataset version 与标签移入右侧辅助栏。该
 中间省略，检查器和文本关系保留完整值；少量节点使用较矮画布，较大图继续保留受限的自适应高度、
 缩放、适配视图和文本关系入口。上述调整不增加编辑能力，也不改变 bounded lineage 请求或分页语义。
 
+导出页在桌面使用“紧凑配置栏 → 原始/导出结构双栏 → fidelity检查 → 下载”的单向工作流。格式
+参数以 converter registry 的 `options_schema` 为真源：无参数格式只显示“无需额外配置”，
+`evalscope-general-qa` 使用既有 `target_source` enum的答案来源选择，未知非空 schema保留高级 JSON
+fallback。结构双栏调用只读、有界的 `:preview-export`：左侧显示稳定排序后的第一条 canonical record，
+右侧显示同一真实 converter stream的第一条输出，每侧最多64 KiB并明确截断。前端不得复制 converter
+规则或用静态样例伪造结果；两侧也不得暗示一定一一对应。0条输出必须显式解释，不能显示成加载失败。
+该页面不增加导出格式、字段映射、样本切换或服务端 export job。
+
 ## 4. Web 路由设计
 
 | 当前路径 | 目标路径 | 行为 |

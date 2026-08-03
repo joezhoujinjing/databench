@@ -642,6 +642,25 @@ describe('V2 HTTP API', () => {
       fidelity_digest: exportPlan.fidelity_digest,
     })
 
+    const preview = await app.fetch(
+      request('/v2/datasets/main:preview-export', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ converter: 'canonical-jsonl', options: {} }),
+      }),
+    )
+    expect(preview.status).toBe(200)
+    expect(await json(preview)).toEqual({
+      plan: exportPlan,
+      source_record: {
+        record_id: revision.record.id,
+        record_digest: revision.record_digest,
+        text: revision.record_json,
+        truncated: false,
+      },
+      output_record: { text: revision.record_json, truncated: false },
+    })
+
     const exported = await app.fetch(
       request(`/v2/datasets/${VERSION}:export`, {
         method: 'POST',
@@ -1025,6 +1044,18 @@ function createFakeWorkspace(): { workspace: ApiV2Workspace; state: FakeState } 
     getConverter: (name: string) => (name === converter.name ? converter : null),
     async inspectExport() {
       return exportPlan
+    },
+    async previewExport() {
+      return {
+        plan: exportPlan,
+        source_record: {
+          record_id: revision.record.id,
+          record_digest: revision.record_digest,
+          text: revision.record_json,
+          truncated: false,
+        },
+        output_record: { text: revision.record_json, truncated: false },
+      }
     },
     async export(_version: string, _requestInput: unknown, context: { signal?: AbortSignal } = {}) {
       if (state.exportFailure !== undefined) throw state.exportFailure

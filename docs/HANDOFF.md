@@ -16,6 +16,10 @@
 - Owner 于 2026-08-03 接受数据血缘桌面修订：现有 immutable Dataset/Run关系改为可探索的只读图；
   边直接显示真实操作名，节点、关系线、操作标签与文本关系均可选择，右侧检查器展示现有 manifest
   或 run元数据；self-output和查询深度边界显式解释。该修订不增加血缘编辑或任何新业务能力。
+- Owner 于 2026-08-03 要求导出页能同时看见原始数据结构和真实导出结构。当前实现新增无副作用、
+  单条且每侧64 KiB上限的 `:preview-export`，页面按“紧凑配置 → 原始/导出双栏 → fidelity → 下载”
+  排列；无参数格式不再显示大块 JSON编辑器，EvalScope只呈现既有答案来源 enum。预览直接读取
+  canonical record与真实 converter stream，不在前端复制转换规则，也不新增字段映射或样本导航。
 - v1 产品面、runtime、领域代码和已确认的本地持久化数据已删除。
 - R4 maintenance tool、forward migration 和 runbook保留，供其他安装环境显式退役。
 - 公共云 API 托管平台 D3 未决定；不得擅自进入 S22。ADR 0012 离线单机发布是独立通道。

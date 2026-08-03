@@ -204,6 +204,22 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v2/datasets/{ref_or_version}:preview-export': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['previewDatasetExportV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v2/datasets/{ref_or_version}/records': {
     parameters: {
       query?: never
@@ -1238,6 +1254,21 @@ export interface components {
       }
       output_count: number
       suggested_filename: string
+    }
+    ExportPreviewSourceV2: {
+      record_digest: string
+      record_id: string
+      text: string
+      truncated: boolean
+    } | null
+    ExportPreviewTextV2: {
+      text: string
+      truncated: boolean
+    } | null
+    ExportPreviewV2: {
+      output_record: components['schemas']['ExportPreviewTextV2']
+      plan: components['schemas']['ExportPlanV2']
+      source_record: components['schemas']['ExportPreviewSourceV2']
     }
     ExportRequestV2: {
       accepted_fidelity_digest: string | null
@@ -2972,6 +3003,143 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ExportPlanV2']
+        }
+      }
+      /** @description Malformed export inspection request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description V2 dataset was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description V2 request resource limit exceeded */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid export request or unsupported profile */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationOrUnsupportedProfileErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  previewDatasetExportV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        ref_or_version: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['InspectExportRequestV2']
+      }
+    }
+    responses: {
+      /** @description Bounded real-record V2 export preview */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ExportPreviewV2']
         }
       }
       /** @description Malformed export inspection request */

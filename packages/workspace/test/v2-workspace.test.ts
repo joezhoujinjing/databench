@@ -68,6 +68,7 @@ import {
   NotFoundError,
   type PostTrainingRecordV2,
   RefConflictErrorV2,
+  V2_EXPORT_PREVIEW_MAX_BYTES,
   V2_LINEAGE_CURSOR_MAX_CHARS,
 } from '@databench/schema'
 import {
@@ -1615,6 +1616,98 @@ describe('V2Workspace converter and fidelity orchestration', () => {
     expect(Object.isFrozen(plan)).toBe(true)
     expect(rig.catalog.getRef).toHaveBeenCalledTimes(1)
     expect(stream).not.toHaveBeenCalled()
+  })
+
+  test('previews the first canonical record and the first real converter output', async () => {
+    const registry = createDefaultV2ConverterRegistry()
+    const stream = vi.spyOn(registry, 'stream')
+    const rig = createRig({}, undefined, registry)
+    const dataset = makeDataset('b', 'real export preview')
+    rig.seed(dataset)
+    rig.catalog.refs.set('preview-main', refRow('preview-main', dataset.version, null))
+    const revision = [...dataset.records()][0]
+
+    const preview = await rig.workspace.previewExport('preview-main', {
+      converter: 'canonical-jsonl',
+      options: {},
+    })
+
+    expect(preview.plan).toMatchObject({
+      dataset_version: dataset.version,
+      converter: 'canonical-jsonl',
+      output_count: 1,
+    })
+    expect(preview.source_record).toEqual({
+      record_id: revision?.record.id,
+      record_digest: revision?.record_digest,
+      text: revision?.record_json,
+      truncated: false,
+    })
+    expect(preview.output_record).toEqual({ text: revision?.record_json, truncated: false })
+    expect(Object.isFrozen(preview)).toBe(true)
+    expect(stream).toHaveBeenCalledTimes(1)
+    expect(rig.catalog.getRef).toHaveBeenCalledTimes(1)
+  })
+
+  test('returns no output sample for a zero-output converter and bounds UTF-8 previews', async () => {
+    const rig = createRig()
+    const zeroOutput = makeDataset('1', 'prompt only')
+    const oversized = makeDataset('2', '界'.repeat(V2_EXPORT_PREVIEW_MAX_BYTES))
+    rig.seed(zeroOutput)
+    rig.seed(oversized)
+
+    const emptyPreview = await rig.workspace.previewExport(zeroOutput.version, {
+      converter: 'trl-dpo',
+      options: {},
+    })
+    expect(emptyPreview.plan.output_count).toBe(0)
+    expect(emptyPreview.source_record).not.toBeNull()
+    expect(emptyPreview.output_record).toBeNull()
+
+    const bounded = await rig.workspace.previewExport(oversized.version, {
+      converter: 'canonical-jsonl',
+      options: {},
+    })
+    expect(bounded.source_record?.truncated).toBe(true)
+    expect(bounded.output_record?.truncated).toBe(true)
+    expect(new TextEncoder().encode(bounded.source_record?.text).byteLength).toBeLessThanOrEqual(
+      V2_EXPORT_PREVIEW_MAX_BYTES,
+    )
+    expect(new TextEncoder().encode(bounded.output_record?.text).byteLength).toBeLessThanOrEqual(
+      V2_EXPORT_PREVIEW_MAX_BYTES,
+    )
+    expect(bounded.output_record?.text.endsWith('\uFFFD')).toBe(false)
+  })
+
+  test('closes the real converter iterator immediately after the first output record', async () => {
+    const registry = createDefaultV2ConverterRegistry()
+    const originalStream = registry.stream.bind(registry)
+    const closed = vi.fn()
+    vi.spyOn(registry, 'stream').mockImplementation((...args) => {
+      const source = originalStream(...args)
+      return (async function* () {
+        try {
+          yield* source
+        } finally {
+          closed()
+        }
+      })()
+    })
+    const rig = createRig({}, undefined, registry)
+    const dataset = V2Dataset.fromRecords([
+      makeRecord('3', 'first preview candidate'),
+      makeRecord('4', 'second preview candidate'),
+    ])
+    rig.seed(dataset)
+
+    const preview = await rig.workspace.previewExport(dataset.version, {
+      converter: 'canonical-jsonl',
+      options: {},
+    })
+
+    expect(preview.plan.output_count).toBe(2)
+    expect(preview.output_record).not.toBeNull()
+    expect(closed).toHaveBeenCalledOnce()
   })
 
   test('requires exact semantic approval before opening a trainer stream', async () => {

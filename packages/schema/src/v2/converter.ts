@@ -8,7 +8,12 @@ import {
 } from '@databench/hashing'
 import { z } from 'zod'
 import { ValidationError } from '../errors.js'
-import { CanonicalMimeTypeSchema, DigestHexSchema, NonNegativeSafeIntegerSchema } from './common.js'
+import {
+  CanonicalMimeTypeSchema,
+  DigestHexSchema,
+  NonNegativeSafeIntegerSchema,
+  RecordIdSchema,
+} from './common.js'
 import { JsonObjectSchema } from './json-value.js'
 
 export const V2_FIDELITY_MAX_PRESERVED = 256
@@ -218,6 +223,31 @@ export const ExportPlanV2Schema = ExportPlanInputV2Schema.extend({
   })
   .meta({ id: 'ExportPlanV2' })
 export type ExportPlanV2 = z.infer<typeof ExportPlanV2Schema>
+
+export const V2_EXPORT_PREVIEW_MAX_BYTES = 64 * 1024
+
+export const ExportPreviewTextV2Schema = z
+  .strictObject({
+    text: z.string().max(V2_EXPORT_PREVIEW_MAX_BYTES),
+    truncated: z.boolean(),
+  })
+  .meta({ id: 'ExportPreviewTextV2' })
+export type ExportPreviewTextV2 = z.infer<typeof ExportPreviewTextV2Schema>
+
+export const ExportPreviewSourceV2Schema = ExportPreviewTextV2Schema.extend({
+  record_id: RecordIdSchema,
+  record_digest: DigestHexSchema,
+}).meta({ id: 'ExportPreviewSourceV2' })
+export type ExportPreviewSourceV2 = z.infer<typeof ExportPreviewSourceV2Schema>
+
+export const ExportPreviewV2Schema = z
+  .strictObject({
+    plan: ExportPlanV2Schema,
+    source_record: ExportPreviewSourceV2Schema.nullable(),
+    output_record: ExportPreviewTextV2Schema.nullable(),
+  })
+  .meta({ id: 'ExportPreviewV2' })
+export type ExportPreviewV2 = z.infer<typeof ExportPreviewV2Schema>
 
 export const ExportRequestV2Schema = z
   .strictObject({

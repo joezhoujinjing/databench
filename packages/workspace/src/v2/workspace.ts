@@ -163,6 +163,9 @@ import {
   EvaluationRunStateConflictErrorV2,
   type EvaluationRunV2,
   type ExportPlanV2,
+  type ExportPreviewTextV2,
+  type ExportPreviewV2,
+  ExportPreviewV2Schema,
   type ExportRequestV2,
   ExportRequestV2Schema,
   type FailEvaluationResultUploadRequestV2,
@@ -262,6 +265,7 @@ import {
   type TransformJobV2,
   V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES,
   V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS,
+  V2_EXPORT_PREVIEW_MAX_BYTES,
   V2_LINEAGE_MAX_DEPTH,
   V2_LINEAGE_MAX_NODES,
   V2_RECORD_JSON_LAYOUT_VERSION,
@@ -3506,6 +3510,55 @@ export class V2Workspace {
     }
   }
 
+  async previewExport(
+    refOrVersionInput: string,
+    requestInput: InspectExportRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<Readonly<ExportPreviewV2>> {
+    context.signal?.throwIfAborted()
+    const request = InspectExportRequestV2Schema.parse(requestInput)
+    const resolved = await this.#resolveLayout(refOrVersionInput, context.signal)
+    const lease = await this.#acquire(resolved.identity, context.signal)
+    try {
+      context.signal?.throwIfAborted()
+      const records = stableConverterRecords(lease.dataset)
+      const inspected = this.#createExportPlan(
+        resolved.identity.dataset_version,
+        lease.dataset,
+        request,
+      )
+      const first = records[0]
+      const sourceRecord =
+        first === undefined
+          ? null
+          : {
+              ...boundedUtf8Text(first.record_json, V2_EXPORT_PREVIEW_MAX_BYTES),
+              record_id: first.record.id,
+              record_digest: first.record_digest,
+            }
+      const outputRecord = await firstConverterOutputRecord(
+        this.#converterRegistry.stream(
+          request.converter,
+          records,
+          inspected.analysis.normalized_options,
+          inspected.analysis,
+        ),
+        V2_EXPORT_PREVIEW_MAX_BYTES,
+        context.signal,
+      )
+      context.signal?.throwIfAborted()
+      return deepFreeze(
+        ExportPreviewV2Schema.parse({
+          plan: inspected.plan,
+          source_record: sourceRecord,
+          output_record: outputRecord,
+        }),
+      )
+    } finally {
+      lease.release()
+    }
+  }
+
   async export(
     datasetVersionInput: string,
     requestInput: ExportRequestV2,
@@ -5053,6 +5106,108 @@ function stableConverterRecords(dataset: V2Dataset): readonly RecordRevisionV2[]
     }
   }
   return Object.freeze(records)
+}
+
+function boundedUtf8Text(text: string, maxBytes: number): Readonly<ExportPreviewTextV2> {
+  const buffer = new Uint8Array(maxBytes)
+  const encoded = new TextEncoder().encodeInto(text, buffer)
+  return Object.freeze({
+    text: new TextDecoder().decode(buffer.subarray(0, encoded.written)),
+    truncated: encoded.read < text.length,
+  })
+}
+
+async function firstConverterOutputRecord(
+  source: AsyncIterable<Uint8Array>,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<Readonly<ExportPreviewTextV2> | null> {
+  const iterator = source[Symbol.asyncIterator]()
+  const bytes = new Uint8Array(maxBytes)
+  let length = 0
+  let hasRecord = false
+  let truncated = false
+  let completed = false
+  let primaryError: unknown
+  let hasPrimaryError = false
+  let cleanupError: unknown
+  let hasCleanupError = false
+
+  try {
+    while (!hasRecord && !truncated) {
+      signal?.throwIfAborted()
+      const next = await iterator.next()
+      signal?.throwIfAborted()
+      if (next.done) {
+        completed = true
+        break
+      }
+      const chunk = next.value
+      if (!(chunk instanceof Uint8Array)) {
+        throw new IntegrityError('V2 converter preview yielded an invalid byte chunk', {
+          reason: 'converter_preview_chunk_type',
+        })
+      }
+      const newline = chunk.indexOf(0x0a)
+      const recordByteCount = newline === -1 ? chunk.byteLength : newline
+      const remaining = maxBytes - length
+      const copied = Math.min(recordByteCount, remaining)
+      if (copied > 0) {
+        bytes.set(chunk.subarray(0, copied), length)
+        length += copied
+      }
+      if (recordByteCount > remaining) {
+        truncated = true
+      } else if (newline !== -1) {
+        hasRecord = true
+      }
+    }
+  } catch (error) {
+    hasPrimaryError = true
+    primaryError = error
+    throw error
+  } finally {
+    if (!completed && iterator.return !== undefined) {
+      try {
+        await iterator.return()
+      } catch (error) {
+        if (hasPrimaryError) attachSuppressed(primaryError, error)
+        else {
+          cleanupError = error
+          hasCleanupError = true
+        }
+      }
+    }
+  }
+
+  if (hasCleanupError) throw cleanupError
+  if (!hasRecord && length === 0) return null
+  return Object.freeze({
+    text: decodeConverterPreviewUtf8(bytes.subarray(0, length), truncated),
+    truncated,
+  })
+}
+
+function decodeConverterPreviewUtf8(bytes: Uint8Array, truncated: boolean): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    if (truncated) {
+      const maxTailBytes = Math.min(3, bytes.byteLength)
+      for (let tailBytes = 1; tailBytes <= maxTailBytes; tailBytes += 1) {
+        try {
+          return new TextDecoder('utf-8', { fatal: true }).decode(
+            bytes.subarray(0, bytes.byteLength - tailBytes),
+          )
+        } catch {
+          // A UTF-8 code point can span at most four bytes. Try the next shorter prefix.
+        }
+      }
+    }
+    throw new IntegrityError('V2 converter preview is not valid UTF-8', {
+      reason: 'converter_preview_invalid_utf8',
+    })
+  }
 }
 
 function compareConverterRevisions(left: RecordRevisionV2, right: RecordRevisionV2): number {

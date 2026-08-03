@@ -7,6 +7,7 @@ import {
   DatasetVersionParamsV2Schema,
   DatasetViewV2Schema,
   ExportPlanV2Schema,
+  ExportPreviewV2Schema,
   ExportRequestV2Schema,
   IngestCanonicalV2FormSchema,
   IngestResultV2Schema,
@@ -131,6 +132,28 @@ const inspectExportRoute = createRoute({
   },
 })
 
+const previewExportRoute = createRoute({
+  method: 'post',
+  path: '/v2/datasets/{ref_or_version}:preview-export',
+  operationId: 'previewDatasetExportV2',
+  tags: ['v2 export'],
+  request: {
+    params: DatasetRefOrVersionParamsV2Schema,
+    body: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: InspectExportRequestV2Schema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: jsonResponseV2(ExportPreviewV2Schema, 'Bounded real-record V2 export preview'),
+    ...V2_INSPECT_EXPORT_ERROR_RESPONSES,
+  },
+})
+
 const exportRoute = createRoute({
   method: 'post',
   path: '/v2/datasets/{dataset_version}:export',
@@ -232,6 +255,22 @@ export function registerV2DatasetRoutes(app: OpenAPIHono<ApiEnv>): void {
     return context.json(plan, 200)
   })
 
+  app.post('/v2/datasets/:target{[^/]+:preview-export}', async (context) => {
+    assertJsonContentTypeV2(context.req.raw)
+    const ref_or_version = actionTarget(context.req.param('target'), ':preview-export')
+    DatasetRefOrVersionParamsV2Schema.parse({ ref_or_version })
+    const workspace = getV2Workspace(context)
+    const limits = workspace.postTrainingV2Capability().limits
+    const request = await readRawJsonRequestV2(context, InspectExportRequestV2Schema, {
+      maxBytes: limits.max_record_bytes,
+      maxDepth: limits.max_nesting_depth,
+    })
+    const preview = await workspace.previewExport(ref_or_version, request, {
+      signal: context.req.raw.signal,
+    })
+    return context.json(preview, 200)
+  })
+
   app.post('/v2/datasets/:target{[^/]+:export}', async (context) => {
     assertJsonContentTypeV2(context.req.raw)
     const dataset_version = actionTarget(context.req.param('target'), ':export')
@@ -266,6 +305,7 @@ function registerOpenApiPaths(app: OpenAPIHono<ApiEnv>): void {
     recordRoute,
     auditRoute,
     inspectExportRoute,
+    previewExportRoute,
     exportRoute,
   ]) {
     app.openAPIRegistry.registerPath(route)

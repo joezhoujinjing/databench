@@ -1884,6 +1884,7 @@ Zod schema确定性导出并与实际 validation保持契约测试一致。Capab
 
 ```text
 POST /v2/datasets/{ref_or_version}:inspect-export
+POST /v2/datasets/{ref_or_version}:preview-export
 POST /v2/datasets/{dataset_version}:export
 ```
 
@@ -1920,6 +1921,20 @@ interface ExportPlanV2 {
   fidelity_digest: string
 }
 
+interface ExportPreviewV2 {
+  plan: ExportPlanV2
+  source_record: {
+    record_id: string
+    record_digest: string
+    text: string
+    truncated: boolean
+  } | null
+  output_record: {
+    text: string
+    truncated: boolean
+  } | null
+}
+
 interface ExportRequestV2 {
   converter: ConverterNameV2
   options: JsonObject
@@ -1933,6 +1948,19 @@ interface ExportRequestV2 {
 Inspect 是无状态、无副作用的 JSON 请求。它只解析 ref 一次，运行资格/fidelity analysis，
 物化 converter options 默认值，并返回 exact `dataset_version` 与 `ExportPlanV2`。不创建
 `export_id`、临时文件、job row 或进程内 handle。
+
+Preview 同样无状态、无副作用，请求体复用 `InspectExportRequestV2`。它在同一个 immutable
+Dataset lease 内生成 `ExportPlanV2`，并返回按 `(record_digest, record_id)` 稳定排序的第一条
+canonical `record_json` 与同一 analysis 驱动的真实 converter stream 第一条输出。两侧各最多
+64 KiB UTF-8；超过时只在 code point边界截断并设置 `truncated=true`。读取到首个 LF或达到上限后
+必须调用 async iterator `return()`，不能为了预览消费完整导出。空数据集的 `source_record` 为
+`null`；converter 的 `output_count=0` 时 `output_record` 为 `null`。源记录与输出记录不承诺一一
+对应，因为 converter可以筛选或拆分记录。
+
+Preview 不要求 `accepted_fidelity_digest`，因为它是不落盘、不返回完整训练文件的有界 inspect
+辅助面；它不创建 export job、临时文件、catalog row或进程内 handle。Preview fields不参与
+`fidelity_digest`，也不能成为新的 export identity输入。前端只能展示服务端返回的真实 bytes，
+不得复制 converter规则构造“预览”。
 
 `fidelity_digest` 使用 `hashV2ExportFidelity`，固定绑定以下 strict JCS envelope:
 
@@ -1977,7 +2005,8 @@ converter + options 重新生成当前 plan:
 - 服务端在发送成功 headers 前完成 plan/digest校验。响应开始后发生读取错误时中止 stream，
   绝不把 JSON error envelope 拼到训练数据尾部。
 
-OpenAPI 将 inspect 的 200 response 定义为 JSON `ExportPlanV2`，将 export 的 200 response
+OpenAPI 将 inspect 的 200 response 定义为 JSON `ExportPlanV2`，preview 的 200 response定义为
+JSON `ExportPreviewV2`，将 export 的 200 response
 定义为 registry中枚举的 media type binary stream（首期 converters均为
 `application/x-ndjson`），并让 422 detail 复用同一个 `ExportPlanV2` component。新增 media type
 必须同步 OpenAPI content map；不能只写“对应类型”而留给实现者猜。
@@ -2256,7 +2285,7 @@ apps/web/src/v2/
 | `/v2/ingest` | canonical JSONL 上传、标准 Record JSON 数组粘贴创建、可选 ref CAS 与失败恢复 |
 | `/v2/transforms` | registry、strict params、ordered inputs 与运行结果 |
 | `/v2/lineage/$ref` | exact dataset-version lineage 图 |
-| `/v2/export/$ref` | converter options、fidelity review 与下载 |
+| `/v2/export/$ref` | schema-aware converter options、真实原始/导出结构预览、fidelity review 与下载 |
 
 `PostTrainingV2Gate` 只包裹上述 v2 routes。导航入口只有在 capability `enabled=true`，并同时
 包含 API `2`、record schema `2.0.0`、identity `databench-v2-jcs-1`、layout
@@ -2373,11 +2402,17 @@ version。成功后导航到 exact output version；ref 冲突按上一节处理
 
 Web 使用两个显式动作:
 
-1. “检查导出”调用 `:inspect-export`，展示 preserved、informational/transformed/semantic
+1. “生成真实预览”调用 `:preview-export`，一次取得 plan、第一条 canonical record 与第一条真实
+   converter output；页面并列展示前后结构，再展示 preserved、informational/transformed/semantic
    changes、config hints、output count、exact version、converter version 与 normalized options;
-2. “下载”只对 inspect 返回的 exact version 调用 `:export`，提交 plan 的
+2. “下载”只对 preview plan 返回的 exact version 调用 `:export`，提交 plan 的
    `normalized_options + fidelity_digest`。存在 semantic changes 时按钮前必须二次明确确认；
    即使没有 semantic loss，Web 也提交 digest，用来检测 converter drift。
+
+Converter controls以 `/v2/converters` 的 `options_schema` 为真源：空 strict object不显示 JSON
+编辑器；`evalscope-general-qa@1.0.0` 的 `target_source` enum显示“答案来源”单选；未来无法识别的
+非空 schema才降级为紧凑高级 JSON编辑器，服务端仍是唯一 validation真相。预览 code panel只读，
+完整 JSON可以为阅读做无损 pretty-print；截断文本保持原样并明确显示“前64 KiB”。
 
 如果 export 返回 422 `fidelity_error`，说明预检结果已经变化。UI 必须丢弃旧批准、展示 error
 detail 中的新 `ExportPlanV2` 并要求重新确认，不能自动用新 digest重试。其他错误不创建半成品

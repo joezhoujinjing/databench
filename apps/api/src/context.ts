@@ -42,6 +42,7 @@ export type ApiV2Workspace = Pick<
   | 'listTransformJobs'
   | 'materializeCanonicalDraftJsonl'
   | 'postTrainingV2Capability'
+  | 'previewExport'
   | 'previewCanonicalJsonl'
   | 'previewCanonicalDraftJsonl'
   | 'putRef'

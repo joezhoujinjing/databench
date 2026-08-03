@@ -7,6 +7,7 @@ import {
   inspectExportV2,
   listConvertersV2,
   listTransformsV2,
+  previewExportV2,
   putRefV2,
   runTransformV2,
 } from './client.js'
@@ -53,6 +54,18 @@ describe('V15 browser API lifecycle', () => {
       }
       if (url.pathname === `/v2/lineage/${output}`) return json(fixture.lineage)
       if (url.pathname === `/v2/datasets/${output}:inspect-export`) return json(fixture.export_plan)
+      if (url.pathname === `/v2/datasets/${output}:preview-export`) {
+        return json({
+          plan: fixture.export_plan,
+          source_record: {
+            record_id: `rec_${'1'.repeat(64)}`,
+            record_digest: '2'.repeat(64),
+            text: '{"schema_version":"2.0.0"}',
+            truncated: false,
+          },
+          output_record: { text: '{"messages":[]}', truncated: false },
+        })
+      }
       if (url.pathname === '/v2/converters') return json({ items: [fixture.converter], total: 1 })
       return json({ error: { code: 'not_found', message: url.pathname } }, 404)
     }
@@ -114,6 +127,15 @@ describe('V15 browser API lifecycle', () => {
       request: { converter: 'canonical-jsonl', options: {} },
     })
     expect(plan).toEqual(fixture.export_plan as ExportPlanV2)
+
+    const preview = await previewExportV2({
+      ...connection,
+      refOrVersion: output,
+      request: { converter: 'canonical-jsonl', options: {} },
+    })
+    expect(preview.plan).toEqual(plan)
+    expect(preview.source_record?.text).toContain('schema_version')
+    expect(preview.output_record?.text).toContain('messages')
 
     const runRequest = requests.find((request) =>
       request.url.endsWith('/v2/transforms/append-evidence/run'),

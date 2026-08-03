@@ -22,6 +22,7 @@ import {
   listRefsV2,
   listTransformJobsV2,
   listTransformsV2,
+  previewExportV2,
   putRefV2,
   restoreRefV2,
   retryTransformJobV2,
@@ -396,6 +397,14 @@ export function useV2InspectExport() {
   return useMutation({
     mutationFn: (variables: Omit<Parameters<typeof inspectExportV2>[0], 'base' | 'token'>) =>
       inspectExportV2({ ...variables, base, token }),
+  })
+}
+
+export function useV2PreviewExport() {
+  const { base, token } = useBackend()
+  return useMutation({
+    mutationFn: (variables: Omit<Parameters<typeof previewExportV2>[0], 'base' | 'token'>) =>
+      previewExportV2({ ...variables, base, token }),
   })
 }
 

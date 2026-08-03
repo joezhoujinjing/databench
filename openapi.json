@@ -1766,6 +1766,72 @@
         ],
         "type": "object"
       },
+      "ExportPreviewSourceV2": {
+        "additionalProperties": false,
+        "nullable": true,
+        "properties": {
+          "record_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "record_id": {
+            "pattern": "^rec_[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 65536,
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "truncated",
+          "record_id",
+          "record_digest"
+        ],
+        "type": "object"
+      },
+      "ExportPreviewTextV2": {
+        "additionalProperties": false,
+        "nullable": true,
+        "properties": {
+          "text": {
+            "maxLength": 65536,
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "ExportPreviewV2": {
+        "additionalProperties": false,
+        "properties": {
+          "output_record": {
+            "$ref": "#/components/schemas/ExportPreviewTextV2"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ExportPlanV2"
+          },
+          "source_record": {
+            "$ref": "#/components/schemas/ExportPreviewSourceV2"
+          }
+        },
+        "required": [
+          "plan",
+          "source_record",
+          "output_record"
+        ],
+        "type": "object"
+      },
       "ExportRequestV2": {
         "additionalProperties": false,
         "properties": {
@@ -8224,6 +8290,415 @@
               }
             },
             "description": "Deterministic V2 export fidelity plan",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestErrorResponseV2"
+                }
+              }
+            },
+            "description": "Malformed export inspection request",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorResponseV2"
+                }
+              }
+            },
+            "description": "Authentication is required",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenErrorResponseV2"
+                }
+              }
+            },
+            "description": "Workspace access is forbidden",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponseV2"
+                }
+              }
+            },
+            "description": "V2 dataset was not found",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLimitErrorResponseV2"
+                }
+              }
+            },
+            "description": "V2 request resource limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationOrUnsupportedProfileErrorResponseV2"
+                }
+              }
+            },
+            "description": "Invalid export request or unsupported profile",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooManyRequestsErrorResponseV2"
+                }
+              }
+            },
+            "description": "Request rate limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse500V2"
+                }
+              }
+            },
+            "description": "V2 integrity or internal failure",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse503V2"
+                }
+              }
+            },
+            "description": "V2 capacity or dependency is unavailable",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "v2 export"
+        ]
+      }
+    },
+    "/v2/datasets/{ref_or_version}:preview-export": {
+      "post": {
+        "operationId": "previewDatasetExportV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref_or_version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                {
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectExportRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPreviewV2"
+                }
+              }
+            },
+            "description": "Bounded real-record V2 export preview",
             "headers": {
               "Cache-Control": {
                 "required": true,

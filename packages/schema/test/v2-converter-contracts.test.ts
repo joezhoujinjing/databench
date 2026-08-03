@@ -7,12 +7,14 @@ import {
   createExportPlanV2,
   ExportFidelityIdentityV1Schema,
   ExportPlanV2Schema,
+  ExportPreviewV2Schema,
   ExportRequestV2Schema,
   FidelityChangeV2Schema,
   FidelityErrorV2,
   hasSemanticFidelityLossV2,
   InspectExportRequestV2Schema,
   normalizeExportFidelityIdentityV2,
+  V2_EXPORT_PREVIEW_MAX_BYTES,
 } from '../src/index.js'
 
 const DATASET_VERSION = '5'.repeat(64)
@@ -139,6 +141,30 @@ describe('V11 converter wire contracts', () => {
         accepted_fidelity_digest: 'short',
       }).success,
     ).toBe(false)
+  })
+
+  test('keeps export previews strict, nullable, and bounded', () => {
+    const preview = {
+      plan: createExportPlanV2(planInput),
+      source_record: {
+        record_id: `rec_${'a'.repeat(64)}`,
+        record_digest: 'b'.repeat(64),
+        text: '{}',
+        truncated: false,
+      },
+      output_record: null,
+    }
+    expect(ExportPreviewV2Schema.parse(preview)).toEqual(preview)
+    expect(
+      ExportPreviewV2Schema.safeParse({
+        ...preview,
+        source_record: {
+          ...preview.source_record,
+          text: 'x'.repeat(V2_EXPORT_PREVIEW_MAX_BYTES + 1),
+        },
+      }).success,
+    ).toBe(false)
+    expect(ExportPreviewV2Schema.safeParse({ ...preview, extra: true }).success).toBe(false)
   })
 
   test('validates deterministic converter analysis without hiding reported changes', () => {
