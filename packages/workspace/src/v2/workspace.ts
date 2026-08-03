@@ -5384,6 +5384,10 @@ function lineageEdgeFromRun(
     }
     return {
       run_id: run.run_id,
+      op: run.op,
+      op_version: run.op_version,
+      normalized_params: run.normalized_params,
+      created_at: run.created_at,
       input_dataset_versions: run.input_dataset_versions,
       output_dataset_version: run.output_dataset_version,
     }

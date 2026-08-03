@@ -2067,11 +2067,23 @@ interface LineagePageRequestV2 {
 interface DatasetLineageV2 {
   root_dataset_version: string
   nodes: Array<{ dataset_version: string; manifest: DatasetManifestV2 }>
-  edges: Array<{ run_id: string; input_dataset_versions: string[]; output_dataset_version: string }>
+  edges: Array<{
+    run_id: string
+    op: string
+    op_version: string
+    normalized_params: JsonObject
+    created_at: string
+    input_dataset_versions: string[]
+    output_dataset_version: string
+  }>
   truncated: boolean
   next_cursor: string | null
 }
 ```
+
+Lineage edge返回已登记 run的展示元数据，使 Web/CLI 能解释关系而不根据 run ID猜测操作；字段值
+必须直接来自 immutable `runs_v2` row。`normalized_params` 与 transform result使用同一 canonical
+对象，`created_at`只供展示，不参与 traversal、cursor或 identity。
 
 `GET /v2/refs?cursor=&limit=` 返回 `CursorPageV2<RefMetadataV2>`；show/put返回单项。Lineage
 接受 `max_depth`、`max_nodes` 与 opaque `cursor`，每项不得超过 capabilities上限。遍历顺序固定为：

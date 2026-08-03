@@ -414,6 +414,10 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     })
     expect(lineage.edges).toContainEqual({
       run_id: rewritten.run.run_id,
+      op: rewritten.run.op,
+      op_version: rewritten.run.op_version,
+      normalized_params: rewritten.run.normalized_params,
+      created_at: rewritten.run.created_at,
       input_dataset_versions: [parentDataset.dataset_version, rewriteDataset.dataset_version],
       output_dataset_version: rewritten.run.output_dataset_version,
     })
@@ -542,6 +546,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       inputVersions: [input.version],
       outputVersion: completed.outputVersion,
     })
+    if (!run) throw new Error('completed Worker run was not registered')
     const lineage = await workspace.lineage(completed.outputVersion, {
       max_depth: 2,
       max_nodes: 10,
@@ -549,6 +554,10 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     })
     expect(lineage.edges).toContainEqual({
       run_id: `run_${cacheKey}`,
+      op: 'basic-clean',
+      op_version: '1',
+      normalized_params: job.params,
+      created_at: run.createdAt.toISOString(),
       input_dataset_versions: [input.version],
       output_dataset_version: completed.outputVersion,
     })

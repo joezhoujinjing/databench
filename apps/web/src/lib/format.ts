@@ -1,7 +1,17 @@
 const NUMBER_FORMAT = new Intl.NumberFormat('en-US')
+const DECIMAL_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const
 
 export function formatInteger(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value) ? NUMBER_FORMAT.format(value) : '0'
+}
+
+export function formatBytes(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return '0 B'
+
+  const unitIndex = Math.min(Math.floor(Math.log(value) / Math.log(1024)), BYTE_UNITS.length - 1)
+  const unit = BYTE_UNITS[unitIndex] ?? 'B'
+  return `${DECIMAL_FORMAT.format(value / 1024 ** unitIndex)} ${unit}`
 }
 
 export function formatDateTime(value: string): string {

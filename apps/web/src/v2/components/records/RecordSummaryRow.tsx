@@ -15,7 +15,7 @@ export function RecordSummaryRow({
 
   return (
     <Link
-      className="grid min-h-24 grid-cols-[minmax(13rem,1.3fr)_minmax(14rem,2fr)] items-center gap-5 border-border border-b px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none max-md:grid-cols-1"
+      className="grid min-h-20 grid-cols-[minmax(13rem,1.1fr)_minmax(14rem,2fr)] items-center gap-4 border-border border-b px-5 py-3 transition-colors last:border-b-0 hover:bg-surface-hover/45 focus-visible:bg-surface-hover/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-inset xl:grid-cols-[minmax(15rem,0.9fr)_minmax(14rem,2fr)_auto] max-md:grid-cols-1"
       params={{ recordId: record.record_id, ref: datasetVersion }}
       to="/datasets/$ref/records/$recordId"
     >
@@ -27,11 +27,11 @@ export function RecordSummaryRow({
           {ellipsizeMiddle(record.record_digest, 10)}
         </div>
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 xl:contents">
         <p className="line-clamp-2 whitespace-pre-wrap text-sm leading-6">
           {record.preview ?? t('v2.records.noPreview')}
         </p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap gap-1.5 xl:mt-0 xl:flex-nowrap xl:justify-end">
           {record.lang ? <Badge tone="muted">{record.lang}</Badge> : null}
           <Badge tone="muted">
             {t('v2.records.candidates', { count: formatInteger(record.candidate_count) })}

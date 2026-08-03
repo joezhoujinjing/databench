@@ -1,20 +1,12 @@
 import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState, ErrorState, Spinner } from '@/components/common/State.js'
 import { Button } from '@/components/ui/button.js'
 import { Field } from '@/components/ui/field.js'
 import { TextInput } from '@/components/ui/input.js'
-import {
-  KeyValueGrid,
-  KeyValueRow,
-  PageHeader,
-  PageShell,
-  Surface,
-  SurfaceBody,
-  SurfaceHeader,
-  SurfaceTitle,
-} from '@/components/ui/surface.js'
+import { PageShell, Surface, SurfaceHeader, SurfaceTitle } from '@/components/ui/surface.js'
 import { useV2Lineage } from '../../api/hooks.js'
 import type { DatasetLineageV2 } from '../../api/types.js'
 import { V2LineageGraph } from './LineageGraph.js'
@@ -29,106 +21,112 @@ export function V2LineagePageView({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [input, setInput] = useState(requestedRef)
-  const [maxDepth, setMaxDepth] = useState(8)
-  const [maxNodes, setMaxNodes] = useState(100)
-  const lineage = useV2Lineage(exactVersion, maxDepth, maxNodes)
+  const [depthInput, setDepthInput] = useState(8)
+  const [nodeInput, setNodeInput] = useState(100)
+  const [limits, setLimits] = useState({ maxDepth: 8, maxNodes: 100 })
+  const lineage = useV2Lineage(exactVersion, limits.maxDepth, limits.maxNodes)
   const merged = lineage.data ? mergeLineagePages(lineage.data.pages) : null
 
   function submit(event: FormEvent) {
     event.preventDefault()
     const next = input.trim()
+    setLimits({ maxDepth: depthInput, maxNodes: nodeInput })
     if (next !== '') void navigate({ params: { ref: next }, to: '/lineage/$ref' })
   }
 
   return (
-    <PageShell>
-      <PageHeader
-        actions={
-          <Button asChild variant="outline">
-            <Link params={{ ref: exactVersion }} to="/datasets/$ref">
-              {t('v2.lineage.openDataset')}
-            </Link>
-          </Button>
-        }
-        title={t('v2.lineage.title')}
-      />
-      <Surface>
-        <SurfaceBody>
-          <form
-            className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_9rem_9rem_auto] lg:items-end"
-            onSubmit={submit}
-          >
-            <Field label={t('v2.lineage.dataset')}>
-              <TextInput
-                aria-label={t('v2.lineage.dataset')}
-                onChange={(event) => setInput(event.currentTarget.value)}
-                value={input}
-              />
-            </Field>
-            <Field label={t('v2.lineage.maxDepth')}>
-              <TextInput
-                aria-label={t('v2.lineage.maxDepth')}
-                max={32}
-                min={1}
-                onChange={(event) => setMaxDepth(clampNumber(event.currentTarget.value, 1, 32))}
-                type="number"
-                value={maxDepth}
-              />
-            </Field>
-            <Field label={t('v2.lineage.maxNodes')}>
-              <TextInput
-                aria-label={t('v2.lineage.maxNodes')}
-                max={500}
-                min={1}
-                onChange={(event) => setMaxNodes(clampNumber(event.currentTarget.value, 1, 500))}
-                type="number"
-                value={maxNodes}
-              />
-            </Field>
-            <Button type="submit">{t('v2.lineage.open')}</Button>
-          </form>
-        </SurfaceBody>
-      </Surface>
-      <Surface>
-        <SurfaceHeader className="flex flex-wrap items-center justify-between gap-3">
+    <PageShell className="space-y-4">
+      <header className="space-y-3">
+        <Link
+          className="inline-flex items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+          params={{ ref: exactVersion }}
+          to="/datasets/$ref"
+        >
+          <ArrowLeft aria-hidden="true" size={15} />
+          {t('v2.detail.back')}
+        </Link>
+        <h1 className="font-semibold text-[1.75rem] leading-tight tracking-tight">
+          {t('v2.lineage.title')}
+        </h1>
+      </header>
+
+      <Surface className="overflow-hidden shadow-none">
+        <SurfaceHeader className="flex flex-wrap items-center justify-between gap-3 py-3.5">
           <SurfaceTitle>{t('v2.lineage.graph')}</SurfaceTitle>
-          <code className="max-w-full break-all text-dim-foreground text-xs">{exactVersion}</code>
+          {merged ? (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground text-xs">
+              <span>
+                {t('v2.lineage.nodes')}{' '}
+                <strong className="text-foreground">{merged.nodes.length}</strong>
+              </span>
+              <span>
+                {t('v2.lineage.runs')}{' '}
+                <strong className="text-foreground">{merged.edges.length}</strong>
+              </span>
+              {merged.truncated ? (
+                <span className="text-warning">{t('v2.lineage.truncated')}</span>
+              ) : null}
+            </div>
+          ) : null}
         </SurfaceHeader>
-        <SurfaceBody>
+
+        <form
+          className="grid gap-3 border-border border-b px-5 py-3.5 lg:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem_auto] lg:items-end"
+          onSubmit={submit}
+        >
+          <Field className="gap-1.5" label={t('v2.lineage.dataset')}>
+            <TextInput
+              aria-label={t('v2.lineage.dataset')}
+              onChange={(event) => setInput(event.currentTarget.value)}
+              value={input}
+            />
+          </Field>
+          <Field className="gap-1.5" label={t('v2.lineage.maxDepth')}>
+            <TextInput
+              aria-label={t('v2.lineage.maxDepth')}
+              max={32}
+              min={1}
+              onChange={(event) => setDepthInput(clampNumber(event.currentTarget.value, 1, 32))}
+              type="number"
+              value={depthInput}
+            />
+          </Field>
+          <Field className="gap-1.5" label={t('v2.lineage.maxNodes')}>
+            <TextInput
+              aria-label={t('v2.lineage.maxNodes')}
+              max={500}
+              min={1}
+              onChange={(event) => setNodeInput(clampNumber(event.currentTarget.value, 1, 500))}
+              type="number"
+              value={nodeInput}
+            />
+          </Field>
+          <Button type="submit">{t('v2.lineage.open')}</Button>
+        </form>
+
+        <div>
           {lineage.isLoading ? <Spinner /> : null}
           {lineage.isError ? <ErrorState error={lineage.error} /> : null}
           {merged && merged.nodes.length === 0 ? (
             <EmptyState>{t('v2.lineage.empty')}</EmptyState>
           ) : null}
           {merged && merged.nodes.length > 0 ? <V2LineageGraph lineage={merged} /> : null}
-        </SurfaceBody>
+        </div>
+
+        {lineage.hasNextPage ? (
+          <div className="border-border border-t px-5 py-3">
+            <Button
+              disabled={lineage.isFetchingNextPage}
+              onClick={() => void lineage.fetchNextPage()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {lineage.isFetchingNextPage ? t('v2.lineage.loadingMore') : t('v2.lineage.loadMore')}
+            </Button>
+          </div>
+        ) : null}
       </Surface>
-      {merged ? (
-        <Surface>
-          <SurfaceBody className="space-y-4">
-            <KeyValueGrid>
-              <KeyValueRow label={t('v2.lineage.nodes')} value={merged.nodes.length} />
-              <KeyValueRow label={t('v2.lineage.runs')} value={merged.edges.length} />
-              <KeyValueRow
-                label={t('v2.lineage.truncated')}
-                value={merged.truncated ? t('v2.common.yes') : t('v2.common.no')}
-              />
-            </KeyValueGrid>
-            {lineage.hasNextPage ? (
-              <Button
-                disabled={lineage.isFetchingNextPage}
-                onClick={() => void lineage.fetchNextPage()}
-                type="button"
-                variant="outline"
-              >
-                {lineage.isFetchingNextPage
-                  ? t('v2.lineage.loadingMore')
-                  : t('v2.lineage.loadMore')}
-              </Button>
-            ) : null}
-          </SurfaceBody>
-        </Surface>
-      ) : null}
     </PageShell>
   )
 }
@@ -160,7 +158,7 @@ export function mergeLineagePages(pages: readonly DatasetLineageV2[]): DatasetLi
     next_cursor: last.next_cursor,
     nodes: [...nodes.values()],
     root_dataset_version: first.root_dataset_version,
-    truncated: pages.some((page) => page.truncated),
+    truncated: last.truncated,
   }
 }
 

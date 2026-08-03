@@ -456,6 +456,10 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
       })
       expect(lineage.edges).toContainEqual({
         run_id: `run_${job.cacheKey}`,
+        op: job.op,
+        op_version: job.opVersion,
+        normalized_params: job.params,
+        created_at: expect.any(String),
         input_dataset_versions: [dataset.version],
         output_dataset_version: canonicalJob.outputVersion,
       })

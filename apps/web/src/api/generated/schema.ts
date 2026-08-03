@@ -981,7 +981,13 @@ export interface components {
     }
     DatasetLineageV2: {
       edges: {
+        created_at: string
         input_dataset_versions: string[]
+        normalized_params: {
+          [key: string]: unknown
+        }
+        op: string
+        op_version: string
         output_dataset_version: string
         run_id: string
       }[]

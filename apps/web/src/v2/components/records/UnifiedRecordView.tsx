@@ -1,13 +1,7 @@
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge.js'
-import {
-  KeyValueGrid,
-  KeyValueRow,
-  Surface,
-  SurfaceBody,
-  SurfaceHeader,
-  SurfaceTitle,
-} from '@/components/ui/surface.js'
+import { Surface, SurfaceBody, SurfaceHeader, SurfaceTitle } from '@/components/ui/surface.js'
 import type { PostTrainingRecordV2, RecordViewV2 } from '@/v2/api/types.js'
 import { CandidatesView } from './CandidateView.js'
 import { Field, RecordContents } from './ContentView.js'
@@ -20,23 +14,53 @@ export function UnifiedRecordView({ view }: { view: RecordViewV2 }) {
   const { record } = view
 
   return (
-    <div className="space-y-5">
-      <Surface>
-        <SurfaceHeader>
-          <SurfaceTitle>{t('v2.record.title')}</SurfaceTitle>
-        </SurfaceHeader>
-        <SurfaceBody>
-          <KeyValueGrid>
-            <KeyValueRow label={t('v2.record.schemaVersion')} value={record.schema_version} />
-            <KeyValueRow label={t('v2.record.recordId')} value={record.id} />
-            <KeyValueRow label={t('v2.record.recordDigest')} value={view.record_digest} />
-            <KeyValueRow label={t('v2.record.datasetVersion')} value={view.dataset_version} />
-            <KeyValueRow
-              label={t('v2.record.language')}
-              value={record.lang ?? t('v2.record.none')}
-            />
-            <KeyValueRow label={t('v2.record.tags')}>
-              <div className="flex flex-wrap gap-2">
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
+      <div className="min-w-0 space-y-4">
+        <Surface className="shadow-none">
+          <SurfaceHeader className="py-3.5">
+            <SurfaceTitle>{t('v2.record.contents')}</SurfaceTitle>
+          </SurfaceHeader>
+          <SurfaceBody className="py-4">
+            <RecordContents contents={record.contents} />
+          </SurfaceBody>
+        </Surface>
+
+        <CandidatesView candidates={record.candidates} />
+        <PreferenceRelations relations={record.preference_relations} />
+        <Tools record={record} />
+        <Verification record={record} />
+        <Provenance record={record} />
+
+        <LazySection title={t('v2.record.rawJson')}>
+          {() => <WorkerJsonDocument downloadName={`record-${record.id}.json`} value={record} />}
+        </LazySection>
+      </div>
+
+      <aside className="xl:sticky xl:top-20">
+        <Surface className="shadow-none">
+          <SurfaceHeader className="py-3.5">
+            <SurfaceTitle>{t('v2.record.title')}</SurfaceTitle>
+          </SurfaceHeader>
+          <SurfaceBody className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <MetadataField label={t('v2.record.schemaVersion')}>
+                {record.schema_version}
+              </MetadataField>
+              <MetadataField label={t('v2.record.language')}>
+                {record.lang ?? t('v2.record.none')}
+              </MetadataField>
+            </div>
+            <MetadataField label={t('v2.record.recordId')}>
+              <span className="break-all font-mono text-xs leading-5">{record.id}</span>
+            </MetadataField>
+            <MetadataField label={t('v2.record.recordDigest')}>
+              <span className="break-all font-mono text-xs leading-5">{view.record_digest}</span>
+            </MetadataField>
+            <MetadataField label={t('v2.record.datasetVersion')}>
+              <span className="break-all font-mono text-xs leading-5">{view.dataset_version}</span>
+            </MetadataField>
+            <MetadataField label={t('v2.record.tags')}>
+              <div className="flex flex-wrap gap-1.5">
                 {record.tags.length === 0 ? (
                   <span className="text-dim-foreground">{t('v2.record.none')}</span>
                 ) : (
@@ -48,29 +72,19 @@ export function UnifiedRecordView({ view }: { view: RecordViewV2 }) {
                   ))
                 )}
               </div>
-            </KeyValueRow>
-          </KeyValueGrid>
-        </SurfaceBody>
-      </Surface>
+            </MetadataField>
+          </SurfaceBody>
+        </Surface>
+      </aside>
+    </div>
+  )
+}
 
-      <Surface>
-        <SurfaceHeader>
-          <SurfaceTitle>{t('v2.record.contents')}</SurfaceTitle>
-        </SurfaceHeader>
-        <SurfaceBody>
-          <RecordContents contents={record.contents} />
-        </SurfaceBody>
-      </Surface>
-
-      <CandidatesView candidates={record.candidates} />
-      <PreferenceRelations relations={record.preference_relations} />
-      <Tools record={record} />
-      <Verification record={record} />
-      <Provenance record={record} />
-
-      <LazySection title={t('v2.record.rawJson')}>
-        {() => <WorkerJsonDocument downloadName={`record-${record.id}.json`} value={record} />}
-      </LazySection>
+function MetadataField({ children, label }: { children: ReactNode; label: ReactNode }) {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <div className="text-muted-foreground text-xs">{label}</div>
+      <div className="min-h-5 min-w-0 text-sm">{children}</div>
     </div>
   )
 }
@@ -155,8 +169,8 @@ export function Provenance({ record }: { record: PostTrainingRecordV2 }) {
   const { t } = useTranslation()
 
   return (
-    <Surface>
-      <SurfaceHeader>
+    <Surface className="shadow-none">
+      <SurfaceHeader className="py-3.5">
         <SurfaceTitle>{t('v2.record.provenance')}</SurfaceTitle>
       </SurfaceHeader>
       <SurfaceBody className="space-y-4">

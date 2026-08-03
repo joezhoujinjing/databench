@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'vitest'
-import { formatDateTime } from './format.js'
+import { formatBytes, formatDateTime } from './format.js'
+
+describe('formatBytes', () => {
+  test('adds a compact unit while retaining useful precision', () => {
+    expect(formatBytes(0)).toBe('0 B')
+    expect(formatBytes(1_023)).toBe('1,023 B')
+    expect(formatBytes(1_024)).toBe('1 KB')
+    expect(formatBytes(2_166)).toBe('2.1 KB')
+    expect(formatBytes(1_048_576)).toBe('1 MB')
+  })
+})
 
 describe('formatDateTime', () => {
   test('uses a compact, zero-padded local timestamp for table scanning', () => {

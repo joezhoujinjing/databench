@@ -384,6 +384,10 @@ export const DatasetLineageNodeV2Schema = z
 
 export const DatasetLineageEdgeV2Schema = z.strictObject({
   run_id: RunIdV2Schema,
+  op: TransformNameV2Schema,
+  op_version: TransformVersionV2Schema,
+  normalized_params: JsonObjectSchema,
+  created_at: Rfc3339UtcSchema,
   input_dataset_versions: z.array(DigestHexSchema).min(1).max(V2_TRANSFORM_MAX_INPUTS),
   output_dataset_version: DigestHexSchema,
 })

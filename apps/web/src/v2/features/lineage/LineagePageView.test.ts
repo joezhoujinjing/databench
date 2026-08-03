@@ -17,6 +17,6 @@ describe('V2 lineage continuation', () => {
     expect(merged.nodes).toHaveLength(1)
     expect(merged.edges).toHaveLength(1)
     expect(merged.next_cursor).toBeNull()
-    expect(merged.truncated).toBe(true)
+    expect(merged.truncated).toBe(false)
   })
 })

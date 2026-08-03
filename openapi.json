@@ -646,6 +646,9 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "created_at": {
+                  "type": "string"
+                },
                 "input_dataset_versions": {
                   "items": {
                     "pattern": "^[0-9a-f]{64}$",
@@ -654,6 +657,18 @@
                   "maxItems": 16,
                   "minItems": 1,
                   "type": "array"
+                },
+                "normalized_params": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "op": {
+                  "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "op_version": {
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
+                  "type": "string"
                 },
                 "output_dataset_version": {
                   "pattern": "^[0-9a-f]{64}$",
@@ -666,6 +681,10 @@
               },
               "required": [
                 "run_id",
+                "op",
+                "op_version",
+                "normalized_params",
+                "created_at",
                 "input_dataset_versions",
                 "output_dataset_version"
               ],

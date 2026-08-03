@@ -177,6 +177,11 @@ textarea {
   background: transparent;
 }
 
+.lineage-readonly-graph .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .react-flow__attribution {
   background: var(--surface);
   color: var(--dim-foreground);

@@ -7,6 +7,8 @@ import type { RecordSummaryV2 } from '../../api/types.js'
 import { V2ReadErrorState } from '../V2ReadErrorState.js'
 import { RecordSummaryRow } from './RecordSummaryRow.js'
 
+const RECORD_ROW_ESTIMATE = 80
+
 export function VirtualizedRecords({
   datasetVersion,
   pageSize = 100,
@@ -22,7 +24,7 @@ export function VirtualizedRecords({
   const total = query.data?.pages[0]?.total ?? 0
   const virtualizer = useVirtualizer({
     count: rows.length,
-    estimateSize: () => 104,
+    estimateSize: () => RECORD_ROW_ESTIMATE,
     getScrollElement: () => parentRef.current,
     overscan: 8,
   })
@@ -56,10 +58,9 @@ export function VirtualizedRecords({
   if (rows.length === 0) return <EmptyState>{t('v2.records.empty')}</EmptyState>
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between px-5 pt-4 text-muted-foreground text-sm">
+    <div>
+      <div className="px-5 py-3 text-muted-foreground text-sm">
         <span>{t('v2.records.loaded', { loaded: rows.length, total })}</span>
-        <span className="font-mono text-xs">{datasetVersion}</span>
       </div>
       <button
         aria-controls={listId}
@@ -73,7 +74,7 @@ export function VirtualizedRecords({
         {t('v2.records.listLabel')}
       </button>
       <div
-        className="h-[min(68vh,760px)] overflow-auto border-border border-t"
+        className="h-[min(64vh,720px)] overflow-auto border-border border-t"
         id={listId}
         ref={parentRef}
       >
@@ -100,9 +101,13 @@ export function VirtualizedRecords({
           })}
         </ol>
       </div>
-      {isFetchingNextPage ? <Spinner label={t('v2.records.loadingMore')} /> : null}
+      {isFetchingNextPage ? (
+        <div className="border-border border-t p-3">
+          <Spinner label={t('v2.records.loadingMore')} />
+        </div>
+      ) : null}
       {!hasNextPage ? (
-        <div className="text-center text-muted-foreground text-sm">
+        <div className="border-border border-t px-5 py-3 text-center text-muted-foreground text-sm">
           {t('v2.records.complete', { total })}
         </div>
       ) : null}
@@ -124,9 +129,9 @@ export function virtualListScrollTarget({
   const max = Math.max(0, total - clientHeight)
   switch (key) {
     case 'ArrowDown':
-      return Math.min(max, current + 104)
+      return Math.min(max, current + RECORD_ROW_ESTIMATE)
     case 'ArrowUp':
-      return Math.max(0, current - 104)
+      return Math.max(0, current - RECORD_ROW_ESTIMATE)
     case 'PageDown':
       return Math.min(max, current + clientHeight)
     case 'PageUp':

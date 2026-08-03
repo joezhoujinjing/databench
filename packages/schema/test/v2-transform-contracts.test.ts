@@ -217,6 +217,10 @@ describe('V10 dataset lineage contracts', () => {
     const node = { dataset_version: OUTPUT, manifest }
     const edge = {
       run_id: `run_${CACHE_KEY}`,
+      op: 'subset',
+      op_version: '1',
+      normalized_params: {},
+      created_at: '2026-01-01T00:00:00.000Z',
       input_dataset_versions: [INPUT],
       output_dataset_version: OUTPUT,
     }
@@ -282,6 +286,10 @@ describe('V10 dataset lineage contracts', () => {
       nodes: [],
       edges: versions.map((cacheKey) => ({
         run_id: `run_${cacheKey}`,
+        op: 'subset',
+        op_version: '1',
+        normalized_params: {},
+        created_at: '2026-01-01T00:00:00.000Z',
         input_dataset_versions: [INPUT],
         output_dataset_version: OUTPUT,
       })),

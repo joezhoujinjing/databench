@@ -1330,6 +1330,10 @@ describe('V2Workspace transform and dataset lineage', () => {
     expect(first.edges).toEqual([
       {
         run_id: transformFixture.prompt_rewrite.run_id,
+        op: transformed.run.op,
+        op_version: transformed.run.op_version,
+        normalized_params: transformed.run.normalized_params,
+        created_at: transformed.run.created_at,
         input_dataset_versions: transformFixture.lineage.input_dataset_versions,
         output_dataset_version: transformFixture.lineage.root_dataset_version,
       },
