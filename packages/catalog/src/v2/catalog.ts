@@ -17,15 +17,22 @@ import {
 } from './errors.js'
 import {
   appendModelSourceEvidenceV2,
+  archiveModelV2,
   compareAndSetModelAliasV2,
+  createOrReadModelDeploymentAdoptionV2,
   getModelV2,
   getModelVersionV2,
+  listModelAliasesV2,
+  listModelDeploymentAdoptionsV2,
   listModelSourceEvidenceV2,
+  listModelsV2,
+  listModelVersionsV2,
   registerModelVersionV2,
   updateModelMetadataV2,
 } from './model-registry.js'
 import type {
   AppendModelSourceEvidenceV2,
+  ArchiveCatalogModelV2,
   CatalogEvaluationMetricV2,
   CatalogEvaluationRunCursorV2,
   CatalogEvaluationRunErrorV2,
@@ -50,14 +57,21 @@ import type {
   CatalogModelArtifactManifestV2,
   CatalogModelArtifactPageV2,
   CatalogModelArtifactRowV2,
+  CatalogModelCursorV2,
+  CatalogModelDeploymentAdoptionResultV2,
+  CatalogModelDeploymentAdoptionRowV2,
   CatalogModelDeploymentCursorV2,
   CatalogModelDeploymentHealthV2,
   CatalogModelDeploymentListFilterV2,
   CatalogModelDeploymentPageV2,
   CatalogModelDeploymentRowV2,
+  CatalogModelListFilterV2,
+  CatalogModelPageV2,
   CatalogModelRegistrationResultV2,
   CatalogModelRowV2,
   CatalogModelSourceEvidenceRowV2,
+  CatalogModelVersionCursorV2,
+  CatalogModelVersionPageV2,
   CatalogModelVersionRowV2,
   CatalogModelVersionSourceV2,
   CatalogRecordParentRowV2,
@@ -91,6 +105,7 @@ import type {
   CompleteTransformJobV2,
   CreateEvaluationRunV2,
   CreateModelArtifactImportV2,
+  CreateModelDeploymentAdoptionV2,
   CreateModelDeploymentV2,
   CreateModelRegistrationV2,
   CreateSwiftStudioSessionV2,
@@ -1839,6 +1854,16 @@ export class V2Catalog {
         "namespace_id" = ${namespaceId}::uuid AND
         (${filter.datasetVersion}::text IS NULL OR "dataset_version" = ${filter.datasetVersion}) AND
         (${filter.artifactKind}::text IS NULL OR "artifact_kind" = ${filter.artifactKind}) AND
+        (
+          ${filter.registrationStatus} = 'all' OR
+          (${filter.registrationStatus} = 'registered') = EXISTS (
+            SELECT 1
+            FROM "model_version_artifact_sources_v2" AS "registered_source"
+            WHERE
+              "registered_source"."namespace_id" = "model_artifacts_v2"."namespace_id" AND
+              "registered_source"."artifact_id" = "model_artifacts_v2"."id"
+          )
+        ) AND
         ${
           before === null
             ? Prisma.sql`TRUE`
@@ -1880,6 +1905,15 @@ export class V2Catalog {
     return await getModelV2(this.#client, namespaceId, modelId)
   }
 
+  async listModels(
+    namespaceId: string,
+    filter: CatalogModelListFilterV2,
+    before: CatalogModelCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelPageV2> {
+    return await listModelsV2(this.#client, namespaceId, filter, before, limit)
+  }
+
   async getModelVersion(
     namespaceId: string,
     versionId: string,
@@ -1890,10 +1924,30 @@ export class V2Catalog {
     return await getModelVersionV2(this.#client, namespaceId, versionId)
   }
 
+  async listModelVersions(
+    namespaceId: string,
+    modelId: string,
+    before: CatalogModelVersionCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelVersionPageV2> {
+    return await listModelVersionsV2(this.#client, namespaceId, modelId, before, limit)
+  }
+
+  async listModelAliases(
+    namespaceId: string,
+    modelId: string,
+  ): Promise<readonly CatalogModelAliasRowV2[]> {
+    return await listModelAliasesV2(this.#client, namespaceId, modelId)
+  }
+
   async updateModelMetadata(
     input: UpdateCatalogModelMetadataV2,
   ): Promise<CatalogModelRowV2 | null> {
     return await updateModelMetadataV2(this.#client, input)
+  }
+
+  async archiveModel(input: ArchiveCatalogModelV2): Promise<CatalogModelRowV2 | null> {
+    return await archiveModelV2(this.#client, input)
   }
 
   async compareAndSetModelAlias(input: CompareAndSetModelAliasV2): Promise<CatalogModelAliasRowV2> {
@@ -1911,6 +1965,19 @@ export class V2Catalog {
     modelVersionId: string,
   ): Promise<readonly CatalogModelSourceEvidenceRowV2[]> {
     return await listModelSourceEvidenceV2(this.#client, namespaceId, modelVersionId)
+  }
+
+  async createOrReadModelDeploymentAdoption(
+    input: CreateModelDeploymentAdoptionV2,
+  ): Promise<CatalogModelDeploymentAdoptionResultV2> {
+    return await createOrReadModelDeploymentAdoptionV2(this.#client, input)
+  }
+
+  async listModelDeploymentAdoptions(
+    namespaceId: string,
+    modelVersionId: string,
+  ): Promise<readonly CatalogModelDeploymentAdoptionRowV2[]> {
+    return await listModelDeploymentAdoptionsV2(this.#client, namespaceId, modelVersionId)
   }
 
   async createOrReadModelDeployment(
@@ -4720,6 +4787,9 @@ function validateModelArtifactListFilter(filter: CatalogModelArtifactListFilterV
   }
   if (filter.artifactKind !== null && filter.artifactKind !== 'lora_adapter') {
     throw new V2CatalogInputError('Model Artifact kind filter is invalid')
+  }
+  if (!['all', 'registered', 'unregistered'].includes(filter.registrationStatus)) {
+    throw new V2CatalogInputError('Model Artifact registration filter is invalid')
   }
 }
 

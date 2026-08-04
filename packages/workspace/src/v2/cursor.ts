@@ -3,10 +3,14 @@ import { canonicalJsonV2 } from '@databench/hashing'
 import {
   EvaluationRunIdV2Schema,
   EvaluationRunStatusV2Schema,
+  ModelArchiveFilterV2Schema,
   ModelArtifactIdV2Schema,
   ModelArtifactKindV2Schema,
   ModelDeploymentIdV2Schema,
   ModelDeploymentStatusV2Schema,
+  ModelIdV2Schema,
+  ModelSourceKindV2Schema,
+  ModelVersionIdV2Schema,
   parseRawJsonV2,
   RefNameV2Schema,
   SwiftStudioSessionIdV2Schema,
@@ -102,11 +106,40 @@ export interface V2ModelArtifactCursorState {
   readonly id: string
   readonly dataset_version: string | null
   readonly artifact_kind: string | null
+  readonly registration_status: string
 }
 
 interface ModelArtifactCursorPayloadV2 extends V2ModelArtifactCursorState {
   readonly v: typeof CURSOR_VERSION
   readonly kind: 'model_artifacts'
+  readonly scope: string
+  readonly expires_at: number
+}
+
+export interface V2ModelCursorState {
+  readonly updated_at: string
+  readonly id: string
+  readonly search: string
+  readonly archive: string
+  readonly source_kind: string | null
+}
+
+interface ModelCursorPayloadV2 extends V2ModelCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'models'
+  readonly scope: string
+  readonly expires_at: number
+}
+
+export interface V2ModelVersionCursorState {
+  readonly created_at: string
+  readonly id: string
+  readonly model_id: string
+}
+
+interface ModelVersionCursorPayloadV2 extends V2ModelVersionCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'model_versions'
   readonly scope: string
   readonly expires_at: number
 }
@@ -343,11 +376,84 @@ export class V2CursorCodec {
     return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
   }
 
+  encodeModel(namespace: string, stateInput: V2ModelCursorState): string {
+    const state = validateModelState(stateInput)
+    const payload: ModelCursorPayloadV2 = {
+      v: CURSOR_VERSION,
+      kind: 'models',
+      scope: this.#scope(namespace, 'models'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    }
+    const bytes = encoder.encode(canonicalJsonV2(payload))
+    return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
+  }
+
+  decodeModel(
+    cursor: string,
+    namespace: string,
+    search: string,
+    archive: string,
+    sourceKind: string | null,
+  ): Readonly<V2ModelCursorState> {
+    try {
+      const value = this.#decode(cursor)
+      if (
+        !isModelCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'models') ||
+        value.search !== search ||
+        value.archive !== archive ||
+        value.source_kind !== sourceKind ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateModelState(value)
+    } catch {
+      throw invalidCursor('Model')
+    }
+  }
+
+  encodeModelVersion(namespace: string, stateInput: V2ModelVersionCursorState): string {
+    const state = validateModelVersionState(stateInput)
+    const payload: ModelVersionCursorPayloadV2 = {
+      v: CURSOR_VERSION,
+      kind: 'model_versions',
+      scope: this.#scope(namespace, 'model_versions'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    }
+    const bytes = encoder.encode(canonicalJsonV2(payload))
+    return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
+  }
+
+  decodeModelVersion(
+    cursor: string,
+    namespace: string,
+    modelId: string,
+  ): Readonly<V2ModelVersionCursorState> {
+    try {
+      const value = this.#decode(cursor)
+      if (
+        !isModelVersionCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'model_versions') ||
+        value.model_id !== modelId ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateModelVersionState(value)
+    } catch {
+      throw invalidCursor('Model Version')
+    }
+  }
+
   decodeModelArtifact(
     cursor: string,
     namespace: string,
     datasetVersion: string | null,
     artifactKind: string | null,
+    registrationStatus: string,
   ): Readonly<V2ModelArtifactCursorState> {
     try {
       if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
@@ -370,6 +476,7 @@ export class V2CursorCodec {
         value.scope !== this.#scope(namespace, 'model_artifacts') ||
         value.dataset_version !== datasetVersion ||
         value.artifact_kind !== artifactKind ||
+        value.registration_status !== registrationStatus ||
         value.expires_at <= this.#now()
       ) {
         throw new Error('cursor scope is invalid')
@@ -548,6 +655,24 @@ export class V2CursorCodec {
     return createHmac('sha256', this.#key).update(bytes).digest()
   }
 
+  #decode(cursor: string): unknown {
+    if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
+      throw new Error('cursor text size is invalid')
+    }
+    const parts = cursor.split('.')
+    if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('malformed cursor')
+    const bytes = decodeBase64Url(parts[0])
+    if (bytes.byteLength === 0 || bytes.byteLength > CURSOR_MAX_BYTES) {
+      throw new Error('cursor payload size is invalid')
+    }
+    const signature = decodeBase64Url(parts[1])
+    const expected = this.#sign(bytes)
+    if (signature.byteLength !== expected.byteLength || !timingSafeEqual(signature, expected)) {
+      throw new Error('cursor signature is invalid')
+    }
+    return parseRawJsonV2(bytes, { maxBytes: CURSOR_MAX_BYTES, maxDepth: 4 })
+  }
+
   #scope(
     namespace: string,
     kind:
@@ -556,6 +681,8 @@ export class V2CursorCodec {
       | 'transform_jobs'
       | 'evaluation_runs'
       | 'swift_studio_sessions'
+      | 'models'
+      | 'model_versions'
       | 'model_artifacts'
       | 'model_deployments',
   ): string {
@@ -572,6 +699,12 @@ function decodeBase64Url(value: string): Buffer {
     throw new Error('cursor base64url is not canonical')
   }
   return decoded
+}
+
+function invalidCursor(kind: string): ValidationError {
+  return new ValidationError(`Invalid or expired V2 ${kind} cursor`, {
+    issues: [{ path: '/cursor', line: null, code: 'invalid_cursor', message: 'Invalid cursor' }],
+  })
 }
 
 function isRefCursorPayload(value: unknown, kind: RefCursorKindV2): value is RefCursorPayloadV2 {
@@ -669,7 +802,7 @@ function isModelArtifactCursorPayload(value: unknown): value is ModelArtifactCur
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return (
-    Object.keys(record).length === 8 &&
+    Object.keys(record).length === 9 &&
     record.v === CURSOR_VERSION &&
     record.kind === 'model_artifacts' &&
     typeof record.scope === 'string' &&
@@ -677,6 +810,43 @@ function isModelArtifactCursorPayload(value: unknown): value is ModelArtifactCur
     typeof record.id === 'string' &&
     (record.dataset_version === null || typeof record.dataset_version === 'string') &&
     (record.artifact_kind === null || typeof record.artifact_kind === 'string') &&
+    typeof record.registration_status === 'string' &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
+function isModelCursorPayload(value: unknown): value is ModelCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 9 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'models' &&
+    typeof record.scope === 'string' &&
+    typeof record.updated_at === 'string' &&
+    typeof record.id === 'string' &&
+    typeof record.search === 'string' &&
+    typeof record.archive === 'string' &&
+    (record.source_kind === null || typeof record.source_kind === 'string') &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
+function isModelVersionCursorPayload(value: unknown): value is ModelVersionCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 7 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'model_versions' &&
+    typeof record.scope === 'string' &&
+    typeof record.created_at === 'string' &&
+    typeof record.id === 'string' &&
+    typeof record.model_id === 'string' &&
     typeof record.expires_at === 'number' &&
     Number.isSafeInteger(record.expires_at) &&
     record.expires_at >= 0
@@ -787,11 +957,52 @@ function validateModelArtifactState(
   }
   const artifactKind =
     input.artifact_kind === null ? null : ModelArtifactKindV2Schema.parse(input.artifact_kind)
+  const registrationStatus = ['all', 'registered', 'unregistered'].includes(
+    input.registration_status,
+  )
+    ? input.registration_status
+    : null
+  if (registrationStatus === null) {
+    throw new TypeError('V2 Model Artifact cursor registration filter is invalid')
+  }
   return Object.freeze({
     created_at: timestamp.toISOString(),
     id: ModelArtifactIdV2Schema.parse(input.id),
     dataset_version: datasetVersion,
     artifact_kind: artifactKind,
+    registration_status: registrationStatus,
+  })
+}
+
+function validateModelState(input: V2ModelCursorState): Readonly<V2ModelCursorState> {
+  const timestamp = new Date(input.updated_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.updated_at) {
+    throw new TypeError('V2 Model cursor timestamp is invalid')
+  }
+  if (new TextEncoder().encode(input.search).byteLength > 256) {
+    throw new TypeError('V2 Model cursor search is invalid')
+  }
+  return Object.freeze({
+    updated_at: timestamp.toISOString(),
+    id: ModelIdV2Schema.parse(input.id),
+    search: input.search,
+    archive: ModelArchiveFilterV2Schema.parse(input.archive),
+    source_kind:
+      input.source_kind === null ? null : ModelSourceKindV2Schema.parse(input.source_kind),
+  })
+}
+
+function validateModelVersionState(
+  input: V2ModelVersionCursorState,
+): Readonly<V2ModelVersionCursorState> {
+  const timestamp = new Date(input.created_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.created_at) {
+    throw new TypeError('V2 Model Version cursor timestamp is invalid')
+  }
+  return Object.freeze({
+    created_at: timestamp.toISOString(),
+    id: ModelVersionIdV2Schema.parse(input.id),
+    model_id: ModelIdV2Schema.parse(input.model_id),
   })
 }
 

@@ -1,4 +1,5 @@
 import {
+  type ModelDeploymentAdoptionIdentityV1,
   type ModelRegistrationPlanArtifactIdentityV1,
   type ModelRegistrationPlanRepositoryIdentityV1,
   type ModelRegistrationPlanServiceIdentityV1,
@@ -8,6 +9,7 @@ import {
   type ModelVersionCreateArtifactIdentityV1,
   type ModelVersionCreateRepositoryIdentityV1,
   type ModelVersionCreateServiceIdentityV1,
+  V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE,
@@ -20,10 +22,14 @@ import {
 } from '@databench/hashing'
 import { z } from 'zod'
 import { DigestHexSchema, Rfc3339UtcSchema } from './common.js'
+import { OpaqueCursorQueryV2Schema } from './contracts.js'
 import { IdentityNamespaceV2Schema } from './identity.js'
 import {
   ModelIdV2Schema,
   ModelRegistrationTargetV2Schema,
+  ModelSourceKindV2Schema,
+  ModelSourceMutabilityV2Schema,
+  ModelVerificationLevelV2Schema,
   modelRegistryBoundedTextV2,
 } from './model.js'
 import {
@@ -43,6 +49,8 @@ import {
 
 export const V2_MODEL_REGISTRATION_WARNING_MAX_ITEMS = 32
 export const V2_MODEL_DECLARED_INTERFACE_MAX_ITEMS = 4
+export const V2_MODEL_VERSION_PAGE_DEFAULT_LIMIT = 20
+export const V2_MODEL_VERSION_PAGE_MAX_LIMIT = 100
 
 const SAFE_TOKEN = /^[a-z][a-z0-9._-]{0,127}$/
 const REPOSITORY_REVISION = /^[A-Za-z0-9][A-Za-z0-9._+:/-]{0,255}$/
@@ -52,18 +60,6 @@ const WINDOWS_SEPARATOR = /\\/
 
 export const ModelVersionIdV2Schema = z.uuid()
 export const ModelVersionLabelV2Schema = modelRegistryBoundedTextV2(128, { rejectPath: true })
-export const ModelSourceKindV2Schema = z.enum([
-  'databench_artifact',
-  'repository_reference',
-  'existing_service',
-])
-export const ModelSourceMutabilityV2Schema = z.enum(['immutable', 'mutable', 'unknown'])
-export const ModelVerificationLevelV2Schema = z.enum([
-  'content_verified',
-  'provider_verified',
-  'operator_attested',
-  'unverified',
-])
 export const ModelRepositoryProviderV2Schema = z.enum([
   'hugging_face',
   'modelscope',
@@ -269,6 +265,28 @@ export type CommitModelRegistrationRequestV2 = z.infer<
   typeof CommitModelRegistrationRequestV2Schema
 >
 
+export const CommitArtifactModelRegistrationRequestV2Schema = z
+  .strictObject({
+    request: ModelArtifactRegistrationRequestV2Schema,
+    expected_registration_digest: DigestHexSchema,
+  })
+  .meta({ id: 'CommitArtifactModelRegistrationRequestV2' })
+export type CommitArtifactModelRegistrationRequestV2 = z.infer<
+  typeof CommitArtifactModelRegistrationRequestV2Schema
+>
+
+export const ModelRegistrationCommitResultV2Schema = z
+  .strictObject({
+    registration_digest: DigestHexSchema,
+    model_id: ModelIdV2Schema,
+    model_version_id: ModelVersionIdV2Schema,
+    source_fingerprint: DigestHexSchema,
+    alias: ModelAliasNameV2Schema.nullable(),
+    replayed: z.boolean(),
+  })
+  .meta({ id: 'ModelRegistrationCommitResultV2' })
+export type ModelRegistrationCommitResultV2 = z.infer<typeof ModelRegistrationCommitResultV2Schema>
+
 export const ModelSourceEvidenceV2Schema = z
   .strictObject({
     evidence_kind: z.enum(['provider_resolution', 'operator_attestation']),
@@ -292,6 +310,161 @@ export const ModelSourceEvidenceV2Schema = z
     }
   })
 export type ModelSourceEvidenceV2 = z.infer<typeof ModelSourceEvidenceV2Schema>
+
+export const ModelVersionSourceV2Schema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('databench_artifact'),
+    artifact_id: ModelArtifactIdV2Schema,
+    artifact_kind: ModelArtifactKindV2Schema,
+    artifact_format: ModelArtifactFormatV2Schema,
+    archive_digest: DigestHexSchema,
+    manifest_digest: DigestHexSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('repository_reference'),
+    provider: ModelRepositoryProviderV2Schema,
+    repository_id: ModelRepositoryIdV2Schema,
+    revision: ModelRepositoryRevisionV2Schema,
+    revision_kind: ModelRepositoryRevisionKindV2Schema,
+  }),
+  z.strictObject({
+    kind: z.literal('existing_service'),
+    provider: z.literal('openai_compatible'),
+    external_model_ref: ModelExternalReferenceV2Schema,
+    external_version_ref: ModelExternalReferenceV2Schema,
+    declared_reference_kind: ModelServiceDeclaredReferenceKindV2Schema,
+  }),
+])
+export type ModelVersionSourceV2 = z.infer<typeof ModelVersionSourceV2Schema>
+
+export const ModelVersionV2Schema = z
+  .strictObject({
+    id: ModelVersionIdV2Schema,
+    model_id: ModelIdV2Schema,
+    version_label: ModelVersionLabelV2Schema,
+    source_kind: ModelSourceKindV2Schema,
+    source_fingerprint: DigestHexSchema,
+    base_model: ModelVersionBaseModelV2Schema.nullable(),
+    base_model_binding_status: ModelArtifactBaseModelBindingStatusV2Schema.nullable(),
+    classification: ModelSourceClassificationV2Schema,
+    source: ModelVersionSourceV2Schema,
+    created_at: Rfc3339UtcSchema,
+  })
+  .superRefine((version, context) => {
+    if (version.source.kind !== version.source_kind) {
+      context.addIssue({
+        code: 'custom',
+        path: ['source'],
+        message: 'Model Version source must match source_kind',
+      })
+    }
+    if (
+      (version.source_kind === 'databench_artifact') !==
+      (version.base_model_binding_status !== null)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['base_model_binding_status'],
+        message: 'Only Artifact sources expose a base binding status',
+      })
+    }
+  })
+  .meta({ id: 'ModelVersionV2' })
+export type ModelVersionV2 = z.infer<typeof ModelVersionV2Schema>
+
+export const ModelVersionParamsV2Schema = z
+  .strictObject({ version_id: ModelVersionIdV2Schema })
+  .meta({ id: 'ModelVersionParamsV2' })
+
+export const ModelVersionPageRequestV2Schema = z
+  .strictObject({
+    cursor: OpaqueCursorQueryV2Schema,
+    limit: z.coerce
+      .number()
+      .int()
+      .safe()
+      .min(1)
+      .max(V2_MODEL_VERSION_PAGE_MAX_LIMIT)
+      .default(V2_MODEL_VERSION_PAGE_DEFAULT_LIMIT),
+  })
+  .meta({ id: 'ModelVersionPageRequestV2' })
+export type ModelVersionPageRequestV2 = z.infer<typeof ModelVersionPageRequestV2Schema>
+
+export const ModelVersionPageV2Schema = z
+  .strictObject({
+    items: z.array(ModelVersionV2Schema).max(V2_MODEL_VERSION_PAGE_MAX_LIMIT),
+    next_cursor: z.string().min(1).max(1_536).nullable(),
+  })
+  .meta({ id: 'ModelVersionPageV2' })
+export type ModelVersionPageV2 = z.infer<typeof ModelVersionPageV2Schema>
+
+export const ModelAliasV2Schema = z
+  .strictObject({
+    alias: ModelAliasNameV2Schema,
+    version_id: ModelVersionIdV2Schema,
+    created_at: Rfc3339UtcSchema,
+    updated_at: Rfc3339UtcSchema,
+  })
+  .meta({ id: 'ModelAliasV2' })
+export type ModelAliasV2 = z.infer<typeof ModelAliasV2Schema>
+
+export const ModelAliasPageV2Schema = z
+  .strictObject({ items: z.array(ModelAliasV2Schema).max(3) })
+  .meta({ id: 'ModelAliasPageV2' })
+export type ModelAliasPageV2 = z.infer<typeof ModelAliasPageV2Schema>
+
+export const CandidateModelAliasParamsV2Schema = z
+  .strictObject({ model_id: ModelIdV2Schema, alias: z.literal('candidate') })
+  .meta({ id: 'CandidateModelAliasParamsV2' })
+
+export const MoveCandidateModelAliasV2Schema = z
+  .strictObject({
+    expected_version_id: ModelVersionIdV2Schema.nullable(),
+    new_version_id: ModelVersionIdV2Schema,
+  })
+  .meta({ id: 'MoveCandidateModelAliasV2' })
+export type MoveCandidateModelAliasV2 = z.infer<typeof MoveCandidateModelAliasV2Schema>
+
+export const AdoptModelDeploymentParamsV2Schema = z
+  .strictObject({
+    version_id: ModelVersionIdV2Schema,
+    deployment_id: z.uuid(),
+  })
+  .meta({ id: 'AdoptModelDeploymentParamsV2' })
+
+export const AdoptModelDeploymentRequestV2Schema = z
+  .strictObject({
+    expected_artifact_id: ModelArtifactIdV2Schema,
+    expected_deployment_digest: DigestHexSchema,
+  })
+  .meta({ id: 'AdoptModelDeploymentRequestV2' })
+export type AdoptModelDeploymentRequestV2 = z.infer<typeof AdoptModelDeploymentRequestV2Schema>
+
+export const ModelDeploymentAdoptionIdentityV1Schema: z.ZodType<ModelDeploymentAdoptionIdentityV1> =
+  z.strictObject({
+    adoption_profile: z.literal(V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE),
+    namespace: IdentityNamespaceV2Schema,
+    model_id: ModelIdV2Schema,
+    model_version_id: ModelVersionIdV2Schema,
+    deployment_id: z.uuid(),
+    deployment_digest: DigestHexSchema,
+    artifact_id: ModelArtifactIdV2Schema,
+  })
+
+export const ModelDeploymentAdoptionV2Schema = z
+  .strictObject({
+    adoption_profile: z.literal(V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE),
+    adoption_digest: DigestHexSchema,
+    model_id: ModelIdV2Schema,
+    model_version_id: ModelVersionIdV2Schema,
+    deployment_id: z.uuid(),
+    deployment_digest: DigestHexSchema,
+    artifact_id: ModelArtifactIdV2Schema,
+    adopted_at: Rfc3339UtcSchema,
+    replayed: z.boolean(),
+  })
+  .meta({ id: 'ModelDeploymentAdoptionV2' })
+export type ModelDeploymentAdoptionV2 = z.infer<typeof ModelDeploymentAdoptionV2Schema>
 
 export function classifyModelVersionSourceV2(
   source: ModelRegistrationSourceV2,

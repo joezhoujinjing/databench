@@ -14,14 +14,25 @@ import {
   type CatalogIdentityClaimResultV2,
   type CatalogIdentityClaimRowV2,
   type CatalogLayoutRowV2,
+  type CatalogModelAliasRowV2,
+  type CatalogModelArtifactCursorV2,
+  type CatalogModelArtifactListFilterV2,
+  type CatalogModelArtifactPageV2,
   type CatalogModelArtifactRowV2,
+  type CatalogModelCursorV2,
+  type CatalogModelDeploymentAdoptionResultV2,
   type CatalogModelDeploymentCursorV2,
   type CatalogModelDeploymentHealthV2,
   type CatalogModelDeploymentListFilterV2,
   type CatalogModelDeploymentPageV2,
   type CatalogModelDeploymentRowV2,
+  type CatalogModelListFilterV2,
+  type CatalogModelPageV2,
   type CatalogModelRegistrationResultV2,
   type CatalogModelRowV2,
+  type CatalogModelSourceEvidenceRowV2,
+  type CatalogModelVersionCursorV2,
+  type CatalogModelVersionPageV2,
   type CatalogModelVersionRowV2,
   type CatalogModelVersionSourceV2,
   type CatalogRefPageV2,
@@ -37,6 +48,7 @@ import {
   type CompareAndSetRefV2,
   type CompleteTransformJobV2,
   type CreateEvaluationRunV2,
+  type CreateModelDeploymentAdoptionV2,
   type CreateModelDeploymentV2,
   type CreateModelRegistrationV2,
   type CreateTransformJobV2,
@@ -51,13 +63,16 @@ import {
   type TransitionEvaluationRunV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
+  V2CatalogModelAliasConflictError,
   V2CatalogModelDeploymentAdmissionError,
+  V2CatalogModelDeploymentAdoptionConflictError,
+  V2CatalogModelMetadataConflictError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
 } from '@databench/catalog'
 import { DEFAULT_V2_DATASET_LIMITS, V2Dataset, type V2DatasetLimits } from '@databench/engine'
-import { hashArtifactBytes } from '@databench/hashing'
+import { canonicalJsonV2, hashArtifactBytes } from '@databench/hashing'
 import { createDefaultV2ConverterRegistry, type V2ConverterRegistry } from '@databench/io'
 import {
   AppendEvidenceV2ParamsSchema,
@@ -2965,7 +2980,55 @@ function modelArtifactRowForRegistration(): CatalogModelArtifactRowV2 {
   }
 }
 
+function artifactRegistrationRequest(
+  artifactId: string,
+  key: string,
+  displayName: string,
+  versionLabel: string,
+  alias?: { readonly alias: 'candidate'; readonly expected_version_id: string | null },
+) {
+  return {
+    target: {
+      kind: 'create_model' as const,
+      key,
+      display_name: displayName,
+      description: `${displayName} description`,
+      task_family: 'chat',
+      tags: ['artifact'],
+    },
+    version_label: versionLabel,
+    source: { kind: 'databench_artifact' as const, artifact_id: artifactId },
+    ...(alias === undefined ? {} : { alias }),
+  }
+}
+
 describe('V2Workspace Model Registry', () => {
+  test('lists and reads existing Model Artifacts without the Swift Studio bridge', async () => {
+    const rig = createRig()
+    const fixture = modelArtifactRowForRegistration()
+    const artifact = {
+      ...fixture,
+      manifestDigest: hashArtifactBytes(
+        new TextEncoder().encode(canonicalJsonV2(fixture.manifest)),
+      ),
+    }
+    rig.catalog.modelArtifacts.set(artifact.id, artifact)
+
+    await expect(
+      rig.workspace.listModelArtifacts({
+        registration_status: 'unregistered',
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: artifact.id })],
+      next_cursor: null,
+    })
+    await expect(rig.workspace.getModelArtifact(artifact.id)).resolves.toMatchObject({
+      id: artifact.id,
+    })
+  })
+
   test('inspects immutable Artifact metadata and exactly replays a committed registration', async () => {
     const rig = createRig()
     const artifact = modelArtifactRowForRegistration()
@@ -3139,6 +3202,284 @@ describe('V2Workspace Model Registry', () => {
       detail: { reason: 'model_deployment_v2_not_enabled' },
     })
     expect(rig.catalog.registerModelVersion).toHaveBeenCalledTimes(0)
+  })
+
+  test('lists, searches, filters, paginates, and reads Models with filter-bound cursors', async () => {
+    const rig = createRig()
+    const artifact = modelArtifactRowForRegistration()
+    rig.catalog.modelArtifacts.set(artifact.id, artifact)
+    const artifactRequest = artifactRegistrationRequest(
+      artifact.id,
+      'artifact-registry',
+      'Artifact Registry',
+      'lora-r1',
+      { alias: 'candidate' as const, expected_version_id: null },
+    )
+    const artifactPlan = await rig.workspace.inspectModelRegistration(artifactRequest)
+    const artifactResult = await rig.workspace.commitModelRegistration({
+      request: artifactRequest,
+      expected_registration_digest: artifactPlan.registration_digest,
+    })
+    const repositoryRequest = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'repository-registry',
+        display_name: 'Repository Registry',
+        description: 'ModelScope reference',
+        task_family: 'chat',
+        tags: ['modelscope'],
+      },
+      version_label: 'repo-r1',
+      source: {
+        kind: 'repository_reference' as const,
+        provider: 'modelscope' as const,
+        repository_id: 'Qwen/Qwen2.5-7B',
+        revision: 'release-1',
+        revision_kind: 'tag' as const,
+        base_model: null,
+      },
+    }
+    const repositoryPlan = await rig.workspace.inspectModelRegistration(repositoryRequest)
+    const repositoryResult = await rig.workspace.commitModelRegistration({
+      request: repositoryRequest,
+      expected_registration_digest: repositoryPlan.registration_digest,
+    })
+
+    const first = await rig.workspace.listModels({ cursor: null, limit: 1 })
+    const second = await rig.workspace.listModels({ cursor: first.next_cursor, limit: 1 })
+    expect(first.next_cursor).toEqual(expect.any(String))
+    expect(new Set([...first.items, ...second.items].map(({ model }) => model.id))).toEqual(
+      new Set([artifactResult.model_id, repositoryResult.model_id]),
+    )
+    await expect(
+      rig.workspace.listModels({
+        source_kind: 'databench_artifact',
+        cursor: first.next_cursor,
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'validation_error' })
+    await expect(
+      rig.workspace.listModels({
+        search: 'Artifact Registry',
+        archive: 'active',
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          model: expect.objectContaining({ id: artifactResult.model_id }),
+          candidate: expect.objectContaining({ version_id: artifactResult.model_version_id }),
+        }),
+      ],
+    })
+    await expect(
+      rig.workspace.listModels({
+        source_kind: 'repository_reference',
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          model: expect.objectContaining({ id: repositoryResult.model_id }),
+        }),
+      ],
+    })
+    await expect(rig.workspace.getModel(artifactResult.model_id)).resolves.toMatchObject({
+      id: artifactResult.model_id,
+      metadata_revision: 0,
+    })
+    await expect(
+      rig.workspace.getModelVersion(artifactResult.model_version_id),
+    ).resolves.toMatchObject({
+      id: artifactResult.model_version_id,
+      source: { kind: 'databench_artifact', artifact_id: artifact.id },
+    })
+    await expect(
+      rig.workspace.listModelVersions(artifactResult.model_id, { cursor: null, limit: 20 }),
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: artifactResult.model_version_id })],
+    })
+    await expect(rig.workspace.listModelAliases(artifactResult.model_id)).resolves.toMatchObject({
+      items: [{ alias: 'candidate', version_id: artifactResult.model_version_id }],
+    })
+  })
+
+  test('maps Model metadata/archive and candidate Alias compare-and-set boundaries', async () => {
+    const rig = createRig()
+    const artifact = modelArtifactRowForRegistration()
+    rig.catalog.modelArtifacts.set(artifact.id, artifact)
+    const request = artifactRegistrationRequest(
+      artifact.id,
+      'metadata-registry',
+      'Metadata Registry',
+      'artifact-r1',
+    )
+    const plan = await rig.workspace.inspectModelRegistration(request)
+    const created = await rig.workspace.commitModelRegistration({
+      request,
+      expected_registration_digest: plan.registration_digest,
+    })
+    const updated = await rig.workspace.updateModel(created.model_id, {
+      expected_metadata_revision: 0,
+      display_name: 'Metadata Registry Updated',
+      description: 'CAS update',
+      task_family: 'chat',
+      tags: ['updated'],
+    })
+    expect(updated).toMatchObject({
+      display_name: 'Metadata Registry Updated',
+      metadata_revision: 1,
+    })
+    await expect(
+      rig.workspace.updateModel(created.model_id, {
+        expected_metadata_revision: 0,
+        display_name: 'Stale update',
+        description: '',
+        task_family: null,
+        tags: [],
+      }),
+    ).rejects.toMatchObject({
+      code: 'conflict',
+      detail: {
+        reason: 'model_metadata_conflict',
+        expected_metadata_revision: 0,
+        current_metadata_revision: 1,
+      },
+    })
+
+    await expect(
+      rig.workspace.moveCandidateModelAlias(created.model_id, {
+        expected_version_id: null,
+        new_version_id: created.model_version_id,
+      }),
+    ).resolves.toMatchObject({ alias: 'candidate', version_id: created.model_version_id })
+    await expect(
+      rig.workspace.moveCandidateModelAlias(created.model_id, {
+        expected_version_id: null,
+        new_version_id: created.model_version_id,
+      }),
+    ).rejects.toMatchObject({
+      code: 'conflict',
+      detail: { reason: 'model_alias_conflict', current_version_id: created.model_version_id },
+    })
+
+    const repositoryRequest = {
+      target: { kind: 'existing_model' as const, model_id: created.model_id },
+      version_label: 'mutable-latest',
+      source: {
+        kind: 'repository_reference' as const,
+        provider: 'modelscope' as const,
+        repository_id: 'Qwen/Qwen2.5-7B',
+        revision: 'latest',
+        revision_kind: 'tag' as const,
+        base_model: null,
+      },
+    }
+    const repositoryPlan = await rig.workspace.inspectModelRegistration(repositoryRequest)
+    const repositoryVersion = await rig.workspace.commitModelRegistration({
+      request: repositoryRequest,
+      expected_registration_digest: repositoryPlan.registration_digest,
+    })
+    await expect(
+      rig.workspace.moveCandidateModelAlias(created.model_id, {
+        expected_version_id: created.model_version_id,
+        new_version_id: repositoryVersion.model_version_id,
+      }),
+    ).rejects.toMatchObject({
+      code: 'validation_error',
+      detail: {
+        issues: [expect.objectContaining({ code: 'model_alias_requires_immutable_source' })],
+      },
+    })
+
+    const archived = await rig.workspace.archiveModel(created.model_id, {
+      expected_metadata_revision: 1,
+    })
+    expect(archived).toMatchObject({ metadata_revision: 2, archived_at: NOW.toISOString() })
+    await expect(
+      rig.workspace.listModels({ archive: 'active', cursor: null, limit: 20 }),
+    ).resolves.toMatchObject({ items: [] })
+    await expect(
+      rig.workspace.listModels({ archive: 'archived', cursor: null, limit: 20 }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({ model: expect.objectContaining({ id: created.model_id }) }),
+      ],
+    })
+  })
+
+  test('adopts an exact legacy Deployment once and rejects mismatched or different targets', async () => {
+    const rig = createRig()
+    const artifact = modelArtifactRowForRegistration()
+    rig.catalog.modelArtifacts.set(artifact.id, artifact)
+    const firstRequest = artifactRegistrationRequest(
+      artifact.id,
+      'adoption-primary',
+      'Adoption Primary',
+      'r1',
+    )
+    const firstPlan = await rig.workspace.inspectModelRegistration(firstRequest)
+    const first = await rig.workspace.commitModelRegistration({
+      request: firstRequest,
+      expected_registration_digest: firstPlan.registration_digest,
+    })
+    const secondRequest = artifactRegistrationRequest(
+      artifact.id,
+      'adoption-secondary',
+      'Adoption Secondary',
+      'r1',
+    )
+    const secondPlan = await rig.workspace.inspectModelRegistration(secondRequest)
+    const second = await rig.workspace.commitModelRegistration({
+      request: secondRequest,
+      expected_registration_digest: secondPlan.registration_digest,
+    })
+    const deployment = await rig.workspace.createModelDeployment({
+      artifact_id: artifact.id,
+      display_name: 'Legacy Deployment',
+      provider: 'openai_compatible',
+      served_model_name: 'legacy-r1',
+      endpoint_base_url: 'http://model.internal:8000/v1',
+      auth_mode: 'none',
+    })
+    const deploymentRow = rig.catalog.modelDeployments.get(deployment.id)
+    if (deploymentRow === undefined) throw new Error('fake Deployment row is missing')
+    const adoptionRequest = {
+      expected_artifact_id: artifact.id,
+      expected_deployment_digest: deploymentRow.createDigest,
+    }
+    const [left, right] = await Promise.all([
+      rig.workspace.adoptModelDeployment(first.model_version_id, deployment.id, adoptionRequest),
+      rig.workspace.adoptModelDeployment(first.model_version_id, deployment.id, adoptionRequest),
+    ])
+    expect([left.replayed, right.replayed].sort()).toEqual([false, true])
+    expect(left).toMatchObject({
+      model_id: first.model_id,
+      model_version_id: first.model_version_id,
+      deployment_id: deployment.id,
+      artifact_id: artifact.id,
+    })
+    await expect(
+      rig.workspace.adoptModelDeployment(second.model_version_id, deployment.id, adoptionRequest),
+    ).rejects.toMatchObject({
+      code: 'conflict',
+      detail: {
+        reason: 'model_deployment_adoption_conflict',
+        current_model_version_id: first.model_version_id,
+        requested_model_version_id: second.model_version_id,
+      },
+    })
+    await expect(
+      rig.workspace.adoptModelDeployment(first.model_version_id, deployment.id, {
+        ...adoptionRequest,
+        expected_deployment_digest: 'f'.repeat(64),
+      }),
+    ).rejects.toMatchObject({
+      code: 'conflict',
+      detail: { reason: 'adoption_binding_mismatch' },
+    })
   })
 })
 
@@ -3440,12 +3781,26 @@ class FakeCatalog implements V2WorkspaceCatalog {
     string,
     { readonly version: CatalogModelVersionRowV2; readonly source: CatalogModelVersionSourceV2 }
   >()
+  readonly modelAliases = new Map<string, CatalogModelAliasRowV2>()
+  readonly modelSourceEvidence = new Map<string, CatalogModelSourceEvidenceRowV2[]>()
+  readonly modelDeploymentAdoptions = new Map<
+    string,
+    CatalogModelDeploymentAdoptionResultV2['row']
+  >()
   readonly modelRegistrationResults = new Map<string, CatalogModelRegistrationResultV2>()
   readonly claims = new Map<string, CatalogIdentityClaimRowV2>()
   readonly listPages = new Map<string | null, CatalogRefPageV2>()
   readonly deletedListPages = new Map<string | null, CatalogRefPageV2>()
   readonly registrations: RegisterLayoutV2[] = []
-  readonly failures: { register?: unknown; cas?: unknown; delete?: unknown; restore?: unknown } = {}
+  readonly failures: {
+    register?: unknown
+    cas?: unknown
+    delete?: unknown
+    restore?: unknown
+    modelMetadata?: unknown
+    modelAlias?: unknown
+    modelAdoption?: unknown
+  } = {}
   transformConflictOutput: string | undefined
   #nextRunSequence = 1n
 
@@ -3787,10 +4142,130 @@ class FakeCatalog implements V2WorkspaceCatalog {
     },
   )
 
+  readonly listModelArtifacts = vi.fn(
+    async (
+      namespaceId: string,
+      filter: CatalogModelArtifactListFilterV2,
+      before: CatalogModelArtifactCursorV2 | null,
+      limit: number,
+    ): Promise<CatalogModelArtifactPageV2> => {
+      const registeredArtifactIds = new Set(
+        [...this.modelVersions.values()].flatMap(({ source }) =>
+          source.kind === 'databench_artifact' ? [source.artifactId] : [],
+        ),
+      )
+      const rows = [...this.modelArtifacts.values()]
+        .filter(
+          (row) =>
+            row.namespaceId === namespaceId &&
+            (filter.datasetVersion === null || row.datasetVersion === filter.datasetVersion) &&
+            (filter.artifactKind === null || row.artifactKind === filter.artifactKind) &&
+            (filter.registrationStatus === 'all' ||
+              (filter.registrationStatus === 'registered') === registeredArtifactIds.has(row.id)) &&
+            (before === null ||
+              row.createdAt < before.createdAt ||
+              (row.createdAt.getTime() === before.createdAt.getTime() && row.id < before.id)),
+        )
+        .sort((left, right) =>
+          left.createdAt.getTime() === right.createdAt.getTime()
+            ? right.id.localeCompare(left.id)
+            : right.createdAt.getTime() - left.createdAt.getTime(),
+        )
+      const visible = rows.slice(0, limit)
+      const last = rows.length > limit ? visible.at(-1) : undefined
+      return {
+        rows: visible,
+        nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null,
+      }
+    },
+  )
+
   readonly getModel = vi.fn(
     async (namespaceId: string, modelId: string): Promise<CatalogModelRowV2 | null> => {
       const row = this.models.get(modelId)
       return row?.namespaceId === namespaceId ? row : null
+    },
+  )
+
+  readonly listModels = vi.fn(
+    async (
+      namespaceId: string,
+      filter: CatalogModelListFilterV2,
+      before: CatalogModelCursorV2 | null,
+      limit: number,
+    ): Promise<CatalogModelPageV2> => {
+      const normalizedSearch = filter.search.toLocaleLowerCase('en-US')
+      const rows = [...this.models.values()]
+        .filter((model) => {
+          if (model.namespaceId !== namespaceId) return false
+          if (filter.archive === 'active' && model.archivedAt !== null) return false
+          if (filter.archive === 'archived' && model.archivedAt === null) return false
+          if (
+            normalizedSearch.length > 0 &&
+            !`${model.key}\n${model.displayName}\n${model.description}`
+              .toLocaleLowerCase('en-US')
+              .includes(normalizedSearch)
+          ) {
+            return false
+          }
+          if (
+            filter.sourceKind !== null &&
+            ![...this.modelVersions.values()].some(
+              ({ version }) =>
+                version.namespaceId === namespaceId &&
+                version.modelId === model.id &&
+                version.sourceKind === filter.sourceKind,
+            )
+          ) {
+            return false
+          }
+          return (
+            before === null ||
+            model.updatedAt < before.updatedAt ||
+            (model.updatedAt.getTime() === before.updatedAt.getTime() && model.id > before.id)
+          )
+        })
+        .sort((left, right) =>
+          left.updatedAt.getTime() === right.updatedAt.getTime()
+            ? left.id.localeCompare(right.id)
+            : right.updatedAt.getTime() - left.updatedAt.getTime(),
+        )
+        .map((model) => {
+          const versions = [...this.modelVersions.values()].filter(
+            ({ version }) => version.namespaceId === namespaceId && version.modelId === model.id,
+          )
+          const alias = this.modelAliases.get(`${model.id}:candidate`) ?? null
+          const candidateVersion =
+            alias === null
+              ? null
+              : (versions.find(({ version }) => version.id === alias.versionId) ?? null)
+          const adoptions = [...this.modelDeploymentAdoptions.values()].filter(
+            (adoption) => adoption.namespaceId === namespaceId && adoption.modelId === model.id,
+          )
+          return {
+            model,
+            candidate:
+              alias === null || candidateVersion === null
+                ? null
+                : {
+                    alias,
+                    version: candidateVersion.version,
+                    source: candidateVersion.source,
+                  },
+            versionCount: versions.length,
+            adoptedDeploymentCount: adoptions.length,
+            healthyAdoptedDeploymentCount: adoptions.filter(
+              ({ deploymentId }) =>
+                this.modelDeployments.get(deploymentId)?.healthStatus === 'healthy',
+            ).length,
+          }
+        })
+      const visible = rows.slice(0, limit)
+      const last = rows.length > limit ? visible.at(-1)?.model : undefined
+      return {
+        rows: visible,
+        nextCursor: last ? { updatedAt: last.updatedAt, id: last.id } : null,
+      }
     },
   )
 
@@ -3804,6 +4279,181 @@ class FakeCatalog implements V2WorkspaceCatalog {
     } | null> => {
       const row = this.modelVersions.get(versionId)
       return row?.version.namespaceId === namespaceId ? row : null
+    },
+  )
+
+  readonly listModelVersions = vi.fn(
+    async (
+      namespaceId: string,
+      modelId: string,
+      before: CatalogModelVersionCursorV2 | null,
+      limit: number,
+    ): Promise<CatalogModelVersionPageV2> => {
+      const rows = [...this.modelVersions.values()]
+        .filter(
+          ({ version }) =>
+            version.namespaceId === namespaceId &&
+            version.modelId === modelId &&
+            (before === null ||
+              version.createdAt < before.createdAt ||
+              (version.createdAt.getTime() === before.createdAt.getTime() &&
+                version.id < before.id)),
+        )
+        .sort((left, right) =>
+          left.version.createdAt.getTime() === right.version.createdAt.getTime()
+            ? right.version.id.localeCompare(left.version.id)
+            : right.version.createdAt.getTime() - left.version.createdAt.getTime(),
+        )
+        .map(({ version, source }) => ({
+          version,
+          source,
+          evidence: this.modelSourceEvidence.get(version.id) ?? [],
+        }))
+      const visible = rows.slice(0, limit)
+      const last = rows.length > limit ? visible.at(-1)?.version : undefined
+      return {
+        rows: visible,
+        nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null,
+      }
+    },
+  )
+
+  readonly listModelAliases = vi.fn(
+    async (namespaceId: string, modelId: string): Promise<readonly CatalogModelAliasRowV2[]> =>
+      [...this.modelAliases.values()]
+        .filter((row) => row.namespaceId === namespaceId && row.modelId === modelId)
+        .sort((left, right) => left.alias.localeCompare(right.alias)),
+  )
+
+  readonly updateModelMetadata = vi.fn(
+    async (input: {
+      readonly namespaceId: string
+      readonly modelId: string
+      readonly expectedMetadataRevision: bigint
+      readonly displayName: string
+      readonly description: string
+      readonly taskFamily: string | null
+      readonly tags: readonly string[]
+    }): Promise<CatalogModelRowV2 | null> => {
+      if (this.failures.modelMetadata !== undefined) throw this.failures.modelMetadata
+      const row = this.models.get(input.modelId)
+      if (row === undefined || row.namespaceId !== input.namespaceId) return null
+      if (row.metadataRevision !== input.expectedMetadataRevision) {
+        throw new V2CatalogModelMetadataConflictError(
+          row.id,
+          input.expectedMetadataRevision,
+          row.metadataRevision,
+        )
+      }
+      const updated = {
+        ...row,
+        displayName: input.displayName,
+        description: input.description,
+        taskFamily: input.taskFamily,
+        tags: input.tags,
+        metadataRevision: row.metadataRevision + 1n,
+        updatedAt: NOW,
+      }
+      this.models.set(row.id, updated)
+      return updated
+    },
+  )
+
+  readonly archiveModel = vi.fn(
+    async (input: {
+      readonly namespaceId: string
+      readonly modelId: string
+      readonly expectedMetadataRevision: bigint
+    }): Promise<CatalogModelRowV2 | null> => {
+      if (this.failures.modelMetadata !== undefined) throw this.failures.modelMetadata
+      const row = this.models.get(input.modelId)
+      if (row === undefined || row.namespaceId !== input.namespaceId) return null
+      if (row.metadataRevision !== input.expectedMetadataRevision) {
+        throw new V2CatalogModelMetadataConflictError(
+          row.id,
+          input.expectedMetadataRevision,
+          row.metadataRevision,
+        )
+      }
+      const archived = {
+        ...row,
+        archivedAt: row.archivedAt ?? NOW,
+        metadataRevision: row.metadataRevision + 1n,
+        updatedAt: NOW,
+      }
+      this.models.set(row.id, archived)
+      return archived
+    },
+  )
+
+  readonly compareAndSetModelAlias = vi.fn(
+    async (input: {
+      readonly namespaceId: string
+      readonly modelId: string
+      readonly alias: 'candidate'
+      readonly expectedVersionId: string | null
+      readonly newVersionId: string
+    }): Promise<CatalogModelAliasRowV2> => {
+      if (this.failures.modelAlias !== undefined) throw this.failures.modelAlias
+      const key = `${input.modelId}:${input.alias}`
+      const current = this.modelAliases.get(key)
+      if ((current?.versionId ?? null) !== input.expectedVersionId) {
+        throw new V2CatalogModelAliasConflictError(
+          input.modelId,
+          input.alias,
+          input.expectedVersionId,
+          current?.versionId ?? null,
+          input.newVersionId,
+        )
+      }
+      const row: CatalogModelAliasRowV2 = {
+        namespaceId: input.namespaceId,
+        modelId: input.modelId,
+        alias: input.alias,
+        versionId: input.newVersionId,
+        createdAt: current?.createdAt ?? NOW,
+        updatedAt: NOW,
+      }
+      this.modelAliases.set(key, row)
+      return row
+    },
+  )
+
+  readonly listModelSourceEvidence = vi.fn(
+    async (
+      namespaceId: string,
+      modelVersionId: string,
+    ): Promise<readonly CatalogModelSourceEvidenceRowV2[]> =>
+      (this.modelSourceEvidence.get(modelVersionId) ?? []).filter(
+        (row) => row.namespaceId === namespaceId,
+      ),
+  )
+
+  readonly createOrReadModelDeploymentAdoption = vi.fn(
+    async (
+      input: CreateModelDeploymentAdoptionV2,
+    ): Promise<CatalogModelDeploymentAdoptionResultV2> => {
+      if (this.failures.modelAdoption !== undefined) throw this.failures.modelAdoption
+      const current = this.modelDeploymentAdoptions.get(input.deploymentId)
+      if (current !== undefined) {
+        if (
+          current.modelId !== input.modelId ||
+          current.modelVersionId !== input.modelVersionId ||
+          current.artifactId !== input.artifactId ||
+          current.deploymentDigest !== input.deploymentDigest ||
+          current.adoptionDigest !== input.adoptionDigest
+        ) {
+          throw new V2CatalogModelDeploymentAdoptionConflictError(
+            input.deploymentId,
+            current.modelVersionId,
+            input.modelVersionId,
+          )
+        }
+        return { row: current, replayed: true }
+      }
+      const row = { ...input, adoptedAt: NOW }
+      this.modelDeploymentAdoptions.set(input.deploymentId, row)
+      return { row, replayed: false }
     },
   )
 
@@ -3857,6 +4507,7 @@ class FakeCatalog implements V2WorkspaceCatalog {
       }
       this.models.set(model.id, model)
       this.modelVersions.set(version.id, { version, source: input.source })
+      if (alias !== null) this.modelAliases.set(`${model.id}:${alias.alias}`, alias)
       this.modelRegistrationResults.set(input.registrationDigest, result)
       return result
     },

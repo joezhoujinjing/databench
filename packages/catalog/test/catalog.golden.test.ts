@@ -80,6 +80,7 @@ beforeAll(() => {
 beforeEach(async () => {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      "model_version_deployment_adoptions_v2",
       "model_source_evidence_v2",
       "model_registration_claims_v2",
       "model_aliases_v2",
@@ -186,6 +187,71 @@ function modelRegistrationInput(
     version,
     source,
     alias: overrides.alias ?? null,
+  }
+}
+
+function artifactModelRegistrationInput(
+  namespaceId: string,
+  artifact: Awaited<ReturnType<typeof finalizedModelArtifact>>['artifact'],
+  input: {
+    readonly modelId?: string
+    readonly versionId?: string
+    readonly modelKey?: string
+    readonly versionLabel?: string
+    readonly registrationDigest?: string
+    readonly modelCreateDigest?: string
+    readonly versionCreateDigest?: string
+    readonly sourceFingerprint?: string
+  } = {},
+): CreateModelRegistrationV2 {
+  const modelId = input.modelId ?? MODEL_REGISTRY_MODEL_ID
+  const versionId = input.versionId ?? MODEL_REGISTRY_VERSION_ID
+  const versionLabel = input.versionLabel ?? 'r1'
+  return {
+    namespaceId,
+    registrationDigest: input.registrationDigest ?? '1'.repeat(64),
+    planProfile: 'model-registration-plan-artifact-v1',
+    normalizedRequest: {
+      target: 'create',
+      version_label: versionLabel,
+      artifact_id: artifact.id,
+    },
+    target: {
+      kind: 'create_model',
+      model: {
+        id: modelId,
+        namespaceId,
+        key: input.modelKey ?? 'artifact-registry',
+        createProfile: 'model-create-v1',
+        createDigest: input.modelCreateDigest ?? '4'.repeat(64),
+        displayName: 'Artifact Registry',
+        description: 'Artifact-backed Catalog registration fixture',
+        taskFamily: 'chat',
+        tags: ['artifact', 'fixture'],
+      },
+    },
+    version: {
+      id: versionId,
+      namespaceId,
+      modelId,
+      versionLabel,
+      sourceKind: 'databench_artifact',
+      createProfile: 'model-version-create-artifact-v1',
+      createDigest: input.versionCreateDigest ?? '2'.repeat(64),
+      sourceFingerprint: input.sourceFingerprint ?? '3'.repeat(64),
+      baseModelReference: artifact.baseModelReference,
+      baseModelRevision: artifact.baseModelRevision,
+      baseModelBindingStatus: artifact.baseModelBindingStatus,
+    },
+    source: {
+      kind: 'databench_artifact',
+      artifactId: artifact.id,
+      artifactKind: artifact.artifactKind,
+      artifactFormat: artifact.artifactFormat,
+      archiveDigest: artifact.archiveDigest,
+      manifestDigest: artifact.manifestDigest,
+    },
+    alias: { alias: 'candidate', expectedVersionId: null },
   }
 }
 
@@ -2388,7 +2454,11 @@ describe('V2Catalog LoRA Model Artifacts', () => {
     await expect(
       v2Catalog.listModelArtifacts(
         namespaceId,
-        { datasetVersion: fixtureVersion('alpha'), artifactKind: 'lora_adapter' },
+        {
+          datasetVersion: fixtureVersion('alpha'),
+          artifactKind: 'lora_adapter',
+          registrationStatus: 'all',
+        },
         null,
         20,
       ),
@@ -3365,6 +3435,194 @@ describe('V2Catalog transform jobs', () => {
     `
     expect(constraints).toHaveLength(1)
     expect(constraints[0]?.definition).toContain('FOREIGN KEY (namespace_id, model_id, version_id)')
+  })
+
+  test('lists Models with stable seek pagination and binds search, archive, and source filters', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const registrationFor = (suffix: string, key: string, displayName: string) => {
+      const digit = suffix
+      return modelRegistrationInput(namespaceId, {
+        registrationDigest: digit.repeat(64),
+        normalizedRequest: { key, version_label: 'r1' },
+        target: {
+          kind: 'create_model',
+          model: {
+            id: `10000000-0000-8000-8000-00000000000${suffix}`,
+            namespaceId,
+            key,
+            createProfile: 'model-create-v1',
+            createDigest: digit.repeat(64),
+            displayName,
+            description: `${displayName} description`,
+            taskFamily: 'chat',
+            tags: [key],
+          },
+        },
+        version: {
+          id: `20000000-0000-8000-8000-00000000000${suffix}`,
+          modelId: `10000000-0000-8000-8000-00000000000${suffix}`,
+          createDigest: digit.repeat(64),
+          sourceFingerprint: digit.repeat(64),
+        },
+        source: {
+          kind: 'repository_reference',
+          provider: 'hugging_face',
+          repositoryId: `fixture/${key}`,
+          revision: digit.repeat(8),
+          revisionKind: 'commit',
+        },
+      })
+    }
+    const registrations = [
+      registrationFor('5', 'alpha-model', 'Alpha Model'),
+      registrationFor('6', 'beta-model', 'Beta Model'),
+      registrationFor('7', 'gamma-model', 'Gamma Model'),
+    ]
+    await Promise.all(registrations.map((input) => v2Catalog.registerModelVersion(input)))
+    await prisma.$executeRaw`
+      UPDATE "models_v2"
+      SET "updated_at" = '2030-08-04T12:00:00.123Z'::timestamptz
+      WHERE "namespace_id" = ${namespaceId}::uuid
+    `
+
+    const firstPage = await v2Catalog.listModels(
+      namespaceId,
+      { search: '', archive: 'active', sourceKind: 'repository_reference' },
+      null,
+      2,
+    )
+    expect(firstPage.rows.map(({ model }) => model.id)).toEqual([
+      '10000000-0000-8000-8000-000000000005',
+      '10000000-0000-8000-8000-000000000006',
+    ])
+    expect(firstPage.nextCursor).toMatchObject({
+      id: '10000000-0000-8000-8000-000000000006',
+    })
+    const secondPage = await v2Catalog.listModels(
+      namespaceId,
+      { search: '', archive: 'active', sourceKind: 'repository_reference' },
+      firstPage.nextCursor,
+      2,
+    )
+    expect(secondPage.rows.map(({ model }) => model.id)).toEqual([
+      '10000000-0000-8000-8000-000000000007',
+    ])
+    await expect(
+      v2Catalog.listModels(
+        namespaceId,
+        { search: 'BETA', archive: 'active', sourceKind: 'repository_reference' },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({ rows: [{ model: { key: 'beta-model' } }], nextCursor: null })
+
+    const archived = await v2Catalog.archiveModel({
+      namespaceId,
+      modelId: '10000000-0000-8000-8000-000000000007',
+      expectedMetadataRevision: 0n,
+    })
+    expect(archived).toMatchObject({ metadataRevision: 1n })
+    await expect(
+      v2Catalog.listModels(
+        namespaceId,
+        { search: '', archive: 'archived', sourceKind: 'repository_reference' },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({ rows: [{ model: { id: archived?.id } }], nextCursor: null })
+    await expect(
+      v2Catalog.archiveModel({
+        namespaceId,
+        modelId: archived?.id ?? '',
+        expectedMetadataRevision: 0n,
+      }),
+    ).resolves.toMatchObject({ metadataRevision: 1n, archivedAt: archived?.archivedAt })
+  })
+
+  test('adopts an exact legacy Deployment once and keeps the association append-only', async () => {
+    const { namespaceId, artifact } = await finalizedModelArtifact()
+    await expect(
+      v2Catalog.listModelArtifacts(
+        namespaceId,
+        { datasetVersion: null, artifactKind: null, registrationStatus: 'unregistered' },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({ rows: [{ id: artifact.id }] })
+    const first = await v2Catalog.registerModelVersion(
+      artifactModelRegistrationInput(namespaceId, artifact),
+    )
+    await expect(
+      v2Catalog.listModelArtifacts(
+        namespaceId,
+        { datasetVersion: null, artifactKind: null, registrationStatus: 'registered' },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({ rows: [{ id: artifact.id }] })
+    const deployment = await v2Catalog.createOrReadModelDeployment(
+      modelDeploymentInput(namespaceId, artifact.id),
+    )
+    const adoption = {
+      namespaceId,
+      deploymentId: deployment.id,
+      modelId: first.model.id,
+      modelVersionId: first.version.id,
+      artifactId: artifact.id,
+      deploymentDigest: deployment.createDigest,
+      adoptionProfile: 'model-deployment-adoption-v1' as const,
+      adoptionDigest: '8'.repeat(64),
+    }
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => v2Catalog.createOrReadModelDeploymentAdoption(adoption)),
+    )
+    expect(results.filter(({ replayed }) => !replayed)).toHaveLength(1)
+    expect(new Set(results.map(({ row }) => row.modelVersionId))).toEqual(
+      new Set([first.version.id]),
+    )
+    await expect(
+      v2Catalog.listModelDeploymentAdoptions(namespaceId, first.version.id),
+    ).resolves.toMatchObject([{ deploymentId: deployment.id }])
+
+    const second = await v2Catalog.registerModelVersion(
+      artifactModelRegistrationInput(namespaceId, artifact, {
+        modelId: '10000000-0000-8000-8000-000000000002',
+        versionId: '20000000-0000-8000-8000-000000000002',
+        modelKey: 'artifact-registry-two',
+        registrationDigest: '9'.repeat(64),
+        modelCreateDigest: 'a'.repeat(64),
+        versionCreateDigest: 'b'.repeat(64),
+        sourceFingerprint: 'c'.repeat(64),
+      }),
+    )
+    await expect(
+      v2Catalog.createOrReadModelDeploymentAdoption({
+        ...adoption,
+        modelId: second.model.id,
+        modelVersionId: second.version.id,
+        adoptionDigest: 'd'.repeat(64),
+      }),
+    ).rejects.toMatchObject({
+      name: 'V2CatalogModelDeploymentAdoptionConflictError',
+      currentModelVersionId: first.version.id,
+      requestedModelVersionId: second.version.id,
+    })
+
+    await expect(
+      prisma.v2ModelVersionDeploymentAdoption.update({
+        where: {
+          namespaceId_deploymentId: { namespaceId, deploymentId: deployment.id },
+        },
+        data: { adoptionDigest: 'e'.repeat(64) },
+      }),
+    ).rejects.toThrow(/append-only/i)
+    await expect(
+      prisma.v2ModelVersionDeploymentAdoption.delete({
+        where: {
+          namespaceId_deploymentId: { namespaceId, deploymentId: deployment.id },
+        },
+      }),
+    ).rejects.toThrow(/append-only/i)
   })
 
   test('keeps source evidence idempotent and database-enforced append-only', async () => {

@@ -119,6 +119,7 @@ apps/api/
 │  │     ├─ swift-studio-sessions.ts exact Dataset Studio Session create/list/show/close
 │  │     ├─ model-artifacts.ts   output/import 与 immutable Artifact list/show/download
 │  │     ├─ model-deployments.ts public list/show、operator actions 与 internal resolve
+│  │     ├─ models.ts            Model/Version/Artifact registration、Alias 与 adoption
 │  │     ├─ openapi.ts          route schema helpers
 │  │     └─ transport.ts        streaming/error transport helpers
 │  └─ v2/
@@ -126,6 +127,7 @@ apps/api/
 ├─ test/
 │  ├─ app-support.test.ts
 │  ├─ model-deployments.test.ts
+│  ├─ models.test.ts
 │  ├─ evalscope-gateway.test.ts
 │  ├─ errors.test.ts
 │  ├─ mcp-config.test.ts · mcp-file-tokens.test.ts · mcp.test.ts
@@ -156,7 +158,8 @@ apps/cli/
 │     ├─ converter.ts           list/show
 │     ├─ transform.ts           list/run
 │     ├─ ref.ts                 list/show/move
-│     └─ lineage.ts             show
+│     ├─ lineage.ts             show
+│     └─ model.ts               Model/Version list/show
 ├─ test/
 │  ├─ config.test.ts
 │  ├─ v2-router.test.ts
@@ -208,10 +211,12 @@ apps/web/
 │  │  ├─ components/            Dataset/Session、Artifact library/detail/download 与 Deployment panel
 │  │  ├─ domain/                fixed same-origin path 与 iframe boot contract
 │  │  └─ routes/studio.tsx      ready Session gate + loading/error/reconnect/fullscreen iframe shell
-│  ├─ models/                    共享 Model Artifact 后续领域；不属于 deploy 资产
+│  ├─ models/                    Model Registry 与共享 Artifact/Deployment UI；不属于 deploy 资产
+│  │  ├─ api/registry.ts         generated Model/Version/registration operations
 │  │  ├─ api/deployments.ts      generated OpenAPI Deployment operations
 │  │  ├─ api/hooks.ts            Deployment 与 bound Evaluation Run query/mutation
-│  │  └─ components/ModelDeploymentPanel.tsx
+│  │  ├─ components/ModelDeploymentPanel.tsx
+│  │  └─ routes/                 registry、Model detail 与 Version detail
 │  ├─ v2/
 │  │  ├─ api/                   v2 client/hooks/query keys/stream export
 │  │  ├─ components/            gate、冲突恢复、records、fidelity review
@@ -239,6 +244,9 @@ apps/web/
 /lineage/:ref
 /export/:ref
 /training
+/models
+/models/:modelId
+/models/:modelId/versions/:versionId
 /evaluations
 /evaluations/tasks
 /evaluations/reports
@@ -267,6 +275,7 @@ src/
 └─ v2/
    ├─ canonical-json.ts         RFC 8785 JCS
    ├─ artifact-hasher.ts        incremental artifact digest
+   ├─ model-registry.ts         Model/source/Version/registration/adoption identity profiles
    ├─ domains.ts                identity domain separation
    ├─ contracts.type-test.ts
    ├─ types.ts
@@ -287,6 +296,7 @@ src/
    ├─ swift-studio.ts           S2 exact Dataset Studio Session wire contract
    ├─ model-artifact.ts         S3 output/import/immutable Artifact wire contract
    ├─ model-deployment.ts       S4 public/internal Deployment wire contract
+   ├─ model.ts · model-version.ts Model Registry wire/source/registration contracts
    ├─ mcp.ts                    MCP tool/result contracts
    ├─ reader/raw-json/json-value verification
    ├─ contracts.type-test.ts
@@ -373,13 +383,14 @@ src/
 ├─ client.ts
 └─ v2/
    ├─ catalog.ts
+   ├─ model-registry.ts
    ├─ types.ts · errors.ts
    └─ index.ts
 ```
 
 只依赖 Prisma/Postgres。v2 snapshots、layouts、identity claims、transform/evaluation runs、Swift Studio
-Sessions、Model Artifact imports/artifacts、Model Deployments、record lineage 与 refs 的数据模型在根
-`prisma/schema.prisma`。
+Sessions、Model Artifact imports/artifacts、Model/Version/source/evidence/Alias/registration/adoption、
+Model Deployments、record lineage 与 refs 的数据模型在根 `prisma/schema.prisma`。
 
 ## `packages/workspace`
 
@@ -394,6 +405,7 @@ src/
    ├─ workspace.ts · batch-transform.ts · evaluation.ts
    ├─ swift-studio.ts · swift-studio-provider.ts
    ├─ model-artifact.ts · model-deployment.ts
+   ├─ model.ts · model-registration.ts
    ├─ identity-allocator.ts
    ├─ canonical-draft-identity.ts
    ├─ canonical-draft-materializer.ts
@@ -406,8 +418,8 @@ src/
 这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
 deterministic identity/materialize/import、persist、transform、CAS ref、record/dataset lineage、
 audit、converter inspect/export、evaluation run exact binding/状态机与取消语义，以及 Swift Studio Session、
-Model Artifact import/finalize/download、Model Deployment registry/health/resolve 与 Deployment-bound
-Evaluation lineage 编排。
+Model Artifact import/finalize/download、Artifact-source Model registration、candidate Alias、legacy
+Deployment adoption、Model Deployment registry/health/resolve 与 Deployment-bound Evaluation lineage 编排。
 
 ## Tooling 与根目录
 
@@ -439,7 +451,9 @@ prisma/
    ├─ 0011_swift_studio_sessions_v2/
    ├─ 0012_model_artifacts_v2/
    ├─ 0013_model_deployments_v2/
-   └─ 0014_evaluation_metric_selection_v2/
+   ├─ 0014_evaluation_metric_selection_v2/
+   ├─ 0015_model_registry_v2/
+   └─ 0016_model_registry_artifact_product_v2/
 ```
 
 EvalScope E0 另有：

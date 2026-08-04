@@ -175,7 +175,7 @@
       "path": "packages/hashing/test/fixtures/model-deployment-adoption-v1.json",
       "assertion": "Binds a one-time legacy Deployment, exact Artifact, Model Version, and adoption intent without changing the legacy digest.",
       "source": "ADR 0019 section 5",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr3-repository-source-evidence-v1",

@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest'
 import {
   canonicalJsonV2,
   hashV2ModelCreate,
+  hashV2ModelDeploymentAdoption,
   hashV2ModelRegistrationPlanArtifact,
   hashV2ModelRegistrationPlanRepository,
   hashV2ModelRegistrationPlanService,
@@ -27,6 +28,7 @@ interface Fixture {
 
 const hashByProfile: Record<string, (input: never) => string> = {
   'model-create-v1': hashV2ModelCreate,
+  'model-deployment-adoption-v1': hashV2ModelDeploymentAdoption,
   'model-source-fingerprint-artifact-v1': hashV2ModelSourceFingerprintArtifact,
   'model-source-fingerprint-repository-v1': hashV2ModelSourceFingerprintRepository,
   'model-source-fingerprint-service-v1': hashV2ModelSourceFingerprintService,

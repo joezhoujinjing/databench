@@ -3,20 +3,32 @@ import {
   V2CatalogConsistencyError,
   V2CatalogInputError,
   V2CatalogModelAliasConflictError,
+  V2CatalogModelDeploymentAdoptionConflictError,
   V2CatalogModelMetadataConflictError,
   V2CatalogModelRegistrationConflictError,
 } from './errors.js'
 import type {
   AppendModelSourceEvidenceV2,
+  ArchiveCatalogModelV2,
   CatalogJsonValueV2,
   CatalogModelAliasRowV2,
+  CatalogModelCursorV2,
+  CatalogModelDeploymentAdoptionResultV2,
+  CatalogModelDeploymentAdoptionRowV2,
+  CatalogModelListFilterV2,
+  CatalogModelListItemV2,
+  CatalogModelPageV2,
   CatalogModelRegistrationClaimRowV2,
   CatalogModelRegistrationResultV2,
   CatalogModelRowV2,
   CatalogModelSourceEvidenceRowV2,
+  CatalogModelVersionCursorV2,
+  CatalogModelVersionListItemV2,
+  CatalogModelVersionPageV2,
   CatalogModelVersionRowV2,
   CatalogModelVersionSourceV2,
   CompareAndSetModelAliasV2,
+  CreateModelDeploymentAdoptionV2,
   CreateModelRegistrationV2,
   UpdateCatalogModelMetadataV2,
 } from './types.js'
@@ -137,6 +149,250 @@ export async function getModelVersionV2(
   }
 }
 
+export async function listModelsV2(
+  client: PrismaClient,
+  namespaceId: string,
+  filter: CatalogModelListFilterV2,
+  before: CatalogModelCursorV2 | null,
+  limit: number,
+): Promise<CatalogModelPageV2> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateModelListFilter(filter)
+  if (before !== null) validateModelCursor(before)
+  validatePageLimit(limit)
+  const archivePredicate =
+    filter.archive === 'active'
+      ? Prisma.sql`"archived_at" IS NULL`
+      : filter.archive === 'archived'
+        ? Prisma.sql`"archived_at" IS NOT NULL`
+        : Prisma.sql`TRUE`
+  const sourcePredicate =
+    filter.sourceKind === null
+      ? Prisma.sql`TRUE`
+      : Prisma.sql`EXISTS (
+          SELECT 1 FROM "model_versions_v2" AS "filtered_version"
+          WHERE
+            "filtered_version"."namespace_id" = "models_v2"."namespace_id" AND
+            "filtered_version"."model_id" = "models_v2"."id" AND
+            "filtered_version"."source_kind" = ${filter.sourceKind}
+        )`
+  const searchPredicate =
+    filter.search.length === 0
+      ? Prisma.sql`TRUE`
+      : Prisma.sql`(
+          strpos(lower("key"), lower(${filter.search})) > 0 OR
+          strpos(lower("display_name"), lower(${filter.search})) > 0 OR
+          strpos(lower("description"), lower(${filter.search})) > 0 OR
+          strpos(lower(COALESCE("task_family", '')), lower(${filter.search})) > 0 OR
+          strpos(lower("tags_json"::text), lower(${filter.search})) > 0
+        )`
+  const cursorPredicate =
+    before === null
+      ? Prisma.sql`TRUE`
+      : Prisma.sql`(
+          date_trunc('milliseconds', "updated_at") < ${before.updatedAt} OR
+          (
+            date_trunc('milliseconds', "updated_at") = ${before.updatedAt} AND
+            "id"::text COLLATE "C" > ${before.id}
+          )
+        )`
+  const locators = await client.$queryRaw<
+    Array<{ readonly id: string; readonly updatedAt: Date }>
+  >(Prisma.sql`
+    SELECT
+      "id",
+      date_trunc('milliseconds', "updated_at") AS "updatedAt"
+    FROM "models_v2"
+    WHERE
+      "namespace_id" = ${namespaceId}::uuid AND
+      ${archivePredicate} AND
+      ${sourcePredicate} AND
+      ${searchPredicate} AND
+      ${cursorPredicate}
+    ORDER BY date_trunc('milliseconds', "updated_at") DESC, "id"::text COLLATE "C" ASC
+    LIMIT ${limit + 1}
+  `)
+  const hasMore = locators.length > limit
+  const pageLocators = locators.slice(0, limit)
+  const modelIds = pageLocators.map((row) => row.id)
+  if (modelIds.length === 0) return Object.freeze({ rows: Object.freeze([]), nextCursor: null })
+
+  const [storedModels, versionCounts, candidateAliases, adoptionCounts] = await Promise.all([
+    client.v2Model.findMany({ where: { namespaceId, id: { in: modelIds } } }),
+    client.v2ModelVersion.groupBy({
+      by: ['modelId'],
+      where: { namespaceId, modelId: { in: modelIds } },
+      _count: { _all: true },
+    }),
+    client.v2ModelAlias.findMany({
+      where: { namespaceId, modelId: { in: modelIds }, alias: 'candidate' },
+    }),
+    client.$queryRaw<
+      Array<{
+        readonly modelId: string
+        readonly deploymentCount: number
+        readonly healthyDeploymentCount: number
+      }>
+    >(Prisma.sql`
+      SELECT
+        "adoption"."model_id" AS "modelId",
+        COUNT(*)::integer AS "deploymentCount",
+        COUNT(*) FILTER (
+          WHERE "deployment"."status" = 'active' AND "deployment"."health_status" = 'healthy'
+        )::integer AS "healthyDeploymentCount"
+      FROM "model_version_deployment_adoptions_v2" AS "adoption"
+      JOIN "model_deployments_v2" AS "deployment"
+        ON "deployment"."namespace_id" = "adoption"."namespace_id" AND
+           "deployment"."id" = "adoption"."deployment_id"
+      WHERE
+        "adoption"."namespace_id" = ${namespaceId}::uuid AND
+        "adoption"."model_id" IN (${Prisma.join(modelIds.map((id) => Prisma.sql`${id}::uuid`))})
+      GROUP BY "adoption"."model_id"
+    `),
+  ])
+  const candidateVersionIds = candidateAliases.map((alias) => alias.versionId)
+  const candidateVersions =
+    candidateVersionIds.length === 0
+      ? []
+      : await client.v2ModelVersion.findMany({
+          where: { namespaceId, id: { in: candidateVersionIds } },
+        })
+  const candidateRows = candidateVersions.map(modelVersionRow)
+  const candidateSources = await readVersionSources(client, candidateRows)
+  const modelById = new Map(storedModels.map((row) => [row.id, modelRow(row)]))
+  const countByModel = new Map(versionCounts.map((row) => [row.modelId, row._count._all]))
+  const aliasByModel = new Map(candidateAliases.map((row) => [row.modelId, modelAliasRow(row)]))
+  const candidateById = new Map(candidateRows.map((row) => [row.id, row]))
+  const adoptionByModel = new Map(adoptionCounts.map((row) => [row.modelId, row]))
+  const items: CatalogModelListItemV2[] = pageLocators.map((locator) => {
+    const model = modelById.get(locator.id)
+    if (!model) throw new V2CatalogConsistencyError('Model list locator could not be loaded')
+    const alias = aliasByModel.get(model.id)
+    const candidateVersion = alias === undefined ? undefined : candidateById.get(alias.versionId)
+    if (alias !== undefined && candidateVersion === undefined) {
+      throw new V2CatalogConsistencyError('Model candidate Alias Version could not be loaded')
+    }
+    const candidate =
+      alias === undefined || candidateVersion === undefined
+        ? null
+        : {
+            alias,
+            version: candidateVersion,
+            source: requiredVersionSource(candidateSources, candidateVersion.id),
+          }
+    const deploymentCounts = adoptionByModel.get(model.id)
+    return Object.freeze({
+      model,
+      candidate,
+      versionCount: countByModel.get(model.id) ?? 0,
+      adoptedDeploymentCount: deploymentCounts?.deploymentCount ?? 0,
+      healthyAdoptedDeploymentCount: deploymentCounts?.healthyDeploymentCount ?? 0,
+    })
+  })
+  const last = hasMore ? pageLocators.at(-1) : undefined
+  return Object.freeze({
+    rows: Object.freeze(items),
+    nextCursor:
+      last === undefined ? null : Object.freeze({ updatedAt: last.updatedAt, id: last.id }),
+  })
+}
+
+export async function listModelVersionsV2(
+  client: PrismaClient,
+  namespaceId: string,
+  modelId: string,
+  before: CatalogModelVersionCursorV2 | null,
+  limit: number,
+): Promise<CatalogModelVersionPageV2> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateUuid(modelId, 'Model ID')
+  if (before !== null) validateModelVersionCursor(before)
+  validatePageLimit(limit)
+  const locators = await client.$queryRaw<
+    Array<{ readonly id: string; readonly createdAt: Date }>
+  >(Prisma.sql`
+    SELECT
+      "id",
+      date_trunc('milliseconds', "created_at") AS "createdAt"
+    FROM "model_versions_v2"
+    WHERE
+      "namespace_id" = ${namespaceId}::uuid AND
+      "model_id" = ${modelId}::uuid AND
+      ${
+        before === null
+          ? Prisma.sql`TRUE`
+          : Prisma.sql`(
+              date_trunc('milliseconds', "created_at") < ${before.createdAt} OR
+              (
+                date_trunc('milliseconds', "created_at") = ${before.createdAt} AND
+                "id"::text COLLATE "C" < ${before.id}
+              )
+            )`
+      }
+    ORDER BY date_trunc('milliseconds', "created_at") DESC, "id"::text COLLATE "C" DESC
+    LIMIT ${limit + 1}
+  `)
+  const hasMore = locators.length > limit
+  const pageLocators = locators.slice(0, limit)
+  const storedVersions =
+    pageLocators.length === 0
+      ? []
+      : await client.v2ModelVersion.findMany({
+          where: { namespaceId, modelId, id: { in: pageLocators.map((row) => row.id) } },
+        })
+  const storedById = new Map(storedVersions.map((row) => [row.id, modelVersionRow(row)]))
+  const versions = pageLocators.map((locator) => {
+    const version = storedById.get(locator.id)
+    if (!version)
+      throw new V2CatalogConsistencyError('Model Version list locator could not be loaded')
+    return { ...version, createdAt: locator.createdAt }
+  })
+  const sources = await readVersionSources(client, versions)
+  const evidenceRows =
+    versions.length === 0
+      ? []
+      : await client.v2ModelSourceEvidence.findMany({
+          where: { namespaceId, modelVersionId: { in: versions.map((version) => version.id) } },
+          orderBy: [{ observedAt: 'asc' }, { id: 'asc' }],
+          take: 10_000,
+        })
+  const evidenceByVersion = new Map<string, CatalogModelSourceEvidenceRowV2[]>()
+  for (const row of evidenceRows) {
+    const evidence = modelSourceEvidenceRow(row)
+    const entries = evidenceByVersion.get(evidence.modelVersionId) ?? []
+    entries.push(evidence)
+    evidenceByVersion.set(evidence.modelVersionId, entries)
+  }
+  const items: CatalogModelVersionListItemV2[] = versions.map((version) =>
+    Object.freeze({
+      version,
+      source: requiredVersionSource(sources, version.id),
+      evidence: Object.freeze(evidenceByVersion.get(version.id) ?? []),
+    }),
+  )
+  const last = hasMore ? pageLocators.at(-1) : undefined
+  return Object.freeze({
+    rows: Object.freeze(items),
+    nextCursor:
+      last === undefined ? null : Object.freeze({ createdAt: last.createdAt, id: last.id }),
+  })
+}
+
+export async function listModelAliasesV2(
+  client: PrismaClient,
+  namespaceId: string,
+  modelId: string,
+): Promise<readonly CatalogModelAliasRowV2[]> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateUuid(modelId, 'Model ID')
+  const rows = await client.v2ModelAlias.findMany({
+    where: { namespaceId, modelId },
+    orderBy: { alias: 'asc' },
+    take: 3,
+  })
+  return Object.freeze(rows.map(modelAliasRow))
+}
+
 export async function updateModelMetadataV2(
   client: PrismaClient,
   input: UpdateCatalogModelMetadataV2,
@@ -166,6 +422,35 @@ export async function updateModelMetadataV2(
       },
     })
     return modelRow(updated)
+  })
+}
+
+export async function archiveModelV2(
+  client: PrismaClient,
+  input: ArchiveCatalogModelV2,
+): Promise<CatalogModelRowV2 | null> {
+  validateUuid(input.namespaceId, 'namespace ID')
+  validateUuid(input.modelId, 'Model ID')
+  validateSafeBigint(input.expectedMetadataRevision, 'expected metadata revision')
+  return await client.$transaction(async (transaction) => {
+    await lockModel(transaction, input.namespaceId, input.modelId)
+    const current = await transaction.v2Model.findFirst({
+      where: { namespaceId: input.namespaceId, id: input.modelId },
+    })
+    if (!current) return null
+    if (current.archivedAt !== null) return modelRow(current)
+    if (current.metadataRevision !== input.expectedMetadataRevision) {
+      throw new V2CatalogModelMetadataConflictError(
+        input.modelId,
+        input.expectedMetadataRevision,
+        current.metadataRevision,
+      )
+    }
+    const archived = await transaction.v2Model.update({
+      where: { id: input.modelId },
+      data: { archivedAt: new Date(), metadataRevision: { increment: 1 } },
+    })
+    return modelRow(archived)
   })
 }
 
@@ -217,6 +502,52 @@ export async function listModelSourceEvidenceV2(
     take: 1_000,
   })
   return Object.freeze(rows.map(modelSourceEvidenceRow))
+}
+
+export async function createOrReadModelDeploymentAdoptionV2(
+  client: PrismaClient,
+  input: CreateModelDeploymentAdoptionV2,
+): Promise<CatalogModelDeploymentAdoptionResultV2> {
+  validateModelDeploymentAdoption(input)
+  return await client.$transaction(async (transaction) => {
+    await lockModelDeploymentAdoption(transaction, input.namespaceId, input.deploymentId)
+    const existing = await transaction.v2ModelVersionDeploymentAdoption.findUnique({
+      where: {
+        namespaceId_deploymentId: {
+          namespaceId: input.namespaceId,
+          deploymentId: input.deploymentId,
+        },
+      },
+    })
+    if (existing) {
+      const row = modelDeploymentAdoptionRow(existing)
+      if (!sameModelDeploymentAdoption(row, input)) {
+        throw new V2CatalogModelDeploymentAdoptionConflictError(
+          input.deploymentId,
+          row.modelVersionId,
+          input.modelVersionId,
+        )
+      }
+      return Object.freeze({ row, replayed: true })
+    }
+    const created = await transaction.v2ModelVersionDeploymentAdoption.create({ data: input })
+    return Object.freeze({ row: modelDeploymentAdoptionRow(created), replayed: false })
+  })
+}
+
+export async function listModelDeploymentAdoptionsV2(
+  client: PrismaClient,
+  namespaceId: string,
+  modelVersionId: string,
+): Promise<readonly CatalogModelDeploymentAdoptionRowV2[]> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateUuid(modelVersionId, 'Model Version ID')
+  const rows = await client.v2ModelVersionDeploymentAdoption.findMany({
+    where: { namespaceId, modelVersionId },
+    orderBy: [{ adoptedAt: 'asc' }, { deploymentId: 'asc' }],
+    take: 1_000,
+  })
+  return Object.freeze(rows.map(modelDeploymentAdoptionRow))
 }
 
 async function createOrReadRegistrationModel(
@@ -532,6 +863,80 @@ async function readVersionSource(
   throw new V2CatalogConsistencyError('Model Version does not have its exact source row')
 }
 
+async function readVersionSources(
+  client: Pick<
+    TransactionClient,
+    | 'v2ModelVersionArtifactSource'
+    | 'v2ModelVersionRepositorySource'
+    | 'v2ModelVersionServiceSource'
+  >,
+  versions: readonly CatalogModelVersionRowV2[],
+): Promise<ReadonlyMap<string, CatalogModelVersionSourceV2>> {
+  if (versions.length === 0) return new Map()
+  const namespaceId = versions[0]?.namespaceId
+  if (
+    namespaceId === undefined ||
+    versions.some((version) => version.namespaceId !== namespaceId)
+  ) {
+    throw new V2CatalogInputError('Model Version source batch must use one namespace')
+  }
+  const ids = versions.map((version) => version.id)
+  const [artifacts, repositories, services] = await Promise.all([
+    client.v2ModelVersionArtifactSource.findMany({
+      where: { namespaceId, modelVersionId: { in: ids } },
+    }),
+    client.v2ModelVersionRepositorySource.findMany({
+      where: { namespaceId, modelVersionId: { in: ids } },
+    }),
+    client.v2ModelVersionServiceSource.findMany({
+      where: { namespaceId, modelVersionId: { in: ids } },
+    }),
+  ])
+  const sources = new Map<string, CatalogModelVersionSourceV2>()
+  for (const row of artifacts) {
+    sources.set(row.modelVersionId, {
+      kind: 'databench_artifact',
+      artifactId: row.artifactId,
+      artifactKind: row.artifactKind,
+      artifactFormat: row.artifactFormat,
+      archiveDigest: row.archiveDigest,
+      manifestDigest: row.manifestDigest,
+    })
+  }
+  for (const row of repositories) {
+    sources.set(row.modelVersionId, {
+      kind: 'repository_reference',
+      provider: row.provider as 'hugging_face' | 'modelscope' | 'operator_managed',
+      repositoryId: row.repositoryId,
+      revision: row.revision,
+      revisionKind: row.revisionKind as 'commit' | 'digest' | 'tag' | 'opaque',
+    })
+  }
+  for (const row of services) {
+    sources.set(row.modelVersionId, {
+      kind: 'existing_service',
+      provider: row.provider as 'openai_compatible',
+      externalModelRef: row.externalModelRef,
+      externalVersionRef: row.externalVersionRef,
+      declaredReferenceKind: row.declaredReferenceKind as
+        | 'immutable_version'
+        | 'mutable_alias'
+        | 'opaque',
+    })
+  }
+  for (const version of versions) requiredVersionSource(sources, version.id)
+  return sources
+}
+
+function requiredVersionSource(
+  sources: ReadonlyMap<string, CatalogModelVersionSourceV2>,
+  versionId: string,
+): CatalogModelVersionSourceV2 {
+  const source = sources.get(versionId)
+  if (!source) throw new V2CatalogConsistencyError('Model Version source batch is incomplete')
+  return source
+}
+
 async function lockModel(
   transaction: TransactionClient,
   namespaceId: string,
@@ -551,6 +956,19 @@ async function lockRegistrationClaim(
     SELECT pg_advisory_xact_lock(
       hashtext(${namespaceId}),
       hashtext(${registrationDigest})
+    )::text AS "locked"
+  `)
+}
+
+async function lockModelDeploymentAdoption(
+  transaction: TransactionClient,
+  namespaceId: string,
+  deploymentId: string,
+): Promise<void> {
+  await transaction.$queryRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(
+      hashtext(${namespaceId}),
+      hashtext(${deploymentId})
     )::text AS "locked"
   `)
 }
@@ -699,6 +1117,30 @@ function modelSourceEvidenceRow(row: {
   }
 }
 
+function modelDeploymentAdoptionRow(row: {
+  readonly namespaceId: string
+  readonly deploymentId: string
+  readonly modelId: string
+  readonly modelVersionId: string
+  readonly artifactId: string
+  readonly deploymentDigest: string
+  readonly adoptionProfile: string
+  readonly adoptionDigest: string
+  readonly adoptedAt: Date
+}): CatalogModelDeploymentAdoptionRowV2 {
+  return {
+    namespaceId: row.namespaceId,
+    deploymentId: row.deploymentId,
+    modelId: row.modelId,
+    modelVersionId: row.modelVersionId,
+    artifactId: row.artifactId,
+    deploymentDigest: row.deploymentDigest,
+    adoptionProfile: row.adoptionProfile as 'model-deployment-adoption-v1',
+    adoptionDigest: row.adoptionDigest,
+    adoptedAt: row.adoptedAt,
+  }
+}
+
 function sameModelCreate(
   stored: CatalogModelRowV2,
   expected: CreateModelRegistrationV2['target'] extends infer Target
@@ -763,6 +1205,22 @@ function sameEvidence(
     stored.observedAt.getTime() === expected.observedAt.getTime() &&
     stored.result === expected.result &&
     stored.responseDigest === expected.responseDigest
+  )
+}
+
+function sameModelDeploymentAdoption(
+  stored: CatalogModelDeploymentAdoptionRowV2,
+  expected: CreateModelDeploymentAdoptionV2,
+): boolean {
+  return (
+    stored.namespaceId === expected.namespaceId &&
+    stored.deploymentId === expected.deploymentId &&
+    stored.modelId === expected.modelId &&
+    stored.modelVersionId === expected.modelVersionId &&
+    stored.artifactId === expected.artifactId &&
+    stored.deploymentDigest === expected.deploymentDigest &&
+    stored.adoptionProfile === expected.adoptionProfile &&
+    stored.adoptionDigest === expected.adoptionDigest
   )
 }
 
@@ -866,6 +1324,46 @@ function validateMetadataUpdate(input: UpdateCatalogModelMetadataV2): void {
   }
 }
 
+function validateModelListFilter(filter: CatalogModelListFilterV2): void {
+  if (
+    typeof filter.search !== 'string' ||
+    new TextEncoder().encode(filter.search).byteLength > 256 ||
+    !['active', 'archived', 'all'].includes(filter.archive) ||
+    (filter.sourceKind !== null &&
+      !['databench_artifact', 'repository_reference', 'existing_service'].includes(
+        filter.sourceKind,
+      ))
+  ) {
+    throw new V2CatalogInputError('Model list filter is invalid')
+  }
+}
+
+function validateModelCursor(cursor: CatalogModelCursorV2): void {
+  validateMillisecondDate(cursor.updatedAt, 'Model cursor timestamp')
+  validateUuid(cursor.id, 'Model cursor ID')
+}
+
+function validateModelVersionCursor(cursor: CatalogModelVersionCursorV2): void {
+  validateMillisecondDate(cursor.createdAt, 'Model Version cursor timestamp')
+  validateUuid(cursor.id, 'Model Version cursor ID')
+}
+
+function validatePageLimit(limit: number): void {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new V2CatalogInputError('Model page limit is invalid')
+  }
+}
+
+function validateMillisecondDate(value: Date, label: string): void {
+  if (
+    !(value instanceof Date) ||
+    !Number.isFinite(value.getTime()) ||
+    value.toISOString() !== new Date(value.getTime()).toISOString()
+  ) {
+    throw new V2CatalogInputError(`${label} is invalid`)
+  }
+}
+
 function validateAliasInput(input: CompareAndSetModelAliasV2): void {
   validateUuid(input.namespaceId, 'namespace ID')
   validateUuid(input.modelId, 'Model ID')
@@ -896,6 +1394,25 @@ function validateEvidence(input: AppendModelSourceEvidenceV2): void {
     (input.observedRevision === null || input.responseDigest === null)
   ) {
     throw new V2CatalogInputError('Verified Model source evidence is incomplete')
+  }
+}
+
+function validateModelDeploymentAdoption(input: CreateModelDeploymentAdoptionV2): void {
+  validateUuid(input.namespaceId, 'namespace ID')
+  validateUuid(input.deploymentId, 'Model Deployment ID')
+  validateUuid(input.modelId, 'Model ID')
+  validateUuid(input.modelVersionId, 'Model Version ID')
+  validateUuid(input.artifactId, 'Model Artifact ID')
+  validateDigest(input.deploymentDigest, 'Model Deployment digest')
+  validateDigest(input.adoptionDigest, 'Model Deployment adoption digest')
+  if (input.adoptionProfile !== 'model-deployment-adoption-v1') {
+    throw new V2CatalogInputError('Model Deployment adoption profile is invalid')
+  }
+}
+
+function validateSafeBigint(value: bigint, label: string): void {
+  if (value < 0n || value > MAX_SAFE_BIGINT) {
+    throw new V2CatalogInputError(`${label} is invalid`)
   }
 }
 

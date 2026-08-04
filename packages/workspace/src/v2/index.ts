@@ -39,7 +39,9 @@ export {
   V2CursorCodec,
   type V2CursorCodecOptions,
   type V2ModelArtifactCursorState,
+  type V2ModelCursorState,
   type V2ModelDeploymentCursorState,
+  type V2ModelVersionCursorState,
   type V2SwiftStudioSessionCursorState,
 } from './cursor.js'
 export { evaluationBenchmarkFromPlanV2, evaluationRunFromCatalogV2 } from './evaluation.js'

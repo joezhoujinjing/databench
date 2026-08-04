@@ -1,7 +1,8 @@
 # Databench Model Registry 技术方案
 
 - **状态：** Accepted——owner 于 2026-08-04 要求按三种来源起草、完成三路 review 修订，并在四项
-  推荐范围列明后要求“下一步叭”，授权进入 MR0
+  推荐范围列明后要求“下一步叭”；随后要求“按照实施计划依次的实现吧”，授权按 Gate 顺序实施
+  MR0-MR8
 - **日期：** 2026-08-04
 - **决策者：** owner
 - **决策：** [ADR 0019](../decisions/0019-model-registry.md)
@@ -1224,6 +1225,7 @@ source 不得进入 promotion Alias；旧数据只允许显式 append-only adopt
 public-network 禁用和 internal v1/v2 隔离按本方案执行。Hosted secret backend 与公网 egress 仍必须等待
 D3/新 ADR，不能由 Model Registry 方案越权决定。
 
-当前只授权进入 MR0。MR1 未开始前，runtime 继续保持：verified LoRA Artifact、Artifact-bound Deployment、
-`openai_compatible + operator_attested + auth_mode=none`，以及 S4 `non-GPU contract green / GPU deferred`
-的真实状态。
+owner 已授权按 `PLAN.md` 的 Gate 顺序实施 MR0-MR8；一个 Step 全绿并单独提交后才可进入下一 Step。
+该授权不包含跳 Step、公共云 D3 选型、hosted secret backend、managed serving、GPU gate 或 production
+readiness。实施状态以 `STATUS.md` 为准，且必须继续保持 S4
+`non-GPU contract green / GPU deferred`、V16/V17 未完成等真实发布边界。

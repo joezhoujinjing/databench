@@ -134,6 +134,69 @@ describe('V2CursorCodec', () => {
     ).toThrow(TypeError)
   })
 
+  test('round-trips Model Registry cursors and binds every list filter', () => {
+    const codec = new V2CursorCodec(SECRET)
+    const modelState = {
+      updated_at: '2026-08-04T12:34:56.789Z',
+      id: '11111111-1111-4111-8111-111111111111',
+      search: 'qwen',
+      archive: 'active',
+      source_kind: 'databench_artifact',
+    }
+    const modelCursor = codec.encodeModel(NAMESPACE, modelState)
+    expect(
+      codec.decodeModel(modelCursor, NAMESPACE, 'qwen', 'active', 'databench_artifact'),
+    ).toEqual(modelState)
+    expect(() =>
+      codec.decodeModel(modelCursor, NAMESPACE, 'other', 'active', 'databench_artifact'),
+    ).toThrowError(expect.objectContaining({ message: 'Invalid or expired V2 Model cursor' }))
+    expect(() =>
+      codec.decodeModel(modelCursor, NAMESPACE, 'qwen', 'archived', 'databench_artifact'),
+    ).toThrowError(expect.objectContaining({ message: 'Invalid or expired V2 Model cursor' }))
+    expect(() => codec.decodeModel(modelCursor, NAMESPACE, 'qwen', 'active', null)).toThrowError(
+      expect.objectContaining({ message: 'Invalid or expired V2 Model cursor' }),
+    )
+
+    const modelVersionState = {
+      created_at: '2026-08-04T12:34:56.789Z',
+      id: '22222222-2222-4222-8222-222222222222',
+      model_id: modelState.id,
+    }
+    const modelVersionCursor = codec.encodeModelVersion(NAMESPACE, modelVersionState)
+    expect(codec.decodeModelVersion(modelVersionCursor, NAMESPACE, modelState.id)).toEqual(
+      modelVersionState,
+    )
+    expect(() =>
+      codec.decodeModelVersion(
+        modelVersionCursor,
+        NAMESPACE,
+        '33333333-3333-4333-8333-333333333333',
+      ),
+    ).toThrowError(
+      expect.objectContaining({ message: 'Invalid or expired V2 Model Version cursor' }),
+    )
+  })
+
+  test('binds Model Artifact cursors to registered/unregistered filter state', () => {
+    const codec = new V2CursorCodec(SECRET)
+    const state = {
+      created_at: '2026-08-04T12:34:56.789Z',
+      id: '44444444-4444-4444-8444-444444444444',
+      dataset_version: null,
+      artifact_kind: 'lora_adapter',
+      registration_status: 'unregistered',
+    }
+    const cursor = codec.encodeModelArtifact(NAMESPACE, state)
+    expect(
+      codec.decodeModelArtifact(cursor, NAMESPACE, null, 'lora_adapter', 'unregistered'),
+    ).toEqual(state)
+    expect(() =>
+      codec.decodeModelArtifact(cursor, NAMESPACE, null, 'lora_adapter', 'registered'),
+    ).toThrowError(
+      expect.objectContaining({ message: 'Invalid or expired V2 Model Artifact cursor' }),
+    )
+  })
+
   test('round-trips bounded lineage frontier state and binds all query scope', () => {
     const codec = new V2CursorCodec(SECRET)
     const root = 'a'.repeat(64)

@@ -43,6 +43,9 @@ export function RootLayout() {
             <PrimaryNavLink active={pathname.startsWith('/training')} to="/training">
               {t('nav.training')}
             </PrimaryNavLink>
+            <PrimaryNavLink active={pathname.startsWith('/models')} to="/models">
+              {t('nav.models')}
+            </PrimaryNavLink>
             <PrimaryNavLink active={pathname.startsWith('/evaluations')} to="/evaluations">
               {t('nav.evaluations')}
             </PrimaryNavLink>
@@ -98,7 +101,7 @@ function PrimaryNavLink({
 }: {
   active: boolean
   children: string
-  to: '/datasets' | '/evaluations' | '/training'
+  to: '/datasets' | '/evaluations' | '/models' | '/training'
 }) {
   return (
     <Link

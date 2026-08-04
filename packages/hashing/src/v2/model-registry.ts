@@ -19,6 +19,7 @@ export const V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE =
   'model-registration-plan-repository-v1' as const
 export const V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE =
   'model-registration-plan-service-v1' as const
+export const V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE = 'model-deployment-adoption-v1' as const
 
 const DOMAIN = {
   modelCreate: 'databench.model-create.model-create-v1\0',
@@ -32,6 +33,7 @@ const DOMAIN = {
   registrationRepository:
     'databench.model-registration-plan.model-registration-plan-repository-v1\0',
   registrationService: 'databench.model-registration-plan.model-registration-plan-service-v1\0',
+  deploymentAdoption: 'databench.model-deployment-adoption.model-deployment-adoption-v1\0',
 } as const
 
 const textEncoder = new TextEncoder()
@@ -128,6 +130,16 @@ export interface ModelRegistrationPlanRepositoryIdentityV1
 export interface ModelRegistrationPlanServiceIdentityV1
   extends ModelRegistrationPlanIdentityBaseV1 {
   readonly plan_profile: typeof V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE
+}
+
+export interface ModelDeploymentAdoptionIdentityV1 {
+  readonly adoption_profile: typeof V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE
+  readonly namespace: string
+  readonly model_id: string
+  readonly model_version_id: string
+  readonly deployment_id: string
+  readonly deployment_digest: string
+  readonly artifact_id: string
 }
 
 type NoExtraKeys<Expected, Actual extends Expected> = Actual &
@@ -239,6 +251,20 @@ export function hashV2ModelRegistrationPlanService<
   const Identity extends ModelRegistrationPlanServiceIdentityV1,
 >(identity: NoExtraKeys<ModelRegistrationPlanServiceIdentityV1, Identity>): string {
   return hashRegistrationPlan(DOMAIN.registrationService, identity)
+}
+
+export function hashV2ModelDeploymentAdoption<
+  const Identity extends ModelDeploymentAdoptionIdentityV1,
+>(identity: NoExtraKeys<ModelDeploymentAdoptionIdentityV1, Identity>): string {
+  return hashDomain(DOMAIN.deploymentAdoption, {
+    adoption_profile: identity.adoption_profile,
+    namespace: identity.namespace,
+    model_id: identity.model_id,
+    model_version_id: identity.model_version_id,
+    deployment_id: identity.deployment_id,
+    deployment_digest: identity.deployment_digest,
+    artifact_id: identity.artifact_id,
+  })
 }
 
 export function deriveV2ModelIdFromCreateDigest(createDigest: string): string {

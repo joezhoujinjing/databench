@@ -77,7 +77,7 @@ describe('Model Artifact API client', () => {
     expect(paths).toEqual([
       `/v2/model-artifact-imports/${importId}`,
       `/v2/model-artifacts/${artifactId}`,
-      '/v2/model-artifacts?artifact_kind=lora_adapter&limit=20',
+      '/v2/model-artifacts?artifact_kind=lora_adapter&limit=20&registration_status=all',
     ])
   })
 

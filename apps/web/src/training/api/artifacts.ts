@@ -41,6 +41,7 @@ export interface ListModelArtifactsOptions extends ArtifactClientOptions {
   readonly cursor: string | null
   readonly datasetVersion?: string
   readonly limit: number
+  readonly registrationStatus?: 'all' | 'registered' | 'unregistered'
 }
 
 export interface ModelArtifactOptions extends ArtifactClientOptions {
@@ -124,6 +125,7 @@ export function listModelArtifactsV2(
           artifact_kind: 'lora_adapter',
           cursor: options.cursor,
           limit: options.limit,
+          registration_status: options.registrationStatus ?? 'all',
           ...(options.datasetVersion === undefined
             ? {}
             : { dataset_version: options.datasetVersion }),

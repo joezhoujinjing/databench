@@ -4,6 +4,7 @@ import {
   createRouter,
   lazyRouteComponent,
 } from '@tanstack/react-router'
+import { z } from 'zod'
 import {
   evaluationBenchmarksSearchSchema,
   evaluationCompareSearchSchema,
@@ -23,6 +24,9 @@ import {
   EvaluationRouteNotFound,
   EvaluationRoutePending,
 } from './evaluations/routes/route-state.js'
+import { ModelDetailRoute } from './models/routes/detail.js'
+import { ModelsRoute } from './models/routes/registry.js'
+import { ModelVersionDetailRoute } from './models/routes/version.js'
 import { RootLayout } from './routes/__root.js'
 import { IndexPage } from './routes/index.js'
 import { NotFoundPage } from './routes/not-found.js'
@@ -79,6 +83,25 @@ const trainingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/training',
   component: lazyRouteComponent(() => import('./training/routes/studio.js'), 'TrainingRoute'),
+})
+
+const modelsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/models',
+  validateSearch: z.object({ artifact: z.string().uuid().optional() }),
+  component: ModelsRoute,
+})
+
+const modelDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/models/$modelId',
+  component: ModelDetailRoute,
+})
+
+const modelVersionDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/models/$modelId/versions/$versionId',
+  component: ModelVersionDetailRoute,
 })
 
 const lineageRoute = createRoute({
@@ -248,6 +271,9 @@ const routeTree = rootRoute.addChildren([
   ingestRoute,
   transformsRoute,
   trainingRoute,
+  modelsRoute,
+  modelDetailRoute,
+  modelVersionDetailRoute,
   lineageRoute,
   exportRoute,
   evaluationRouteTree,

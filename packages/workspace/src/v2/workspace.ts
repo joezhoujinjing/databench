@@ -8,6 +8,7 @@ import {
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
   type CatalogLayoutRowV2,
+  type CatalogModelAliasRowV2,
   type CatalogModelArtifactCursorV2,
   type CatalogModelArtifactFinalizeResultV2,
   type CatalogModelArtifactImportCreateResultV2,
@@ -16,13 +17,20 @@ import {
   type CatalogModelArtifactListFilterV2,
   type CatalogModelArtifactPageV2,
   type CatalogModelArtifactRowV2,
+  type CatalogModelCursorV2,
+  type CatalogModelDeploymentAdoptionResultV2,
   type CatalogModelDeploymentCursorV2,
   type CatalogModelDeploymentHealthV2,
   type CatalogModelDeploymentListFilterV2,
   type CatalogModelDeploymentPageV2,
   type CatalogModelDeploymentRowV2,
+  type CatalogModelListFilterV2,
+  type CatalogModelPageV2,
   type CatalogModelRegistrationResultV2,
   type CatalogModelRowV2,
+  type CatalogModelSourceEvidenceRowV2,
+  type CatalogModelVersionCursorV2,
+  type CatalogModelVersionPageV2,
   type CatalogModelVersionRowV2,
   type CatalogModelVersionSourceV2,
   type CatalogRefPageV2,
@@ -45,6 +53,7 @@ import {
   type CompleteTransformJobV2,
   type CreateEvaluationRunV2,
   type CreateModelArtifactImportV2,
+  type CreateModelDeploymentAdoptionV2,
   type CreateModelDeploymentV2,
   type CreateModelRegistrationV2,
   type CreateSwiftStudioSessionV2,
@@ -62,7 +71,10 @@ import {
   type TransitionSwiftStudioSessionV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
+  V2CatalogModelAliasConflictError,
   V2CatalogModelArtifactImportConflictError,
+  V2CatalogModelDeploymentAdoptionConflictError,
+  V2CatalogModelMetadataConflictError,
   V2CatalogRefConflictError,
   V2CatalogSwiftStudioSessionConflictError,
 } from '@databench/catalog'
@@ -80,6 +92,7 @@ import {
   hashV2EvaluationRunCreateWithDeploymentAndMetrics,
   hashV2EvaluationRunCreateWithMetrics,
   hashV2ModelArtifactImportCreate,
+  hashV2ModelDeploymentAdoption,
   hashV2ModelDeploymentCreate,
   hashV2SwiftStudioOutputHandle,
   hashV2SwiftStudioSessionCreate,
@@ -91,6 +104,7 @@ import {
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
   V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
+  V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE,
   V2_MODEL_DEPLOYMENT_CREATE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '@databench/hashing'
@@ -110,6 +124,10 @@ import {
 import {
   type AddRecordsV2Options,
   AddRecordsV2OptionsSchema,
+  type AdoptModelDeploymentRequestV2,
+  AdoptModelDeploymentRequestV2Schema,
+  type ArchiveModelV2,
+  ArchiveModelV2Schema,
   type AuditResultV2,
   AuditResultV2Schema,
   assertExportFidelityAcceptedV2,
@@ -193,6 +211,9 @@ import {
   McpCanonicalDraftValidationPreviewResultSchema,
   type McpCanonicalValidationPreviewResult,
   McpCanonicalValidationPreviewResultSchema,
+  type ModelAliasPageV2,
+  ModelAliasPageV2Schema,
+  type ModelAliasV2,
   ModelArtifactIdV2Schema,
   ModelArtifactImportIdV2Schema,
   type ModelArtifactImportV2,
@@ -203,14 +224,29 @@ import {
   type ModelArtifactPageV2,
   ModelArtifactPageV2Schema,
   type ModelArtifactV2,
+  type ModelDeploymentAdoptionV2,
   ModelDeploymentIdV2Schema,
   type ModelDeploymentPageRequestV2,
   ModelDeploymentPageRequestV2Schema,
   type ModelDeploymentPageV2,
   ModelDeploymentPageV2Schema,
   type ModelDeploymentV2,
+  ModelIdV2Schema,
+  type ModelPageRequestV2,
+  ModelPageRequestV2Schema,
+  type ModelPageV2,
+  ModelPageV2Schema,
   type ModelRegistrationInspectRequestV2,
   type ModelRegistrationPlanV2,
+  type ModelV2,
+  ModelVersionIdV2Schema,
+  type ModelVersionPageRequestV2,
+  ModelVersionPageRequestV2Schema,
+  type ModelVersionPageV2,
+  ModelVersionPageV2Schema,
+  type ModelVersionV2,
+  type MoveCandidateModelAliasV2,
+  MoveCandidateModelAliasV2Schema,
   NotFoundError,
   normalizeModelDeploymentEndpointBaseUrlV2,
   type PostTrainingRecordV2,
@@ -271,6 +307,8 @@ import {
   TransformJobPageV2Schema,
   TransformJobStateConflictErrorV2,
   type TransformJobV2,
+  type UpdateModelMetadataV2,
+  UpdateModelMetadataV2Schema,
   V2_EVALUATION_ARCHIVE_DEFAULT_MAX_BYTES,
   V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS,
   V2_EXPORT_PREVIEW_MAX_BYTES,
@@ -335,6 +373,14 @@ import {
   registrationFromCommittedDataset,
   transformJobFromCatalog,
 } from './mappings.js'
+import {
+  modelAliasFromCatalogV2,
+  modelDeploymentAdoptionFromCatalogV2,
+  modelFromCatalogV2,
+  modelListItemFromCatalogV2,
+  modelVersionFromCatalogV2,
+  modelVersionItem,
+} from './model.js'
 import {
   modelArtifactFromCatalogV2,
   modelArtifactImportFromCatalogV2,
@@ -435,8 +481,20 @@ export interface V2WorkspaceCatalog {
     input: TransitionEvaluationRunV2,
   ): Promise<CatalogEvaluationRunRowV2 | null>
   getModelArtifact(namespaceId: string, id: string): Promise<CatalogModelArtifactRowV2 | null>
+  listModelArtifacts(
+    namespaceId: string,
+    filter: CatalogModelArtifactListFilterV2,
+    before: CatalogModelArtifactCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelArtifactPageV2>
   registerModelVersion(input: CreateModelRegistrationV2): Promise<CatalogModelRegistrationResultV2>
   getModel(namespaceId: string, modelId: string): Promise<CatalogModelRowV2 | null>
+  listModels(
+    namespaceId: string,
+    filter: CatalogModelListFilterV2,
+    before: CatalogModelCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelPageV2>
   getModelVersion(
     namespaceId: string,
     versionId: string,
@@ -444,6 +502,41 @@ export interface V2WorkspaceCatalog {
     readonly version: CatalogModelVersionRowV2
     readonly source: CatalogModelVersionSourceV2
   } | null>
+  listModelVersions(
+    namespaceId: string,
+    modelId: string,
+    before: CatalogModelVersionCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelVersionPageV2>
+  listModelAliases(namespaceId: string, modelId: string): Promise<readonly CatalogModelAliasRowV2[]>
+  updateModelMetadata(input: {
+    readonly namespaceId: string
+    readonly modelId: string
+    readonly expectedMetadataRevision: bigint
+    readonly displayName: string
+    readonly description: string
+    readonly taskFamily: string | null
+    readonly tags: readonly string[]
+  }): Promise<CatalogModelRowV2 | null>
+  archiveModel(input: {
+    readonly namespaceId: string
+    readonly modelId: string
+    readonly expectedMetadataRevision: bigint
+  }): Promise<CatalogModelRowV2 | null>
+  compareAndSetModelAlias(input: {
+    readonly namespaceId: string
+    readonly modelId: string
+    readonly alias: 'candidate'
+    readonly expectedVersionId: string | null
+    readonly newVersionId: string
+  }): Promise<CatalogModelAliasRowV2>
+  listModelSourceEvidence(
+    namespaceId: string,
+    modelVersionId: string,
+  ): Promise<readonly CatalogModelSourceEvidenceRowV2[]>
+  createOrReadModelDeploymentAdoption(
+    input: CreateModelDeploymentAdoptionV2,
+  ): Promise<CatalogModelDeploymentAdoptionResultV2>
   createOrReadModelDeployment(input: CreateModelDeploymentV2): Promise<CatalogModelDeploymentRowV2>
   getModelDeployment(namespaceId: string, id: string): Promise<CatalogModelDeploymentRowV2 | null>
   listModelDeployments(
@@ -875,6 +968,312 @@ export class V2Workspace {
   ): Promise<ModelRegistrationCommitResultV2> {
     const namespaceId = await this.#namespace(context.signal)
     return await commitModelRegistrationV2(this.#catalog, namespaceId, request, context.signal)
+  }
+
+  async listModels(
+    requestInput: ModelPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelPageV2> {
+    context.signal?.throwIfAborted()
+    const request = ModelPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const search = request.search ?? ''
+    const sourceKind = request.source_kind ?? null
+    const state =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeModel(request.cursor, namespaceId, search, request.archive, sourceKind)
+    let page: CatalogModelPageV2
+    try {
+      page = await this.#catalog.listModels(
+        namespaceId,
+        { search, archive: request.archive, sourceKind },
+        state === null ? null : { updatedAt: new Date(state.updated_at), id: state.id },
+        request.limit,
+      )
+    } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
+    return ModelPageV2Schema.parse({
+      items: page.rows.map(modelListItemFromCatalogV2),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeModel(namespaceId, {
+              updated_at: page.nextCursor.updatedAt.toISOString(),
+              id: page.nextCursor.id,
+              search,
+              archive: request.archive,
+              source_kind: sourceKind,
+            }),
+    })
+  }
+
+  async getModel(
+    modelIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelV2 | null> {
+    context.signal?.throwIfAborted()
+    const modelId = ModelIdV2Schema.parse(modelIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    try {
+      const row = await this.#catalog.getModel(namespaceId, modelId)
+      return row === null ? null : modelFromCatalogV2(row)
+    } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async updateModel(
+    modelIdInput: string,
+    requestInput: UpdateModelMetadataV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelV2> {
+    context.signal?.throwIfAborted()
+    const modelId = ModelIdV2Schema.parse(modelIdInput)
+    const request = UpdateModelMetadataV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    try {
+      const row = await this.#catalog.updateModelMetadata({
+        namespaceId,
+        modelId,
+        expectedMetadataRevision: BigInt(request.expected_metadata_revision),
+        displayName: request.display_name,
+        description: request.description,
+        taskFamily: request.task_family,
+        tags: request.tags,
+      })
+      if (row === null) throw new NotFoundError('Model was not found', { model_id: modelId })
+      return modelFromCatalogV2(row)
+    } catch (error) {
+      if (error instanceof NotFoundError) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async archiveModel(
+    modelIdInput: string,
+    requestInput: ArchiveModelV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelV2> {
+    context.signal?.throwIfAborted()
+    const modelId = ModelIdV2Schema.parse(modelIdInput)
+    const request = ArchiveModelV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    try {
+      const row = await this.#catalog.archiveModel({
+        namespaceId,
+        modelId,
+        expectedMetadataRevision: BigInt(request.expected_metadata_revision),
+      })
+      if (row === null) throw new NotFoundError('Model was not found', { model_id: modelId })
+      return modelFromCatalogV2(row)
+    } catch (error) {
+      if (error instanceof NotFoundError) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async listModelVersions(
+    modelIdInput: string,
+    requestInput: ModelVersionPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionPageV2> {
+    context.signal?.throwIfAborted()
+    const modelId = ModelIdV2Schema.parse(modelIdInput)
+    const request = ModelVersionPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const model = await this.#catalog.getModel(namespaceId, modelId)
+    if (model === null) throw new NotFoundError('Model was not found', { model_id: modelId })
+    const state =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeModelVersion(request.cursor, namespaceId, modelId)
+    let page: CatalogModelVersionPageV2
+    try {
+      page = await this.#catalog.listModelVersions(
+        namespaceId,
+        modelId,
+        state === null ? null : { createdAt: new Date(state.created_at), id: state.id },
+        request.limit,
+      )
+    } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
+    return ModelVersionPageV2Schema.parse({
+      items: page.rows.map(modelVersionFromCatalogV2),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeModelVersion(namespaceId, {
+              created_at: page.nextCursor.createdAt.toISOString(),
+              id: page.nextCursor.id,
+              model_id: modelId,
+            }),
+    })
+  }
+
+  async getModelVersion(
+    versionIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionV2 | null> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    try {
+      const stored = await this.#catalog.getModelVersion(namespaceId, versionId)
+      if (stored === null) return null
+      const evidence = await this.#catalog.listModelSourceEvidence(namespaceId, versionId)
+      return modelVersionFromCatalogV2(modelVersionItem(stored.version, stored.source, evidence))
+    } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async listModelAliases(
+    modelIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelAliasPageV2> {
+    context.signal?.throwIfAborted()
+    const modelId = ModelIdV2Schema.parse(modelIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const model = await this.#catalog.getModel(namespaceId, modelId)
+    if (model === null) throw new NotFoundError('Model was not found', { model_id: modelId })
+    try {
+      const aliases = await this.#catalog.listModelAliases(namespaceId, modelId)
+      return ModelAliasPageV2Schema.parse({ items: aliases.map(modelAliasFromCatalogV2) })
+    } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async moveCandidateModelAlias(
+    modelIdInput: string,
+    requestInput: MoveCandidateModelAliasV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelAliasV2> {
+    context.signal?.throwIfAborted()
+    const modelId = ModelIdV2Schema.parse(modelIdInput)
+    const request = MoveCandidateModelAliasV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const [model, stored] = await Promise.all([
+      this.#catalog.getModel(namespaceId, modelId),
+      this.#catalog.getModelVersion(namespaceId, request.new_version_id),
+    ])
+    if (model === null) throw new NotFoundError('Model was not found', { model_id: modelId })
+    if (model.archivedAt !== null) {
+      throw new ConflictError('Archived Model cannot change candidate Alias', {
+        reason: 'model_archived',
+        model_id: modelId,
+      })
+    }
+    if (stored === null || stored.version.modelId !== modelId) {
+      throw new NotFoundError('Model Version was not found under this Model', {
+        model_id: modelId,
+        model_version_id: request.new_version_id,
+      })
+    }
+    const evidence = await this.#catalog.listModelSourceEvidence(
+      namespaceId,
+      request.new_version_id,
+    )
+    const version = modelVersionFromCatalogV2(
+      modelVersionItem(stored.version, stored.source, evidence),
+    )
+    if (version.classification.source_mutability !== 'immutable') {
+      throw new ValidationError('Only immutable Model Versions can receive candidate Alias', {
+        issues: [
+          {
+            path: '/new_version_id',
+            line: null,
+            code: 'model_alias_requires_immutable_source',
+            message: 'The selected Model Version source is not verified immutable',
+          },
+        ],
+      })
+    }
+    try {
+      const alias = await this.#catalog.compareAndSetModelAlias({
+        namespaceId,
+        modelId,
+        alias: 'candidate',
+        expectedVersionId: request.expected_version_id,
+        newVersionId: request.new_version_id,
+      })
+      return modelAliasFromCatalogV2(alias)
+    } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async adoptModelDeployment(
+    versionIdInput: string,
+    deploymentIdInput: string,
+    requestInput: AdoptModelDeploymentRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelDeploymentAdoptionV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const request = AdoptModelDeploymentRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const [version, deployment] = await Promise.all([
+      this.#catalog.getModelVersion(namespaceId, versionId),
+      this.#catalog.getModelDeployment(namespaceId, deploymentId),
+    ])
+    if (version === null) {
+      throw new NotFoundError('Model Version was not found', { model_version_id: versionId })
+    }
+    if (deployment === null) {
+      throw new NotFoundError('Model Deployment was not found', { deployment_id: deploymentId })
+    }
+    if (version.source.kind !== 'databench_artifact') {
+      throw new ValidationError('Only Artifact-source Model Versions can adopt legacy Deployment', {
+        issues: [
+          {
+            path: '/version_id',
+            line: null,
+            code: 'adoption_requires_artifact_source',
+            message: 'The selected Model Version is not bound to a Databench Artifact',
+          },
+        ],
+      })
+    }
+    if (
+      version.source.artifactId !== request.expected_artifact_id ||
+      deployment.artifactId !== request.expected_artifact_id ||
+      deployment.createDigest !== request.expected_deployment_digest
+    ) {
+      throw new ConflictError('Model Deployment adoption input does not match Catalog state', {
+        reason: 'adoption_binding_mismatch',
+        model_version_id: versionId,
+        deployment_id: deploymentId,
+      })
+    }
+    const adoptionDigest = hashV2ModelDeploymentAdoption({
+      adoption_profile: V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE,
+      namespace: namespaceId,
+      model_id: version.version.modelId,
+      model_version_id: versionId,
+      deployment_id: deploymentId,
+      deployment_digest: deployment.createDigest,
+      artifact_id: version.source.artifactId,
+    })
+    try {
+      const result = await this.#catalog.createOrReadModelDeploymentAdoption({
+        namespaceId,
+        deploymentId,
+        modelId: version.version.modelId,
+        modelVersionId: versionId,
+        artifactId: version.source.artifactId,
+        deploymentDigest: deployment.createDigest,
+        adoptionProfile: V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE,
+        adoptionDigest,
+      })
+      return modelDeploymentAdoptionFromCatalogV2(result)
+    } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
   }
 
   async addRecords(
@@ -2406,12 +2805,11 @@ export class V2Workspace {
     context: V2WorkspaceOperationOptions = {},
   ): Promise<ModelArtifactV2 | null> {
     context.signal?.throwIfAborted()
-    const runtime = this.#requireSwiftStudioArtifactRuntime()
     const artifactId = ModelArtifactIdV2Schema.parse(artifactIdInput)
     const namespaceId = await this.#namespace(context.signal)
     let row: CatalogModelArtifactRowV2 | null
     try {
-      row = await runtime.catalog.getModelArtifact(namespaceId, artifactId)
+      row = await this.#catalog.getModelArtifact(namespaceId, artifactId)
     } catch (error) {
       throw mapModelArtifactCatalogError(error)
     }
@@ -2423,11 +2821,11 @@ export class V2Workspace {
     context: V2WorkspaceOperationOptions = {},
   ): Promise<ModelArtifactPageV2> {
     context.signal?.throwIfAborted()
-    const runtime = this.#requireSwiftStudioArtifactRuntime()
     const request = ModelArtifactPageRequestV2Schema.parse(requestInput)
     const namespaceId = await this.#namespace(context.signal)
     const datasetVersion = request.dataset_version ?? null
     const artifactKind = request.artifact_kind ?? null
+    const registrationStatus = request.registration_status
     const state =
       request.cursor === null
         ? null
@@ -2436,12 +2834,13 @@ export class V2Workspace {
             namespaceId,
             datasetVersion,
             artifactKind,
+            registrationStatus,
           )
     let page: CatalogModelArtifactPageV2
     try {
-      page = await runtime.catalog.listModelArtifacts(
+      page = await this.#catalog.listModelArtifacts(
         namespaceId,
-        { datasetVersion, artifactKind },
+        { datasetVersion, artifactKind, registrationStatus },
         state === null ? null : { createdAt: new Date(state.created_at), id: state.id },
         request.limit,
       )
@@ -2458,6 +2857,7 @@ export class V2Workspace {
               id: page.nextCursor.id,
               dataset_version: datasetVersion,
               artifact_kind: artifactKind,
+              registration_status: registrationStatus,
             }),
     })
   }
@@ -6160,6 +6560,36 @@ function mapModelArtifactCatalogError(error: unknown): Error {
       import_id: error.importId,
       status: error.status,
       requested_status: error.requestedStatus,
+    })
+  }
+  return mapV2CatalogError(error, false)
+}
+
+function mapModelRegistryCatalogError(error: unknown): Error {
+  if (error instanceof V2CatalogModelMetadataConflictError) {
+    return new ConflictError('Model metadata compare-and-set conflict', {
+      reason: 'model_metadata_conflict',
+      model_id: error.modelId,
+      expected_metadata_revision: Number(error.expectedMetadataRevision),
+      current_metadata_revision: Number(error.currentMetadataRevision),
+    })
+  }
+  if (error instanceof V2CatalogModelAliasConflictError) {
+    return new ConflictError('Model alias compare-and-set conflict', {
+      reason: 'model_alias_conflict',
+      model_id: error.modelId,
+      alias: error.alias,
+      expected_version_id: error.expectedVersionId,
+      current_version_id: error.currentVersionId,
+      new_version_id: error.newVersionId,
+    })
+  }
+  if (error instanceof V2CatalogModelDeploymentAdoptionConflictError) {
+    return new ConflictError('Model Deployment is already adopted by another Version', {
+      reason: 'model_deployment_adoption_conflict',
+      deployment_id: error.deploymentId,
+      current_model_version_id: error.currentModelVersionId,
+      requested_model_version_id: error.requestedModelVersionId,
     })
   }
   return mapV2CatalogError(error, false)

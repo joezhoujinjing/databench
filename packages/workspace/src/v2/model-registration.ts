@@ -43,6 +43,7 @@ import {
   IntegrityError,
   type ModelArtifactRegistrationRequestV2,
   ModelArtifactRegistrationRequestV2Schema,
+  ModelRegistrationCommitResultV2Schema,
   type ModelRegistrationInspectRequestV2,
   ModelRegistrationInspectRequestV2Schema,
   type ModelRegistrationPlanV2,
@@ -136,7 +137,7 @@ export async function commitModelRegistrationV2(
     throw mapModelRegistrationCatalogError(error, inspected.plan.registration_digest)
   }
   signal?.throwIfAborted()
-  return Object.freeze({
+  return ModelRegistrationCommitResultV2Schema.parse({
     registration_digest: result.claim.registrationDigest,
     model_id: result.model.id,
     model_version_id: result.version.id,
@@ -154,6 +155,12 @@ async function inspectRegistration(
 ): Promise<InspectedModelRegistrationV2> {
   signal?.throwIfAborted()
   const normalizedRequest = ModelRegistrationInspectRequestV2Schema.parse(requestInput)
+  if (normalizedRequest.alias !== undefined && normalizedRequest.alias.alias !== 'candidate') {
+    throw new UnsupportedProfileError('Only the candidate Model Alias is enabled', {
+      reason: 'model_alias_not_enabled',
+      alias: normalizedRequest.alias.alias,
+    })
+  }
   const model = await inspectModelTarget(catalog, namespaceId, normalizedRequest, signal)
 
   if (normalizedRequest.source.kind === 'databench_artifact') {

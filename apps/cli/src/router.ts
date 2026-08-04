@@ -3,6 +3,7 @@ import { BadInputError } from '@databench/schema'
 import { converterCommands } from './commands/converter.js'
 import { datasetCommands } from './commands/dataset.js'
 import { lineageCommands } from './commands/lineage.js'
+import { modelCommands } from './commands/model.js'
 import { refCommands } from './commands/ref.js'
 import { transformCommands } from './commands/transform.js'
 import type { GlobalFlags } from './config.js'
@@ -15,6 +16,7 @@ const COMMANDS: Record<string, CommandGroup> = {
   transform: transformCommands,
   ref: refCommands,
   lineage: lineageCommands,
+  model: modelCommands,
 }
 
 const GLOBAL_STRING = new Set(['--database-url'])

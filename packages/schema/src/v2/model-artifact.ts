@@ -532,6 +532,7 @@ export const ModelArtifactPageRequestV2Schema = z
   .strictObject({
     dataset_version: DigestHexSchema.optional(),
     artifact_kind: ModelArtifactKindV2Schema.optional(),
+    registration_status: z.enum(['all', 'registered', 'unregistered']).default('all'),
     cursor: OpaqueCursorQueryV2Schema,
     limit: z.coerce
       .number()

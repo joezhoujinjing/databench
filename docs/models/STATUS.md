@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- model-registry-status
-current_step: MR2
-last_completed_step: MR1
+current_step: MR3
+last_completed_step: MR2
 capability_enabled: false
 runtime_implemented: true
 public_network_activation: false
@@ -14,14 +14,15 @@ gpu_gate: deferred
 
 ## 当前检查点
 
-- **工作分支:** `feat/model-registry-mr1`
-- **代码基线:** `feat/model-registry-mr0@16afe17`
-- **当前 Step:** MR2——待在 GMR1 提交后单独进入 Artifact 注册与基础产品面实施
+- **工作分支:** `feat/model-registry-mr2`
+- **代码基线:** `feat/model-registry-mr1@3195143`
+- **当前 Step:** MR3——GMR2 全绿并单独提交后，依计划进入 Repository reference 与 evidence
 - **Owner 范围:** MR2 candidate Alias；MR3 ModelScope + operator-managed；CLI MR2 read/MR8 write；
   一级导航“数据集 / 训练 / 模型 / 测评”
-- **Runtime:** MR1 内部 Model/Version identity、Schema、Catalog 与 Workspace registration 已实现；现有产品面仍是
-  ADR 0018 的 Artifact-bound S4
-- **Capability:** 未启用；MR1 没有开放 `/models`、新 REST、Web、CLI 或 internal v2
+- **Runtime:** MR2 已实现 Databench Artifact Inspect/Commit、candidate Alias、legacy Deployment 显式
+  adoption、基础 REST/Web/CLI read 产品面；Repository/Service、Deployment v2 与 Evaluation v5/v6 尚未实现
+- **Capability:** 整体 Model Registry capability 仍未启用；MR2 只开放 Artifact 来源的基础产品闭环，不能据此
+  宣称三来源、version-bound Deployment 或新 Evaluation 已完成
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
 - **GPU/V16/V17:** 状态不变，Model Registry 的实施不自动完成 V16/V17，也不打开 GPU gate
 
@@ -31,7 +32,7 @@ gpu_gate: deferred
 |---|---|---|---|---|---|
 | MR0 | 决策、fixtures 与状态基线 | ✅ | `feat/model-registry-mr0` | GMR0 green | 只含 docs/scripts/package gate |
 | MR1 | Model/Version identity 与 Catalog | ✅ | `feat/model-registry-mr1` | GMR1 green | internal only；capability false |
-| MR2 | Artifact 注册与基础产品面 | ⬜ | | GMR2 | candidate Alias + CLI read |
+| MR2 | Artifact 注册与基础产品面 | ✅ | `feat/model-registry-mr2` | GMR2 green | candidate Alias + CLI read；capability false |
 | MR3 | Repository reference 与 evidence | ⬜ | | GMR3 | ModelScope + operator-managed |
 | MR4 | Endpoint/secret 安全底座 | ⬜ | | GMR4 | 包含 legacy network hardening |
 | MR5 | Existing Service 与 Deployment v2 | ⬜ | | GMR5 | internal v1/v2 隔离 |
@@ -98,3 +99,30 @@ MR0 不修改 `packages/`、`apps/`、`workers/`、`prisma/`、`deploy/` 或 `op
 
 `database-shape.json` 在 GMR1 验证的是完整 additive 设计；其中 adoption、Deployment v2 与 Evaluation v5/v6
 仍分别属于 MR2、MR5、MR6，不代表对应 runtime 已实现。
+
+## GMR2 完成证据
+
+- [x] Artifact Inspect/Commit 校验 namespace、kind、format、archive/manifest digest、base binding 与 lineage；
+- [x] primary Artifact 唯一约束、同 Artifact/同 Model 换 label conflict 与跨逻辑 Model identity 隔离；
+- [x] `candidate` Alias、Model metadata/archive、stable cursor/search/archive/source filter；
+- [x] legacy Deployment adoption absent→exact、同目标幂等、异目标 conflict、namespace/Artifact mismatch；
+- [x] `/v2/models*`、registration/adoption REST、generated OpenAPI client 与 CLI `model list/show`；
+- [x] `/models`、Model/Version detail、Artifact 深链注册向导与中英文响应式产品面；
+- [x] Swift bridge 关闭时 Artifact list/show 仍只读 Catalog，不错误依赖 Provider runtime；
+- [x] fresh/forward PostgreSQL migration、真实 PostgreSQL + MinIO、全仓与浏览器 gates。
+
+2026-08-04 实际通过：
+
+- `pnpm exec prisma format`、`pnpm exec prisma validate`；
+- `pnpm lint`、`pnpm build`、`pnpm typecheck`、`pnpm test`；
+- `pnpm openapi:check`、`pnpm models:status:test`、`pnpm models:status:check`、
+  `pnpm v2:status:check`；
+- `pnpm peers check`、`pnpm models:migration:check`；
+- `RUN_MINIO_STORE_TESTS=true pnpm --filter @databench/workspace test`（191 passed / 10 skipped）；
+- `git diff --check`；
+- Playwright 验证 21 条记录分页、search/source filter、direct refresh、Artifact 深链、四步
+  Inspect→Commit、keyboard、中文/English、1440×1000 desktop 与 390×844 narrow layout；新页面
+  console 为 0 error / 0 warning。
+
+GMR2 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不实现
+Repository runtime、Existing Service、Deployment v2、Evaluation v5/v6，也不自动完成 V16/V17。

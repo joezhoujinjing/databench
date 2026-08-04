@@ -661,6 +661,7 @@ export interface CatalogModelArtifactPageV2 {
 export interface CatalogModelArtifactListFilterV2 {
   readonly datasetVersion: string | null
   readonly artifactKind: CatalogModelArtifactKindV2 | null
+  readonly registrationStatus: 'all' | 'registered' | 'unregistered'
 }
 
 export type CatalogModelDeploymentProviderV2 = 'openai_compatible'
@@ -864,6 +865,76 @@ export interface AppendModelSourceEvidenceV2 {
 
 export interface CatalogModelSourceEvidenceRowV2 extends AppendModelSourceEvidenceV2 {
   readonly createdAt: Date
+}
+
+export interface CatalogModelCursorV2 {
+  readonly updatedAt: Date
+  readonly id: string
+}
+
+export interface CatalogModelListFilterV2 {
+  readonly search: string
+  readonly archive: 'active' | 'archived' | 'all'
+  readonly sourceKind: CatalogModelSourceKindV2 | null
+}
+
+export interface CatalogModelListItemV2 {
+  readonly model: CatalogModelRowV2
+  readonly candidate: {
+    readonly alias: CatalogModelAliasRowV2
+    readonly version: CatalogModelVersionRowV2
+    readonly source: CatalogModelVersionSourceV2
+  } | null
+  readonly versionCount: number
+  readonly adoptedDeploymentCount: number
+  readonly healthyAdoptedDeploymentCount: number
+}
+
+export interface CatalogModelPageV2 {
+  readonly rows: readonly CatalogModelListItemV2[]
+  readonly nextCursor: CatalogModelCursorV2 | null
+}
+
+export interface CatalogModelVersionCursorV2 {
+  readonly createdAt: Date
+  readonly id: string
+}
+
+export interface CatalogModelVersionListItemV2 {
+  readonly version: CatalogModelVersionRowV2
+  readonly source: CatalogModelVersionSourceV2
+  readonly evidence: readonly CatalogModelSourceEvidenceRowV2[]
+}
+
+export interface CatalogModelVersionPageV2 {
+  readonly rows: readonly CatalogModelVersionListItemV2[]
+  readonly nextCursor: CatalogModelVersionCursorV2 | null
+}
+
+export interface ArchiveCatalogModelV2 {
+  readonly namespaceId: string
+  readonly modelId: string
+  readonly expectedMetadataRevision: bigint
+}
+
+export interface CreateModelDeploymentAdoptionV2 {
+  readonly namespaceId: string
+  readonly deploymentId: string
+  readonly modelId: string
+  readonly modelVersionId: string
+  readonly artifactId: string
+  readonly deploymentDigest: string
+  readonly adoptionProfile: 'model-deployment-adoption-v1'
+  readonly adoptionDigest: string
+}
+
+export interface CatalogModelDeploymentAdoptionRowV2 extends CreateModelDeploymentAdoptionV2 {
+  readonly adoptedAt: Date
+}
+
+export interface CatalogModelDeploymentAdoptionResultV2 {
+  readonly row: CatalogModelDeploymentAdoptionRowV2
+  readonly replayed: boolean
 }
 
 export interface PrepareEvaluationRunArchiveV2 {

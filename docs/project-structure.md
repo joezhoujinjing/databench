@@ -14,6 +14,9 @@
 > unvalidated。S2 exact Dataset 与单 active Studio Session bridge、S3 LoRA immutable Model Artifact
 > import 均已完成 non-GPU gate；S4 operator-attested Deployment + EvalScope opaque resolve/lineage 已完成
 > non-GPU contract，GPU 训练、推理部署与真实模型评测证据继续 deferred。
+> Model Registry ADR 0019 的 MR0-MR2 已按 Gate 完成：逻辑 Model/不可变 Version、Artifact 来源注册、
+> candidate Alias、显式 legacy adoption 与基础 REST/Web/CLI read 已落地；Repository、Existing Service、
+> Deployment v2 与 Evaluation v5/v6 仍按 MR3-MR6 顺序实施，整体 capability 保持 false。
 
 ## 顶层目录
 
@@ -52,15 +55,16 @@ databench-ts/
 └─ docs/
    ├─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
    ├─ evalscope/         已接受的设计、E0 evidence、实施计划与状态
-   └─ swift/             已接受的原生 Gradio 集成方案、实施计划与状态；S4 non-GPU green/GPU deferred
+   ├─ swift/             已接受的原生 Gradio 集成方案、实施计划与状态；S4 non-GPU green/GPU deferred
+   └─ models/            ADR 0019 Model Registry 技术方案、实施计划、状态与固定 fixtures
 ```
 
 `v2` 仍出现在 REST 路径、数据库表、对象 key、类型和测试名中。它是稳定协议/持久化命名，
 不是第二套产品。Web 路由和 CLI 主命令不带版本：
 
 ```text
-Web: /datasets /ingest /transforms /training /evaluations/*
-CLI: databench dataset|converter|transform|ref|lineage ...
+Web: /datasets /ingest /transforms /training /models/* /evaluations/*
+CLI: databench dataset|converter|transform|ref|lineage|model ...
 REST: /v2/...
 ```
 

@@ -287,6 +287,43 @@ export const V2_MODEL_DEPLOYMENT_ACTION_ERROR_RESPONSES = {
   413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Model Deployment action is too large'),
 } as const
 
+export const V2_MODEL_REGISTRATION_INSPECT_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed Model registration request'),
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Model or Model Artifact was not found'),
+  413: jsonResponseV2(
+    ResourceLimitErrorResponseV2Schema,
+    'Model registration request is too large',
+  ),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Model registration request'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_MODEL_REGISTRATION_COMMIT_ERROR_RESPONSES = {
+  ...V2_MODEL_REGISTRATION_INSPECT_ERROR_RESPONSES,
+  409: jsonResponseV2(ErrorResponse409V2Schema, 'Model registration or Alias conflict'),
+} as const
+
+export const V2_MODEL_LIST_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Model page request'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_MODEL_SHOW_ERROR_RESPONSES = {
+  ...commonAuthRateResponses,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Model or Model Version was not found'),
+  422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Model identifier'),
+  ...dataFailureResponses,
+} as const
+
+export const V2_MODEL_ACTION_ERROR_RESPONSES = {
+  400: jsonResponseV2(BadRequestErrorResponseV2Schema, 'Malformed Model action request'),
+  ...V2_MODEL_SHOW_ERROR_RESPONSES,
+  409: jsonResponseV2(ErrorResponse409V2Schema, 'Model metadata, Alias, or adoption conflict'),
+  413: jsonResponseV2(ResourceLimitErrorResponseV2Schema, 'Model action request is too large'),
+} as const
+
 export const V2_REF_LIST_ERROR_RESPONSES = {
   ...commonAuthRateResponses,
   422: jsonResponseV2(ValidationErrorResponseV2Schema, 'Invalid Ref page request'),

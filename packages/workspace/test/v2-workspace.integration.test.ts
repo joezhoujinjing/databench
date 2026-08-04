@@ -1685,6 +1685,13 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         },
       ],
     })
+    await expect(
+      studio.listModelArtifacts({
+        registration_status: 'unregistered',
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ items: [expect.objectContaining({ id: artifactId })] })
     await expect(studio.getModelArtifact(artifactId)).resolves.toMatchObject({ id: artifactId })
 
     const checkedUrls: string[] = []
@@ -1719,6 +1726,102 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       health_status: 'healthy',
     })
     expect(checkedUrls).toEqual(['http://model.internal:8000/v1/models'])
+
+    const registrationRequest = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'integration-artifact-model',
+        display_name: 'Integration Artifact Model',
+        description: 'MR2 Artifact registration lifecycle',
+        task_family: 'chat',
+        tags: ['integration', 'lora'],
+      },
+      version_label: 'lora-r1',
+      source: { kind: 'databench_artifact' as const, artifact_id: artifactId },
+      alias: { alias: 'candidate' as const, expected_version_id: null },
+    }
+    const registrationPlan = await deploymentWorkspace.inspectModelRegistration(registrationRequest)
+    const registered = await deploymentWorkspace.commitModelRegistration({
+      request: registrationRequest,
+      expected_registration_digest: registrationPlan.registration_digest,
+    })
+    expect(registered).toMatchObject({
+      replayed: false,
+      model_id: registrationPlan.model_id,
+      alias: 'candidate',
+    })
+    await expect(
+      deploymentWorkspace.listModels({
+        search: 'Integration Artifact',
+        source_kind: 'databench_artifact',
+        archive: 'active',
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          model: expect.objectContaining({ id: registered.model_id }),
+          candidate: expect.objectContaining({ version_id: registered.model_version_id }),
+        }),
+      ],
+    })
+    await expect(
+      deploymentWorkspace.listModelVersions(registered.model_id, { cursor: null, limit: 20 }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: registered.model_version_id,
+          source: expect.objectContaining({
+            kind: 'databench_artifact',
+            artifact_id: artifactId,
+          }),
+        }),
+      ],
+    })
+    await expect(deploymentWorkspace.listModelAliases(registered.model_id)).resolves.toMatchObject({
+      items: [{ alias: 'candidate', version_id: registered.model_version_id }],
+    })
+    await expect(
+      deploymentWorkspace.listModelArtifacts({
+        registration_status: 'registered',
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ items: [expect.objectContaining({ id: artifactId })] })
+    await expect(
+      deploymentWorkspace.listModelArtifacts({
+        registration_status: 'unregistered',
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({ items: [] })
+    const storedDeployment = await prisma.v2ModelDeployment.findUnique({
+      where: { id: deployment.id },
+    })
+    if (storedDeployment === null) throw new Error('integration Deployment row was not persisted')
+    const adoptionRequest = {
+      expected_artifact_id: artifactId,
+      expected_deployment_digest: storedDeployment.createDigest,
+    }
+    const adopted = await deploymentWorkspace.adoptModelDeployment(
+      registered.model_version_id,
+      deployment.id,
+      adoptionRequest,
+    )
+    const replayedAdoption = await deploymentWorkspace.adoptModelDeployment(
+      registered.model_version_id,
+      deployment.id,
+      adoptionRequest,
+    )
+    expect(adopted).toMatchObject({
+      replayed: false,
+      model_id: registered.model_id,
+      model_version_id: registered.model_version_id,
+      deployment_id: deployment.id,
+      artifact_id: artifactId,
+    })
+    expect(replayedAdoption).toEqual({ ...adopted, replayed: true })
 
     const evaluationPlan = await deploymentWorkspace.inspectExport(published.dataset_version, {
       converter: 'evalscope-general-qa',
@@ -1914,9 +2017,13 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     })
     expect(created).toMatchObject({ replayed: false, model_id: plan.model_id })
     expect(replayed).toEqual({ ...created, replayed: true })
-    expect(await prisma.v2Model.count()).toBe(1)
-    expect(await prisma.v2ModelVersion.count()).toBe(1)
-    expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+    expect(await prisma.v2Model.count({ where: { key: 'integration-repository-model' } })).toBe(1)
+    expect(await prisma.v2ModelVersion.count({ where: { id: created.model_version_id } })).toBe(1)
+    expect(
+      await prisma.v2ModelRegistrationClaim.count({
+        where: { registrationDigest: plan.registration_digest },
+      }),
+    ).toBe(1)
   })
 
   function createWorkspace(tempName: string): V2Workspace {
@@ -2050,6 +2157,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
   async function clearV2Catalog(): Promise<void> {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
+        "model_version_deployment_adoptions_v2",
         "model_source_evidence_v2",
         "model_registration_claims_v2",
         "model_aliases_v2",

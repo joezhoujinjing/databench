@@ -48,6 +48,7 @@ describe('product command router', () => {
       'transform',
       'ref',
       'lineage',
+      'model',
     ])
     expect(
       catalog.commands.flatMap((group) => group.verbs.map((verb) => `${group.name} ${verb.name}`)),
@@ -68,6 +69,8 @@ describe('product command router', () => {
       'ref delete',
       'ref restore',
       'lineage show',
+      'model list',
+      'model show',
     ])
 
     expect(
@@ -88,6 +91,44 @@ describe('product command router', () => {
       { signal: expect.any(AbortSignal) },
     )
     expect(outputJson()).toEqual({ dataset_version: VERSION, items: [] })
+  })
+
+  test('routes Model list/show through V2Workspace without exposing write commands', async () => {
+    const workspace = fakeWorkspace()
+    injectWorkspace(workspace)
+
+    expect(
+      await run([
+        'model',
+        'list',
+        '--search',
+        'support',
+        '--archive',
+        'all',
+        '--source-kind',
+        'databench_artifact',
+        '--limit',
+        '7',
+        '--compact',
+      ]),
+    ).toBe(EXIT.ok)
+    expect(workspace.listModels).toHaveBeenCalledWith(
+      {
+        search: 'support',
+        archive: 'all',
+        source_kind: 'databench_artifact',
+        cursor: null,
+        limit: 7,
+      },
+      { signal: expect.any(AbortSignal) },
+    )
+
+    stdout.length = 0
+    const modelId = '123e4567-e89b-42d3-a456-426614174010'
+    expect(await run(['model', 'show', modelId, '--compact'])).toBe(EXIT.ok)
+    expect(workspace.getModel).toHaveBeenCalledWith(modelId, {
+      signal: expect.any(AbortSignal),
+    })
   })
 
   test('always inspects first and exports the exact inspected version', async () => {
@@ -341,6 +382,8 @@ function fakeWorkspace(options: { plan?: ExportPlanV2 } = {}) {
     restoreRef: vi.fn(async () => ({ status: 'restored' as const, ref })),
     lineage: vi.fn(async () => ({})),
     addJsonl: vi.fn(async () => ({})),
+    listModels: vi.fn(async () => ({ items: [], next_cursor: null })),
+    getModel: vi.fn(async (modelId: string) => ({ id: modelId })),
   }
 }
 

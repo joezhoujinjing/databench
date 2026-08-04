@@ -1,4 +1,5 @@
-import { Download, PackageCheck, RefreshCw, Upload } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Download, PackageCheck, PackagePlus, RefreshCw, Upload } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBackend } from '@/api/backend.js'
@@ -402,7 +403,15 @@ function ArtifactDetail({ artifact }: { readonly artifact: ModelArtifactV2 }) {
           </div>
           <p className="mt-2 text-muted-foreground text-xs">{artifact.id}</p>
         </div>
-        <ArtifactDownloadButton artifact={artifact} variant="outline" />
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link search={{ artifact: artifact.id }} to="/models">
+              <PackagePlus aria-hidden="true" size={15} />
+              {t('training.artifacts.registerModel')}
+            </Link>
+          </Button>
+          <ArtifactDownloadButton artifact={artifact} variant="outline" />
+        </div>
       </div>
       <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <ArtifactFact

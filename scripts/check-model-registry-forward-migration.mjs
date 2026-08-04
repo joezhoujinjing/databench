@@ -106,6 +106,69 @@ try {
     throw new Error('0015 did not create the Alias FK and deferred source XOR constraints')
   }
 
+  await applyMigration('0016_model_registry_artifact_product_v2')
+
+  const rowsAfterMr2 = await legacyRows()
+  const constraintsAfterMr2 = await legacyConstraints()
+  if (JSON.stringify(rowsAfterMr2) !== JSON.stringify(rowsBefore)) {
+    throw new Error('0016 changed pre-existing S4 rows')
+  }
+  if (JSON.stringify(constraintsAfterMr2) !== JSON.stringify(constraintsBefore)) {
+    throw new Error('0016 changed pre-existing S4 constraints')
+  }
+
+  const adoptionTables = await client.query(`
+    SELECT "table_name"
+    FROM "information_schema"."tables"
+    WHERE
+      "table_schema" = current_schema() AND
+      "table_name" = 'model_version_deployment_adoptions_v2'
+  `)
+  const adoptionConstraints = await client.query(`
+    SELECT "conname", pg_get_constraintdef("oid") AS "definition"
+    FROM "pg_constraint"
+    WHERE
+      "connamespace" = current_schema()::regnamespace AND
+      "conname" IN (
+        'model_version_deployment_adoptions_v2_version_fkey',
+        'model_version_deployment_adoptions_v2_artifact_source_fkey',
+        'model_version_deployment_adoptions_v2_deployment_fkey'
+      )
+    ORDER BY "conname" COLLATE "C"
+  `)
+  const adoptionTriggers = await client.query(`
+    SELECT "tgname"
+    FROM "pg_trigger"
+    WHERE
+      NOT "tgisinternal" AND
+      "tgrelid" = 'model_version_deployment_adoptions_v2'::regclass AND
+      "tgname" = 'model_version_deployment_adoptions_v2_append_only'
+  `)
+  if (
+    adoptionTables.rows.length !== 1 ||
+    adoptionConstraints.rows.length !== 3 ||
+    adoptionTriggers.rows.length !== 1
+  ) {
+    throw new Error('0016 did not create the adoption table, exact FKs, and append-only trigger')
+  }
+
+  const adoptionDefinitions = adoptionConstraints.rows.map(({ definition }) => definition)
+  if (
+    !adoptionDefinitions.some((definition) =>
+      definition.includes('FOREIGN KEY (namespace_id, model_id, model_version_id)'),
+    ) ||
+    !adoptionDefinitions.some((definition) =>
+      definition.includes('FOREIGN KEY (namespace_id, model_version_id, artifact_id)'),
+    ) ||
+    !adoptionDefinitions.some((definition) =>
+      definition.includes(
+        'FOREIGN KEY (namespace_id, deployment_id, artifact_id, deployment_digest)',
+      ),
+    )
+  ) {
+    throw new Error('0016 adoption composite FK columns do not match the accepted design')
+  }
+
   console.log(
     JSON.stringify({
       status: 'ok',
@@ -116,6 +179,8 @@ try {
       authoritative_constraints: [
         ...aliasConstraints.rows.map(({ conname }) => conname),
         ...sourceTriggers.rows.map(({ tgname }) => tgname),
+        ...adoptionConstraints.rows.map(({ conname }) => conname),
+        ...adoptionTriggers.rows.map(({ tgname }) => tgname),
       ],
     }),
   )

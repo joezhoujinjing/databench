@@ -209,3 +209,15 @@ export class V2CatalogModelAliasConflictError extends Error {
     super(`Model alias compare-and-set conflict for ${modelId}/${alias}`)
   }
 }
+
+export class V2CatalogModelDeploymentAdoptionConflictError extends Error {
+  override readonly name = 'V2CatalogModelDeploymentAdoptionConflictError'
+
+  constructor(
+    readonly deploymentId: string,
+    readonly currentModelVersionId: string,
+    readonly requestedModelVersionId: string,
+  ) {
+    super(`Model Deployment adoption conflict for ${deploymentId}`)
+  }
+}
