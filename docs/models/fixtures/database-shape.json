@@ -1,7 +1,7 @@
 {
   "fixture_version": 1,
   "decision": "ADR-0019",
-  "status": "planned-runtime",
+  "status": "verified-design",
   "core_tables": [
     "models_v2",
     "model_versions_v2",

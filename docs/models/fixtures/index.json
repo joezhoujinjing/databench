@@ -21,7 +21,7 @@
       "path": "docs/models/fixtures/database-shape.json",
       "assertion": "Pre-registers the exact MR1/MR5/MR6 tables, unique keys, source XOR, deployment profiles, and evaluation foreign keys.",
       "source": "ADR 0019 sections 6-7",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr0-endpoint-policy-schema",
@@ -65,7 +65,7 @@
       "path": "packages/hashing/test/fixtures/model-create-v1.json",
       "assertion": "Binds namespace and stable Model key only; initial metadata remains in the registration plan.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-source-fingerprint-artifact-v1",
@@ -76,7 +76,7 @@
       "path": "packages/hashing/test/fixtures/model-source-fingerprint-artifact-v1.json",
       "assertion": "Binds exact Artifact and manifest bytes while excluding Model ID and version label.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-source-fingerprint-repository-v1",
@@ -87,7 +87,7 @@
       "path": "packages/hashing/test/fixtures/model-source-fingerprint-repository-v1.json",
       "assertion": "Binds provider, canonical repository ID, revision, and revision kind while excluding evidence observations.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-source-fingerprint-service-v1",
@@ -98,7 +98,7 @@
       "path": "packages/hashing/test/fixtures/model-source-fingerprint-service-v1.json",
       "assertion": "Binds external model/version references and declared reference kind while excluding endpoint and served model.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-version-create-artifact-v1",
@@ -109,7 +109,7 @@
       "path": "packages/hashing/test/fixtures/model-version-create-artifact-v1.json",
       "assertion": "Binds namespace, Model ID, label, Artifact source fingerprint, and immutable base binding.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-version-create-repository-v1",
@@ -120,7 +120,7 @@
       "path": "packages/hashing/test/fixtures/model-version-create-repository-v1.json",
       "assertion": "Binds namespace, Model ID, label, Repository source fingerprint, and declared base binding.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-version-create-service-v1",
@@ -131,7 +131,7 @@
       "path": "packages/hashing/test/fixtures/model-version-create-service-v1.json",
       "assertion": "Binds namespace, Model ID, label, Existing Service source fingerprint, and declared base binding.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-registration-plan-artifact-v1",
@@ -142,7 +142,7 @@
       "path": "packages/hashing/test/fixtures/model-registration-plan-artifact-v1.json",
       "assertion": "Binds the full normalized Artifact registration plan and classification evidence digest.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-registration-plan-repository-v1",
@@ -153,7 +153,7 @@
       "path": "packages/hashing/test/fixtures/model-registration-plan-repository-v1.json",
       "assertion": "Binds the full normalized Repository registration plan and classification evidence digest.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-registration-plan-service-v1",
@@ -164,7 +164,7 @@
       "path": "packages/hashing/test/fixtures/model-registration-plan-service-v1.json",
       "assertion": "Binds the full normalized Existing Service registration plan without secret value or health observation.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr2-deployment-adoption-v1",

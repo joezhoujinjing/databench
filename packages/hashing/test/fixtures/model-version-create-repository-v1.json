@@ -1,0 +1,16 @@
+{
+  "profile": "model-version-create-repository-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d76657273696f6e2d6372656174652e6d6f64656c2d76657273696f6e2d6372656174652d7265706f7369746f72792d763100",
+  "input": {
+    "model_version_create_profile": "model-version-create-repository-v1",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff",
+    "version_label": "repo-r1",
+    "source_fingerprint": "f78c3a39770b37e2818a79df0b3521d8124f6f7bfab8cd6ddf1a1da7620be7c4",
+    "base_model_reference": null,
+    "base_model_revision": null
+  },
+  "canonical": "{\"base_model_reference\":null,\"base_model_revision\":null,\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\",\"model_version_create_profile\":\"model-version-create-repository-v1\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"source_fingerprint\":\"f78c3a39770b37e2818a79df0b3521d8124f6f7bfab8cd6ddf1a1da7620be7c4\",\"version_label\":\"repo-r1\"}",
+  "digest": "3598084ba2c718e70292a413f85382753a55a9ecc80200b85d9b8970513458da",
+  "independent_digest": "3598084ba2c718e70292a413f85382753a55a9ecc80200b85d9b8970513458da"
+}

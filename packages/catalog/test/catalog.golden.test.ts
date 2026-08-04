@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
+  type CreateModelRegistrationV2,
   createPrismaClient,
   V2Catalog,
   V2CatalogConsistencyError,
@@ -8,7 +9,9 @@ import {
   V2CatalogImmutableConflictError,
   V2CatalogInputError,
   V2CatalogLineageCycleError,
+  V2CatalogModelAliasConflictError,
   V2CatalogModelDeploymentAdmissionError,
+  V2CatalogModelMetadataConflictError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   type V2CatalogSwiftStudioSessionConflictError,
@@ -75,6 +78,18 @@ beforeAll(() => {
 })
 
 beforeEach(async () => {
+  await prisma.$executeRawUnsafe(`
+    TRUNCATE TABLE
+      "model_source_evidence_v2",
+      "model_registration_claims_v2",
+      "model_aliases_v2",
+      "model_version_artifact_sources_v2",
+      "model_version_repository_sources_v2",
+      "model_version_service_sources_v2",
+      "model_versions_v2",
+      "models_v2"
+    CASCADE
+  `)
   await prisma.v2EvaluationRun.deleteMany()
   await prisma.v2ModelDeployment.deleteMany()
   await prisma.v2ModelArtifact.deleteMany()
@@ -105,6 +120,72 @@ function transformJobInput(cacheKey: string, inputVersion = fixtureVersion('alph
     inputCount: 1n,
     resultRefNamespaceId: null,
     resultRefName: null,
+  }
+}
+
+const MODEL_REGISTRY_MODEL_ID = '10000000-0000-8000-8000-000000000001'
+const MODEL_REGISTRY_VERSION_ID = '20000000-0000-8000-8000-000000000001'
+
+function modelRegistrationInput(
+  namespaceId: string,
+  overrides: {
+    readonly registrationDigest?: string
+    readonly normalizedRequest?: CreateModelRegistrationV2['normalizedRequest']
+    readonly target?: CreateModelRegistrationV2['target']
+    readonly version?: Partial<CreateModelRegistrationV2['version']>
+    readonly source?: CreateModelRegistrationV2['source']
+    readonly alias?: CreateModelRegistrationV2['alias']
+  } = {},
+): CreateModelRegistrationV2 {
+  const source =
+    overrides.source ??
+    ({
+      kind: 'repository_reference',
+      provider: 'hugging_face',
+      repositoryId: 'Qwen/Qwen2.5-7B',
+      revision: 'abc123',
+      revisionKind: 'commit',
+    } as const)
+  const version = {
+    id: MODEL_REGISTRY_VERSION_ID,
+    namespaceId,
+    modelId: MODEL_REGISTRY_MODEL_ID,
+    versionLabel: 'r1',
+    sourceKind: source.kind,
+    createProfile: 'model-version-create-repository-v1' as const,
+    createDigest: '2'.repeat(64),
+    sourceFingerprint: '3'.repeat(64),
+    baseModelReference: null,
+    baseModelRevision: null,
+    baseModelBindingStatus: null,
+    ...overrides.version,
+  }
+  return {
+    namespaceId,
+    registrationDigest: overrides.registrationDigest ?? '1'.repeat(64),
+    planProfile: 'model-registration-plan-repository-v1',
+    normalizedRequest:
+      overrides.normalizedRequest ??
+      ({ target: 'create', version_label: version.versionLabel, revision: 'abc123' } as const),
+    target:
+      overrides.target ??
+      ({
+        kind: 'create_model',
+        model: {
+          id: MODEL_REGISTRY_MODEL_ID,
+          namespaceId,
+          key: 'qwen-registry',
+          createProfile: 'model-create-v1',
+          createDigest: '4'.repeat(64),
+          displayName: 'Qwen Registry',
+          description: 'Catalog registration fixture',
+          taskFamily: 'chat',
+          tags: ['fixture'],
+        },
+      } as const),
+    version,
+    source,
+    alias: overrides.alias ?? null,
   }
 }
 
@@ -3052,5 +3133,346 @@ describe('V2Catalog transform jobs', () => {
     await expect(
       v2Catalog.createOrReadTransformJob(transformJobInput(orphanCacheKey)),
     ).rejects.toBeInstanceOf(V2CatalogConsistencyError)
+  })
+
+  test('durably replays exact Model registrations and rejects digest/request mismatches', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const input = modelRegistrationInput(namespaceId)
+
+    const created = await v2Catalog.registerModelVersion(input)
+    const replayed = await v2Catalog.registerModelVersion(input)
+
+    expect(created).toMatchObject({ replayed: false })
+    expect(replayed).toMatchObject({
+      replayed: true,
+      model: { id: created.model.id },
+      version: { id: created.version.id },
+      source: created.source,
+    })
+    expect(await prisma.v2Model.count()).toBe(1)
+    expect(await prisma.v2ModelVersion.count()).toBe(1)
+    expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+
+    await expect(
+      v2Catalog.registerModelVersion(
+        modelRegistrationInput(namespaceId, {
+          normalizedRequest: { target: 'create', version_label: 'changed', revision: 'abc123' },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      name: 'V2CatalogModelRegistrationConflictError',
+      reason: 'request_mismatch',
+    })
+    expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+  })
+
+  test('serializes same-digest request collisions before creating any second result', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const first = modelRegistrationInput(namespaceId)
+    const second = modelRegistrationInput(namespaceId, {
+      normalizedRequest: { target: 'create', version_label: 'different', revision: 'abc123' },
+    })
+    const settled = await Promise.allSettled([
+      v2Catalog.registerModelVersion(first),
+      v2Catalog.registerModelVersion(second),
+    ])
+    expect(settled.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
+    const rejected = settled.find(({ status }) => status === 'rejected')
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: { name: 'V2CatalogModelRegistrationConflictError', reason: 'request_mismatch' },
+    })
+    expect(await prisma.v2Model.count()).toBe(1)
+    expect(await prisma.v2ModelVersion.count()).toBe(1)
+    expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+  })
+
+  test('rolls back Model key, Version label, and source fingerprint conflicts without half rows', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const created = await v2Catalog.registerModelVersion(modelRegistrationInput(namespaceId))
+
+    await expect(
+      v2Catalog.registerModelVersion(
+        modelRegistrationInput(namespaceId, {
+          registrationDigest: '5'.repeat(64),
+          normalizedRequest: { conflict: 'label' },
+          target: { kind: 'existing_model', modelId: created.model.id },
+          version: {
+            id: '20000000-0000-8000-8000-000000000002',
+            createDigest: '5'.repeat(64),
+            sourceFingerprint: '6'.repeat(64),
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ reason: 'version_label_conflict' })
+
+    await expect(
+      v2Catalog.registerModelVersion(
+        modelRegistrationInput(namespaceId, {
+          registrationDigest: '6'.repeat(64),
+          normalizedRequest: { conflict: 'source' },
+          target: { kind: 'existing_model', modelId: created.model.id },
+          version: {
+            id: '20000000-0000-8000-8000-000000000003',
+            versionLabel: 'r2',
+            createDigest: '6'.repeat(64),
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ reason: 'source_fingerprint_conflict' })
+
+    const conflictingModelId = '10000000-0000-8000-8000-000000000002'
+    const modelConflict = modelRegistrationInput(namespaceId, {
+      registrationDigest: '7'.repeat(64),
+      normalizedRequest: { conflict: 'model-key' },
+      version: {
+        id: '20000000-0000-8000-8000-000000000004',
+        modelId: conflictingModelId,
+        versionLabel: 'r3',
+        createDigest: '7'.repeat(64),
+        sourceFingerprint: '7'.repeat(64),
+      },
+    })
+    if (modelConflict.target.kind !== 'create_model') throw new Error('expected create target')
+    await expect(
+      v2Catalog.registerModelVersion({
+        ...modelConflict,
+        target: {
+          kind: 'create_model',
+          model: {
+            ...modelConflict.target.model,
+            id: conflictingModelId,
+            createDigest: '7'.repeat(64),
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ reason: 'model_key_conflict' })
+
+    expect(await prisma.v2Model.count()).toBe(1)
+    expect(await prisma.v2ModelVersion.count()).toBe(1)
+    expect(await prisma.v2ModelVersionRepositorySource.count()).toBe(1)
+    expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+  })
+
+  test('serializes concurrent registrations for one Model and leaves one exact winner', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const first = modelRegistrationInput(namespaceId)
+    const second = modelRegistrationInput(namespaceId, {
+      registrationDigest: '8'.repeat(64),
+      normalizedRequest: { concurrent: 'second' },
+      version: {
+        id: '20000000-0000-8000-8000-000000000002',
+        createDigest: '8'.repeat(64),
+        sourceFingerprint: '8'.repeat(64),
+      },
+      source: {
+        kind: 'repository_reference',
+        provider: 'hugging_face',
+        repositoryId: 'Qwen/Qwen2.5-7B',
+        revision: 'def456',
+        revisionKind: 'commit',
+      },
+    })
+    const settled = await Promise.allSettled([
+      v2Catalog.registerModelVersion(first),
+      v2Catalog.registerModelVersion(second),
+    ])
+
+    expect(settled.filter(({ status }) => status === 'fulfilled')).toHaveLength(1)
+    expect(settled.filter(({ status }) => status === 'rejected')).toHaveLength(1)
+    expect(await prisma.v2Model.count()).toBe(1)
+    expect(await prisma.v2ModelVersion.count()).toBe(1)
+    expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+  })
+
+  test('enforces Model metadata and Alias compare-and-set with the three-column FK', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const first = await v2Catalog.registerModelVersion(
+      modelRegistrationInput(namespaceId, {
+        alias: { alias: 'candidate', expectedVersionId: null },
+      }),
+    )
+    await expect(
+      v2Catalog.updateModelMetadata({
+        namespaceId,
+        modelId: first.model.id,
+        expectedMetadataRevision: 0n,
+        displayName: 'Updated Model',
+        description: 'Updated through CAS',
+        taskFamily: 'chat',
+        tags: ['updated'],
+      }),
+    ).resolves.toMatchObject({ metadataRevision: 1n, displayName: 'Updated Model' })
+    await expect(
+      v2Catalog.updateModelMetadata({
+        namespaceId,
+        modelId: first.model.id,
+        expectedMetadataRevision: 0n,
+        displayName: 'Stale',
+        description: 'Stale',
+        taskFamily: null,
+        tags: [],
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogModelMetadataConflictError)
+
+    const second = await v2Catalog.registerModelVersion(
+      modelRegistrationInput(namespaceId, {
+        registrationDigest: '9'.repeat(64),
+        normalizedRequest: { version_label: 'r2' },
+        target: { kind: 'existing_model', modelId: first.model.id },
+        version: {
+          id: '20000000-0000-8000-8000-000000000002',
+          versionLabel: 'r2',
+          createDigest: '9'.repeat(64),
+          sourceFingerprint: '9'.repeat(64),
+        },
+        source: {
+          kind: 'repository_reference',
+          provider: 'hugging_face',
+          repositoryId: 'Qwen/Qwen2.5-7B',
+          revision: 'def456',
+          revisionKind: 'commit',
+        },
+      }),
+    )
+    await expect(
+      v2Catalog.compareAndSetModelAlias({
+        namespaceId,
+        modelId: first.model.id,
+        alias: 'candidate',
+        expectedVersionId: first.version.id,
+        newVersionId: second.version.id,
+      }),
+    ).resolves.toMatchObject({ versionId: second.version.id })
+    await expect(
+      v2Catalog.compareAndSetModelAlias({
+        namespaceId,
+        modelId: first.model.id,
+        alias: 'candidate',
+        expectedVersionId: first.version.id,
+        newVersionId: first.version.id,
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogModelAliasConflictError)
+
+    const constraints = await prisma.$queryRaw<
+      Array<{ readonly name: string; readonly definition: string }>
+    >`
+      SELECT "conname" AS "name", pg_get_constraintdef("oid") AS "definition"
+      FROM "pg_constraint"
+      WHERE
+        "connamespace" = current_schema()::regnamespace AND
+        "conname" = 'model_aliases_v2_version_fkey'
+    `
+    expect(constraints).toHaveLength(1)
+    expect(constraints[0]?.definition).toContain('FOREIGN KEY (namespace_id, model_id, version_id)')
+  })
+
+  test('keeps source evidence idempotent and database-enforced append-only', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const registrationResult = await v2Catalog.registerModelVersion(
+      modelRegistrationInput(namespaceId),
+    )
+    const evidence = {
+      id: '30000000-0000-8000-8000-000000000001',
+      namespaceId,
+      modelVersionId: registrationResult.version.id,
+      evidenceProfile: 'model-source-evidence-v1' as const,
+      evidenceDigest: 'a'.repeat(64),
+      evidenceKind: 'provider_resolution' as const,
+      adapter: 'hugging-face',
+      adapterVersion: '1',
+      observedRevision: 'abc123',
+      observedAt: new Date('2026-08-04T12:00:00.000Z'),
+      result: 'verified' as const,
+      responseDigest: 'b'.repeat(64),
+    }
+    await expect(v2Catalog.appendModelSourceEvidence(evidence)).resolves.toMatchObject(evidence)
+    await expect(v2Catalog.appendModelSourceEvidence(evidence)).resolves.toMatchObject(evidence)
+    await expect(
+      v2Catalog.listModelSourceEvidence(namespaceId, registrationResult.version.id),
+    ).resolves.toHaveLength(1)
+    await expect(
+      prisma.v2ModelSourceEvidence.update({
+        where: { id: evidence.id },
+        data: { result: 'unavailable' },
+      }),
+    ).rejects.toThrow(/append-only/i)
+    await expect(
+      prisma.v2ModelSourceEvidence.delete({ where: { id: evidence.id } }),
+    ).rejects.toThrow(/append-only/i)
+  })
+
+  test('fails closed on missing, wrong-kind, and multiple Model Version source rows', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const registered = await v2Catalog.registerModelVersion(modelRegistrationInput(namespaceId))
+    const versionData = (id: string, label: string, digit: string) => ({
+      id,
+      namespaceId,
+      modelId: registered.model.id,
+      versionLabel: label,
+      sourceKind: 'repository_reference',
+      createProfile: 'model-version-create-repository-v1',
+      createDigest: digit.repeat(64),
+      sourceFingerprint: digit.repeat(64),
+      baseModelReference: null,
+      baseModelRevision: null,
+      baseModelBindingStatus: null,
+    })
+
+    await expect(
+      prisma.$transaction(async (transaction) => {
+        await transaction.v2ModelVersion.create({
+          data: versionData('20000000-0000-8000-8000-000000000002', 'missing', '5'),
+        })
+      }),
+    ).rejects.toThrow(/source XOR violation/i)
+
+    await expect(
+      prisma.$transaction(async (transaction) => {
+        const row = versionData('20000000-0000-8000-8000-000000000003', 'wrong', '6')
+        await transaction.v2ModelVersion.create({ data: row })
+        await transaction.v2ModelVersionServiceSource.create({
+          data: {
+            namespaceId,
+            modelVersionId: row.id,
+            provider: 'openai_compatible',
+            externalModelRef: 'qwen',
+            externalVersionRef: 'r1',
+            declaredReferenceKind: 'immutable_version',
+          },
+        })
+      }),
+    ).rejects.toThrow(/source XOR violation/i)
+
+    await expect(
+      prisma.$transaction(async (transaction) => {
+        const row = versionData('20000000-0000-8000-8000-000000000004', 'multiple', '7')
+        await transaction.v2ModelVersion.create({ data: row })
+        await transaction.v2ModelVersionRepositorySource.create({
+          data: {
+            namespaceId,
+            modelVersionId: row.id,
+            provider: 'hugging_face',
+            repositoryId: 'Qwen/Qwen2.5-7B',
+            revision: 'abc123',
+            revisionKind: 'commit',
+          },
+        })
+        await transaction.v2ModelVersionServiceSource.create({
+          data: {
+            namespaceId,
+            modelVersionId: row.id,
+            provider: 'openai_compatible',
+            externalModelRef: 'qwen',
+            externalVersionRef: 'r1',
+            declaredReferenceKind: 'immutable_version',
+          },
+        })
+      }),
+    ).rejects.toThrow(/source XOR violation/i)
+
+    expect(await prisma.v2ModelVersion.count()).toBe(1)
+    expect(await prisma.v2ModelVersionRepositorySource.count()).toBe(1)
+    expect(await prisma.v2ModelVersionServiceSource.count()).toBe(0)
   })
 })

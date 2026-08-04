@@ -1,0 +1,16 @@
+{
+  "profile": "model-version-create-service-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d76657273696f6e2d6372656174652e6d6f64656c2d76657273696f6e2d6372656174652d736572766963652d763100",
+  "input": {
+    "model_version_create_profile": "model-version-create-service-v1",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff",
+    "version_label": "service-r1",
+    "source_fingerprint": "67f42bcad29a82a385d0475890df577bf9658c6a85e5dee787af94c4578d65d4",
+    "base_model_reference": null,
+    "base_model_revision": null
+  },
+  "canonical": "{\"base_model_reference\":null,\"base_model_revision\":null,\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\",\"model_version_create_profile\":\"model-version-create-service-v1\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"source_fingerprint\":\"67f42bcad29a82a385d0475890df577bf9658c6a85e5dee787af94c4578d65d4\",\"version_label\":\"service-r1\"}",
+  "digest": "02f5b3126f70960c5c20455974fd0831e5303bb5084bbcfe9467b087764e84a3",
+  "independent_digest": "02f5b3126f70960c5c20455974fd0831e5303bb5084bbcfe9467b087764e84a3"
+}

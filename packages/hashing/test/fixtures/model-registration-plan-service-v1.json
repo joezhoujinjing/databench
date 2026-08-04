@@ -1,0 +1,41 @@
+{
+  "profile": "model-registration-plan-service-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d726567697374726174696f6e2d706c616e2e6d6f64656c2d726567697374726174696f6e2d706c616e2d736572766963652d763100",
+  "input": {
+    "plan_profile": "model-registration-plan-service-v1",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "normalized_request": {
+      "target": { "kind": "existing_model", "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff" },
+      "version_label": "service-r1",
+      "source": {
+        "kind": "existing_service",
+        "provider": "openai_compatible",
+        "external_model_ref": "供应商/Qwen",
+        "external_version_ref": "r1",
+        "declared_reference_kind": "immutable_version",
+        "base_model": null,
+        "deployment": {
+          "display_name": "内网服务",
+          "served_model_name": "qwen",
+          "connectivity_scope": "private_network",
+          "endpoint_base_url": "https://m.example/v1",
+          "auth_profile": "none",
+          "credential_ref": null,
+          "declared_capabilities": { "interfaces": ["chat_completions"], "context_limit": null }
+        }
+      }
+    },
+    "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff",
+    "model_create_digest": null,
+    "source_fingerprint": "67f42bcad29a82a385d0475890df577bf9658c6a85e5dee787af94c4578d65d4",
+    "version_create_digest": "02f5b3126f70960c5c20455974fd0831e5303bb5084bbcfe9467b087764e84a3",
+    "classification": {
+      "source_mutability": "unknown",
+      "verification_level": "operator_attested",
+      "evidence_digest": null
+    }
+  },
+  "canonical": "{\"classification\":{\"evidence_digest\":null,\"source_mutability\":\"unknown\",\"verification_level\":\"operator_attested\"},\"model_create_digest\":null,\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"normalized_request\":{\"source\":{\"base_model\":null,\"declared_reference_kind\":\"immutable_version\",\"deployment\":{\"auth_profile\":\"none\",\"connectivity_scope\":\"private_network\",\"credential_ref\":null,\"declared_capabilities\":{\"context_limit\":null,\"interfaces\":[\"chat_completions\"]},\"display_name\":\"内网服务\",\"endpoint_base_url\":\"https://m.example/v1\",\"served_model_name\":\"qwen\"},\"external_model_ref\":\"供应商/Qwen\",\"external_version_ref\":\"r1\",\"kind\":\"existing_service\",\"provider\":\"openai_compatible\"},\"target\":{\"kind\":\"existing_model\",\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\"},\"version_label\":\"service-r1\"},\"plan_profile\":\"model-registration-plan-service-v1\",\"source_fingerprint\":\"67f42bcad29a82a385d0475890df577bf9658c6a85e5dee787af94c4578d65d4\",\"version_create_digest\":\"02f5b3126f70960c5c20455974fd0831e5303bb5084bbcfe9467b087764e84a3\"}",
+  "digest": "70bb3a86a4a94086e7b95ae1adb00383a9aa456f2e2723e4e910bd5414306f21",
+  "independent_digest": "70bb3a86a4a94086e7b95ae1adb00383a9aa456f2e2723e4e910bd5414306f21"
+}

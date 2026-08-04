@@ -710,6 +710,162 @@ export interface CatalogModelDeploymentHealthV2 {
   readonly error: string | null
 }
 
+export type CatalogModelSourceKindV2 =
+  | 'databench_artifact'
+  | 'repository_reference'
+  | 'existing_service'
+
+export interface CatalogModelRowV2 {
+  readonly id: string
+  readonly namespaceId: string
+  readonly key: string
+  readonly createProfile: 'model-create-v1'
+  readonly createDigest: string
+  readonly displayName: string
+  readonly description: string
+  readonly taskFamily: string | null
+  readonly tags: readonly string[]
+  readonly metadataRevision: bigint
+  readonly archivedAt: Date | null
+  readonly createdAt: Date
+  readonly updatedAt: Date
+}
+
+export interface CatalogModelVersionRowV2 {
+  readonly id: string
+  readonly namespaceId: string
+  readonly modelId: string
+  readonly versionLabel: string
+  readonly sourceKind: CatalogModelSourceKindV2
+  readonly createProfile:
+    | 'model-version-create-artifact-v1'
+    | 'model-version-create-repository-v1'
+    | 'model-version-create-service-v1'
+  readonly createDigest: string
+  readonly sourceFingerprint: string
+  readonly baseModelReference: string | null
+  readonly baseModelRevision: string | null
+  readonly baseModelBindingStatus: 'verified' | 'declared' | 'unresolved' | null
+  readonly createdAt: Date
+}
+
+export type CatalogModelVersionSourceV2 =
+  | {
+      readonly kind: 'databench_artifact'
+      readonly artifactId: string
+      readonly artifactKind: string
+      readonly artifactFormat: string
+      readonly archiveDigest: string
+      readonly manifestDigest: string
+    }
+  | {
+      readonly kind: 'repository_reference'
+      readonly provider: 'hugging_face' | 'modelscope' | 'operator_managed'
+      readonly repositoryId: string
+      readonly revision: string
+      readonly revisionKind: 'commit' | 'digest' | 'tag' | 'opaque'
+    }
+  | {
+      readonly kind: 'existing_service'
+      readonly provider: 'openai_compatible'
+      readonly externalModelRef: string
+      readonly externalVersionRef: string
+      readonly declaredReferenceKind: 'immutable_version' | 'mutable_alias' | 'opaque'
+    }
+
+export interface CatalogModelAliasRowV2 {
+  readonly namespaceId: string
+  readonly modelId: string
+  readonly alias: 'candidate' | 'staging' | 'production'
+  readonly versionId: string
+  readonly createdAt: Date
+  readonly updatedAt: Date
+}
+
+export type CatalogModelRegistrationTargetV2 =
+  | {
+      readonly kind: 'create_model'
+      readonly model: Omit<
+        CatalogModelRowV2,
+        'metadataRevision' | 'archivedAt' | 'createdAt' | 'updatedAt'
+      >
+    }
+  | { readonly kind: 'existing_model'; readonly modelId: string }
+
+export interface CreateModelRegistrationV2 {
+  readonly namespaceId: string
+  readonly registrationDigest: string
+  readonly planProfile:
+    | 'model-registration-plan-artifact-v1'
+    | 'model-registration-plan-repository-v1'
+    | 'model-registration-plan-service-v1'
+  readonly normalizedRequest: { readonly [key: string]: CatalogJsonValueV2 }
+  readonly target: CatalogModelRegistrationTargetV2
+  readonly version: Omit<CatalogModelVersionRowV2, 'createdAt'>
+  readonly source: CatalogModelVersionSourceV2
+  readonly alias: {
+    readonly alias: CatalogModelAliasRowV2['alias']
+    readonly expectedVersionId: string | null
+  } | null
+}
+
+export interface CatalogModelRegistrationClaimRowV2 {
+  readonly namespaceId: string
+  readonly registrationDigest: string
+  readonly planProfile: CreateModelRegistrationV2['planProfile']
+  readonly normalizedRequest: { readonly [key: string]: CatalogJsonValueV2 }
+  readonly modelId: string
+  readonly modelVersionId: string
+  readonly aliasName: CatalogModelAliasRowV2['alias'] | null
+  readonly createdAt: Date
+}
+
+export interface CatalogModelRegistrationResultV2 {
+  readonly model: CatalogModelRowV2
+  readonly version: CatalogModelVersionRowV2
+  readonly source: CatalogModelVersionSourceV2
+  readonly alias: CatalogModelAliasRowV2 | null
+  readonly claim: CatalogModelRegistrationClaimRowV2
+  readonly replayed: boolean
+}
+
+export interface UpdateCatalogModelMetadataV2 {
+  readonly namespaceId: string
+  readonly modelId: string
+  readonly expectedMetadataRevision: bigint
+  readonly displayName: string
+  readonly description: string
+  readonly taskFamily: string | null
+  readonly tags: readonly string[]
+}
+
+export interface CompareAndSetModelAliasV2 {
+  readonly namespaceId: string
+  readonly modelId: string
+  readonly alias: CatalogModelAliasRowV2['alias']
+  readonly expectedVersionId: string | null
+  readonly newVersionId: string
+}
+
+export interface AppendModelSourceEvidenceV2 {
+  readonly id: string
+  readonly namespaceId: string
+  readonly modelVersionId: string
+  readonly evidenceProfile: 'model-source-evidence-v1'
+  readonly evidenceDigest: string
+  readonly evidenceKind: 'provider_resolution' | 'operator_attestation'
+  readonly adapter: string
+  readonly adapterVersion: string
+  readonly observedRevision: string | null
+  readonly observedAt: Date
+  readonly result: 'verified' | 'not_found' | 'unavailable' | 'invalid'
+  readonly responseDigest: string | null
+}
+
+export interface CatalogModelSourceEvidenceRowV2 extends AppendModelSourceEvidenceV2 {
+  readonly createdAt: Date
+}
+
 export interface PrepareEvaluationRunArchiveV2 {
   readonly namespaceId: string
   readonly id: string

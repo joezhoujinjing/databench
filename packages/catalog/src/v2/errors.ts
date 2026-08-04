@@ -164,3 +164,48 @@ export class V2CatalogModelDeploymentAdmissionError extends Error {
     super(`Model Deployment admission rejected (${reason}) for ${deploymentId}`)
   }
 }
+
+export type V2CatalogModelRegistrationConflictReason =
+  | 'request_mismatch'
+  | 'model_key_conflict'
+  | 'model_target_not_found'
+  | 'version_label_conflict'
+  | 'source_fingerprint_conflict'
+  | 'alias_conflict'
+
+export class V2CatalogModelRegistrationConflictError extends Error {
+  override readonly name = 'V2CatalogModelRegistrationConflictError'
+
+  constructor(
+    readonly reason: V2CatalogModelRegistrationConflictReason,
+    readonly registrationDigest: string,
+  ) {
+    super(`Model registration conflict (${reason}) for ${registrationDigest}`)
+  }
+}
+
+export class V2CatalogModelMetadataConflictError extends Error {
+  override readonly name = 'V2CatalogModelMetadataConflictError'
+
+  constructor(
+    readonly modelId: string,
+    readonly expectedMetadataRevision: bigint,
+    readonly currentMetadataRevision: bigint,
+  ) {
+    super(`Model metadata compare-and-set conflict for ${modelId}`)
+  }
+}
+
+export class V2CatalogModelAliasConflictError extends Error {
+  override readonly name = 'V2CatalogModelAliasConflictError'
+
+  constructor(
+    readonly modelId: string,
+    readonly alias: 'candidate' | 'staging' | 'production',
+    readonly expectedVersionId: string | null,
+    readonly currentVersionId: string | null,
+    readonly newVersionId: string,
+  ) {
+    super(`Model alias compare-and-set conflict for ${modelId}/${alias}`)
+  }
+}

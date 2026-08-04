@@ -1,0 +1,15 @@
+{
+  "profile": "model-source-fingerprint-artifact-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d736f757263652d66696e6765727072696e742e6d6f64656c2d736f757263652d66696e6765727072696e742d61727469666163742d763100",
+  "input": {
+    "source_fingerprint_profile": "model-source-fingerprint-artifact-v1",
+    "artifact_id": "7b4f1b6e-864d-8dc3-9aa2-8bc4e62a1f10",
+    "artifact_kind": "lora_adapter",
+    "artifact_format": "swift-lora-adapter-v1",
+    "archive_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "manifest_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "canonical": "{\"archive_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"artifact_format\":\"swift-lora-adapter-v1\",\"artifact_id\":\"7b4f1b6e-864d-8dc3-9aa2-8bc4e62a1f10\",\"artifact_kind\":\"lora_adapter\",\"manifest_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"source_fingerprint_profile\":\"model-source-fingerprint-artifact-v1\"}",
+  "digest": "abb0c3770703281f65c9c52d82b5c3d0454a880e2c1ecdcb7009f74c587c275d",
+  "independent_digest": "abb0c3770703281f65c9c52d82b5c3d0454a880e2c1ecdcb7009f74c587c275d"
+}

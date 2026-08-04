@@ -35,6 +35,7 @@
     "swift:lock:generate": "node scripts/generate-swift-runtime-lock.mjs",
     "models:status:check": "node scripts/check-model-registry-status.mjs",
     "models:status:test": "node --test scripts/check-model-registry-status.test.mjs",
+    "models:migration:check": "node scripts/with-test-db-schema.mjs --reset databench_test_models_forward node scripts/check-model-registry-forward-migration.mjs",
     "v2:status:check": "node scripts/check-v2-status.mjs",
     "v1:retire": "pnpm --filter @databench/v1-retirement retire",
     "openapi:check": "turbo run openapi:check",

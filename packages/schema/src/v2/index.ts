@@ -370,8 +370,10 @@ export {
   type McpValidationPreviewResult,
   McpValidationPreviewResultSchema,
 } from './mcp.js'
+export * from './model.js'
 export * from './model-artifact.js'
 export * from './model-deployment.js'
+export * from './model-version.js'
 export {
   type CompatiblePartV2,
   FileDataPartSchema as FileDataPartV2Schema,

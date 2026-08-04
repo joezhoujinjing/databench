@@ -1,0 +1,28 @@
+{
+  "profile": "model-registration-plan-artifact-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d726567697374726174696f6e2d706c616e2e6d6f64656c2d726567697374726174696f6e2d706c616e2d61727469666163742d763100",
+  "input": {
+    "plan_profile": "model-registration-plan-artifact-v1",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "normalized_request": {
+      "target": { "kind": "existing_model", "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff" },
+      "version_label": "微调版",
+      "source": {
+        "kind": "databench_artifact",
+        "artifact_id": "7b4f1b6e-864d-8dc3-9aa2-8bc4e62a1f10"
+      }
+    },
+    "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff",
+    "model_create_digest": null,
+    "source_fingerprint": "abb0c3770703281f65c9c52d82b5c3d0454a880e2c1ecdcb7009f74c587c275d",
+    "version_create_digest": "dc23b8fed0ba287daada363ec3cf5cee136fb129077f3394eb6f067c6328685b",
+    "classification": {
+      "source_mutability": "immutable",
+      "verification_level": "content_verified",
+      "evidence_digest": null
+    }
+  },
+  "canonical": "{\"classification\":{\"evidence_digest\":null,\"source_mutability\":\"immutable\",\"verification_level\":\"content_verified\"},\"model_create_digest\":null,\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"normalized_request\":{\"source\":{\"artifact_id\":\"7b4f1b6e-864d-8dc3-9aa2-8bc4e62a1f10\",\"kind\":\"databench_artifact\"},\"target\":{\"kind\":\"existing_model\",\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\"},\"version_label\":\"微调版\"},\"plan_profile\":\"model-registration-plan-artifact-v1\",\"source_fingerprint\":\"abb0c3770703281f65c9c52d82b5c3d0454a880e2c1ecdcb7009f74c587c275d\",\"version_create_digest\":\"dc23b8fed0ba287daada363ec3cf5cee136fb129077f3394eb6f067c6328685b\"}",
+  "digest": "55aada7eff8252f63acaa7a931b22b0f61a38e36b19f2742c41cfbfb3b6bacc0",
+  "independent_digest": "55aada7eff8252f63acaa7a931b22b0f61a38e36b19f2742c41cfbfb3b6bacc0"
+}

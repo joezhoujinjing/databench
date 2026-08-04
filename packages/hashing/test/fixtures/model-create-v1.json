@@ -1,0 +1,12 @@
+{
+  "profile": "model-create-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d6372656174652e6d6f64656c2d6372656174652d763100",
+  "input": {
+    "model_create_profile": "model-create-v1",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "key": "qwen-zh"
+  },
+  "canonical": "{\"key\":\"qwen-zh\",\"model_create_profile\":\"model-create-v1\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\"}",
+  "digest": "8973e7847a164e148d92170393811934b552addd27eef55d1c35226cecf1b872",
+  "independent_digest": "8973e7847a164e148d92170393811934b552addd27eef55d1c35226cecf1b872"
+}

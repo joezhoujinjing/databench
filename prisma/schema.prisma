@@ -12,14 +12,22 @@ model V2IdentityNamespace {
   scope     String   @unique
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  claims                 V2IdentityClaim[]
-  refs                   V2Ref[]
-  resultRefTransformJobs V2TransformJob[]        @relation("V2TransformJobResultRefNamespace")
-  evaluationRuns         V2EvaluationRun[]
-  swiftStudioSessions    V2SwiftStudioSession[]
-  modelArtifactImports   V2ModelArtifactImport[]
-  modelArtifacts         V2ModelArtifact[]
-  modelDeployments       V2ModelDeployment[]
+  claims                  V2IdentityClaim[]
+  refs                    V2Ref[]
+  resultRefTransformJobs  V2TransformJob[]                 @relation("V2TransformJobResultRefNamespace")
+  evaluationRuns          V2EvaluationRun[]
+  swiftStudioSessions     V2SwiftStudioSession[]
+  modelArtifactImports    V2ModelArtifactImport[]
+  modelArtifacts          V2ModelArtifact[]
+  modelDeployments        V2ModelDeployment[]
+  models                  V2Model[]
+  modelVersions           V2ModelVersion[]
+  modelArtifactSources    V2ModelVersionArtifactSource[]
+  modelRepositorySources  V2ModelVersionRepositorySource[]
+  modelServiceSources     V2ModelVersionServiceSource[]
+  modelSourceEvidence     V2ModelSourceEvidence[]
+  modelAliases            V2ModelAlias[]
+  modelRegistrationClaims V2ModelRegistrationClaim[]
 
   @@map("identity_namespaces_v2")
 }
@@ -352,11 +360,12 @@ model V2ModelArtifact {
   imageDigest            String   @map("image_digest") @db.Char(64)
   createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  namespace        V2IdentityNamespace   @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  sourceSession    V2SwiftStudioSession  @relation(fields: [sourceSessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  sourceImport     V2ModelArtifactImport @relation("SourceModelArtifactImport", fields: [sourceImportId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  dataset          V2DatasetSnapshot?    @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
-  modelDeployments V2ModelDeployment[]
+  namespace           V2IdentityNamespace            @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceSession       V2SwiftStudioSession           @relation(fields: [sourceSessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sourceImport        V2ModelArtifactImport          @relation("SourceModelArtifactImport", fields: [sourceImportId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dataset             V2DatasetSnapshot?             @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)
+  modelDeployments    V2ModelDeployment[]
+  modelVersionSources V2ModelVersionArtifactSource[]
 
   @@unique([namespaceId, id], map: "uq_model_artifacts_v2_namespace_id")
   @@index([namespaceId, archiveDigest], map: "idx_model_artifacts_v2_archive_digest")
@@ -392,4 +401,169 @@ model V2ModelDeployment {
   @@index([namespaceId, status, createdAt, id], map: "idx_model_deployments_v2_status")
   @@index([namespaceId, artifactId, createdAt, id], map: "idx_model_deployments_v2_artifact")
   @@map("model_deployments_v2")
+}
+
+model V2Model {
+  id               String    @id @db.Uuid
+  namespaceId      String    @map("namespace_id") @db.Uuid
+  key              String
+  createProfile    String    @map("create_profile")
+  createDigest     String    @map("create_digest") @db.Char(64)
+  displayName      String    @map("display_name")
+  description      String
+  taskFamily       String?   @map("task_family")
+  tags             Json      @map("tags_json")
+  metadataRevision BigInt    @default(0) @map("metadata_revision")
+  archivedAt       DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  namespace          V2IdentityNamespace        @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versions           V2ModelVersion[]
+  aliases            V2ModelAlias[]
+  registrationClaims V2ModelRegistrationClaim[]
+
+  @@unique([namespaceId, id], map: "uq_models_v2_namespace_id")
+  @@unique([namespaceId, key], map: "uq_models_v2_key")
+  @@unique([namespaceId, createDigest], map: "uq_models_v2_create_digest")
+  @@index([namespaceId, archivedAt, updatedAt, id], map: "idx_models_v2_list")
+  @@map("models_v2")
+}
+
+model V2ModelVersion {
+  id                     String   @id @db.Uuid
+  namespaceId            String   @map("namespace_id") @db.Uuid
+  modelId                String   @map("model_id") @db.Uuid
+  versionLabel           String   @map("version_label")
+  sourceKind             String   @map("source_kind")
+  createProfile          String   @map("create_profile")
+  createDigest           String   @map("create_digest") @db.Char(64)
+  sourceFingerprint      String   @map("source_fingerprint") @db.Char(64)
+  baseModelReference     String?  @map("base_model_reference")
+  baseModelRevision      String?  @map("base_model_revision")
+  baseModelBindingStatus String?  @map("base_model_binding_status")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  namespace          V2IdentityNamespace             @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  model              V2Model                         @relation(fields: [namespaceId, modelId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+  artifactSource     V2ModelVersionArtifactSource?
+  repositorySource   V2ModelVersionRepositorySource?
+  serviceSource      V2ModelVersionServiceSource?
+  evidence           V2ModelSourceEvidence[]
+  aliases            V2ModelAlias[]
+  registrationClaims V2ModelRegistrationClaim[]
+
+  @@unique([namespaceId, id], map: "uq_model_versions_v2_namespace_id")
+  @@unique([namespaceId, modelId, id], map: "uq_model_versions_v2_model_id")
+  @@unique([namespaceId, modelId, versionLabel], map: "uq_model_versions_v2_label")
+  @@unique([namespaceId, modelId, sourceFingerprint], map: "uq_model_versions_v2_source")
+  @@index([namespaceId, modelId, createdAt, id], map: "idx_model_versions_v2_list")
+  @@map("model_versions_v2")
+}
+
+model V2ModelVersionArtifactSource {
+  namespaceId    String @map("namespace_id") @db.Uuid
+  modelVersionId String @map("model_version_id") @db.Uuid
+  artifactId     String @map("artifact_id") @db.Uuid
+  artifactKind   String @map("artifact_kind")
+  artifactFormat String @map("artifact_format")
+  archiveDigest  String @map("archive_digest") @db.Char(64)
+  manifestDigest String @map("manifest_digest") @db.Char(64)
+
+  namespace    V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  modelVersion V2ModelVersion      @relation(fields: [namespaceId, modelVersionId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+  artifact     V2ModelArtifact     @relation(fields: [namespaceId, artifactId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([namespaceId, modelVersionId])
+  @@unique([namespaceId, modelVersionId, artifactId], map: "uq_model_version_artifact_sources_v2_binding")
+  @@map("model_version_artifact_sources_v2")
+}
+
+model V2ModelVersionRepositorySource {
+  namespaceId    String @map("namespace_id") @db.Uuid
+  modelVersionId String @map("model_version_id") @db.Uuid
+  provider       String
+  repositoryId   String @map("repository_id")
+  revision       String
+  revisionKind   String @map("revision_kind")
+
+  namespace    V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  modelVersion V2ModelVersion      @relation(fields: [namespaceId, modelVersionId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([namespaceId, modelVersionId])
+  @@map("model_version_repository_sources_v2")
+}
+
+model V2ModelVersionServiceSource {
+  namespaceId           String @map("namespace_id") @db.Uuid
+  modelVersionId        String @map("model_version_id") @db.Uuid
+  provider              String
+  externalModelRef      String @map("external_model_ref")
+  externalVersionRef    String @map("external_version_ref")
+  declaredReferenceKind String @map("declared_reference_kind")
+
+  namespace    V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  modelVersion V2ModelVersion      @relation(fields: [namespaceId, modelVersionId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([namespaceId, modelVersionId])
+  @@map("model_version_service_sources_v2")
+}
+
+model V2ModelSourceEvidence {
+  id               String   @id @db.Uuid
+  namespaceId      String   @map("namespace_id") @db.Uuid
+  modelVersionId   String   @map("model_version_id") @db.Uuid
+  evidenceProfile  String   @map("evidence_profile")
+  evidenceDigest   String   @map("evidence_digest") @db.Char(64)
+  evidenceKind     String   @map("evidence_kind")
+  adapter          String
+  adapterVersion   String   @map("adapter_version")
+  observedRevision String?  @map("observed_revision")
+  observedAt       DateTime @map("observed_at") @db.Timestamptz(6)
+  result           String
+  responseDigest   String?  @map("response_digest") @db.Char(64)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  namespace    V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  modelVersion V2ModelVersion      @relation(fields: [namespaceId, modelVersionId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([namespaceId, modelVersionId, evidenceDigest], map: "uq_model_source_evidence_v2_digest")
+  @@index([namespaceId, modelVersionId, observedAt, id], map: "idx_model_source_evidence_v2_version")
+  @@map("model_source_evidence_v2")
+}
+
+model V2ModelAlias {
+  namespaceId String   @map("namespace_id") @db.Uuid
+  modelId     String   @map("model_id") @db.Uuid
+  alias       String
+  versionId   String   @map("version_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  namespace          V2IdentityNamespace        @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  model              V2Model                    @relation(fields: [namespaceId, modelId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+  version            V2ModelVersion             @relation(fields: [namespaceId, modelId, versionId], references: [namespaceId, modelId, id], onDelete: Restrict, onUpdate: Restrict)
+  registrationClaims V2ModelRegistrationClaim[]
+
+  @@id([namespaceId, modelId, alias])
+  @@map("model_aliases_v2")
+}
+
+model V2ModelRegistrationClaim {
+  namespaceId        String   @map("namespace_id") @db.Uuid
+  registrationDigest String   @map("registration_digest") @db.Char(64)
+  planProfile        String   @map("plan_profile")
+  normalizedRequest  Json     @map("normalized_request_json")
+  modelId            String   @map("model_id") @db.Uuid
+  modelVersionId     String   @map("model_version_id") @db.Uuid
+  aliasName          String?  @map("alias_name")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  namespace    V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  model        V2Model             @relation(fields: [namespaceId, modelId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+  modelVersion V2ModelVersion      @relation(fields: [namespaceId, modelId, modelVersionId], references: [namespaceId, modelId, id], onDelete: Restrict, onUpdate: Restrict)
+  alias        V2ModelAlias?       @relation(fields: [namespaceId, modelId, aliasName], references: [namespaceId, modelId, alias], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([namespaceId, registrationDigest])
+  @@map("model_registration_claims_v2")
 }

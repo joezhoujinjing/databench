@@ -15,7 +15,17 @@ import {
   V2CatalogTargetNotCommittedError,
   V2CatalogTransformJobLeaseError,
 } from './errors.js'
+import {
+  appendModelSourceEvidenceV2,
+  compareAndSetModelAliasV2,
+  getModelV2,
+  getModelVersionV2,
+  listModelSourceEvidenceV2,
+  registerModelVersionV2,
+  updateModelMetadataV2,
+} from './model-registry.js'
 import type {
+  AppendModelSourceEvidenceV2,
   CatalogEvaluationMetricV2,
   CatalogEvaluationRunCursorV2,
   CatalogEvaluationRunErrorV2,
@@ -29,6 +39,7 @@ import type {
   CatalogJsonValueV2,
   CatalogLayoutInputV2,
   CatalogLayoutRowV2,
+  CatalogModelAliasRowV2,
   CatalogModelArtifactCursorV2,
   CatalogModelArtifactFinalizeResultV2,
   CatalogModelArtifactImportCreateResultV2,
@@ -44,6 +55,11 @@ import type {
   CatalogModelDeploymentListFilterV2,
   CatalogModelDeploymentPageV2,
   CatalogModelDeploymentRowV2,
+  CatalogModelRegistrationResultV2,
+  CatalogModelRowV2,
+  CatalogModelSourceEvidenceRowV2,
+  CatalogModelVersionRowV2,
+  CatalogModelVersionSourceV2,
   CatalogRecordParentRowV2,
   CatalogRecordRevisionV2,
   CatalogRefPageV2,
@@ -70,11 +86,13 @@ import type {
   CatalogTransformJobStatusV2,
   ClaimTransformJobV2,
   ClearCompletedTransformJobStagingV2,
+  CompareAndSetModelAliasV2,
   CompareAndSetRefV2,
   CompleteTransformJobV2,
   CreateEvaluationRunV2,
   CreateModelArtifactImportV2,
   CreateModelDeploymentV2,
+  CreateModelRegistrationV2,
   CreateSwiftStudioSessionV2,
   CreateTransformJobV2,
   DeleteRefResultV2,
@@ -94,6 +112,7 @@ import type {
   TransitionEvaluationRunV2,
   TransitionModelArtifactImportV2,
   TransitionSwiftStudioSessionV2,
+  UpdateCatalogModelMetadataV2,
   UpdateTransformJobProgressV2,
 } from './types.js'
 
@@ -1849,6 +1868,49 @@ export class V2Catalog {
               id: last.id,
             }),
     })
+  }
+
+  async registerModelVersion(
+    input: CreateModelRegistrationV2,
+  ): Promise<CatalogModelRegistrationResultV2> {
+    return await registerModelVersionV2(this.#client, input)
+  }
+
+  async getModel(namespaceId: string, modelId: string): Promise<CatalogModelRowV2 | null> {
+    return await getModelV2(this.#client, namespaceId, modelId)
+  }
+
+  async getModelVersion(
+    namespaceId: string,
+    versionId: string,
+  ): Promise<{
+    readonly version: CatalogModelVersionRowV2
+    readonly source: CatalogModelVersionSourceV2
+  } | null> {
+    return await getModelVersionV2(this.#client, namespaceId, versionId)
+  }
+
+  async updateModelMetadata(
+    input: UpdateCatalogModelMetadataV2,
+  ): Promise<CatalogModelRowV2 | null> {
+    return await updateModelMetadataV2(this.#client, input)
+  }
+
+  async compareAndSetModelAlias(input: CompareAndSetModelAliasV2): Promise<CatalogModelAliasRowV2> {
+    return await compareAndSetModelAliasV2(this.#client, input)
+  }
+
+  async appendModelSourceEvidence(
+    input: AppendModelSourceEvidenceV2,
+  ): Promise<CatalogModelSourceEvidenceRowV2> {
+    return await appendModelSourceEvidenceV2(this.#client, input)
+  }
+
+  async listModelSourceEvidence(
+    namespaceId: string,
+    modelVersionId: string,
+  ): Promise<readonly CatalogModelSourceEvidenceRowV2[]> {
+    return await listModelSourceEvidenceV2(this.#client, namespaceId, modelVersionId)
   }
 
   async createOrReadModelDeployment(

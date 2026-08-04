@@ -1,12 +1,13 @@
 # Databench Model Registry 实施计划
 
-- **状态:** Accepted——owner 于 2026-08-04 在四项推荐范围列明后要求“下一步叭”，授权进入 MR0
+- **状态:** Accepted——owner 于 2026-08-04 在四项推荐范围列明后要求“下一步叭”，并进一步要求
+  “按照实施计划依次的实现吧”，授权按 Gate 顺序实施 MR0-MR8
 - **日期:** 2026-08-04
 - **决策:** [ADR 0019](../decisions/0019-model-registry.md)
 - **技术方案:** [TECHNICAL-DESIGN.md](TECHNICAL-DESIGN.md)
 - **实施纪律:** 一个 accepted Step 一个 PR/commit；当前 gate 全绿后再进入下一 Step
 
-> 当前只授权 MR0；GMR0 未通过前，不进入 MR1 或修改 runtime。
+> 当前授权覆盖 MR0-MR8 的顺序实施；每个 Gate 全绿并单独提交后，才可进入下一 Step。
 
 ## 1. 交付目标
 

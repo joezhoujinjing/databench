@@ -1,0 +1,17 @@
+{
+  "profile": "model-version-create-artifact-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d76657273696f6e2d6372656174652e6d6f64656c2d76657273696f6e2d6372656174652d61727469666163742d763100",
+  "input": {
+    "model_version_create_profile": "model-version-create-artifact-v1",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff",
+    "version_label": "微调版",
+    "source_fingerprint": "abb0c3770703281f65c9c52d82b5c3d0454a880e2c1ecdcb7009f74c587c275d",
+    "base_model_reference": "Qwen/Qwen2.5-7B",
+    "base_model_revision": "abc123",
+    "base_model_binding_status": "verified"
+  },
+  "canonical": "{\"base_model_binding_status\":\"verified\",\"base_model_reference\":\"Qwen/Qwen2.5-7B\",\"base_model_revision\":\"abc123\",\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\",\"model_version_create_profile\":\"model-version-create-artifact-v1\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"source_fingerprint\":\"abb0c3770703281f65c9c52d82b5c3d0454a880e2c1ecdcb7009f74c587c275d\",\"version_label\":\"微调版\"}",
+  "digest": "dc23b8fed0ba287daada363ec3cf5cee136fb129077f3394eb6f067c6328685b",
+  "independent_digest": "dc23b8fed0ba287daada363ec3cf5cee136fb129077f3394eb6f067c6328685b"
+}

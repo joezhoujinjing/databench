@@ -1882,6 +1882,43 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     }
   })
 
+  test('commits and exactly replays a declared Repository Model registration in PostgreSQL', async () => {
+    const registryWorkspace = createWorkspace('model-registry')
+    const request = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'integration-repository-model',
+        display_name: 'Integration Repository Model',
+        description: 'MR1 PostgreSQL registration path',
+        task_family: 'chat',
+        tags: ['integration'],
+      },
+      version_label: 'r1',
+      source: {
+        kind: 'repository_reference' as const,
+        provider: 'hugging_face' as const,
+        repository_id: 'Qwen/Qwen2.5-7B',
+        revision: 'abc123',
+        revision_kind: 'commit' as const,
+        base_model: null,
+      },
+    }
+    const plan = await registryWorkspace.inspectModelRegistration(request)
+    const created = await registryWorkspace.commitModelRegistration({
+      request,
+      expected_registration_digest: plan.registration_digest,
+    })
+    const replayed = await registryWorkspace.commitModelRegistration({
+      request,
+      expected_registration_digest: plan.registration_digest,
+    })
+    expect(created).toMatchObject({ replayed: false, model_id: plan.model_id })
+    expect(replayed).toEqual({ ...created, replayed: true })
+    expect(await prisma.v2Model.count()).toBe(1)
+    expect(await prisma.v2ModelVersion.count()).toBe(1)
+    expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+  })
+
   function createWorkspace(tempName: string): V2Workspace {
     return new V2Workspace({
       catalog,
@@ -2011,6 +2048,18 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
   }
 
   async function clearV2Catalog(): Promise<void> {
+    await prisma.$executeRawUnsafe(`
+      TRUNCATE TABLE
+        "model_source_evidence_v2",
+        "model_registration_claims_v2",
+        "model_aliases_v2",
+        "model_version_artifact_sources_v2",
+        "model_version_repository_sources_v2",
+        "model_version_service_sources_v2",
+        "model_versions_v2",
+        "models_v2"
+      CASCADE
+    `)
     await prisma.v2EvaluationRun.deleteMany()
     await prisma.v2ModelDeployment.deleteMany()
     await prisma.v2ModelArtifact.deleteMany()

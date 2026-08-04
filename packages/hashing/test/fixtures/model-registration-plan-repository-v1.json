@@ -1,0 +1,32 @@
+{
+  "profile": "model-registration-plan-repository-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d726567697374726174696f6e2d706c616e2e6d6f64656c2d726567697374726174696f6e2d706c616e2d7265706f7369746f72792d763100",
+  "input": {
+    "plan_profile": "model-registration-plan-repository-v1",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "normalized_request": {
+      "target": { "kind": "existing_model", "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff" },
+      "version_label": "repo-r1",
+      "source": {
+        "kind": "repository_reference",
+        "provider": "hugging_face",
+        "repository_id": "Qwen/Qwen2.5-7B",
+        "revision": "abc123",
+        "revision_kind": "commit",
+        "base_model": null
+      }
+    },
+    "model_id": "8d5e4c3b-2a19-8877-9665-4433221100ff",
+    "model_create_digest": null,
+    "source_fingerprint": "f78c3a39770b37e2818a79df0b3521d8124f6f7bfab8cd6ddf1a1da7620be7c4",
+    "version_create_digest": "3598084ba2c718e70292a413f85382753a55a9ecc80200b85d9b8970513458da",
+    "classification": {
+      "source_mutability": "unknown",
+      "verification_level": "operator_attested",
+      "evidence_digest": null
+    }
+  },
+  "canonical": "{\"classification\":{\"evidence_digest\":null,\"source_mutability\":\"unknown\",\"verification_level\":\"operator_attested\"},\"model_create_digest\":null,\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"normalized_request\":{\"source\":{\"base_model\":null,\"kind\":\"repository_reference\",\"provider\":\"hugging_face\",\"repository_id\":\"Qwen/Qwen2.5-7B\",\"revision\":\"abc123\",\"revision_kind\":\"commit\"},\"target\":{\"kind\":\"existing_model\",\"model_id\":\"8d5e4c3b-2a19-8877-9665-4433221100ff\"},\"version_label\":\"repo-r1\"},\"plan_profile\":\"model-registration-plan-repository-v1\",\"source_fingerprint\":\"f78c3a39770b37e2818a79df0b3521d8124f6f7bfab8cd6ddf1a1da7620be7c4\",\"version_create_digest\":\"3598084ba2c718e70292a413f85382753a55a9ecc80200b85d9b8970513458da\"}",
+  "digest": "1ea01b184e9fda5f184e08c675332bc45438e2e1e851534bb4927e3ee71606f5",
+  "independent_digest": "1ea01b184e9fda5f184e08c675332bc45438e2e1e851534bb4927e3ee71606f5"
+}

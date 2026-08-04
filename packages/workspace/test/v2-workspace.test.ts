@@ -20,6 +20,10 @@ import {
   type CatalogModelDeploymentListFilterV2,
   type CatalogModelDeploymentPageV2,
   type CatalogModelDeploymentRowV2,
+  type CatalogModelRegistrationResultV2,
+  type CatalogModelRowV2,
+  type CatalogModelVersionRowV2,
+  type CatalogModelVersionSourceV2,
   type CatalogRefPageV2,
   type CatalogRefRowV2,
   type RestoreRefResultV2 as CatalogRestoreRefResultV2,
@@ -34,6 +38,7 @@ import {
   type CompleteTransformJobV2,
   type CreateEvaluationRunV2,
   type CreateModelDeploymentV2,
+  type CreateModelRegistrationV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
   type FailEvaluationRunArchiveV2,
@@ -2888,6 +2893,255 @@ describe('V2Workspace evaluation runs', () => {
   })
 })
 
+function modelArtifactRowForRegistration(): CatalogModelArtifactRowV2 {
+  const id = '22222222-2222-4222-8222-222222222222'
+  return {
+    id,
+    namespaceId: NAMESPACE_ID,
+    displayName: 'registry-lora',
+    artifactKind: 'lora_adapter',
+    artifactFormat: 'swift-lora-adapter-v1',
+    archiveFormat: 'deterministic-tar-zst-v1',
+    archiveDigest: '1'.repeat(64),
+    archiveSizeBytes: 1_024n,
+    objectLocator: `objects/v2/model-artifact-v1/11/${'1'.repeat(64)}.tar.zst`,
+    manifestDigest: '2'.repeat(64),
+    manifest: {
+      manifest_version: 'model-artifact-manifest-v1',
+      artifact_kind: 'lora_adapter',
+      artifact_format: 'swift-lora-adapter-v1',
+      archive_format: 'deterministic-tar-zst-v1',
+      archive_digest: '1'.repeat(64),
+      archive_size_bytes: 1_024,
+      output_snapshot_digest: '3'.repeat(64),
+      files: [
+        { path: 'adapter_config.json', digest: '4'.repeat(64), size_bytes: 128 },
+        { path: 'adapter_model.safetensors', digest: '5'.repeat(64), size_bytes: 896 },
+      ],
+      source: {
+        studio_session_id: '44444444-4444-4444-8444-444444444444',
+        upstream_commit: '6'.repeat(40),
+        image_digest: '7'.repeat(64),
+      },
+      dataset_lineage: {
+        status: 'verified',
+        dataset_version: '8'.repeat(64),
+        dataset_export_digest: '9'.repeat(64),
+      },
+      base_model: {
+        reference: 'Qwen/Qwen2.5-7B',
+        revision: 'abc123',
+        binding_status: 'verified',
+      },
+      training_summary: {
+        train_stage: 'sft',
+        tuner_type: 'lora',
+        lora_rank: 8,
+        lora_alpha: 16,
+        lora_dropout: 0.05,
+        num_train_epochs: null,
+        max_steps: 5,
+        learning_rate: 0.0001,
+        max_length: 128,
+        dtype: 'bfloat16',
+        seed: 42,
+        redacted_fields_count: 0,
+      },
+      created_at: NOW.toISOString(),
+      created_by: 'databench',
+    },
+    sourceKind: 'swift_studio_session',
+    sourceSessionId: '44444444-4444-4444-8444-444444444444',
+    sourceImportId: '55555555-5555-4555-8555-555555555555',
+    datasetLineageStatus: 'verified',
+    datasetVersion: '8'.repeat(64),
+    datasetExportDigest: '9'.repeat(64),
+    baseModelReference: 'Qwen/Qwen2.5-7B',
+    baseModelRevision: 'abc123',
+    baseModelBindingStatus: 'verified',
+    upstreamCommit: '6'.repeat(40),
+    imageDigest: '7'.repeat(64),
+    createdAt: NOW,
+  }
+}
+
+describe('V2Workspace Model Registry', () => {
+  test('inspects immutable Artifact metadata and exactly replays a committed registration', async () => {
+    const rig = createRig()
+    const artifact = modelArtifactRowForRegistration()
+    rig.catalog.modelArtifacts.set(artifact.id, artifact)
+    const request = {
+      target: {
+        kind: 'create_model' as const,
+        key: ' QWEN-REGISTRY ',
+        display_name: ' Qwen 中文模型 ',
+        description: ' Artifact registration ',
+        task_family: ' CHAT ',
+        tags: ['中文', 'candidate', '中文'],
+      },
+      version_label: ' LoRA 微调版 ',
+      source: { kind: 'databench_artifact' as const, artifact_id: artifact.id },
+      alias: { alias: 'candidate' as const, expected_version_id: null },
+    }
+
+    const plan = await rig.workspace.inspectModelRegistration(request)
+    const repeatedPlan = await rig.workspace.inspectModelRegistration(request)
+    expect(repeatedPlan).toEqual(plan)
+    expect(plan).toMatchObject({
+      plan_profile: 'model-registration-plan-artifact-v1',
+      normalized_request: {
+        target: {
+          key: 'qwen-registry',
+          display_name: 'Qwen 中文模型',
+          task_family: 'chat',
+          tags: ['candidate', '中文'],
+        },
+        version_label: 'LoRA 微调版',
+      },
+      classification: {
+        source_mutability: 'immutable',
+        verification_level: 'content_verified',
+      },
+      warnings: [],
+    })
+    expect(plan.model_id).toMatch(/^[0-9a-f-]{36}$/)
+
+    const created = await rig.workspace.commitModelRegistration({
+      request,
+      expected_registration_digest: plan.registration_digest,
+    })
+    const replayed = await rig.workspace.commitModelRegistration({
+      request,
+      expected_registration_digest: plan.registration_digest,
+    })
+    expect(created).toMatchObject({
+      model_id: plan.model_id,
+      source_fingerprint: plan.source_fingerprint,
+      alias: 'candidate',
+      replayed: false,
+    })
+    expect(replayed).toEqual({ ...created, replayed: true })
+  })
+
+  test('keeps repository registration declared-only with no network dependency', async () => {
+    const rig = createRig()
+    const request = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'repo-model',
+        display_name: 'Repository Model',
+        description: '',
+        task_family: null,
+        tags: [],
+      },
+      version_label: 'r1',
+      source: {
+        kind: 'repository_reference' as const,
+        provider: 'hugging_face' as const,
+        repository_id: 'Qwen/Qwen2.5-7B',
+        revision: 'abc123',
+        revision_kind: 'commit' as const,
+        base_model: null,
+      },
+    }
+    const plan = await rig.workspace.inspectModelRegistration(request)
+    expect(plan).toMatchObject({
+      plan_profile: 'model-registration-plan-repository-v1',
+      classification: {
+        source_mutability: 'unknown',
+        verification_level: 'operator_attested',
+      },
+      warnings: [{ code: 'repository_revision_unverified' }],
+    })
+    await expect(
+      rig.workspace.commitModelRegistration({
+        request,
+        expected_registration_digest: plan.registration_digest,
+      }),
+    ).resolves.toMatchObject({ replayed: false })
+  })
+
+  test('fails before writes on digest drift, mutable Alias, and deferred Deployment profiles', async () => {
+    const rig = createRig()
+    const repositoryRequest = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'mutable-repo',
+        display_name: 'Mutable Repository',
+        description: '',
+        task_family: null,
+        tags: [],
+      },
+      version_label: 'latest',
+      source: {
+        kind: 'repository_reference' as const,
+        provider: 'hugging_face' as const,
+        repository_id: 'Qwen/Qwen2.5-7B',
+        revision: 'latest',
+        revision_kind: 'tag' as const,
+        base_model: null,
+      },
+      alias: { alias: 'candidate' as const, expected_version_id: null },
+    }
+    const repositoryPlan = await rig.workspace.inspectModelRegistration(repositoryRequest)
+    await expect(
+      rig.workspace.commitModelRegistration({
+        request: repositoryRequest,
+        expected_registration_digest: '0'.repeat(64),
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' })
+    await expect(
+      rig.workspace.commitModelRegistration({
+        request: repositoryRequest,
+        expected_registration_digest: repositoryPlan.registration_digest,
+      }),
+    ).rejects.toMatchObject({ code: 'validation_error' })
+
+    const serviceRequest = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'service-model',
+        display_name: 'Service Model',
+        description: '',
+        task_family: null,
+        tags: [],
+      },
+      version_label: 'r1',
+      source: {
+        kind: 'existing_service' as const,
+        provider: 'openai_compatible' as const,
+        external_model_ref: 'qwen',
+        external_version_ref: 'r1',
+        declared_reference_kind: 'immutable_version' as const,
+        base_model: null,
+        deployment: {
+          display_name: 'Internal Service',
+          served_model_name: 'qwen',
+          connectivity_scope: 'private_network' as const,
+          endpoint_base_url: 'https://models.example.test/v1/',
+          auth_profile: 'none' as const,
+          credential_ref: null,
+          declared_capabilities: { interfaces: ['chat_completions' as const], context_limit: null },
+        },
+      },
+    }
+    const servicePlan = await rig.workspace.inspectModelRegistration(serviceRequest)
+    expect(servicePlan.normalized_request.source).toMatchObject({
+      deployment: { endpoint_base_url: 'https://models.example.test/v1' },
+    })
+    await expect(
+      rig.workspace.commitModelRegistration({
+        request: serviceRequest,
+        expected_registration_digest: servicePlan.registration_digest,
+      }),
+    ).rejects.toMatchObject({
+      code: 'unsupported_profile',
+      detail: { reason: 'model_deployment_v2_not_enabled' },
+    })
+    expect(rig.catalog.registerModelVersion).toHaveBeenCalledTimes(0)
+  })
+})
+
 describe('V2Workspace Model Deployments', () => {
   test('normalizes an operator registration and derives Evaluation lineage from its opaque ID', async () => {
     const rig = createRig()
@@ -3181,6 +3435,12 @@ class FakeCatalog implements V2WorkspaceCatalog {
   readonly evaluationRuns = new Map<string, CatalogEvaluationRunRowV2>()
   readonly modelArtifacts = new Map<string, CatalogModelArtifactRowV2>()
   readonly modelDeployments = new Map<string, CatalogModelDeploymentRowV2>()
+  readonly models = new Map<string, CatalogModelRowV2>()
+  readonly modelVersions = new Map<
+    string,
+    { readonly version: CatalogModelVersionRowV2; readonly source: CatalogModelVersionSourceV2 }
+  >()
+  readonly modelRegistrationResults = new Map<string, CatalogModelRegistrationResultV2>()
   readonly claims = new Map<string, CatalogIdentityClaimRowV2>()
   readonly listPages = new Map<string | null, CatalogRefPageV2>()
   readonly deletedListPages = new Map<string | null, CatalogRefPageV2>()
@@ -3524,6 +3784,81 @@ class FakeCatalog implements V2WorkspaceCatalog {
     async (namespaceId: string, id: string): Promise<CatalogModelArtifactRowV2 | null> => {
       const row = this.modelArtifacts.get(id)
       return row?.namespaceId === namespaceId ? row : null
+    },
+  )
+
+  readonly getModel = vi.fn(
+    async (namespaceId: string, modelId: string): Promise<CatalogModelRowV2 | null> => {
+      const row = this.models.get(modelId)
+      return row?.namespaceId === namespaceId ? row : null
+    },
+  )
+
+  readonly getModelVersion = vi.fn(
+    async (
+      namespaceId: string,
+      versionId: string,
+    ): Promise<{
+      readonly version: CatalogModelVersionRowV2
+      readonly source: CatalogModelVersionSourceV2
+    } | null> => {
+      const row = this.modelVersions.get(versionId)
+      return row?.version.namespaceId === namespaceId ? row : null
+    },
+  )
+
+  readonly registerModelVersion = vi.fn(
+    async (input: CreateModelRegistrationV2): Promise<CatalogModelRegistrationResultV2> => {
+      const replay = this.modelRegistrationResults.get(input.registrationDigest)
+      if (replay !== undefined) return { ...replay, replayed: true }
+      const existingModel =
+        input.target.kind === 'existing_model' ? this.models.get(input.target.modelId) : undefined
+      const model: CatalogModelRowV2 =
+        input.target.kind === 'create_model'
+          ? {
+              ...input.target.model,
+              metadataRevision: 0n,
+              archivedAt: null,
+              createdAt: NOW,
+              updatedAt: NOW,
+            }
+          : (existingModel ??
+            (() => {
+              throw new Error('fake Model target missing')
+            })())
+      const version: CatalogModelVersionRowV2 = { ...input.version, createdAt: NOW }
+      const alias =
+        input.alias === null
+          ? null
+          : {
+              namespaceId: input.namespaceId,
+              modelId: model.id,
+              alias: input.alias.alias,
+              versionId: version.id,
+              createdAt: NOW,
+              updatedAt: NOW,
+            }
+      const result: CatalogModelRegistrationResultV2 = {
+        model,
+        version,
+        source: input.source,
+        alias,
+        claim: {
+          namespaceId: input.namespaceId,
+          registrationDigest: input.registrationDigest,
+          planProfile: input.planProfile,
+          normalizedRequest: input.normalizedRequest,
+          modelId: model.id,
+          modelVersionId: version.id,
+          aliasName: alias?.alias ?? null,
+          createdAt: NOW,
+        },
+        replayed: false,
+      }
+      this.models.set(model.id, model)
+      this.modelVersions.set(version.id, { version, source: input.source })
+      this.modelRegistrationResults.set(input.registrationDigest, result)
+      return result
     },
   )
 

@@ -1,0 +1,14 @@
+{
+  "profile": "model-source-fingerprint-service-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d736f757263652d66696e6765727072696e742e6d6f64656c2d736f757263652d66696e6765727072696e742d736572766963652d763100",
+  "input": {
+    "source_fingerprint_profile": "model-source-fingerprint-service-v1",
+    "provider": "openai_compatible",
+    "external_model_ref": "供应商/Qwen",
+    "external_version_ref": "r1",
+    "declared_reference_kind": "immutable_version"
+  },
+  "canonical": "{\"declared_reference_kind\":\"immutable_version\",\"external_model_ref\":\"供应商/Qwen\",\"external_version_ref\":\"r1\",\"provider\":\"openai_compatible\",\"source_fingerprint_profile\":\"model-source-fingerprint-service-v1\"}",
+  "digest": "67f42bcad29a82a385d0475890df577bf9658c6a85e5dee787af94c4578d65d4",
+  "independent_digest": "67f42bcad29a82a385d0475890df577bf9658c6a85e5dee787af94c4578d65d4"
+}

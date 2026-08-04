@@ -66,6 +66,12 @@ export {
   resolvedModelDeploymentFromCatalogV2,
 } from './model-deployment.js'
 export {
+  commitModelRegistrationV2,
+  inspectModelRegistrationV2,
+  type ModelRegistrationCommitResultV2,
+  type V2ModelRegistrationCatalog,
+} from './model-registration.js'
+export {
   SWIFT_STUDIO_PATH_V2,
   swiftStudioProviderArtifactImportIdForDigestV2,
   swiftStudioProviderSessionIdForDigestV2,

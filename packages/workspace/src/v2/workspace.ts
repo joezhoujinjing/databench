@@ -21,6 +21,10 @@ import {
   type CatalogModelDeploymentListFilterV2,
   type CatalogModelDeploymentPageV2,
   type CatalogModelDeploymentRowV2,
+  type CatalogModelRegistrationResultV2,
+  type CatalogModelRowV2,
+  type CatalogModelVersionRowV2,
+  type CatalogModelVersionSourceV2,
   type CatalogRefPageV2,
   type CatalogRefRowV2,
   type RestoreRefResultV2 as CatalogRestoreRefResultV2,
@@ -42,6 +46,7 @@ import {
   type CreateEvaluationRunV2,
   type CreateModelArtifactImportV2,
   type CreateModelDeploymentV2,
+  type CreateModelRegistrationV2,
   type CreateSwiftStudioSessionV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
@@ -112,6 +117,7 @@ import {
   CancelEvaluationRunRequestV2Schema,
   type CanonicalDraftRecordV1,
   CapacityExceededError,
+  type CommitModelRegistrationRequestV2,
   type CompleteEvaluationRunRequestV2,
   CompleteEvaluationRunRequestV2Schema,
   ConflictError,
@@ -203,6 +209,8 @@ import {
   type ModelDeploymentPageV2,
   ModelDeploymentPageV2Schema,
   type ModelDeploymentV2,
+  type ModelRegistrationInspectRequestV2,
+  type ModelRegistrationPlanV2,
   NotFoundError,
   normalizeModelDeploymentEndpointBaseUrlV2,
   type PostTrainingRecordV2,
@@ -337,6 +345,11 @@ import {
   resolvedModelDeploymentFromCatalogV2,
 } from './model-deployment.js'
 import {
+  commitModelRegistrationV2,
+  inspectModelRegistrationV2,
+  type ModelRegistrationCommitResultV2,
+} from './model-registration.js'
+import {
   swiftStudioProviderArtifactImportIdForDigestV2,
   swiftStudioProviderSessionIdForDigestV2,
   swiftStudioSessionFromCatalogV2,
@@ -422,6 +435,15 @@ export interface V2WorkspaceCatalog {
     input: TransitionEvaluationRunV2,
   ): Promise<CatalogEvaluationRunRowV2 | null>
   getModelArtifact(namespaceId: string, id: string): Promise<CatalogModelArtifactRowV2 | null>
+  registerModelVersion(input: CreateModelRegistrationV2): Promise<CatalogModelRegistrationResultV2>
+  getModel(namespaceId: string, modelId: string): Promise<CatalogModelRowV2 | null>
+  getModelVersion(
+    namespaceId: string,
+    versionId: string,
+  ): Promise<{
+    readonly version: CatalogModelVersionRowV2
+    readonly source: CatalogModelVersionSourceV2
+  } | null>
   createOrReadModelDeployment(input: CreateModelDeploymentV2): Promise<CatalogModelDeploymentRowV2>
   getModelDeployment(namespaceId: string, id: string): Promise<CatalogModelDeploymentRowV2 | null>
   listModelDeployments(
@@ -837,6 +859,22 @@ export class V2Workspace {
 
   postTrainingV2Capability(): Readonly<PostTrainingV2RuntimeCapability> {
     return this.#runtimeCapability
+  }
+
+  async inspectModelRegistration(
+    request: ModelRegistrationInspectRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelRegistrationPlanV2> {
+    const namespaceId = await this.#namespace(context.signal)
+    return await inspectModelRegistrationV2(this.#catalog, namespaceId, request, context.signal)
+  }
+
+  async commitModelRegistration(
+    request: CommitModelRegistrationRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelRegistrationCommitResultV2> {
+    const namespaceId = await this.#namespace(context.signal)
+    return await commitModelRegistrationV2(this.#catalog, namespaceId, request, context.signal)
   }
 
   async addRecords(

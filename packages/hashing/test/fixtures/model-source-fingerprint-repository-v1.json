@@ -1,0 +1,14 @@
+{
+  "profile": "model-source-fingerprint-repository-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d736f757263652d66696e6765727072696e742e6d6f64656c2d736f757263652d66696e6765727072696e742d7265706f7369746f72792d763100",
+  "input": {
+    "source_fingerprint_profile": "model-source-fingerprint-repository-v1",
+    "provider": "hugging_face",
+    "repository_id": "Qwen/Qwen2.5-7B",
+    "revision": "abc123",
+    "revision_kind": "commit"
+  },
+  "canonical": "{\"provider\":\"hugging_face\",\"repository_id\":\"Qwen/Qwen2.5-7B\",\"revision\":\"abc123\",\"revision_kind\":\"commit\",\"source_fingerprint_profile\":\"model-source-fingerprint-repository-v1\"}",
+  "digest": "f78c3a39770b37e2818a79df0b3521d8124f6f7bfab8cd6ddf1a1da7620be7c4",
+  "independent_digest": "f78c3a39770b37e2818a79df0b3521d8124f6f7bfab8cd6ddf1a1da7620be7c4"
+}
