@@ -186,7 +186,7 @@
       "path": "packages/schema/test/fixtures/model-source-evidence-v1.json",
       "assertion": "Locks bounded append-only provider evidence without storing provider response bodies or changing Version identity.",
       "source": "ADR 0019 section 3",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr5-model-deployment-create-v2",

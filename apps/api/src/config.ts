@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { isIP } from 'node:net'
+import { isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { type V2WorkspaceOpenOptions, v2ObjectStoreConfigFromEnv } from '@databench/workspace'
+import {
+  type V2ModelRepositoryOpenOptions,
+  type V2WorkspaceOpenOptions,
+  v2ObjectStoreConfigFromEnv,
+} from '@databench/workspace'
 import { z } from 'zod'
 import { type EvalScopeGatewayConfig, evalScopeGatewayConfigFromEnv } from './evalscope/config.js'
 import { type McpRuntimeConfig, mcpConfigFromEnv } from './mcp/config.js'
@@ -32,6 +37,14 @@ const EnvSchema = z
     DATABENCH_ROOT: z.string().default('./bench'),
     DATABENCH_V2_CURSOR_SECRET: z.string().min(16),
     DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN: optionalServiceToken(),
+    DATABENCH_MODEL_REPOSITORY_MODE: z.enum(['offline', 'connected']).default('offline'),
+    DATABENCH_MODEL_REPOSITORY_CONFIG: optionalAbsolutePath(),
+    DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(30_000)
+      .default(5_000),
     DATABENCH_SERVICE_CREDENTIAL: optionalServiceToken(),
     DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES: z.coerce
       .number()
@@ -120,6 +133,7 @@ export interface ApiConfig {
   readonly evalscope?: EvalScopeGatewayConfig
   readonly mcp: McpRuntimeConfig
   readonly modelDeploymentOperatorToken?: string
+  readonly modelRepository: V2ModelRepositoryOpenOptions
   readonly modelDeploymentServiceCredential?: string
   readonly openApiServerUrl?: string
   readonly port: number
@@ -147,6 +161,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       : {
           modelDeploymentOperatorToken: parsed.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN,
         }),
+    modelRepository: {
+      mode: parsed.DATABENCH_MODEL_REPOSITORY_MODE,
+      timeoutMs: parsed.DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS,
+      ...(parsed.DATABENCH_MODEL_REPOSITORY_CONFIG === undefined
+        ? {}
+        : { operatorConfigPath: parsed.DATABENCH_MODEL_REPOSITORY_CONFIG }),
+    },
     ...(parsed.DATABENCH_SERVICE_CREDENTIAL === undefined
       ? {}
       : { modelDeploymentServiceCredential: parsed.DATABENCH_SERVICE_CREDENTIAL }),
@@ -193,6 +214,19 @@ function optionalServiceToken() {
       .refine((value) => !/\s/u.test(value) && !hasControlCharacter(value), {
         message: 'Service token must not contain whitespace or control characters',
       })
+      .optional(),
+  )
+}
+
+function optionalAbsolutePath() {
+  return z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z
+      .string()
+      .trim()
+      .min(1)
+      .max(4_096)
+      .refine(isAbsolute, { message: 'Path must be absolute' })
       .optional(),
   )
 }

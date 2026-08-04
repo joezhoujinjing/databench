@@ -100,6 +100,11 @@
   `S4 non-GPU contract green / GPU deferred`。owner 已再次确认 GPU 全部后置。证据与实时状态见
   `docs/swift/STATUS.md`，S1 GPU 证据模板见
   `docs/swift/evidence/S1-GPU-STUDIO.md`。
+- ADR 0019 Model Registry 已完成 MR0-MR3。当前 `/models` 支持 immutable Model/Version、Artifact 注册、
+  candidate Alias、ModelScope offline declared-only 与 operator-managed Repository 注册、append-only source
+  evidence 和 refresh；Hugging Face adapter、Existing Service、Deployment v2、Evaluation v5/v6 与 hosted
+  secret backend 尚未实现。当前进入 MR4 endpoint/secret 安全底座，整体 capability 仍为 false，公网与
+  GPU gate 均未打开。证据与实时状态见 `docs/models/STATUS.md`。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -121,6 +126,8 @@
    `docs/evalscope/PLAN.md`、`docs/evalscope/STATUS.md` 和 E0 evidence。
 9. 若处理 ms-swift，依次读 ADR 0018、`docs/swift/TECHNICAL-DESIGN.md`、
    `docs/swift/PLAN.md` 与 `docs/swift/STATUS.md`。不要把后续 Training control plane 提前塞入 S0-S4。
+10. 若处理 Model Registry，依次读 ADR 0019、`docs/models/TECHNICAL-DESIGN.md`、
+    `docs/models/PLAN.md` 与 `docs/models/STATUS.md`，严格按 GMR0-GMR8 顺序实施。
 
 不要用旧 v1 migration inventory 覆盖当前实现。
 
@@ -136,6 +143,9 @@ Web
   /lineage/:ref
   /export/:ref
   /training
+  /models
+  /models/:modelId
+  /models/:modelId/versions/:versionId
   /evaluations
   /evaluations/tasks
   /evaluations/reports
@@ -153,6 +163,7 @@ CLI
   databench transform list|run
   databench ref list|show|move
   databench lineage show
+  databench model list|show
 
 REST
   /health /version /capabilities

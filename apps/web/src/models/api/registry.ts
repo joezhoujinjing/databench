@@ -8,11 +8,10 @@ export type ModelVersionPageV2 = components['schemas']['ModelVersionPageV2']
 export type ModelAliasPageV2 = components['schemas']['ModelAliasPageV2']
 export type ModelRegistrationCommitResultV2 =
   components['schemas']['ModelRegistrationCommitResultV2']
-export type ArtifactRegistrationRequestV2 =
-  components['schemas']['CommitArtifactModelRegistrationRequestV2']['request']
-export type ArtifactRegistrationCommitV2 =
-  components['schemas']['CommitArtifactModelRegistrationRequestV2']
-export type ArtifactRegistrationPlanV2 =
+export type ModelRegistrationRequestV2 = components['schemas']['ModelRegistryRegistrationRequestV2']
+export type ModelRegistrationCommitV2 =
+  components['schemas']['CommitModelRegistryRegistrationRequestV2']
+export type ModelRegistrationPlanV2 =
   paths['/v2/model-registrations:inspect']['post']['responses'][200]['content']['application/json']
 
 interface RegistryClientOptions {
@@ -98,9 +97,9 @@ export function listModelAliasesV2(
   )
 }
 
-export function inspectArtifactRegistrationV2(
-  options: RegistryClientOptions & { readonly request: ArtifactRegistrationRequestV2 },
-): Promise<ArtifactRegistrationPlanV2> {
+export function inspectModelRegistrationV2(
+  options: RegistryClientOptions & { readonly request: ModelRegistrationRequestV2 },
+): Promise<ModelRegistrationPlanV2> {
   return unwrapOpenApiResponse(
     createApiClient(options).POST('/v2/model-registrations:inspect', {
       ...requestOptions(options.signal),
@@ -109,8 +108,8 @@ export function inspectArtifactRegistrationV2(
   )
 }
 
-export function commitArtifactRegistrationV2(
-  options: RegistryClientOptions & { readonly request: ArtifactRegistrationCommitV2 },
+export function commitModelRegistrationV2(
+  options: RegistryClientOptions & { readonly request: ModelRegistrationCommitV2 },
 ): Promise<ModelRegistrationCommitResultV2> {
   const target = options.request.request.target
   if (target.kind === 'create_model') {
@@ -126,6 +125,18 @@ export function commitArtifactRegistrationV2(
       ...requestOptions(options.signal),
       params: { path: { model_id: target.model_id } },
       body: options.request,
+    }),
+  )
+}
+
+export function refreshModelSourceEvidenceV2(
+  options: RegistryClientOptions & { readonly versionId: string },
+): Promise<ModelVersionV2> {
+  return unwrapOpenApiResponse(
+    createApiClient(options).POST('/v2/model-versions/{version_id}:refresh-source-evidence', {
+      ...requestOptions(options.signal),
+      params: { path: { version_id: options.versionId } },
+      body: {},
     }),
   )
 }

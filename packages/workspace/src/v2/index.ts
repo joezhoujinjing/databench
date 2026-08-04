@@ -74,6 +74,14 @@ export {
   type V2ModelRegistrationCatalog,
 } from './model-registration.js'
 export {
+  DECLARED_ONLY_MODEL_REPOSITORY_RUNTIME_V2,
+  type ModelRepositoryReferenceV2,
+  type ModelRepositoryRuntimeModeV2,
+  openModelRepositoryRuntimeV2,
+  type V2ModelRepositoryOpenOptions,
+  type V2ModelRepositoryRuntime,
+} from './model-repository.js'
+export {
   SWIFT_STUDIO_PATH_V2,
   swiftStudioProviderArtifactImportIdForDigestV2,
   swiftStudioProviderSessionIdForDigestV2,

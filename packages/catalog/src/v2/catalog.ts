@@ -28,6 +28,7 @@ import {
   listModelsV2,
   listModelVersionsV2,
   registerModelVersionV2,
+  replayModelRegistrationV2,
   updateModelMetadataV2,
 } from './model-registry.js'
 import type {
@@ -1899,6 +1900,21 @@ export class V2Catalog {
     input: CreateModelRegistrationV2,
   ): Promise<CatalogModelRegistrationResultV2> {
     return await registerModelVersionV2(this.#client, input)
+  }
+
+  async replayModelRegistration(
+    namespaceId: string,
+    registrationDigest: string,
+    planProfile: CreateModelRegistrationV2['planProfile'],
+    normalizedRequest: { readonly [key: string]: CatalogJsonValueV2 },
+  ): Promise<CatalogModelRegistrationResultV2 | null> {
+    return await replayModelRegistrationV2(
+      this.#client,
+      namespaceId,
+      registrationDigest,
+      planProfile,
+      normalizedRequest,
+    )
   }
 
   async getModel(namespaceId: string, modelId: string): Promise<CatalogModelRowV2 | null> {

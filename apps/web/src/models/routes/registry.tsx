@@ -18,12 +18,12 @@ import {
 } from '@/components/ui/table.js'
 import { formatDateTime } from '@/lib/format.js'
 import {
-  type ArtifactRegistrationPlanV2,
-  type ArtifactRegistrationRequestV2,
-  commitArtifactRegistrationV2,
-  inspectArtifactRegistrationV2,
+  commitModelRegistrationV2,
+  inspectModelRegistrationV2,
   listModelsV2,
   type ModelPageV2,
+  type ModelRegistrationPlanV2,
+  type ModelRegistrationRequestV2,
 } from '@/models/api/registry.js'
 import { listModelArtifactsV2, type ModelArtifactV2 } from '@/training/api/artifacts.js'
 
@@ -327,8 +327,21 @@ function RegistrationWorkflow({
   const [taskFamily, setTaskFamily] = useState('chat')
   const [tags, setTags] = useState('')
   const [versionLabel, setVersionLabel] = useState('r1')
+  const [sourceKind, setSourceKind] = useState<'databench_artifact' | 'repository_reference'>(
+    'databench_artifact',
+  )
   const [artifactId, setArtifactId] = useState(initialArtifactId ?? '')
-  const [plan, setPlan] = useState<ArtifactRegistrationPlanV2 | null>(null)
+  const [repositoryProvider, setRepositoryProvider] = useState<'modelscope' | 'operator_managed'>(
+    'modelscope',
+  )
+  const [repositoryId, setRepositoryId] = useState('')
+  const [repositoryRevision, setRepositoryRevision] = useState('')
+  const [repositoryRevisionKind, setRepositoryRevisionKind] = useState<
+    'commit' | 'digest' | 'tag' | 'opaque'
+  >('commit')
+  const [baseModelReference, setBaseModelReference] = useState('')
+  const [baseModelRevision, setBaseModelRevision] = useState('')
+  const [plan, setPlan] = useState<ModelRegistrationPlanV2 | null>(null)
   const artifactsQuery = useQuery({
     queryKey: [connectionScope, base, 'model-registration-artifacts'],
     queryFn: ({ signal }) =>
@@ -340,11 +353,12 @@ function RegistrationWorkflow({
         signal,
         token,
       }),
+    enabled: sourceKind === 'databench_artifact',
     retry: false,
   })
   const selectedArtifact = artifactsQuery.data?.items.find((item) => item.id === artifactId)
-  const registrationRequest = useMemo<ArtifactRegistrationRequestV2 | null>(() => {
-    if (artifactId === '' || versionLabel.trim() === '') return null
+  const registrationRequest = useMemo<ModelRegistrationRequestV2 | null>(() => {
+    if (versionLabel.trim() === '') return null
     const target =
       targetKind === 'existing_model'
         ? existingModelId === ''
@@ -364,18 +378,47 @@ function RegistrationWorkflow({
                 .filter((item) => item !== ''),
             } as const)
     if (target === null) return null
+    if (sourceKind === 'databench_artifact') {
+      if (artifactId === '') return null
+      return {
+        target,
+        version_label: versionLabel.trim(),
+        alias: { alias: 'candidate', expected_version_id: null },
+        source: { kind: 'databench_artifact', artifact_id: artifactId },
+      }
+    }
+    if (repositoryId.trim() === '' || repositoryRevision.trim() === '') return null
     return {
       target,
       version_label: versionLabel.trim(),
-      alias: { alias: 'candidate', expected_version_id: null },
-      source: { kind: 'databench_artifact', artifact_id: artifactId },
+      source: {
+        kind: 'repository_reference',
+        provider: repositoryProvider,
+        repository_id: repositoryId.trim(),
+        revision: repositoryRevision.trim(),
+        revision_kind: repositoryRevisionKind,
+        base_model:
+          baseModelReference.trim() === ''
+            ? null
+            : {
+                reference: baseModelReference.trim(),
+                revision: baseModelRevision.trim() === '' ? null : baseModelRevision.trim(),
+              },
+      },
     }
   }, [
     artifactId,
+    baseModelReference,
+    baseModelRevision,
     description,
     displayName,
     existingModelId,
     modelKey,
+    repositoryId,
+    repositoryProvider,
+    repositoryRevision,
+    repositoryRevisionKind,
+    sourceKind,
     tags,
     targetKind,
     taskFamily,
@@ -384,7 +427,7 @@ function RegistrationWorkflow({
   const inspect = useMutation({
     mutationFn: async () => {
       if (registrationRequest === null) throw new Error('Registration request is incomplete')
-      return await inspectArtifactRegistrationV2({
+      return await inspectModelRegistrationV2({
         base,
         request: registrationRequest,
         token,
@@ -397,7 +440,7 @@ function RegistrationWorkflow({
       if (registrationRequest === null || plan === null) {
         throw new Error('Registration must be inspected before commit')
       }
-      return await commitArtifactRegistrationV2({
+      return await commitModelRegistrationV2({
         base,
         request: {
           request: registrationRequest,
@@ -438,7 +481,7 @@ function RegistrationWorkflow({
         </Button>
       </header>
       <ol className="mt-5 grid grid-cols-4 border-border border-y max-sm:grid-cols-2">
-        {['model', 'artifact', 'inspect', 'commit'].map((name, index) => (
+        {['model', 'source', 'inspect', 'commit'].map((name, index) => (
           <li
             aria-current={index === step ? 'step' : undefined}
             className={`flex items-center gap-2 border-border px-3 py-2 text-xs ${
@@ -507,21 +550,87 @@ function RegistrationWorkflow({
           </div>
         ) : null}
         {step === 1 ? (
-          <ArtifactPicker
-            artifacts={artifactsQuery.data?.items ?? []}
-            error={artifactsQuery.error}
-            loading={artifactsQuery.isLoading}
-            onChange={setArtifactId}
-            selected={artifactId}
-          />
+          <div className="space-y-4">
+            <FormSelect
+              label={t('models.wizard.sourceType')}
+              onChange={(value) => {
+                setSourceKind(value as typeof sourceKind)
+                setPlan(null)
+              }}
+              value={sourceKind}
+            >
+              <option value="databench_artifact">{t('models.wizard.sourceArtifact')}</option>
+              <option value="repository_reference">{t('models.wizard.sourceRepository')}</option>
+            </FormSelect>
+            {sourceKind === 'databench_artifact' ? (
+              <ArtifactPicker
+                artifacts={artifactsQuery.data?.items ?? []}
+                error={artifactsQuery.error}
+                loading={artifactsQuery.isLoading}
+                onChange={setArtifactId}
+                selected={artifactId}
+              />
+            ) : (
+              <div className="grid max-w-4xl grid-cols-2 gap-4 max-sm:grid-cols-1">
+                <FormSelect
+                  label={t('models.wizard.repositoryProvider')}
+                  onChange={(value) => setRepositoryProvider(value as typeof repositoryProvider)}
+                  value={repositoryProvider}
+                >
+                  <option value="modelscope">ModelScope</option>
+                  <option value="operator_managed">{t('models.wizard.operatorManaged')}</option>
+                </FormSelect>
+                <FormInput
+                  label={t('models.wizard.repositoryId')}
+                  onChange={setRepositoryId}
+                  value={repositoryId}
+                />
+                <FormInput
+                  label={t('models.wizard.repositoryRevision')}
+                  onChange={setRepositoryRevision}
+                  value={repositoryRevision}
+                />
+                <FormSelect
+                  label={t('models.wizard.revisionKind')}
+                  onChange={(value) =>
+                    setRepositoryRevisionKind(value as typeof repositoryRevisionKind)
+                  }
+                  value={repositoryRevisionKind}
+                >
+                  {(['commit', 'digest', 'tag', 'opaque'] as const).map((kind) => (
+                    <option key={kind} value={kind}>
+                      {t(`models.wizard.revisionKinds.${kind}`)}
+                    </option>
+                  ))}
+                </FormSelect>
+                <FormInput
+                  label={t('models.wizard.baseModelOptional')}
+                  onChange={setBaseModelReference}
+                  value={baseModelReference}
+                />
+                <FormInput
+                  label={t('models.wizard.baseRevisionOptional')}
+                  onChange={setBaseModelRevision}
+                  value={baseModelRevision}
+                />
+                <p className="col-span-2 border-primary border-l-2 bg-accent/45 px-4 py-3 text-muted-foreground text-sm max-sm:col-span-1">
+                  {t('models.wizard.repositoryBoundary')}
+                </p>
+              </div>
+            )}
+          </div>
         ) : null}
         {step === 2 ? (
           <div className="space-y-4">
             <p className="text-muted-foreground text-sm">{t('models.wizard.inspectHint')}</p>
             <SummaryLine label={t('models.wizard.target')} value={targetKind} />
             <SummaryLine
-              label={t('models.wizard.artifact')}
-              value={selectedArtifact?.display_name ?? artifactId}
+              label={t('models.wizard.sourceType')}
+              value={
+                sourceKind === 'databench_artifact'
+                  ? (selectedArtifact?.display_name ?? artifactId)
+                  : `${repositoryProvider} · ${repositoryId}@${repositoryRevision}`
+              }
             />
             {plan === null ? null : (
               <div className="border-primary border-l-2 bg-accent/55 px-4 py-3">
@@ -585,7 +694,15 @@ function RegistrationWorkflow({
           </Button>
         ) : null}
         {step === 1 ? (
-          <Button disabled={artifactId === ''} onClick={() => setStep(2)} type="button">
+          <Button
+            disabled={
+              sourceKind === 'databench_artifact'
+                ? artifactId === ''
+                : repositoryId.trim() === '' || repositoryRevision.trim() === ''
+            }
+            onClick={() => setStep(2)}
+            type="button"
+          >
             {t('common.next')}
             <ArrowRight aria-hidden="true" size={15} />
           </Button>

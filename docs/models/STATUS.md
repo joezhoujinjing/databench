@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- model-registry-status
-current_step: MR3
-last_completed_step: MR2
+current_step: MR4
+last_completed_step: MR3
 capability_enabled: false
 runtime_implemented: true
 public_network_activation: false
@@ -14,15 +14,15 @@ gpu_gate: deferred
 
 ## 当前检查点
 
-- **工作分支:** `feat/model-registry-mr2`
-- **代码基线:** `feat/model-registry-mr1@3195143`
-- **当前 Step:** MR3——GMR2 全绿并单独提交后，依计划进入 Repository reference 与 evidence
+- **工作分支:** `feat/model-registry-mr3`
+- **代码基线:** `feat/model-registry-mr2@9740987`
+- **当前 Step:** MR4——Endpoint policy、受控 transport 与 offline secret registry
 - **Owner 范围:** MR2 candidate Alias；MR3 ModelScope + operator-managed；CLI MR2 read/MR8 write；
   一级导航“数据集 / 训练 / 模型 / 测评”
-- **Runtime:** MR2 已实现 Databench Artifact Inspect/Commit、candidate Alias、legacy Deployment 显式
-  adoption、基础 REST/Web/CLI read 产品面；Repository/Service、Deployment v2 与 Evaluation v5/v6 尚未实现
-- **Capability:** 整体 Model Registry capability 仍未启用；MR2 只开放 Artifact 来源的基础产品闭环，不能据此
-  宣称三来源、version-bound Deployment 或新 Evaluation 已完成
+- **Runtime:** MR3 已完成 ModelScope/operator-managed Repository Inspect/Commit、append-only source
+  evidence、refresh 与 offline declared-only；Service、Deployment v2 与 Evaluation v5/v6 尚未实现
+- **Capability:** 整体 Model Registry capability 仍未启用；MR3 只增加 Repository 引用与证据，
+  不能据此宣称三来源、version-bound Deployment 或新 Evaluation 已完成
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
 - **GPU/V16/V17:** 状态不变，Model Registry 的实施不自动完成 V16/V17，也不打开 GPU gate
 
@@ -33,7 +33,7 @@ gpu_gate: deferred
 | MR0 | 决策、fixtures 与状态基线 | ✅ | `feat/model-registry-mr0` | GMR0 green | 只含 docs/scripts/package gate |
 | MR1 | Model/Version identity 与 Catalog | ✅ | `feat/model-registry-mr1` | GMR1 green | internal only；capability false |
 | MR2 | Artifact 注册与基础产品面 | ✅ | `feat/model-registry-mr2` | GMR2 green | candidate Alias + CLI read；capability false |
-| MR3 | Repository reference 与 evidence | ⬜ | | GMR3 | ModelScope + operator-managed |
+| MR3 | Repository reference 与 evidence | ✅ | `feat/model-registry-mr3` | GMR3 green | ModelScope + operator-managed |
 | MR4 | Endpoint/secret 安全底座 | ⬜ | | GMR4 | 包含 legacy network hardening |
 | MR5 | Existing Service 与 Deployment v2 | ⬜ | | GMR5 | internal v1/v2 隔离 |
 | MR6 | Evaluation v5/v6 | ⬜ | | GMR6 | 不改历史 identity |
@@ -126,3 +126,36 @@ MR0 不修改 `packages/`、`apps/`、`workers/`、`prisma/`、`deploy/` 或 `op
 
 GMR2 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不实现
 Repository runtime、Existing Service、Deployment v2、Evaluation v5/v6，也不自动完成 V16/V17。
+
+## GMR3 完成证据
+
+- [x] 首批 runtime provider 为 ModelScope + operator-managed；Hugging Face 只保留 schema/profile，未启用
+  adapter；
+- [x] canonical repository locator、revision kind、独立 `model-source-evidence-v1` domain/digest/UUID 与
+  BLAKE3 fixed vector；
+- [x] offline declared-only 与 connected bounded resolution；ModelScope exact origin、redirect/credential/
+  referrer/cache 关闭，以及 media type/body/depth/node/timeout 限制；
+- [x] append-only evidence、semantic replay、revision drift、availability/license/cache 投影与
+  `:refresh-source-evidence`；
+- [x] initial evidence、Model/Version/source/Alias/claim 同事务，durable replay 不访问 provider；
+- [x] operator-managed realpath containment、allowlisted-root no-symlink、`O_NOFOLLOW`、regular-file、inode/
+  device/size/mtime race 防护，public projection 不泄漏本地路径或 raw response；
+- [x] Repository 注册向导、Version detail、materialize boundary、中英文与响应式 Web；
+- [x] fresh/forward PostgreSQL migration、真实 PostgreSQL + MinIO、全仓与浏览器 gates。
+
+2026-08-05 实际通过：
+
+- `pnpm exec prisma format`、`pnpm exec prisma validate`；
+- `pnpm lint`、`pnpm build`（initial JS 949955 / 950000 bytes）、`pnpm typecheck`、`pnpm test`；
+- `pnpm openapi:check`、`pnpm models:status:test`、`pnpm models:status:check`、
+  `pnpm v2:status:check`；
+- `pnpm peers check`、`pnpm models:migration:check`、`pnpm offline:check`；
+- `RUN_MINIO_STORE_TESTS=true pnpm --filter @databench/workspace test`（200 passed / 10 skipped）；
+- `git diff --check`；
+- 浏览器验证 ModelScope offline declared-only Inspect→Commit、offline direct refresh typed fail-closed、
+  operator-managed provider-verified registration 与 evidence replay refresh、中文/English、1440×1000
+  desktop 与 390×844 narrow layout；新页面 console 为 0 error / 0 warning。
+
+GMR3 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不下载
+权重、不创建 Artifact，也不实现 Existing Service、Deployment v2、Evaluation v5/v6 或 hosted secret
+backend；MR4 必须先完成 endpoint/secret 安全底座与 legacy network hardening。

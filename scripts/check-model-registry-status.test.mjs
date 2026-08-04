@@ -72,10 +72,11 @@ test('rejects a false-green product capability', async () => {
     'status',
     (document) =>
       document
-        .replace('current_step: MR3', 'current_step: MR2')
-        .replace('last_completed_step: MR2', 'last_completed_step: MR1')
+        .replace('current_step: MR4', 'current_step: MR2')
+        .replace('last_completed_step: MR3', 'last_completed_step: MR1')
         .replace('capability_enabled: false', 'capability_enabled: true')
-        .replace(/^\| MR2 \|(.*?)\| (?:⬜|🔄|✅|⛔) \|/m, '| MR2 |$1| ⬜ |'),
+        .replace(/^\| MR2 \|(.*?)\| (?:⬜|🔄|✅|⛔) \|/m, '| MR2 |$1| ⬜ |')
+        .replace(/^\| MR3 \|(.*?)\| (?:⬜|🔄|✅|⛔) \|/m, '| MR3 |$1| ⬜ |'),
     /capability_enabled must remain false until MR2 is complete/,
   )
 })
@@ -85,8 +86,9 @@ test('rejects a false-green runtime implementation', async () => {
     'status',
     (document) =>
       document
-        .replace('current_step: MR3', 'current_step: MR1')
-        .replace('last_completed_step: MR2', 'last_completed_step: MR0')
+        .replace('current_step: MR4', 'current_step: MR1')
+        .replace('last_completed_step: MR3', 'last_completed_step: MR0')
+        .replace(/^\| MR3 \|(.*?)\| (?:⬜|🔄|✅|⛔) \|/m, '| MR3 |$1| ⬜ |')
         .replace(/^\| MR2 \|(.*?)\| (?:⬜|🔄|✅|⛔) \|/m, '| MR2 |$1| ⬜ |')
         .replace(/^\| MR1 \|(.*?)\| (?:⬜|🔄|✅|⛔) \|/m, '| MR1 |$1| ⬜ |'),
     /runtime_implemented must remain false until MR1 is complete/,

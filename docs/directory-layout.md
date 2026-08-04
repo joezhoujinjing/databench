@@ -82,7 +82,7 @@ apps/api/
 │  ├─ index.ts                 runtime owner；装配 Workspace 并启动 Hono
 │  ├─ app.ts                   OpenAPIHono 工厂；挂 meta 与 /v2 routes
 │  ├─ capabilities.ts          当前能力声明
-│  ├─ config.ts                DB、Store、CORS、cursor、PORT 配置
+│  ├─ config.ts                DB、Store、CORS、cursor、Model Repository、PORT 配置
 │  ├─ context.ts               Hono context 中的 V2Workspace
 │  ├─ openapi.ts               OpenAPI 元信息与 server URL
 │  ├─ response.ts              REST/MCP 共用 response stream 与附件 header
@@ -179,7 +179,7 @@ apps/web/
 │  ├─ main.tsx
 │  ├─ router.tsx                无版本产品 route tree
 │  ├─ routes/
-│  │  ├─ __root.tsx             数据集/训练/测评一级导航与响应式工作区布局
+│  │  ├─ __root.tsx             数据集/训练/模型/测评一级导航与响应式工作区布局
 │  │  ├─ index.tsx
 │  │  └─ not-found.tsx
 │  ├─ api/
@@ -405,7 +405,7 @@ src/
    ├─ workspace.ts · batch-transform.ts · evaluation.ts
    ├─ swift-studio.ts · swift-studio-provider.ts
    ├─ model-artifact.ts · model-deployment.ts
-   ├─ model.ts · model-registration.ts
+   ├─ model.ts · model-registration.ts · model-repository.ts
    ├─ identity-allocator.ts
    ├─ canonical-draft-identity.ts
    ├─ canonical-draft-materializer.ts
@@ -418,8 +418,9 @@ src/
 这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
 deterministic identity/materialize/import、persist、transform、CAS ref、record/dataset lineage、
 audit、converter inspect/export、evaluation run exact binding/状态机与取消语义，以及 Swift Studio Session、
-Model Artifact import/finalize/download、Artifact-source Model registration、candidate Alias、legacy
-Deployment adoption、Model Deployment registry/health/resolve 与 Deployment-bound Evaluation lineage 编排。
+Model Artifact import/finalize/download、Artifact/Repository-source Model registration、append-only source
+evidence/refresh、candidate Alias、legacy Deployment adoption、Model Deployment registry/health/resolve 与
+Deployment-bound Evaluation lineage 编排。
 
 ## Tooling 与根目录
 
@@ -453,7 +454,8 @@ prisma/
    ├─ 0013_model_deployments_v2/
    ├─ 0014_evaluation_metric_selection_v2/
    ├─ 0015_model_registry_v2/
-   └─ 0016_model_registry_artifact_product_v2/
+   ├─ 0016_model_registry_artifact_product_v2/
+   └─ 0017_model_repository_evidence_v2/
 ```
 
 EvalScope E0 另有：

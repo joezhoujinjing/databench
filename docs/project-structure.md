@@ -202,6 +202,9 @@ packages/<name>/
   output/input volume、稳定 operator/HMAC 配置、drain 生命周期与 4 CPU / 12 GiB 容量边界。
 - 离线 Swift：作为第八张 pinned CUDA 镜像随 bundle 交付，默认关闭；operator 显式启用单 GPU
   profile，模型从 `/srv/databench/swift-models` 只读挂载，Session workspace 独立持久化。
+- Model Repository：API 默认 `offline`，ModelScope 只有显式 `connected` 才执行有界 metadata
+  resolution；operator-managed 只通过部署配置中的 opaque alias 解析 allowlisted root，公共 wire/PG
+  不保存真实路径或 provider response body。
 - 离线增量发布：`build-update-bundle.sh` 只构建变化的应用镜像，并精确绑定已安装
   `base_version + bundle SHA-256`；目标机 `upgrade.sh` 合成完整八镜像 release。它不提供首次
   安装能力，运行契约变化仍发布完整包。

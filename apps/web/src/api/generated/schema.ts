@@ -581,7 +581,7 @@ export interface paths {
     }
     get?: never
     put?: never
-    post: operations['inspectArtifactModelRegistrationV2']
+    post: operations['inspectModelRegistrationV2']
     delete?: never
     options?: never
     head?: never
@@ -598,6 +598,22 @@ export interface paths {
     get: operations['getModelVersionV2']
     put?: never
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/model-versions/{version_id}:refresh-source-evidence': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['refreshModelSourceEvidenceV2']
     delete?: never
     options?: never
     head?: never
@@ -645,7 +661,7 @@ export interface paths {
     }
     get?: never
     put?: never
-    post: operations['registerArtifactModelV2']
+    post: operations['registerModelV2']
     delete?: never
     options?: never
     head?: never
@@ -757,7 +773,7 @@ export interface paths {
     }
     get?: never
     put?: never
-    post: operations['registerArtifactModelVersionV2']
+    post: operations['registerModelVersionV2']
     delete?: never
     options?: never
     head?: never
@@ -1108,53 +1124,9 @@ export interface components {
     }
     CheckModelDeploymentRequestV2: Record<string, never>
     CloseSwiftStudioSessionRequestV2: Record<string, never>
-    CommitArtifactModelRegistrationRequestV2: {
+    CommitModelRegistryRegistrationRequestV2: {
       expected_registration_digest: string
-      request: {
-        alias?: {
-          /** @enum {string} */
-          alias: 'candidate' | 'staging' | 'production'
-          /** Format: uuid */
-          expected_version_id: string | null
-        }
-        source: {
-          /** Format: uuid */
-          artifact_id: string
-          deployment?: {
-            /** @enum {string} */
-            auth_profile: 'none' | 'bearer_ref'
-            /** @enum {string} */
-            connectivity_scope: 'private_network' | 'public_network'
-            credential_ref: string | null
-            declared_capabilities: {
-              context_limit: number | null
-              interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
-            }
-            display_name: string
-            endpoint_base_url: string
-            served_model_name: string
-          }
-          /** @enum {string} */
-          kind: 'databench_artifact'
-        }
-        target:
-          | {
-              description: string
-              display_name: string
-              key: string
-              /** @enum {string} */
-              kind: 'create_model'
-              tags: string[]
-              task_family: string | null
-            }
-          | {
-              /** @enum {string} */
-              kind: 'existing_model'
-              /** Format: uuid */
-              model_id: string
-            }
-        version_label: string
-      }
+      request: components['schemas']['ModelRegistryRegistrationRequestV2']
     }
     CompleteEvaluationRunRequestV2: {
       metrics: components['schemas']['EvaluationMetricV2'][]
@@ -1884,6 +1856,275 @@ export interface components {
       replayed: boolean
       source_fingerprint: string
     }
+    ModelRegistryRegistrationPlanV2:
+      | {
+          classification: {
+            evidence_digest: string | null
+            /** @enum {string} */
+            source_mutability: 'immutable' | 'mutable' | 'unknown'
+            /** @enum {string} */
+            verification_level:
+              | 'content_verified'
+              | 'provider_verified'
+              | 'operator_attested'
+              | 'unverified'
+          }
+          model_create_digest: string | null
+          /** Format: uuid */
+          model_id: string
+          normalized_request: {
+            alias?: {
+              /** @enum {string} */
+              alias: 'candidate' | 'staging' | 'production'
+              /** Format: uuid */
+              expected_version_id: string | null
+            }
+            source: {
+              /** Format: uuid */
+              artifact_id: string
+              deployment?: {
+                /** @enum {string} */
+                auth_profile: 'none' | 'bearer_ref'
+                /** @enum {string} */
+                connectivity_scope: 'private_network' | 'public_network'
+                credential_ref: string | null
+                declared_capabilities: {
+                  context_limit: number | null
+                  interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+                }
+                display_name: string
+                endpoint_base_url: string
+                served_model_name: string
+              }
+              /** @enum {string} */
+              kind: 'databench_artifact'
+            }
+            target:
+              | {
+                  description: string
+                  display_name: string
+                  key: string
+                  /** @enum {string} */
+                  kind: 'create_model'
+                  tags: string[]
+                  task_family: string | null
+                }
+              | {
+                  /** @enum {string} */
+                  kind: 'existing_model'
+                  /** Format: uuid */
+                  model_id: string
+                }
+            version_label: string
+          }
+          /** @enum {string} */
+          plan_profile: 'model-registration-plan-artifact-v1'
+          registration_digest: string
+          source_fingerprint: string
+          version_create_digest: string
+          warnings: {
+            code: string
+            message: string
+            path: string
+          }[]
+        }
+      | {
+          classification: {
+            evidence_digest: string | null
+            /** @enum {string} */
+            source_mutability: 'immutable' | 'mutable' | 'unknown'
+            /** @enum {string} */
+            verification_level:
+              | 'content_verified'
+              | 'provider_verified'
+              | 'operator_attested'
+              | 'unverified'
+          }
+          model_create_digest: string | null
+          /** Format: uuid */
+          model_id: string
+          normalized_request: {
+            alias?: {
+              /** @enum {string} */
+              alias: 'candidate' | 'staging' | 'production'
+              /** Format: uuid */
+              expected_version_id: string | null
+            }
+            source: {
+              base_model: {
+                reference: string
+                revision: string | null
+              } | null
+              deployment?: {
+                /** @enum {string} */
+                auth_profile: 'none' | 'bearer_ref'
+                /** @enum {string} */
+                connectivity_scope: 'private_network' | 'public_network'
+                credential_ref: string | null
+                declared_capabilities: {
+                  context_limit: number | null
+                  interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+                }
+                display_name: string
+                endpoint_base_url: string
+                served_model_name: string
+              }
+              /** @enum {string} */
+              kind: 'repository_reference'
+              /** @enum {string} */
+              provider: 'hugging_face' | 'modelscope' | 'operator_managed'
+              repository_id: string
+              revision: string
+              /** @enum {string} */
+              revision_kind: 'commit' | 'digest' | 'tag' | 'opaque'
+            }
+            target:
+              | {
+                  description: string
+                  display_name: string
+                  key: string
+                  /** @enum {string} */
+                  kind: 'create_model'
+                  tags: string[]
+                  task_family: string | null
+                }
+              | {
+                  /** @enum {string} */
+                  kind: 'existing_model'
+                  /** Format: uuid */
+                  model_id: string
+                }
+            version_label: string
+          }
+          /** @enum {string} */
+          plan_profile: 'model-registration-plan-repository-v1'
+          registration_digest: string
+          source_fingerprint: string
+          version_create_digest: string
+          warnings: {
+            code: string
+            message: string
+            path: string
+          }[]
+        }
+    ModelRegistryRegistrationRequestV2:
+      | {
+          alias?: {
+            /** @enum {string} */
+            alias: 'candidate' | 'staging' | 'production'
+            /** Format: uuid */
+            expected_version_id: string | null
+          }
+          source: {
+            /** Format: uuid */
+            artifact_id: string
+            deployment?: {
+              /** @enum {string} */
+              auth_profile: 'none' | 'bearer_ref'
+              /** @enum {string} */
+              connectivity_scope: 'private_network' | 'public_network'
+              credential_ref: string | null
+              declared_capabilities: {
+                context_limit: number | null
+                interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+              }
+              display_name: string
+              endpoint_base_url: string
+              served_model_name: string
+            }
+            /** @enum {string} */
+            kind: 'databench_artifact'
+          }
+          target:
+            | {
+                description: string
+                display_name: string
+                key: string
+                /** @enum {string} */
+                kind: 'create_model'
+                tags: string[]
+                task_family: string | null
+              }
+            | {
+                /** @enum {string} */
+                kind: 'existing_model'
+                /** Format: uuid */
+                model_id: string
+              }
+          version_label: string
+        }
+      | {
+          alias?: {
+            /** @enum {string} */
+            alias: 'candidate' | 'staging' | 'production'
+            /** Format: uuid */
+            expected_version_id: string | null
+          }
+          source: {
+            base_model: {
+              reference: string
+              revision: string | null
+            } | null
+            deployment?: {
+              /** @enum {string} */
+              auth_profile: 'none' | 'bearer_ref'
+              /** @enum {string} */
+              connectivity_scope: 'private_network' | 'public_network'
+              credential_ref: string | null
+              declared_capabilities: {
+                context_limit: number | null
+                interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+              }
+              display_name: string
+              endpoint_base_url: string
+              served_model_name: string
+            }
+            /** @enum {string} */
+            kind: 'repository_reference'
+            /** @enum {string} */
+            provider: 'hugging_face' | 'modelscope' | 'operator_managed'
+            repository_id: string
+            revision: string
+            /** @enum {string} */
+            revision_kind: 'commit' | 'digest' | 'tag' | 'opaque'
+          }
+          target:
+            | {
+                description: string
+                display_name: string
+                key: string
+                /** @enum {string} */
+                kind: 'create_model'
+                tags: string[]
+                task_family: string | null
+              }
+            | {
+                /** @enum {string} */
+                kind: 'existing_model'
+                /** Format: uuid */
+                model_id: string
+              }
+          version_label: string
+        }
+    ModelSourceEvidenceRecordV2: {
+      adapter: string
+      adapter_version: string
+      /**
+       * @default unknown
+       * @enum {string}
+       */
+      cache_status: 'cached' | 'not_cached' | 'unknown'
+      evidence_digest: string
+      /** @enum {string} */
+      evidence_kind: 'provider_resolution' | 'operator_attestation'
+      /** @default null */
+      license: string | null
+      observed_at: string
+      observed_revision: string | null
+      response_digest: string | null
+      /** @enum {string} */
+      result: 'verified' | 'not_found' | 'unavailable' | 'invalid' | 'revision_mismatch'
+    } | null
     ModelV2: {
       archived_at: string | null
       created_at: string
@@ -1924,6 +2165,21 @@ export interface components {
       id: string
       /** Format: uuid */
       model_id: string
+      repository_observation: {
+        /** @enum {string} */
+        availability: 'unobserved' | 'available' | 'not_found' | 'unavailable' | 'invalid'
+        /** @enum {string} */
+        cache_status: 'cached' | 'not_cached' | 'unknown'
+        evidence_count: number
+        latest_evidence: components['schemas']['ModelSourceEvidenceRecordV2']
+        license: string | null
+        materialization: {
+          /** @enum {string} */
+          handoff: 'future_import_job'
+          /** @enum {string} */
+          state: 'not_materialized'
+        }
+      } | null
       source:
         | {
             archive_digest: string
@@ -2376,6 +2632,7 @@ export interface components {
       items: components['schemas']['RefMetadataV2'][]
       next_cursor: string | null
     }
+    RefreshModelSourceEvidenceRequestV2: Record<string, never>
     RefStateConflictDetailV2: {
       /** @enum {string} */
       current_state: 'active' | 'deleted'
@@ -6743,7 +7000,7 @@ export interface operations {
       }
     }
   }
-  inspectArtifactModelRegistrationV2: {
+  inspectModelRegistrationV2: {
     parameters: {
       query?: never
       header?: never
@@ -6752,55 +7009,11 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json': {
-          alias?: {
-            /** @enum {string} */
-            alias: 'candidate' | 'staging' | 'production'
-            /** Format: uuid */
-            expected_version_id: string | null
-          }
-          source: {
-            /** Format: uuid */
-            artifact_id: string
-            deployment?: {
-              /** @enum {string} */
-              auth_profile: 'none' | 'bearer_ref'
-              /** @enum {string} */
-              connectivity_scope: 'private_network' | 'public_network'
-              credential_ref: string | null
-              declared_capabilities: {
-                context_limit: number | null
-                interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
-              }
-              display_name: string
-              endpoint_base_url: string
-              served_model_name: string
-            }
-            /** @enum {string} */
-            kind: 'databench_artifact'
-          }
-          target:
-            | {
-                description: string
-                display_name: string
-                key: string
-                /** @enum {string} */
-                kind: 'create_model'
-                tags: string[]
-                task_family: string | null
-              }
-            | {
-                /** @enum {string} */
-                kind: 'existing_model'
-                /** Format: uuid */
-                model_id: string
-              }
-          version_label: string
-        }
+        'application/json': components['schemas']['ModelRegistryRegistrationRequestV2']
       }
     }
     responses: {
-      /** @description Inspected Artifact registration */
+      /** @description Inspected Model registration */
       200: {
         headers: {
           'Cache-Control': 'private, no-store'
@@ -6809,77 +7022,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            classification: {
-              evidence_digest: string | null
-              /** @enum {string} */
-              source_mutability: 'immutable' | 'mutable' | 'unknown'
-              /** @enum {string} */
-              verification_level:
-                | 'content_verified'
-                | 'provider_verified'
-                | 'operator_attested'
-                | 'unverified'
-            }
-            model_create_digest: string | null
-            /** Format: uuid */
-            model_id: string
-            normalized_request: {
-              alias?: {
-                /** @enum {string} */
-                alias: 'candidate' | 'staging' | 'production'
-                /** Format: uuid */
-                expected_version_id: string | null
-              }
-              source: {
-                /** Format: uuid */
-                artifact_id: string
-                deployment?: {
-                  /** @enum {string} */
-                  auth_profile: 'none' | 'bearer_ref'
-                  /** @enum {string} */
-                  connectivity_scope: 'private_network' | 'public_network'
-                  credential_ref: string | null
-                  declared_capabilities: {
-                    context_limit: number | null
-                    interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
-                  }
-                  display_name: string
-                  endpoint_base_url: string
-                  served_model_name: string
-                }
-                /** @enum {string} */
-                kind: 'databench_artifact'
-              }
-              target:
-                | {
-                    description: string
-                    display_name: string
-                    key: string
-                    /** @enum {string} */
-                    kind: 'create_model'
-                    tags: string[]
-                    task_family: string | null
-                  }
-                | {
-                    /** @enum {string} */
-                    kind: 'existing_model'
-                    /** Format: uuid */
-                    model_id: string
-                  }
-              version_label: string
-            }
-            /** @enum {string} */
-            plan_profile: 'model-registration-plan-artifact-v1'
-            registration_digest: string
-            source_fingerprint: string
-            version_create_digest: string
-            warnings: {
-              code: string
-              message: string
-              path: string
-            }[]
-          }
+          'application/json': components['schemas']['ModelRegistryRegistrationPlanV2']
         }
       }
       /** @description Malformed Model registration request */
@@ -7049,6 +7192,155 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Invalid Model identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  refreshModelSourceEvidenceV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        version_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RefreshModelSourceEvidenceRequestV2']
+      }
+    }
+    responses: {
+      /** @description Refreshed Repository source evidence */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ModelVersionV2']
+        }
+      }
+      /** @description Malformed Model action request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Model or Model Version was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Model metadata, Alias, or adoption conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description Model action request is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
         }
       }
       /** @description Invalid Model identifier */
@@ -7352,7 +7644,7 @@ export interface operations {
       }
     }
   }
-  registerArtifactModelV2: {
+  registerModelV2: {
     parameters: {
       query?: never
       header?: never
@@ -7361,11 +7653,11 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json': components['schemas']['CommitArtifactModelRegistrationRequestV2']
+        'application/json': components['schemas']['CommitModelRegistryRegistrationRequestV2']
       }
     }
     responses: {
-      /** @description Committed Artifact Model */
+      /** @description Committed Model */
       201: {
         headers: {
           'Cache-Control': 'private, no-store'
@@ -8277,7 +8569,7 @@ export interface operations {
       }
     }
   }
-  registerArtifactModelVersionV2: {
+  registerModelVersionV2: {
     parameters: {
       query?: never
       header?: never
@@ -8288,11 +8580,11 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'application/json': components['schemas']['CommitArtifactModelRegistrationRequestV2']
+        'application/json': components['schemas']['CommitModelRegistryRegistrationRequestV2']
       }
     }
     responses: {
-      /** @description Committed Artifact Model Version */
+      /** @description Committed Model Version */
       201: {
         headers: {
           'Cache-Control': 'private, no-store'

@@ -1,4 +1,4 @@
-import type { V2WorkspaceOpenOptions } from '@databench/workspace'
+import type { V2ModelRepositoryOpenOptions, V2WorkspaceOpenOptions } from '@databench/workspace'
 import { OpenAPIHono } from '@hono/zod-openapi'
 import type { ApiEnv, ApiV2Workspace } from './context.js'
 import type { EvalScopeGatewayConfig } from './evalscope/config.js'
@@ -38,6 +38,7 @@ export interface CreateAppOptions {
   readonly mcp?: McpRuntimeConfig
   readonly modelDeploymentOperatorToken?: string
   readonly modelDeploymentServiceCredential?: string
+  readonly modelRepository?: V2ModelRepositoryOpenOptions
   readonly openApiServerUrl?: string
   readonly storeConfig?: V2WorkspaceOpenOptions['storeConfig']
   readonly swiftStudio?: SwiftStudioGatewayConfig
@@ -158,6 +159,9 @@ function v2RuntimeOptions(options: CreateAppOptions): V2WorkspaceMiddlewareOptio
       ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
       ...(options.storeConfig === undefined ? {} : { storeConfig: options.storeConfig }),
       ...swiftStudioWorkspaceOpenOptions(options.swiftStudio),
+      ...(options.modelRepository === undefined
+        ? {}
+        : { modelRepository: options.modelRepository }),
       ...(options.evaluationArchiveMaxBytes === undefined
         ? {}
         : { evaluationArchiveMaxBytes: options.evaluationArchiveMaxBytes }),

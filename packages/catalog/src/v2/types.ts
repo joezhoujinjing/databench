@@ -804,6 +804,7 @@ export interface CreateModelRegistrationV2 {
   readonly target: CatalogModelRegistrationTargetV2
   readonly version: Omit<CatalogModelVersionRowV2, 'createdAt'>
   readonly source: CatalogModelVersionSourceV2
+  readonly initialEvidence?: AppendModelSourceEvidenceV2 | null
   readonly alias: {
     readonly alias: CatalogModelAliasRowV2['alias']
     readonly expectedVersionId: string | null
@@ -859,8 +860,10 @@ export interface AppendModelSourceEvidenceV2 {
   readonly adapterVersion: string
   readonly observedRevision: string | null
   readonly observedAt: Date
-  readonly result: 'verified' | 'not_found' | 'unavailable' | 'invalid'
+  readonly result: 'verified' | 'not_found' | 'unavailable' | 'invalid' | 'revision_mismatch'
   readonly responseDigest: string | null
+  readonly license: string | null
+  readonly cacheStatus: 'cached' | 'not_cached' | 'unknown'
 }
 
 export interface CatalogModelSourceEvidenceRowV2 extends AppendModelSourceEvidenceV2 {
@@ -884,6 +887,7 @@ export interface CatalogModelListItemV2 {
     readonly alias: CatalogModelAliasRowV2
     readonly version: CatalogModelVersionRowV2
     readonly source: CatalogModelVersionSourceV2
+    readonly evidence: readonly CatalogModelSourceEvidenceRowV2[]
   } | null
   readonly versionCount: number
   readonly adoptedDeploymentCount: number

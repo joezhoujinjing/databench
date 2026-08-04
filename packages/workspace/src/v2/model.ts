@@ -42,7 +42,9 @@ export function modelFromCatalogV2(row: CatalogModelRowV2): ModelV2 {
 
 export function modelListItemFromCatalogV2(row: CatalogModelListItemV2): ModelListItemV2 {
   const candidateClassification =
-    row.candidate === null ? null : classifyCatalogModelSourceV2(row.candidate.source, [])
+    row.candidate === null
+      ? null
+      : classifyCatalogModelSourceV2(row.candidate.source, row.candidate.evidence)
   return ModelListItemV2Schema.parse({
     model: modelFromCatalogV2(row.model),
     candidate:
@@ -79,6 +81,10 @@ export function modelVersionFromCatalogV2(row: CatalogModelVersionListItemV2): M
     base_model_binding_status: row.version.baseModelBindingStatus,
     classification: classifyCatalogModelSourceV2(row.source, row.evidence),
     source: modelVersionSourceFromCatalogV2(row.source),
+    repository_observation:
+      row.source.kind === 'repository_reference'
+        ? repositoryObservationFromCatalogV2(row.evidence)
+        : null,
     created_at: row.version.createdAt.toISOString(),
   })
 }
@@ -121,20 +127,69 @@ export function classifyCatalogModelSourceV2(
   }
   const expectedRevision =
     source.kind === 'repository_reference' ? source.revision : source.externalVersionRef
-  const verified = evidence.some(
+  const matchingVerifiedIndex = evidence.findLastIndex(
     (entry) =>
       entry.result === 'verified' &&
-      entry.observedRevision === expectedRevision &&
+      entry.evidenceKind === 'provider_resolution' &&
+      (source.kind === 'repository_reference' && source.revisionKind === 'tag'
+        ? entry.observedRevision !== null
+        : entry.observedRevision === expectedRevision) &&
       entry.responseDigest !== null,
   )
+  const driftIndex = evidence.findLastIndex((entry) => entry.result === 'revision_mismatch')
+  const verified = matchingVerifiedIndex >= 0 && matchingVerifiedIndex > driftIndex
   const declaredMutable =
     (source.kind === 'repository_reference' && source.revisionKind === 'tag') ||
     (source.kind === 'existing_service' && source.declaredReferenceKind === 'mutable_alias')
+  const exactRepositoryReference =
+    source.kind === 'repository_reference' &&
+    (source.revisionKind === 'commit' || source.revisionKind === 'digest')
+  const classificationEvidence =
+    driftIndex > matchingVerifiedIndex ? evidence[driftIndex] : evidence[matchingVerifiedIndex]
   return {
-    source_mutability: declaredMutable ? 'mutable' : verified ? 'immutable' : 'unknown',
+    source_mutability: declaredMutable
+      ? 'mutable'
+      : exactRepositoryReference && verified
+        ? 'immutable'
+        : 'unknown',
     verification_level: verified ? 'provider_verified' : 'operator_attested',
-    evidence_digest: null,
+    evidence_digest: classificationEvidence?.evidenceDigest ?? null,
   }
+}
+
+function repositoryObservationFromCatalogV2(evidence: readonly CatalogModelSourceEvidenceRowV2[]) {
+  const latest = evidence.at(-1)
+  return {
+    availability:
+      latest === undefined
+        ? 'unobserved'
+        : latest.result === 'verified'
+          ? 'available'
+          : latest.result === 'not_found'
+            ? 'not_found'
+            : latest.result === 'unavailable'
+              ? 'unavailable'
+              : 'invalid',
+    license: latest?.license ?? null,
+    cache_status: latest?.cacheStatus ?? 'unknown',
+    evidence_count: evidence.length,
+    latest_evidence:
+      latest === undefined
+        ? null
+        : {
+            evidence_digest: latest.evidenceDigest,
+            evidence_kind: latest.evidenceKind,
+            adapter: latest.adapter,
+            adapter_version: latest.adapterVersion,
+            observed_revision: latest.observedRevision,
+            observed_at: latest.observedAt.toISOString(),
+            result: latest.result,
+            response_digest: latest.responseDigest,
+            license: latest.license,
+            cache_status: latest.cacheStatus,
+          },
+    materialization: { state: 'not_materialized', handoff: 'future_import_job' },
+  } as const
 }
 
 function modelVersionSourceFromCatalogV2(source: CatalogModelVersionSourceV2) {

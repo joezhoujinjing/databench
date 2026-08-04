@@ -3,16 +3,16 @@ import {
   AdoptModelDeploymentRequestV2Schema,
   ArchiveModelV2Schema,
   CandidateModelAliasParamsV2Schema,
-  CommitArtifactModelRegistrationRequestV2Schema,
+  CommitModelRegistryRegistrationRequestV2Schema,
   ModelAliasPageV2Schema,
   ModelAliasV2Schema,
-  ModelArtifactRegistrationRequestV2Schema,
   ModelDeploymentAdoptionV2Schema,
   ModelPageRequestV2Schema,
   ModelPageV2Schema,
   ModelParamsV2Schema,
   ModelRegistrationCommitResultV2Schema,
-  ModelRegistrationPlanArtifactV2Schema,
+  ModelRegistryRegistrationPlanV2Schema,
+  ModelRegistryRegistrationRequestV2Schema,
   ModelV2Schema,
   ModelVersionPageRequestV2Schema,
   ModelVersionPageV2Schema,
@@ -20,6 +20,7 @@ import {
   ModelVersionV2Schema,
   MoveCandidateModelAliasV2Schema,
   NotFoundError,
+  RefreshModelSourceEvidenceRequestV2Schema,
   UpdateModelMetadataV2Schema,
   ValidationError,
 } from '@databench/schema'
@@ -46,17 +47,17 @@ const MODEL_TAG = ['v2 Models']
 const inspectRegistrationRoute = createRoute({
   method: 'post',
   path: '/v2/model-registrations:inspect',
-  operationId: 'inspectArtifactModelRegistrationV2',
+  operationId: 'inspectModelRegistrationV2',
   security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     body: {
       required: true,
-      content: { 'application/json': { schema: ModelArtifactRegistrationRequestV2Schema } },
+      content: { 'application/json': { schema: ModelRegistryRegistrationRequestV2Schema } },
     },
   },
   responses: {
-    200: jsonResponseV2(ModelRegistrationPlanArtifactV2Schema, 'Inspected Artifact registration'),
+    200: jsonResponseV2(ModelRegistryRegistrationPlanV2Schema, 'Inspected Model registration'),
     ...V2_MODEL_REGISTRATION_INSPECT_ERROR_RESPONSES,
   },
 })
@@ -64,17 +65,17 @@ const inspectRegistrationRoute = createRoute({
 const registerModelRoute = createRoute({
   method: 'post',
   path: '/v2/models:register',
-  operationId: 'registerArtifactModelV2',
+  operationId: 'registerModelV2',
   security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     body: {
       required: true,
-      content: { 'application/json': { schema: CommitArtifactModelRegistrationRequestV2Schema } },
+      content: { 'application/json': { schema: CommitModelRegistryRegistrationRequestV2Schema } },
     },
   },
   responses: {
-    201: jsonResponseV2(ModelRegistrationCommitResultV2Schema, 'Committed Artifact Model'),
+    201: jsonResponseV2(ModelRegistrationCommitResultV2Schema, 'Committed Model'),
     ...V2_MODEL_REGISTRATION_COMMIT_ERROR_RESPONSES,
   },
 })
@@ -128,18 +129,18 @@ const archiveModelRoute = modelActionRoute('archive')
 const registerVersionRoute = createRoute({
   method: 'post',
   path: '/v2/models/{model_id}/versions:register',
-  operationId: 'registerArtifactModelVersionV2',
+  operationId: 'registerModelVersionV2',
   security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     params: ModelParamsV2Schema,
     body: {
       required: true,
-      content: { 'application/json': { schema: CommitArtifactModelRegistrationRequestV2Schema } },
+      content: { 'application/json': { schema: CommitModelRegistryRegistrationRequestV2Schema } },
     },
   },
   responses: {
-    201: jsonResponseV2(ModelRegistrationCommitResultV2Schema, 'Committed Artifact Model Version'),
+    201: jsonResponseV2(ModelRegistrationCommitResultV2Schema, 'Committed Model Version'),
     ...V2_MODEL_REGISTRATION_COMMIT_ERROR_RESPONSES,
   },
 })
@@ -165,6 +166,25 @@ const getVersionRoute = createRoute({
   responses: {
     200: jsonResponseV2(ModelVersionV2Schema, 'Model Version'),
     ...V2_MODEL_SHOW_ERROR_RESPONSES,
+  },
+})
+
+const refreshSourceEvidenceRoute = createRoute({
+  method: 'post',
+  path: '/v2/model-versions/{version_id}:refresh-source-evidence',
+  operationId: 'refreshModelSourceEvidenceV2',
+  security: OPERATOR_SECURITY,
+  tags: MODEL_TAG,
+  request: {
+    params: ModelVersionParamsV2Schema,
+    body: {
+      required: true,
+      content: { 'application/json': { schema: RefreshModelSourceEvidenceRequestV2Schema } },
+    },
+  },
+  responses: {
+    200: jsonResponseV2(ModelVersionV2Schema, 'Refreshed Repository source evidence'),
+    ...V2_MODEL_ACTION_ERROR_RESPONSES,
   },
 })
 
@@ -232,6 +252,7 @@ export function registerV2ModelRoutes(
     registerVersionRoute,
     listVersionsRoute,
     getVersionRoute,
+    refreshSourceEvidenceRoute,
     listAliasesRoute,
     moveCandidateRoute,
     adoptDeploymentRoute,
@@ -241,7 +262,7 @@ export function registerV2ModelRoutes(
 
   app.post(inspectRegistrationRoute.getRoutingPath(), async (context) => {
     authorizeWrite(context, options)
-    const request = await readRawJsonRequestV2(context, ModelArtifactRegistrationRequestV2Schema, {
+    const request = await readRawJsonRequestV2(context, ModelRegistryRegistrationRequestV2Schema, {
       maxBytes: REGISTRATION_MAX_BYTES,
       maxDepth: 8,
     })
@@ -255,7 +276,7 @@ export function registerV2ModelRoutes(
     authorizeWrite(context, options)
     const request = await readRawJsonRequestV2(
       context,
-      CommitArtifactModelRegistrationRequestV2Schema,
+      CommitModelRegistryRegistrationRequestV2Schema,
       { maxBytes: REGISTRATION_MAX_BYTES, maxDepth: 9 },
     )
     assertRegistrationTarget(request.request.target, 'create_model')
@@ -313,7 +334,7 @@ export function registerV2ModelRoutes(
     const { model_id } = ModelParamsV2Schema.parse(context.req.param())
     const request = await readRawJsonRequestV2(
       context,
-      CommitArtifactModelRegistrationRequestV2Schema,
+      CommitModelRegistryRegistrationRequestV2Schema,
       { maxBytes: REGISTRATION_MAX_BYTES, maxDepth: 9 },
     )
     assertRegistrationTarget(request.request.target, 'existing_model', model_id)
@@ -340,6 +361,23 @@ export function registerV2ModelRoutes(
     )
     if (version === null) throw new NotFoundError('Model Version was not found', { version_id })
     return context.json(version, 200)
+  })
+
+  app.post('/v2/model-versions/:target{[^/]+:refresh-source-evidence}', async (context) => {
+    authorizeWrite(context, options)
+    const version_id = actionTarget(context.req.param('target'), ':refresh-source-evidence')
+    ModelVersionParamsV2Schema.parse({ version_id })
+    await readRawJsonRequestV2(context, RefreshModelSourceEvidenceRequestV2Schema, {
+      maxBytes: ACTION_MAX_BYTES,
+      maxDepth: 2,
+    })
+    return context.json(
+      await getV2Workspace(context).refreshModelSourceEvidence(
+        version_id,
+        operationContext(context),
+      ),
+      200,
+    )
   })
 
   app.get(listAliasesRoute.getRoutingPath(), async (context) => {

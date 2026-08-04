@@ -135,6 +135,7 @@ function modelRegistrationInput(
     readonly target?: CreateModelRegistrationV2['target']
     readonly version?: Partial<CreateModelRegistrationV2['version']>
     readonly source?: CreateModelRegistrationV2['source']
+    readonly initialEvidence?: CreateModelRegistrationV2['initialEvidence']
     readonly alias?: CreateModelRegistrationV2['alias']
   } = {},
 ): CreateModelRegistrationV2 {
@@ -186,6 +187,9 @@ function modelRegistrationInput(
       } as const),
     version,
     source,
+    ...(overrides.initialEvidence === undefined
+      ? {}
+      : { initialEvidence: overrides.initialEvidence }),
     alias: overrides.alias ?? null,
   }
 }
@@ -3643,12 +3647,41 @@ describe('V2Catalog transform jobs', () => {
       observedAt: new Date('2026-08-04T12:00:00.000Z'),
       result: 'verified' as const,
       responseDigest: 'b'.repeat(64),
+      license: 'apache-2.0',
+      cacheStatus: 'not_cached' as const,
     }
     await expect(v2Catalog.appendModelSourceEvidence(evidence)).resolves.toMatchObject(evidence)
-    await expect(v2Catalog.appendModelSourceEvidence(evidence)).resolves.toMatchObject(evidence)
+    await expect(
+      v2Catalog.appendModelSourceEvidence({
+        ...evidence,
+        observedAt: new Date('2026-08-04T12:01:00.000Z'),
+      }),
+    ).resolves.toMatchObject(evidence)
+    const drift = {
+      ...evidence,
+      id: '30000000-0000-8000-8000-000000000002',
+      evidenceDigest: 'c'.repeat(64),
+      observedRevision: 'def456',
+      observedAt: new Date('2026-08-04T12:02:00.000Z'),
+      result: 'revision_mismatch' as const,
+      responseDigest: 'd'.repeat(64),
+      license: 'mit',
+      cacheStatus: 'cached' as const,
+    }
+    await expect(v2Catalog.appendModelSourceEvidence(drift)).resolves.toMatchObject(drift)
     await expect(
       v2Catalog.listModelSourceEvidence(namespaceId, registrationResult.version.id),
-    ).resolves.toHaveLength(1)
+    ).resolves.toEqual([expect.objectContaining(evidence), expect.objectContaining(drift)])
+    await expect(
+      prisma.v2ModelSourceEvidence.create({
+        data: {
+          ...drift,
+          id: '30000000-0000-8000-8000-000000000003',
+          evidenceDigest: 'e'.repeat(64),
+          cacheStatus: 'outside_contract',
+        },
+      }),
+    ).rejects.toThrow()
     await expect(
       prisma.v2ModelSourceEvidence.update({
         where: { id: evidence.id },
@@ -3658,6 +3691,98 @@ describe('V2Catalog transform jobs', () => {
     await expect(
       prisma.v2ModelSourceEvidence.delete({ where: { id: evidence.id } }),
     ).rejects.toThrow(/append-only/i)
+  })
+
+  test('commits initial evidence atomically and replays the durable claim without rewriting it', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const initialEvidence = {
+      id: '30000000-0000-8000-8000-000000000001',
+      namespaceId,
+      modelVersionId: MODEL_REGISTRY_VERSION_ID,
+      evidenceProfile: 'model-source-evidence-v1' as const,
+      evidenceDigest: 'a'.repeat(64),
+      evidenceKind: 'provider_resolution' as const,
+      adapter: 'modelscope',
+      adapterVersion: '1',
+      observedRevision: 'abc123',
+      observedAt: new Date('2026-08-04T12:00:00.000Z'),
+      result: 'verified' as const,
+      responseDigest: 'b'.repeat(64),
+      license: 'apache-2.0',
+      cacheStatus: 'not_cached' as const,
+    }
+    const input = modelRegistrationInput(namespaceId, {
+      initialEvidence,
+      alias: { alias: 'candidate', expectedVersionId: null },
+    })
+    const created = await v2Catalog.registerModelVersion(input)
+    await expect(
+      v2Catalog.replayModelRegistration(
+        namespaceId,
+        input.registrationDigest,
+        input.planProfile,
+        input.normalizedRequest,
+      ),
+    ).resolves.toMatchObject({
+      replayed: true,
+      model: { id: created.model.id },
+      version: { id: created.version.id },
+    })
+    expect(await prisma.v2ModelSourceEvidence.count()).toBe(1)
+
+    const secondVersionId = '20000000-0000-8000-8000-000000000002'
+    await expect(
+      v2Catalog.registerModelVersion(
+        modelRegistrationInput(namespaceId, {
+          registrationDigest: '5'.repeat(64),
+          normalizedRequest: { target: 'existing', version_label: 'r2', revision: 'def456' },
+          target: { kind: 'existing_model', modelId: created.model.id },
+          version: {
+            id: secondVersionId,
+            versionLabel: 'r2',
+            createDigest: '5'.repeat(64),
+            sourceFingerprint: '6'.repeat(64),
+          },
+          source: {
+            kind: 'repository_reference',
+            provider: 'modelscope',
+            repositoryId: 'Qwen/Qwen3-0.6B',
+            revision: 'def456',
+            revisionKind: 'commit',
+          },
+          initialEvidence: {
+            ...initialEvidence,
+            id: '30000000-0000-8000-8000-000000000002',
+            modelVersionId: secondVersionId,
+            evidenceDigest: 'c'.repeat(64),
+            observedRevision: 'def456',
+            responseDigest: 'd'.repeat(64),
+          },
+          alias: { alias: 'candidate', expectedVersionId: null },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(V2CatalogModelAliasConflictError)
+    expect(await prisma.v2ModelVersion.count()).toBe(1)
+    expect(await prisma.v2ModelSourceEvidence.count()).toBe(1)
+    expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+
+    await expect(
+      v2Catalog.registerModelVersion(
+        modelRegistrationInput(namespaceId, {
+          registrationDigest: '7'.repeat(64),
+          version: {
+            id: '20000000-0000-8000-8000-000000000003',
+            createDigest: '7'.repeat(64),
+            sourceFingerprint: '7'.repeat(64),
+          },
+          initialEvidence: {
+            ...initialEvidence,
+            modelVersionId: '20000000-0000-8000-8000-000000000099',
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(V2CatalogInputError)
+    expect(await prisma.v2ModelVersion.count()).toBe(1)
   })
 
   test('fails closed on missing, wrong-kind, and multiple Model Version source rows', async () => {

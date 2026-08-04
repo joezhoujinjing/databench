@@ -34,6 +34,15 @@
     "cardinality": "one_primary_per_artifact_source_version",
     "unique_key": ["namespace_id", "model_version_id", "artifact_id"]
   },
+  "source_evidence": {
+    "table": "model_source_evidence_v2",
+    "profile": "model-source-evidence-v1",
+    "append_only": true,
+    "identity_excludes": ["observed_at"],
+    "results": ["verified", "not_found", "unavailable", "invalid", "revision_mismatch"],
+    "observation_columns": ["license", "cache_status"],
+    "response_body_persisted": false
+  },
   "deployment_profiles": {
     "artifact-bound-v1": {
       "model_version_id": "null",

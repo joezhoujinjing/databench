@@ -327,7 +327,7 @@
         "properties": {},
         "type": "object"
       },
-      "CommitArtifactModelRegistrationRequestV2": {
+      "CommitModelRegistryRegistrationRequestV2": {
         "additionalProperties": false,
         "properties": {
           "expected_registration_digest": {
@@ -335,203 +335,7 @@
             "type": "string"
           },
           "request": {
-            "additionalProperties": false,
-            "properties": {
-              "alias": {
-                "additionalProperties": false,
-                "properties": {
-                  "alias": {
-                    "enum": [
-                      "candidate",
-                      "staging",
-                      "production"
-                    ],
-                    "type": "string"
-                  },
-                  "expected_version_id": {
-                    "format": "uuid",
-                    "nullable": true,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "alias",
-                  "expected_version_id"
-                ],
-                "type": "object"
-              },
-              "source": {
-                "additionalProperties": false,
-                "properties": {
-                  "artifact_id": {
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "deployment": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "auth_profile": {
-                        "enum": [
-                          "none",
-                          "bearer_ref"
-                        ],
-                        "type": "string"
-                      },
-                      "connectivity_scope": {
-                        "enum": [
-                          "private_network",
-                          "public_network"
-                        ],
-                        "type": "string"
-                      },
-                      "credential_ref": {
-                        "nullable": true,
-                        "type": "string"
-                      },
-                      "declared_capabilities": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "context_limit": {
-                            "maximum": 10000000,
-                            "minimum": 1,
-                            "nullable": true,
-                            "type": "integer"
-                          },
-                          "interfaces": {
-                            "items": {
-                              "enum": [
-                                "chat_completions",
-                                "embeddings",
-                                "vision",
-                                "tools"
-                              ],
-                              "type": "string"
-                            },
-                            "maxItems": 4,
-                            "minItems": 1,
-                            "type": "array"
-                          }
-                        },
-                        "required": [
-                          "interfaces",
-                          "context_limit"
-                        ],
-                        "type": "object"
-                      },
-                      "display_name": {
-                        "maxLength": 256,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "endpoint_base_url": {
-                        "maxLength": 2048,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "served_model_name": {
-                        "maxLength": 512,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "display_name",
-                      "served_model_name",
-                      "connectivity_scope",
-                      "endpoint_base_url",
-                      "auth_profile",
-                      "credential_ref",
-                      "declared_capabilities"
-                    ],
-                    "type": "object"
-                  },
-                  "kind": {
-                    "enum": [
-                      "databench_artifact"
-                    ],
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "artifact_id"
-                ],
-                "type": "object"
-              },
-              "target": {
-                "oneOf": [
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "description": {
-                        "type": "string"
-                      },
-                      "display_name": {
-                        "type": "string"
-                      },
-                      "key": {
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": [
-                          "create_model"
-                        ],
-                        "type": "string"
-                      },
-                      "tags": {
-                        "items": {
-                          "type": "string"
-                        },
-                        "maxItems": 32,
-                        "type": "array"
-                      },
-                      "task_family": {
-                        "nullable": true,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "key",
-                      "display_name",
-                      "description",
-                      "task_family",
-                      "tags"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "enum": [
-                          "existing_model"
-                        ],
-                        "type": "string"
-                      },
-                      "model_id": {
-                        "format": "uuid",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "model_id"
-                    ],
-                    "type": "object"
-                  }
-                ]
-              },
-              "version_label": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "target",
-              "version_label",
-              "source"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/ModelRegistryRegistrationRequestV2"
           }
         },
         "required": [
@@ -3600,6 +3404,1178 @@
         ],
         "type": "object"
       },
+      "ModelRegistryRegistrationPlanV2": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "classification": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidence_digest": {
+                    "nullable": true,
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "source_mutability": {
+                    "enum": [
+                      "immutable",
+                      "mutable",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "verification_level": {
+                    "enum": [
+                      "content_verified",
+                      "provider_verified",
+                      "operator_attested",
+                      "unverified"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_mutability",
+                  "verification_level",
+                  "evidence_digest"
+                ],
+                "type": "object"
+              },
+              "model_create_digest": {
+                "nullable": true,
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "model_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "normalized_request": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alias": {
+                        "enum": [
+                          "candidate",
+                          "staging",
+                          "production"
+                        ],
+                        "type": "string"
+                      },
+                      "expected_version_id": {
+                        "format": "uuid",
+                        "nullable": true,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "alias",
+                      "expected_version_id"
+                    ],
+                    "type": "object"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "artifact_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "deployment": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "auth_profile": {
+                            "enum": [
+                              "none",
+                              "bearer_ref"
+                            ],
+                            "type": "string"
+                          },
+                          "connectivity_scope": {
+                            "enum": [
+                              "private_network",
+                              "public_network"
+                            ],
+                            "type": "string"
+                          },
+                          "credential_ref": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "declared_capabilities": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "context_limit": {
+                                "maximum": 10000000,
+                                "minimum": 1,
+                                "nullable": true,
+                                "type": "integer"
+                              },
+                              "interfaces": {
+                                "items": {
+                                  "enum": [
+                                    "chat_completions",
+                                    "embeddings",
+                                    "vision",
+                                    "tools"
+                                  ],
+                                  "type": "string"
+                                },
+                                "maxItems": 4,
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "interfaces",
+                              "context_limit"
+                            ],
+                            "type": "object"
+                          },
+                          "display_name": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "endpoint_base_url": {
+                            "maxLength": 2048,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "served_model_name": {
+                            "maxLength": 512,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "display_name",
+                          "served_model_name",
+                          "connectivity_scope",
+                          "endpoint_base_url",
+                          "auth_profile",
+                          "credential_ref",
+                          "declared_capabilities"
+                        ],
+                        "type": "object"
+                      },
+                      "kind": {
+                        "enum": [
+                          "databench_artifact"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "artifact_id"
+                    ],
+                    "type": "object"
+                  },
+                  "target": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "display_name": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "create_model"
+                            ],
+                            "type": "string"
+                          },
+                          "tags": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "type": "array"
+                          },
+                          "task_family": {
+                            "nullable": true,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "key",
+                          "display_name",
+                          "description",
+                          "task_family",
+                          "tags"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "existing_model"
+                            ],
+                            "type": "string"
+                          },
+                          "model_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "model_id"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "version_label": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target",
+                  "version_label",
+                  "source"
+                ],
+                "type": "object"
+              },
+              "plan_profile": {
+                "enum": [
+                  "model-registration-plan-artifact-v1"
+                ],
+                "type": "string"
+              },
+              "registration_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "source_fingerprint": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "version_create_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "warnings": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 512,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "path",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 32,
+                "type": "array"
+              }
+            },
+            "required": [
+              "plan_profile",
+              "normalized_request",
+              "model_id",
+              "model_create_digest",
+              "source_fingerprint",
+              "version_create_digest",
+              "classification",
+              "warnings",
+              "registration_digest"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "classification": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidence_digest": {
+                    "nullable": true,
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "source_mutability": {
+                    "enum": [
+                      "immutable",
+                      "mutable",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "verification_level": {
+                    "enum": [
+                      "content_verified",
+                      "provider_verified",
+                      "operator_attested",
+                      "unverified"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_mutability",
+                  "verification_level",
+                  "evidence_digest"
+                ],
+                "type": "object"
+              },
+              "model_create_digest": {
+                "nullable": true,
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "model_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "normalized_request": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alias": {
+                        "enum": [
+                          "candidate",
+                          "staging",
+                          "production"
+                        ],
+                        "type": "string"
+                      },
+                      "expected_version_id": {
+                        "format": "uuid",
+                        "nullable": true,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "alias",
+                      "expected_version_id"
+                    ],
+                    "type": "object"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "base_model": {
+                        "additionalProperties": false,
+                        "nullable": true,
+                        "properties": {
+                          "reference": {
+                            "maxLength": 512,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "revision": {
+                            "nullable": true,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "reference",
+                          "revision"
+                        ],
+                        "type": "object"
+                      },
+                      "deployment": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "auth_profile": {
+                            "enum": [
+                              "none",
+                              "bearer_ref"
+                            ],
+                            "type": "string"
+                          },
+                          "connectivity_scope": {
+                            "enum": [
+                              "private_network",
+                              "public_network"
+                            ],
+                            "type": "string"
+                          },
+                          "credential_ref": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "declared_capabilities": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "context_limit": {
+                                "maximum": 10000000,
+                                "minimum": 1,
+                                "nullable": true,
+                                "type": "integer"
+                              },
+                              "interfaces": {
+                                "items": {
+                                  "enum": [
+                                    "chat_completions",
+                                    "embeddings",
+                                    "vision",
+                                    "tools"
+                                  ],
+                                  "type": "string"
+                                },
+                                "maxItems": 4,
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "interfaces",
+                              "context_limit"
+                            ],
+                            "type": "object"
+                          },
+                          "display_name": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "endpoint_base_url": {
+                            "maxLength": 2048,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "served_model_name": {
+                            "maxLength": 512,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "display_name",
+                          "served_model_name",
+                          "connectivity_scope",
+                          "endpoint_base_url",
+                          "auth_profile",
+                          "credential_ref",
+                          "declared_capabilities"
+                        ],
+                        "type": "object"
+                      },
+                      "kind": {
+                        "enum": [
+                          "repository_reference"
+                        ],
+                        "type": "string"
+                      },
+                      "provider": {
+                        "enum": [
+                          "hugging_face",
+                          "modelscope",
+                          "operator_managed"
+                        ],
+                        "type": "string"
+                      },
+                      "repository_id": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "type": "string"
+                      },
+                      "revision_kind": {
+                        "enum": [
+                          "commit",
+                          "digest",
+                          "tag",
+                          "opaque"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "provider",
+                      "repository_id",
+                      "revision",
+                      "revision_kind",
+                      "base_model"
+                    ],
+                    "type": "object"
+                  },
+                  "target": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "display_name": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "create_model"
+                            ],
+                            "type": "string"
+                          },
+                          "tags": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "type": "array"
+                          },
+                          "task_family": {
+                            "nullable": true,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "key",
+                          "display_name",
+                          "description",
+                          "task_family",
+                          "tags"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "existing_model"
+                            ],
+                            "type": "string"
+                          },
+                          "model_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "model_id"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "version_label": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target",
+                  "version_label",
+                  "source"
+                ],
+                "type": "object"
+              },
+              "plan_profile": {
+                "enum": [
+                  "model-registration-plan-repository-v1"
+                ],
+                "type": "string"
+              },
+              "registration_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "source_fingerprint": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "version_create_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "warnings": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 512,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "path",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 32,
+                "type": "array"
+              }
+            },
+            "required": [
+              "plan_profile",
+              "normalized_request",
+              "model_id",
+              "model_create_digest",
+              "source_fingerprint",
+              "version_create_digest",
+              "classification",
+              "warnings",
+              "registration_digest"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ModelRegistryRegistrationRequestV2": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "alias": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "enum": [
+                      "candidate",
+                      "staging",
+                      "production"
+                    ],
+                    "type": "string"
+                  },
+                  "expected_version_id": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "alias",
+                  "expected_version_id"
+                ],
+                "type": "object"
+              },
+              "source": {
+                "additionalProperties": false,
+                "properties": {
+                  "artifact_id": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "deployment": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "auth_profile": {
+                        "enum": [
+                          "none",
+                          "bearer_ref"
+                        ],
+                        "type": "string"
+                      },
+                      "connectivity_scope": {
+                        "enum": [
+                          "private_network",
+                          "public_network"
+                        ],
+                        "type": "string"
+                      },
+                      "credential_ref": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "declared_capabilities": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "context_limit": {
+                            "maximum": 10000000,
+                            "minimum": 1,
+                            "nullable": true,
+                            "type": "integer"
+                          },
+                          "interfaces": {
+                            "items": {
+                              "enum": [
+                                "chat_completions",
+                                "embeddings",
+                                "vision",
+                                "tools"
+                              ],
+                              "type": "string"
+                            },
+                            "maxItems": 4,
+                            "minItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "interfaces",
+                          "context_limit"
+                        ],
+                        "type": "object"
+                      },
+                      "display_name": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "endpoint_base_url": {
+                        "maxLength": 2048,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "served_model_name": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "display_name",
+                      "served_model_name",
+                      "connectivity_scope",
+                      "endpoint_base_url",
+                      "auth_profile",
+                      "credential_ref",
+                      "declared_capabilities"
+                    ],
+                    "type": "object"
+                  },
+                  "kind": {
+                    "enum": [
+                      "databench_artifact"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "artifact_id"
+                ],
+                "type": "object"
+              },
+              "target": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "type": "string"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "create_model"
+                        ],
+                        "type": "string"
+                      },
+                      "tags": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 32,
+                        "type": "array"
+                      },
+                      "task_family": {
+                        "nullable": true,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "key",
+                      "display_name",
+                      "description",
+                      "task_family",
+                      "tags"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "existing_model"
+                        ],
+                        "type": "string"
+                      },
+                      "model_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "model_id"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "version_label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "version_label",
+              "source"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "alias": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "enum": [
+                      "candidate",
+                      "staging",
+                      "production"
+                    ],
+                    "type": "string"
+                  },
+                  "expected_version_id": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "alias",
+                  "expected_version_id"
+                ],
+                "type": "object"
+              },
+              "source": {
+                "additionalProperties": false,
+                "properties": {
+                  "base_model": {
+                    "additionalProperties": false,
+                    "nullable": true,
+                    "properties": {
+                      "reference": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "revision": {
+                        "nullable": true,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "reference",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
+                  "deployment": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "auth_profile": {
+                        "enum": [
+                          "none",
+                          "bearer_ref"
+                        ],
+                        "type": "string"
+                      },
+                      "connectivity_scope": {
+                        "enum": [
+                          "private_network",
+                          "public_network"
+                        ],
+                        "type": "string"
+                      },
+                      "credential_ref": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "declared_capabilities": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "context_limit": {
+                            "maximum": 10000000,
+                            "minimum": 1,
+                            "nullable": true,
+                            "type": "integer"
+                          },
+                          "interfaces": {
+                            "items": {
+                              "enum": [
+                                "chat_completions",
+                                "embeddings",
+                                "vision",
+                                "tools"
+                              ],
+                              "type": "string"
+                            },
+                            "maxItems": 4,
+                            "minItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "interfaces",
+                          "context_limit"
+                        ],
+                        "type": "object"
+                      },
+                      "display_name": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "endpoint_base_url": {
+                        "maxLength": 2048,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "served_model_name": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "display_name",
+                      "served_model_name",
+                      "connectivity_scope",
+                      "endpoint_base_url",
+                      "auth_profile",
+                      "credential_ref",
+                      "declared_capabilities"
+                    ],
+                    "type": "object"
+                  },
+                  "kind": {
+                    "enum": [
+                      "repository_reference"
+                    ],
+                    "type": "string"
+                  },
+                  "provider": {
+                    "enum": [
+                      "hugging_face",
+                      "modelscope",
+                      "operator_managed"
+                    ],
+                    "type": "string"
+                  },
+                  "repository_id": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "string"
+                  },
+                  "revision_kind": {
+                    "enum": [
+                      "commit",
+                      "digest",
+                      "tag",
+                      "opaque"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "provider",
+                  "repository_id",
+                  "revision",
+                  "revision_kind",
+                  "base_model"
+                ],
+                "type": "object"
+              },
+              "target": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "type": "string"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "create_model"
+                        ],
+                        "type": "string"
+                      },
+                      "tags": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 32,
+                        "type": "array"
+                      },
+                      "task_family": {
+                        "nullable": true,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "key",
+                      "display_name",
+                      "description",
+                      "task_family",
+                      "tags"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "existing_model"
+                        ],
+                        "type": "string"
+                      },
+                      "model_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "model_id"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "version_label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "version_label",
+              "source"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ModelSourceEvidenceRecordV2": {
+        "additionalProperties": false,
+        "nullable": true,
+        "properties": {
+          "adapter": {
+            "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "adapter_version": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "cache_status": {
+            "default": "unknown",
+            "enum": [
+              "cached",
+              "not_cached",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "evidence_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "evidence_kind": {
+            "enum": [
+              "provider_resolution",
+              "operator_attestation"
+            ],
+            "type": "string"
+          },
+          "license": {
+            "default": null,
+            "nullable": true,
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string"
+          },
+          "observed_revision": {
+            "nullable": true,
+            "type": "string"
+          },
+          "response_digest": {
+            "nullable": true,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "verified",
+              "not_found",
+              "unavailable",
+              "invalid",
+              "revision_mismatch"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_kind",
+          "adapter",
+          "adapter_version",
+          "observed_revision",
+          "observed_at",
+          "result",
+          "response_digest",
+          "evidence_digest"
+        ],
+        "type": "object"
+      },
       "ModelV2": {
         "additionalProperties": false,
         "properties": {
@@ -3757,6 +4733,73 @@
             "format": "uuid",
             "type": "string"
           },
+          "repository_observation": {
+            "additionalProperties": false,
+            "nullable": true,
+            "properties": {
+              "availability": {
+                "enum": [
+                  "unobserved",
+                  "available",
+                  "not_found",
+                  "unavailable",
+                  "invalid"
+                ],
+                "type": "string"
+              },
+              "cache_status": {
+                "enum": [
+                  "cached",
+                  "not_cached",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              "evidence_count": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "latest_evidence": {
+                "$ref": "#/components/schemas/ModelSourceEvidenceRecordV2"
+              },
+              "license": {
+                "nullable": true,
+                "type": "string"
+              },
+              "materialization": {
+                "additionalProperties": false,
+                "properties": {
+                  "handoff": {
+                    "enum": [
+                      "future_import_job"
+                    ],
+                    "type": "string"
+                  },
+                  "state": {
+                    "enum": [
+                      "not_materialized"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state",
+                  "handoff"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "availability",
+              "license",
+              "cache_status",
+              "evidence_count",
+              "latest_evidence",
+              "materialization"
+            ],
+            "type": "object"
+          },
           "source": {
             "oneOf": [
               {
@@ -3912,6 +4955,7 @@
           "base_model_binding_status",
           "classification",
           "source",
+          "repository_observation",
           "created_at"
         ],
         "type": "object"
@@ -5627,6 +6671,11 @@
           "items",
           "next_cursor"
         ],
+        "type": "object"
+      },
+      "RefreshModelSourceEvidenceRequestV2": {
+        "additionalProperties": false,
+        "properties": {},
         "type": "object"
       },
       "RefStateConflictDetailV2": {
@@ -19133,208 +20182,12 @@
     },
     "/v2/model-registrations:inspect": {
       "post": {
-        "operationId": "inspectArtifactModelRegistrationV2",
+        "operationId": "inspectModelRegistrationV2",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "alias": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "alias": {
-                        "enum": [
-                          "candidate",
-                          "staging",
-                          "production"
-                        ],
-                        "type": "string"
-                      },
-                      "expected_version_id": {
-                        "format": "uuid",
-                        "nullable": true,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "alias",
-                      "expected_version_id"
-                    ],
-                    "type": "object"
-                  },
-                  "source": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "artifact_id": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "deployment": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "auth_profile": {
-                            "enum": [
-                              "none",
-                              "bearer_ref"
-                            ],
-                            "type": "string"
-                          },
-                          "connectivity_scope": {
-                            "enum": [
-                              "private_network",
-                              "public_network"
-                            ],
-                            "type": "string"
-                          },
-                          "credential_ref": {
-                            "nullable": true,
-                            "type": "string"
-                          },
-                          "declared_capabilities": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "context_limit": {
-                                "maximum": 10000000,
-                                "minimum": 1,
-                                "nullable": true,
-                                "type": "integer"
-                              },
-                              "interfaces": {
-                                "items": {
-                                  "enum": [
-                                    "chat_completions",
-                                    "embeddings",
-                                    "vision",
-                                    "tools"
-                                  ],
-                                  "type": "string"
-                                },
-                                "maxItems": 4,
-                                "minItems": 1,
-                                "type": "array"
-                              }
-                            },
-                            "required": [
-                              "interfaces",
-                              "context_limit"
-                            ],
-                            "type": "object"
-                          },
-                          "display_name": {
-                            "maxLength": 256,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "endpoint_base_url": {
-                            "maxLength": 2048,
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "served_model_name": {
-                            "maxLength": 512,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "display_name",
-                          "served_model_name",
-                          "connectivity_scope",
-                          "endpoint_base_url",
-                          "auth_profile",
-                          "credential_ref",
-                          "declared_capabilities"
-                        ],
-                        "type": "object"
-                      },
-                      "kind": {
-                        "enum": [
-                          "databench_artifact"
-                        ],
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "artifact_id"
-                    ],
-                    "type": "object"
-                  },
-                  "target": {
-                    "oneOf": [
-                      {
-                        "additionalProperties": false,
-                        "properties": {
-                          "description": {
-                            "type": "string"
-                          },
-                          "display_name": {
-                            "type": "string"
-                          },
-                          "key": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": [
-                              "create_model"
-                            ],
-                            "type": "string"
-                          },
-                          "tags": {
-                            "items": {
-                              "type": "string"
-                            },
-                            "maxItems": 32,
-                            "type": "array"
-                          },
-                          "task_family": {
-                            "nullable": true,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "key",
-                          "display_name",
-                          "description",
-                          "task_family",
-                          "tags"
-                        ],
-                        "type": "object"
-                      },
-                      {
-                        "additionalProperties": false,
-                        "properties": {
-                          "kind": {
-                            "enum": [
-                              "existing_model"
-                            ],
-                            "type": "string"
-                          },
-                          "model_id": {
-                            "format": "uuid",
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "model_id"
-                        ],
-                        "type": "object"
-                      }
-                    ]
-                  },
-                  "version_label": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "target",
-                  "version_label",
-                  "source"
-                ],
-                "type": "object"
+                "$ref": "#/components/schemas/ModelRegistryRegistrationRequestV2"
               }
             }
           },
@@ -19345,311 +20198,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "classification": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "evidence_digest": {
-                          "nullable": true,
-                          "pattern": "^[0-9a-f]{64}$",
-                          "type": "string"
-                        },
-                        "source_mutability": {
-                          "enum": [
-                            "immutable",
-                            "mutable",
-                            "unknown"
-                          ],
-                          "type": "string"
-                        },
-                        "verification_level": {
-                          "enum": [
-                            "content_verified",
-                            "provider_verified",
-                            "operator_attested",
-                            "unverified"
-                          ],
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "source_mutability",
-                        "verification_level",
-                        "evidence_digest"
-                      ],
-                      "type": "object"
-                    },
-                    "model_create_digest": {
-                      "nullable": true,
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "model_id": {
-                      "format": "uuid",
-                      "type": "string"
-                    },
-                    "normalized_request": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "alias": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "alias": {
-                              "enum": [
-                                "candidate",
-                                "staging",
-                                "production"
-                              ],
-                              "type": "string"
-                            },
-                            "expected_version_id": {
-                              "format": "uuid",
-                              "nullable": true,
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "alias",
-                            "expected_version_id"
-                          ],
-                          "type": "object"
-                        },
-                        "source": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "artifact_id": {
-                              "format": "uuid",
-                              "type": "string"
-                            },
-                            "deployment": {
-                              "additionalProperties": false,
-                              "properties": {
-                                "auth_profile": {
-                                  "enum": [
-                                    "none",
-                                    "bearer_ref"
-                                  ],
-                                  "type": "string"
-                                },
-                                "connectivity_scope": {
-                                  "enum": [
-                                    "private_network",
-                                    "public_network"
-                                  ],
-                                  "type": "string"
-                                },
-                                "credential_ref": {
-                                  "nullable": true,
-                                  "type": "string"
-                                },
-                                "declared_capabilities": {
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "context_limit": {
-                                      "maximum": 10000000,
-                                      "minimum": 1,
-                                      "nullable": true,
-                                      "type": "integer"
-                                    },
-                                    "interfaces": {
-                                      "items": {
-                                        "enum": [
-                                          "chat_completions",
-                                          "embeddings",
-                                          "vision",
-                                          "tools"
-                                        ],
-                                        "type": "string"
-                                      },
-                                      "maxItems": 4,
-                                      "minItems": 1,
-                                      "type": "array"
-                                    }
-                                  },
-                                  "required": [
-                                    "interfaces",
-                                    "context_limit"
-                                  ],
-                                  "type": "object"
-                                },
-                                "display_name": {
-                                  "maxLength": 256,
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                "endpoint_base_url": {
-                                  "maxLength": 2048,
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                "served_model_name": {
-                                  "maxLength": 512,
-                                  "minLength": 1,
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "display_name",
-                                "served_model_name",
-                                "connectivity_scope",
-                                "endpoint_base_url",
-                                "auth_profile",
-                                "credential_ref",
-                                "declared_capabilities"
-                              ],
-                              "type": "object"
-                            },
-                            "kind": {
-                              "enum": [
-                                "databench_artifact"
-                              ],
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "artifact_id"
-                          ],
-                          "type": "object"
-                        },
-                        "target": {
-                          "oneOf": [
-                            {
-                              "additionalProperties": false,
-                              "properties": {
-                                "description": {
-                                  "type": "string"
-                                },
-                                "display_name": {
-                                  "type": "string"
-                                },
-                                "key": {
-                                  "type": "string"
-                                },
-                                "kind": {
-                                  "enum": [
-                                    "create_model"
-                                  ],
-                                  "type": "string"
-                                },
-                                "tags": {
-                                  "items": {
-                                    "type": "string"
-                                  },
-                                  "maxItems": 32,
-                                  "type": "array"
-                                },
-                                "task_family": {
-                                  "nullable": true,
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "kind",
-                                "key",
-                                "display_name",
-                                "description",
-                                "task_family",
-                                "tags"
-                              ],
-                              "type": "object"
-                            },
-                            {
-                              "additionalProperties": false,
-                              "properties": {
-                                "kind": {
-                                  "enum": [
-                                    "existing_model"
-                                  ],
-                                  "type": "string"
-                                },
-                                "model_id": {
-                                  "format": "uuid",
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "kind",
-                                "model_id"
-                              ],
-                              "type": "object"
-                            }
-                          ]
-                        },
-                        "version_label": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "target",
-                        "version_label",
-                        "source"
-                      ],
-                      "type": "object"
-                    },
-                    "plan_profile": {
-                      "enum": [
-                        "model-registration-plan-artifact-v1"
-                      ],
-                      "type": "string"
-                    },
-                    "registration_digest": {
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "source_fingerprint": {
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "version_create_digest": {
-                      "pattern": "^[0-9a-f]{64}$",
-                      "type": "string"
-                    },
-                    "warnings": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "code": {
-                            "pattern": "^[a-z][a-z0-9._-]{0,127}$",
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          },
-                          "path": {
-                            "maxLength": 512,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "code",
-                          "path",
-                          "message"
-                        ],
-                        "type": "object"
-                      },
-                      "maxItems": 32,
-                      "type": "array"
-                    }
-                  },
-                  "required": [
-                    "plan_profile",
-                    "normalized_request",
-                    "model_id",
-                    "model_create_digest",
-                    "source_fingerprint",
-                    "version_create_digest",
-                    "classification",
-                    "warnings",
-                    "registration_digest"
-                  ],
-                  "type": "object"
+                  "$ref": "#/components/schemas/ModelRegistryRegistrationPlanV2"
                 }
               }
             },
-            "description": "Inspected Artifact registration",
+            "description": "Inspected Model registration",
             "headers": {
               "Cache-Control": {
                 "required": true,
@@ -20334,6 +20887,449 @@
             }
           }
         },
+        "tags": [
+          "v2 Models"
+        ]
+      }
+    },
+    "/v2/model-versions/{version_id}:refresh-source-evidence": {
+      "post": {
+        "operationId": "refreshModelSourceEvidenceV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshModelSourceEvidenceRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionV2"
+                }
+              }
+            },
+            "description": "Refreshed Repository source evidence",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestErrorResponseV2"
+                }
+              }
+            },
+            "description": "Malformed Model action request",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorResponseV2"
+                }
+              }
+            },
+            "description": "Authentication is required",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenErrorResponseV2"
+                }
+              }
+            },
+            "description": "Workspace access is forbidden",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model or Model Version was not found",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse409V2"
+                }
+              }
+            },
+            "description": "Model metadata, Alias, or adoption conflict",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLimitErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model action request is too large",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponseV2"
+                }
+              }
+            },
+            "description": "Invalid Model identifier",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooManyRequestsErrorResponseV2"
+                }
+              }
+            },
+            "description": "Request rate limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse500V2"
+                }
+              }
+            },
+            "description": "V2 integrity or internal failure",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse503V2"
+                }
+              }
+            },
+            "description": "V2 capacity or dependency is unavailable",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ModelDeploymentOperatorBearer": []
+          }
+        ],
         "tags": [
           "v2 Models"
         ]
@@ -21121,12 +22117,12 @@
     },
     "/v2/models:register": {
       "post": {
-        "operationId": "registerArtifactModelV2",
+        "operationId": "registerModelV2",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommitArtifactModelRegistrationRequestV2"
+                "$ref": "#/components/schemas/CommitModelRegistryRegistrationRequestV2"
               }
             }
           },
@@ -21141,7 +22137,7 @@
                 }
               }
             },
-            "description": "Committed Artifact Model",
+            "description": "Committed Model",
             "headers": {
               "Cache-Control": {
                 "required": true,
@@ -23866,7 +24862,7 @@
     },
     "/v2/models/{model_id}/versions:register": {
       "post": {
-        "operationId": "registerArtifactModelVersionV2",
+        "operationId": "registerModelVersionV2",
         "parameters": [
           {
             "in": "path",
@@ -23882,7 +24878,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CommitArtifactModelRegistrationRequestV2"
+                "$ref": "#/components/schemas/CommitModelRegistryRegistrationRequestV2"
               }
             }
           },
@@ -23897,7 +24893,7 @@
                 }
               }
             },
-            "description": "Committed Artifact Model Version",
+            "description": "Committed Model Version",
             "headers": {
               "Cache-Control": {
                 "required": true,

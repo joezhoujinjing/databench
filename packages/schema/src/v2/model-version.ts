@@ -3,6 +3,7 @@ import {
   type ModelRegistrationPlanArtifactIdentityV1,
   type ModelRegistrationPlanRepositoryIdentityV1,
   type ModelRegistrationPlanServiceIdentityV1,
+  type ModelSourceEvidenceIdentityV1,
   type ModelSourceFingerprintArtifactIdentityV1,
   type ModelSourceFingerprintRepositoryIdentityV1,
   type ModelSourceFingerprintServiceIdentityV1,
@@ -13,6 +14,7 @@ import {
   V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE,
+  V2_MODEL_SOURCE_EVIDENCE_PROFILE,
   V2_MODEL_SOURCE_FINGERPRINT_ARTIFACT_PROFILE,
   V2_MODEL_SOURCE_FINGERPRINT_REPOSITORY_PROFILE,
   V2_MODEL_SOURCE_FINGERPRINT_SERVICE_PROFILE,
@@ -57,6 +59,7 @@ const REPOSITORY_REVISION = /^[A-Za-z0-9][A-Za-z0-9._+:/-]{0,255}$/
 const CREDENTIAL_REF = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const LOCAL_PATH = /^(?:\/|\\|[A-Za-z]:[\\/]|file:|(?:\.\.?)[\\/]|(?:~)[\\/])/i
 const WINDOWS_SEPARATOR = /\\/
+const HOSTED_REPOSITORY_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/
 
 export const ModelVersionIdV2Schema = z.uuid()
 export const ModelVersionLabelV2Schema = modelRegistryBoundedTextV2(128, { rejectPath: true })
@@ -148,15 +151,35 @@ export const ModelArtifactRegistrationSourceV2Schema = z.strictObject({
   artifact_id: ModelArtifactIdV2Schema,
   deployment: ModelDeploymentDraftV2Schema.optional(),
 })
-export const ModelRepositoryRegistrationSourceV2Schema = z.strictObject({
-  kind: z.literal('repository_reference'),
-  provider: ModelRepositoryProviderV2Schema,
-  repository_id: ModelRepositoryIdV2Schema,
-  revision: ModelRepositoryRevisionV2Schema,
-  revision_kind: ModelRepositoryRevisionKindV2Schema,
-  base_model: ModelVersionBaseModelV2Schema.nullable(),
-  deployment: ModelDeploymentDraftV2Schema.optional(),
-})
+export const ModelRepositoryRegistrationSourceV2Schema = z
+  .strictObject({
+    kind: z.literal('repository_reference'),
+    provider: ModelRepositoryProviderV2Schema,
+    repository_id: ModelRepositoryIdV2Schema,
+    revision: ModelRepositoryRevisionV2Schema,
+    revision_kind: ModelRepositoryRevisionKindV2Schema,
+    base_model: ModelVersionBaseModelV2Schema.nullable(),
+    deployment: ModelDeploymentDraftV2Schema.optional(),
+  })
+  .superRefine((source, context) => {
+    if (source.provider === 'operator_managed') {
+      if (!SAFE_TOKEN.test(source.repository_id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['repository_id'],
+          message: 'Operator-managed repository ID must be an opaque lowercase alias',
+        })
+      }
+      return
+    }
+    if (!HOSTED_REPOSITORY_ID.test(source.repository_id)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repository_id'],
+        message: 'Hosted repository ID must be a canonical owner/name pair',
+      })
+    }
+  })
 export const ModelServiceRegistrationSourceV2Schema = z.strictObject({
   kind: z.literal('existing_service'),
   provider: z.literal('openai_compatible'),
@@ -275,6 +298,27 @@ export type CommitArtifactModelRegistrationRequestV2 = z.infer<
   typeof CommitArtifactModelRegistrationRequestV2Schema
 >
 
+export const ModelRegistryRegistrationRequestV2Schema = z
+  .union([ModelArtifactRegistrationRequestV2Schema, ModelRepositoryRegistrationRequestV2Schema])
+  .meta({ id: 'ModelRegistryRegistrationRequestV2' })
+export type ModelRegistryRegistrationRequestV2 = z.infer<
+  typeof ModelRegistryRegistrationRequestV2Schema
+>
+
+export const CommitModelRegistryRegistrationRequestV2Schema = z
+  .strictObject({
+    request: ModelRegistryRegistrationRequestV2Schema,
+    expected_registration_digest: DigestHexSchema,
+  })
+  .meta({ id: 'CommitModelRegistryRegistrationRequestV2' })
+export type CommitModelRegistryRegistrationRequestV2 = z.infer<
+  typeof CommitModelRegistryRegistrationRequestV2Schema
+>
+
+export const ModelRegistryRegistrationPlanV2Schema = z
+  .union([ModelRegistrationPlanArtifactV2Schema, ModelRegistrationPlanRepositoryV2Schema])
+  .meta({ id: 'ModelRegistryRegistrationPlanV2' })
+
 export const ModelRegistrationCommitResultV2Schema = z
   .strictObject({
     registration_digest: DigestHexSchema,
@@ -294,22 +338,57 @@ export const ModelSourceEvidenceV2Schema = z
     adapter_version: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,127}$/),
     observed_revision: ModelRepositoryRevisionV2Schema.nullable(),
     observed_at: Rfc3339UtcSchema,
-    result: z.enum(['verified', 'not_found', 'unavailable', 'invalid']),
+    result: z.enum(['verified', 'not_found', 'unavailable', 'invalid', 'revision_mismatch']),
     response_digest: DigestHexSchema.nullable(),
+    license: modelRegistryBoundedTextV2(256, { rejectPath: true }).nullable().default(null),
+    cache_status: z.enum(['cached', 'not_cached', 'unknown']).default('unknown'),
   })
   .superRefine((evidence, context) => {
     if (
-      evidence.result === 'verified' &&
+      (evidence.result === 'verified' || evidence.result === 'revision_mismatch') &&
       (evidence.observed_revision === null || evidence.response_digest === null)
     ) {
       context.addIssue({
         code: 'custom',
         path: ['result'],
-        message: 'Verified evidence requires observed revision and response digest',
+        message: 'Revision evidence requires observed revision and response digest',
       })
     }
   })
 export type ModelSourceEvidenceV2 = z.infer<typeof ModelSourceEvidenceV2Schema>
+
+export const ModelSourceEvidenceIdentityV1Schema: z.ZodType<ModelSourceEvidenceIdentityV1> =
+  z.strictObject({
+    evidence_profile: z.literal(V2_MODEL_SOURCE_EVIDENCE_PROFILE),
+    namespace: IdentityNamespaceV2Schema,
+    model_version_id: ModelVersionIdV2Schema,
+    evidence_kind: ModelSourceEvidenceV2Schema.shape.evidence_kind,
+    adapter: ModelSourceEvidenceV2Schema.shape.adapter,
+    adapter_version: ModelSourceEvidenceV2Schema.shape.adapter_version,
+    observed_revision: ModelSourceEvidenceV2Schema.shape.observed_revision,
+    result: ModelSourceEvidenceV2Schema.shape.result,
+    response_digest: ModelSourceEvidenceV2Schema.shape.response_digest,
+    license: ModelSourceEvidenceV2Schema.shape.license,
+    cache_status: ModelSourceEvidenceV2Schema.shape.cache_status,
+  })
+
+export const ModelSourceEvidenceRecordV2Schema = ModelSourceEvidenceV2Schema.extend({
+  evidence_digest: DigestHexSchema,
+}).meta({ id: 'ModelSourceEvidenceRecordV2' })
+export type ModelSourceEvidenceRecordV2 = z.infer<typeof ModelSourceEvidenceRecordV2Schema>
+
+export const ModelRepositoryObservationV2Schema = z.strictObject({
+  availability: z.enum(['unobserved', 'available', 'not_found', 'unavailable', 'invalid']),
+  license: modelRegistryBoundedTextV2(256, { rejectPath: true }).nullable(),
+  cache_status: z.enum(['cached', 'not_cached', 'unknown']),
+  evidence_count: z.number().int().safe().nonnegative().max(1_000),
+  latest_evidence: ModelSourceEvidenceRecordV2Schema.nullable(),
+  materialization: z.strictObject({
+    state: z.literal('not_materialized'),
+    handoff: z.literal('future_import_job'),
+  }),
+})
+export type ModelRepositoryObservationV2 = z.infer<typeof ModelRepositoryObservationV2Schema>
 
 export const ModelVersionSourceV2Schema = z.discriminatedUnion('kind', [
   z.strictObject({
@@ -348,6 +427,7 @@ export const ModelVersionV2Schema = z
     base_model_binding_status: ModelArtifactBaseModelBindingStatusV2Schema.nullable(),
     classification: ModelSourceClassificationV2Schema,
     source: ModelVersionSourceV2Schema,
+    repository_observation: ModelRepositoryObservationV2Schema.nullable(),
     created_at: Rfc3339UtcSchema,
   })
   .superRefine((version, context) => {
@@ -368,6 +448,16 @@ export const ModelVersionV2Schema = z
         message: 'Only Artifact sources expose a base binding status',
       })
     }
+    if (
+      (version.source_kind === 'repository_reference') !==
+      (version.repository_observation !== null)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repository_observation'],
+        message: 'Only Repository sources expose repository observation',
+      })
+    }
   })
   .meta({ id: 'ModelVersionV2' })
 export type ModelVersionV2 = z.infer<typeof ModelVersionV2Schema>
@@ -375,6 +465,13 @@ export type ModelVersionV2 = z.infer<typeof ModelVersionV2Schema>
 export const ModelVersionParamsV2Schema = z
   .strictObject({ version_id: ModelVersionIdV2Schema })
   .meta({ id: 'ModelVersionParamsV2' })
+
+export const RefreshModelSourceEvidenceRequestV2Schema = z
+  .strictObject({})
+  .meta({ id: 'RefreshModelSourceEvidenceRequestV2' })
+export type RefreshModelSourceEvidenceRequestV2 = z.infer<
+  typeof RefreshModelSourceEvidenceRequestV2Schema
+>
 
 export const ModelVersionPageRequestV2Schema = z
   .strictObject({
@@ -469,6 +566,7 @@ export type ModelDeploymentAdoptionV2 = z.infer<typeof ModelDeploymentAdoptionV2
 export function classifyModelVersionSourceV2(
   source: ModelRegistrationSourceV2,
   evidence: readonly ModelSourceEvidenceV2[] = [],
+  classificationEvidenceDigest: string | null = null,
 ): z.infer<typeof ModelSourceClassificationV2Schema> {
   if (source.kind === 'databench_artifact') {
     return {
@@ -480,19 +578,31 @@ export function classifyModelVersionSourceV2(
 
   const expectedRevision =
     source.kind === 'repository_reference' ? source.revision : source.external_version_ref
-  const verified = evidence.some(
+  const matchingVerifiedIndex = evidence.findLastIndex(
     (entry) =>
       entry.result === 'verified' &&
-      entry.observed_revision === expectedRevision &&
+      entry.evidence_kind === 'provider_resolution' &&
+      (source.kind === 'repository_reference' && source.revision_kind === 'tag'
+        ? entry.observed_revision !== null
+        : entry.observed_revision === expectedRevision) &&
       entry.response_digest !== null,
   )
+  const driftIndex = evidence.findLastIndex((entry) => entry.result === 'revision_mismatch')
+  const verified = matchingVerifiedIndex >= 0 && matchingVerifiedIndex > driftIndex
   const sourceIsDeclaredMutable =
     (source.kind === 'repository_reference' && source.revision_kind === 'tag') ||
     (source.kind === 'existing_service' && source.declared_reference_kind === 'mutable_alias')
+  const exactRepositoryReference =
+    source.kind === 'repository_reference' &&
+    (source.revision_kind === 'commit' || source.revision_kind === 'digest')
   return {
-    source_mutability: sourceIsDeclaredMutable ? 'mutable' : verified ? 'immutable' : 'unknown',
+    source_mutability: sourceIsDeclaredMutable
+      ? 'mutable'
+      : exactRepositoryReference && verified
+        ? 'immutable'
+        : 'unknown',
     verification_level: verified ? 'provider_verified' : 'operator_attested',
-    evidence_digest: null,
+    evidence_digest: verified || driftIndex >= 0 ? classificationEvidenceDigest : null,
   }
 }
 

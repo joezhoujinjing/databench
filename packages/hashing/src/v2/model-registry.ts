@@ -20,6 +20,7 @@ export const V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE =
 export const V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE =
   'model-registration-plan-service-v1' as const
 export const V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE = 'model-deployment-adoption-v1' as const
+export const V2_MODEL_SOURCE_EVIDENCE_PROFILE = 'model-source-evidence-v1' as const
 
 const DOMAIN = {
   modelCreate: 'databench.model-create.model-create-v1\0',
@@ -34,6 +35,7 @@ const DOMAIN = {
     'databench.model-registration-plan.model-registration-plan-repository-v1\0',
   registrationService: 'databench.model-registration-plan.model-registration-plan-service-v1\0',
   deploymentAdoption: 'databench.model-deployment-adoption.model-deployment-adoption-v1\0',
+  sourceEvidence: 'databench.model-source-evidence.model-source-evidence-v1\0',
 } as const
 
 const textEncoder = new TextEncoder()
@@ -140,6 +142,20 @@ export interface ModelDeploymentAdoptionIdentityV1 {
   readonly deployment_id: string
   readonly deployment_digest: string
   readonly artifact_id: string
+}
+
+export interface ModelSourceEvidenceIdentityV1 {
+  readonly evidence_profile: typeof V2_MODEL_SOURCE_EVIDENCE_PROFILE
+  readonly namespace: string
+  readonly model_version_id: string
+  readonly evidence_kind: 'provider_resolution' | 'operator_attestation'
+  readonly adapter: string
+  readonly adapter_version: string
+  readonly observed_revision: string | null
+  readonly result: 'verified' | 'not_found' | 'unavailable' | 'invalid' | 'revision_mismatch'
+  readonly response_digest: string | null
+  readonly license: string | null
+  readonly cache_status: 'cached' | 'not_cached' | 'unknown'
 }
 
 type NoExtraKeys<Expected, Actual extends Expected> = Actual &
@@ -267,12 +283,34 @@ export function hashV2ModelDeploymentAdoption<
   })
 }
 
+export function hashV2ModelSourceEvidence<const Identity extends ModelSourceEvidenceIdentityV1>(
+  identity: NoExtraKeys<ModelSourceEvidenceIdentityV1, Identity>,
+): string {
+  return hashDomain(DOMAIN.sourceEvidence, {
+    evidence_profile: identity.evidence_profile,
+    namespace: identity.namespace,
+    model_version_id: identity.model_version_id,
+    evidence_kind: identity.evidence_kind,
+    adapter: identity.adapter,
+    adapter_version: identity.adapter_version,
+    observed_revision: identity.observed_revision,
+    result: identity.result,
+    response_digest: identity.response_digest,
+    license: identity.license,
+    cache_status: identity.cache_status,
+  })
+}
+
 export function deriveV2ModelIdFromCreateDigest(createDigest: string): string {
   return uuidV8FromDigest(createDigest)
 }
 
 export function deriveV2ModelVersionIdFromCreateDigest(createDigest: string): string {
   return uuidV8FromDigest(createDigest)
+}
+
+export function deriveV2ModelSourceEvidenceIdFromDigest(evidenceDigest: string): string {
+  return uuidV8FromDigest(evidenceDigest)
 }
 
 function hashRegistrationPlan(

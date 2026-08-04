@@ -42,6 +42,7 @@ import {
 } from '../src/internal/worker/canonical-finalizer.js'
 import { compileBasicCleanWorkerParametersV1 } from '../src/internal/worker/data-juicer.js'
 import { WorkerStagingJobPreparerV1 } from '../src/internal/worker/staging.js'
+import type { V2ModelRepositoryRuntime } from '../src/v2/model-repository.js'
 import {
   SwiftStudioProviderConflictError,
   type SwiftStudioProviderV2,
@@ -2026,7 +2027,113 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     ).toBe(1)
   })
 
-  function createWorkspace(tempName: string): V2Workspace {
+  test('persists connected Repository evidence, replays without provider I/O, and projects drift', async () => {
+    let resolveCount = 0
+    let drifted = false
+    const repositoryRuntime: V2ModelRepositoryRuntime = {
+      mode: 'connected',
+      async resolve() {
+        resolveCount += 1
+        return {
+          evidence_kind: 'provider_resolution',
+          adapter: 'modelscope',
+          adapter_version: '1',
+          observed_revision: drifted ? 'different-revision' : 'abc123',
+          observed_at: new Date(1_775_301_600_000 + resolveCount * 1_000).toISOString(),
+          result: drifted ? 'revision_mismatch' : 'verified',
+          response_digest: (drifted ? 'd' : 'c').repeat(64),
+          license: 'apache-2.0',
+          cache_status: 'not_cached',
+        }
+      },
+    }
+    const registryWorkspace = createWorkspace('model-registry-evidence', repositoryRuntime)
+    const request = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'integration-modelscope-model',
+        display_name: 'Integration ModelScope Model',
+        description: 'MR3 connected evidence path',
+        task_family: 'chat',
+        tags: ['integration'],
+      },
+      version_label: 'r1',
+      source: {
+        kind: 'repository_reference' as const,
+        provider: 'modelscope' as const,
+        repository_id: 'Qwen/Qwen3-0.6B',
+        revision: 'abc123',
+        revision_kind: 'commit' as const,
+        base_model: null,
+      },
+    }
+    const plan = await registryWorkspace.inspectModelRegistration(request)
+    expect(plan.classification).toMatchObject({
+      source_mutability: 'immutable',
+      verification_level: 'provider_verified',
+      evidence_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    })
+    const created = await registryWorkspace.commitModelRegistration({
+      request,
+      expected_registration_digest: plan.registration_digest,
+    })
+    const replayed = await registryWorkspace.commitModelRegistration({
+      request,
+      expected_registration_digest: plan.registration_digest,
+    })
+    expect(resolveCount).toBe(2)
+    expect(replayed).toEqual({ ...created, replayed: true })
+    const beforeDrift = await registryWorkspace.getModelVersion(created.model_version_id)
+    expect(beforeDrift).toMatchObject({
+      source_fingerprint: created.source_fingerprint,
+      classification: {
+        source_mutability: 'immutable',
+        verification_level: 'provider_verified',
+      },
+      repository_observation: {
+        availability: 'available',
+        license: 'apache-2.0',
+        cache_status: 'not_cached',
+        evidence_count: 1,
+        materialization: { state: 'not_materialized', handoff: 'future_import_job' },
+      },
+    })
+    expect(
+      await prisma.v2ModelSourceEvidence.count({
+        where: { modelVersionId: created.model_version_id },
+      }),
+    ).toBe(1)
+
+    await Promise.all([
+      registryWorkspace.refreshModelSourceEvidence(created.model_version_id),
+      registryWorkspace.refreshModelSourceEvidence(created.model_version_id),
+    ])
+    expect(
+      await prisma.v2ModelSourceEvidence.count({
+        where: { modelVersionId: created.model_version_id },
+      }),
+    ).toBe(1)
+
+    drifted = true
+    const afterDrift = await registryWorkspace.refreshModelSourceEvidence(created.model_version_id)
+    expect(afterDrift).toMatchObject({
+      source_fingerprint: created.source_fingerprint,
+      classification: {
+        source_mutability: 'unknown',
+        verification_level: 'operator_attested',
+      },
+      repository_observation: {
+        availability: 'invalid',
+        evidence_count: 2,
+        latest_evidence: { result: 'revision_mismatch' },
+      },
+    })
+  })
+
+  function createWorkspace(
+    tempName: string,
+    modelRepository?: V2ModelRepositoryRuntime,
+  ): V2Workspace {
     return new V2Workspace({
       catalog,
       store: new FileBackedV2Store({
@@ -2037,6 +2144,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         readConcurrency: 1,
       }),
       cursorSecret: 'gv9-integration-cursor-secret',
+      ...(modelRepository === undefined ? {} : { modelRepository }),
     })
   }
 

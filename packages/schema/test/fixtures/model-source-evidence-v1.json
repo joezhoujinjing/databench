@@ -1,0 +1,30 @@
+{
+  "profile": "model-source-evidence-v1",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d736f757263652d65766964656e63652e6d6f64656c2d736f757263652d65766964656e63652d763100",
+  "identity": {
+    "evidence_profile": "model-source-evidence-v1",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "model_version_id": "20000000-0000-8000-8000-000000000001",
+    "evidence_kind": "provider_resolution",
+    "adapter": "modelscope",
+    "adapter_version": "1",
+    "observed_revision": "abc123",
+    "result": "verified",
+    "response_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "license": "apache-2.0",
+    "cache_status": "not_cached"
+  },
+  "canonical": "{\"adapter\":\"modelscope\",\"adapter_version\":\"1\",\"cache_status\":\"not_cached\",\"evidence_kind\":\"provider_resolution\",\"evidence_profile\":\"model-source-evidence-v1\",\"license\":\"apache-2.0\",\"model_version_id\":\"20000000-0000-8000-8000-000000000001\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"observed_revision\":\"abc123\",\"response_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"result\":\"verified\"}",
+  "expected_digest": "4aca20a8eada195637208f00cd28cb000f79433cf096c5fb62cb5500dcf239bc",
+  "wire_observation": {
+    "evidence_kind": "provider_resolution",
+    "adapter": "modelscope",
+    "adapter_version": "1",
+    "observed_revision": "abc123",
+    "observed_at": "2026-08-04T12:00:00.000Z",
+    "result": "verified",
+    "response_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "license": "apache-2.0",
+    "cache_status": "not_cached"
+  }
+}

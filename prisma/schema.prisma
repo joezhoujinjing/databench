@@ -526,6 +526,8 @@ model V2ModelSourceEvidence {
   observedAt       DateTime @map("observed_at") @db.Timestamptz(6)
   result           String
   responseDigest   String?  @map("response_digest") @db.Char(64)
+  license          String?
+  cacheStatus      String   @default("unknown") @map("cache_status")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   namespace    V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)

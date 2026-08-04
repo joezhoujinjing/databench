@@ -239,6 +239,34 @@
     "artifactId": "Artifact ID",
     "archiveDigest": "Archive digest",
     "manifestDigest": "Manifest digest",
+    "repository": {
+      "refresh": "Refresh source evidence",
+      "refreshing": "Refreshing…",
+      "provider": "Repository provider",
+      "repositoryId": "Repository ID",
+      "revision": "Repository revision",
+      "availability": "Availability observation",
+      "license": "License observation",
+      "cache": "Local cache observation",
+      "observedRevision": "Observed revision",
+      "observedAt": "Observed at",
+      "weights": "Managed weights",
+      "notMaterialized": "Weights are unmanaged; handoff requires a separate materialize/import job.",
+      "unknown": "Unknown",
+      "unobserved": "Not observed",
+      "availabilityValues": {
+        "unobserved": "Not observed",
+        "available": "Provider available",
+        "not_found": "Not found",
+        "unavailable": "Provider unavailable",
+        "invalid": "Invalid evidence"
+      },
+      "cacheValues": {
+        "cached": "Present in operator-managed cache",
+        "not_cached": "Not locally cached",
+        "unknown": "Unknown"
+      }
+    },
     "sources": {
       "databench_artifact": "Databench Artifact",
       "repository_reference": "Model repository",
@@ -252,10 +280,10 @@
     },
     "wizard": {
       "title": "Register Model Version",
-      "description": "Select a logical Model and Artifact in order, Inspect first, then commit the locked digest.",
+      "description": "Select a logical Model and source in order, Inspect first, then commit the locked digest.",
       "steps": {
         "model": "Model information",
-        "artifact": "Artifact source",
+        "source": "Source",
         "inspect": "Inspect",
         "commit": "Commit"
       },
@@ -270,9 +298,26 @@
       "taskFamily": "Task family",
       "tags": "Tags (comma-separated)",
       "versionLabel": "Version label",
+      "sourceType": "Registration source",
+      "sourceArtifact": "Register from a Databench Artifact",
+      "sourceRepository": "Register from a model repository",
+      "repositoryProvider": "Repository provider",
+      "operatorManaged": "Operator-managed local repository",
+      "repositoryId": "Repository ID / local opaque alias",
+      "repositoryRevision": "Exact revision",
+      "revisionKind": "Revision kind",
+      "revisionKinds": {
+        "commit": "Commit",
+        "digest": "Digest",
+        "tag": "Tag (mutable)",
+        "opaque": "Opaque"
+      },
+      "baseModelOptional": "Base model (optional)",
+      "baseRevisionOptional": "Base model revision (optional)",
+      "repositoryBoundary": "Registers a repository reference with bounded metadata; it does not download weights or create an Artifact.",
       "loadingArtifacts": "Loading Artifacts…",
       "noArtifacts": "No Artifact is available for registration.",
-      "inspectHint": "Inspect reloads immutable Artifact metadata and computes the unique registration digest without writing a Model.",
+      "inspectHint": "Inspect normalizes the source, computes the unique registration digest, and shows mutability and verification without writing a Model.",
       "artifact": "Artifact",
       "inspected": "Inspect complete; digest locked",
       "commitHint": "Commit accepts only the exact request and digest from the previous step; drift is rejected.",

@@ -169,6 +169,54 @@ try {
     throw new Error('0016 adoption composite FK columns do not match the accepted design')
   }
 
+  await seedMr2Evidence()
+  await applyMigration('0017_model_repository_evidence_v2')
+
+  const rowsAfterMr3 = await legacyRows()
+  const constraintsAfterMr3 = await legacyConstraints()
+  if (JSON.stringify(rowsAfterMr3) !== JSON.stringify(rowsBefore)) {
+    throw new Error('0017 changed pre-existing S4 rows')
+  }
+  if (JSON.stringify(constraintsAfterMr3) !== JSON.stringify(constraintsBefore)) {
+    throw new Error('0017 changed pre-existing S4 constraints')
+  }
+  const evidenceShape = await client.query(`
+    SELECT pg_get_constraintdef("oid") AS "definition"
+    FROM "pg_constraint"
+    WHERE
+      "connamespace" = current_schema()::regnamespace AND
+      "conname" = 'model_source_evidence_v2_shape_check'
+  `)
+  const evidenceColumns = await client.query(`
+    SELECT "column_name", "column_default", "is_nullable"
+    FROM "information_schema"."columns"
+    WHERE
+      "table_schema" = current_schema() AND
+      "table_name" = 'model_source_evidence_v2' AND
+      "column_name" IN ('license', 'cache_status')
+    ORDER BY "column_name" COLLATE "C"
+  `)
+  const preservedEvidence = await client.query(`
+    SELECT "result", "license", "cache_status"
+    FROM "model_source_evidence_v2"
+    WHERE "id" = '30000000-0000-8000-8000-000000000001'::uuid
+  `)
+  const evidenceDefinition = evidenceShape.rows[0]?.definition ?? ''
+  if (
+    evidenceShape.rows.length !== 1 ||
+    evidenceColumns.rows.length !== 2 ||
+    evidenceColumns.rows.some(({ column_name: columnName, column_default: columnDefault }) =>
+      columnName === 'cache_status' ? columnDefault !== null : false,
+    ) ||
+    !evidenceDefinition.includes('revision_mismatch') ||
+    !evidenceDefinition.includes('cache_status') ||
+    !evidenceDefinition.includes('license') ||
+    JSON.stringify(preservedEvidence.rows) !==
+      JSON.stringify([{ result: 'verified', license: null, cache_status: 'unknown' }])
+  ) {
+    throw new Error('0017 did not preserve and extend Model source evidence as designed')
+  }
+
   console.log(
     JSON.stringify({
       status: 'ok',
@@ -181,6 +229,7 @@ try {
         ...sourceTriggers.rows.map(({ tgname }) => tgname),
         ...adoptionConstraints.rows.map(({ conname }) => conname),
         ...adoptionTriggers.rows.map(({ tgname }) => tgname),
+        ...evidenceShape.rows.map(() => 'model_source_evidence_v2_shape_check'),
       ],
     }),
   )
@@ -243,6 +292,69 @@ async function seedS4Rows() {
     `,
     [namespaceId, 'b'.repeat(64), datasetVersion, 'c'.repeat(64)],
   )
+}
+
+async function seedMr2Evidence() {
+  const namespaceId = '11111111-1111-4111-8111-111111111111'
+  await client.query('BEGIN')
+  try {
+    await client.query(
+      `
+        INSERT INTO "models_v2" (
+          "id", "namespace_id", "key", "create_profile", "create_digest",
+          "display_name", "description", "tags_json"
+        ) VALUES (
+          '10000000-0000-8000-8000-000000000001'::uuid, $1::uuid,
+          'forward-model', 'model-create-v1', $2, 'Forward Model', '', '[]'::jsonb
+        )
+      `,
+      [namespaceId, '1'.repeat(64)],
+    )
+    await client.query(
+      `
+        INSERT INTO "model_versions_v2" (
+          "id", "namespace_id", "model_id", "version_label", "source_kind",
+          "create_profile", "create_digest", "source_fingerprint"
+        ) VALUES (
+          '20000000-0000-8000-8000-000000000001'::uuid, $1::uuid,
+          '10000000-0000-8000-8000-000000000001'::uuid, 'r1',
+          'repository_reference', 'model-version-create-repository-v1', $2, $3
+        )
+      `,
+      [namespaceId, '2'.repeat(64), '3'.repeat(64)],
+    )
+    await client.query(
+      `
+        INSERT INTO "model_version_repository_sources_v2" (
+          "namespace_id", "model_version_id", "provider", "repository_id",
+          "revision", "revision_kind"
+        ) VALUES (
+          $1::uuid, '20000000-0000-8000-8000-000000000001'::uuid,
+          'modelscope', 'Qwen/Qwen3-0.6B', 'abc123', 'commit'
+        )
+      `,
+      [namespaceId],
+    )
+    await client.query(
+      `
+        INSERT INTO "model_source_evidence_v2" (
+          "id", "namespace_id", "model_version_id", "evidence_profile",
+          "evidence_digest", "evidence_kind", "adapter", "adapter_version",
+          "observed_revision", "observed_at", "result", "response_digest"
+        ) VALUES (
+          '30000000-0000-8000-8000-000000000001'::uuid, $1::uuid,
+          '20000000-0000-8000-8000-000000000001'::uuid,
+          'model-source-evidence-v1', $2, 'provider_resolution', 'modelscope', '1',
+          'abc123', '2026-08-04T12:00:00.000Z'::timestamptz, 'verified', $3
+        )
+      `,
+      [namespaceId, '4'.repeat(64), '5'.repeat(64)],
+    )
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  }
 }
 
 async function legacyRows() {

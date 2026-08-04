@@ -50,6 +50,7 @@ export function createAppFromConfig(config: ApiConfig) {
     ...(config.modelDeploymentServiceCredential === undefined
       ? {}
       : { modelDeploymentServiceCredential: config.modelDeploymentServiceCredential }),
+    modelRepository: config.modelRepository,
     storeConfig: config.storeConfig,
     ...(config.swiftStudio === undefined ? {} : { swiftStudio: config.swiftStudio }),
     v2CursorSecret: config.v2CursorSecret,
@@ -88,6 +89,7 @@ export async function startApiRuntime(
     storeConfig: config.storeConfig,
     evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
     evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
+    modelRepository: config.modelRepository,
     ...(config.databaseUrl === undefined ? {} : { databaseUrl: config.databaseUrl }),
     ...(swiftStudioConfig.enabled &&
     swiftStudioConfig.providerBaseUrl !== undefined &&

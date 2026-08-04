@@ -13,11 +13,13 @@ import {
 import {
   canonicalJsonV2,
   deriveV2ModelIdFromCreateDigest,
+  deriveV2ModelSourceEvidenceIdFromDigest,
   deriveV2ModelVersionIdFromCreateDigest,
   hashV2ModelCreate,
   hashV2ModelRegistrationPlanArtifact,
   hashV2ModelRegistrationPlanRepository,
   hashV2ModelRegistrationPlanService,
+  hashV2ModelSourceEvidence,
   hashV2ModelSourceFingerprintArtifact,
   hashV2ModelSourceFingerprintRepository,
   hashV2ModelSourceFingerprintService,
@@ -28,6 +30,7 @@ import {
   V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE,
+  V2_MODEL_SOURCE_EVIDENCE_PROFILE,
   V2_MODEL_SOURCE_FINGERPRINT_ARTIFACT_PROFILE,
   V2_MODEL_SOURCE_FINGERPRINT_REPOSITORY_PROFILE,
   V2_MODEL_SOURCE_FINGERPRINT_SERVICE_PROFILE,
@@ -57,6 +60,7 @@ import {
   UnsupportedProfileError,
   ValidationError,
 } from '@databench/schema'
+import type { V2ModelRepositoryRuntime } from './model-repository.js'
 
 export interface V2ModelRegistrationCatalog {
   getModel(namespaceId: string, modelId: string): Promise<CatalogModelRowV2 | null>
@@ -65,6 +69,12 @@ export interface V2ModelRegistrationCatalog {
     artifactId: string,
   ): Promise<CatalogModelArtifactRowV2 | null>
   registerModelVersion(input: CreateModelRegistrationV2): Promise<CatalogModelRegistrationResultV2>
+  replayModelRegistration(
+    namespaceId: string,
+    registrationDigest: string,
+    planProfile: CreateModelRegistrationV2['planProfile'],
+    normalizedRequest: { readonly [key: string]: CatalogJsonValueV2 },
+  ): Promise<CatalogModelRegistrationResultV2 | null>
 }
 
 export interface ModelRegistrationCommitResultV2 {
@@ -85,20 +95,36 @@ export async function inspectModelRegistrationV2(
   catalog: V2ModelRegistrationCatalog,
   namespaceId: string,
   requestInput: ModelRegistrationInspectRequestV2,
+  repositoryRuntime?: V2ModelRepositoryRuntime,
   signal?: AbortSignal,
 ): Promise<ModelRegistrationPlanV2> {
-  return (await inspectRegistration(catalog, namespaceId, requestInput, signal)).plan
+  return (await inspectRegistration(catalog, namespaceId, requestInput, repositoryRuntime, signal))
+    .plan
 }
 
 export async function commitModelRegistrationV2(
   catalog: V2ModelRegistrationCatalog,
   namespaceId: string,
   requestInput: CommitModelRegistrationRequestV2,
+  repositoryRuntime?: V2ModelRepositoryRuntime,
   signal?: AbortSignal,
 ): Promise<ModelRegistrationCommitResultV2> {
   signal?.throwIfAborted()
   const request = CommitModelRegistrationRequestV2Schema.parse(requestInput)
-  const inspected = await inspectRegistration(catalog, namespaceId, request.request, signal)
+  const replay = await catalog.replayModelRegistration(
+    namespaceId,
+    request.expected_registration_digest,
+    planProfileForSource(request.request.source.kind),
+    catalogJsonObject(request.request),
+  )
+  if (replay !== null) return registrationResult(replay)
+  const inspected = await inspectRegistration(
+    catalog,
+    namespaceId,
+    request.request,
+    repositoryRuntime,
+    signal,
+  )
   if (request.expected_registration_digest !== inspected.plan.registration_digest) {
     throw new ConflictError('Model registration plan changed before commit', {
       reason: 'registration_digest_mismatch',
@@ -137,20 +163,14 @@ export async function commitModelRegistrationV2(
     throw mapModelRegistrationCatalogError(error, inspected.plan.registration_digest)
   }
   signal?.throwIfAborted()
-  return ModelRegistrationCommitResultV2Schema.parse({
-    registration_digest: result.claim.registrationDigest,
-    model_id: result.model.id,
-    model_version_id: result.version.id,
-    source_fingerprint: result.version.sourceFingerprint,
-    alias: result.alias?.alias ?? null,
-    replayed: result.replayed,
-  })
+  return registrationResult(result)
 }
 
 async function inspectRegistration(
   catalog: V2ModelRegistrationCatalog,
   namespaceId: string,
   requestInput: ModelRegistrationInspectRequestV2,
+  repositoryRuntime?: V2ModelRepositoryRuntime,
   signal?: AbortSignal,
 ): Promise<InspectedModelRegistrationV2> {
   signal?.throwIfAborted()
@@ -173,10 +193,12 @@ async function inspectRegistration(
     )
   }
   if (normalizedRequest.source.kind === 'repository_reference') {
-    return inspectRepositoryRegistration(
+    return await inspectRepositoryRegistration(
       namespaceId,
       ModelRepositoryRegistrationRequestV2Schema.parse(normalizedRequest),
       model,
+      repositoryRuntime,
+      signal,
     )
   }
   return inspectServiceRegistration(
@@ -323,11 +345,13 @@ async function inspectArtifactRegistration(
   })
 }
 
-function inspectRepositoryRegistration(
+async function inspectRepositoryRegistration(
   namespaceId: string,
   request: ModelRepositoryRegistrationRequestV2,
   model: InspectedModelTargetV2,
-): InspectedModelRegistrationV2 {
+  repositoryRuntime?: V2ModelRepositoryRuntime,
+  signal?: AbortSignal,
+): Promise<InspectedModelRegistrationV2> {
   const sourceFingerprint = hashV2ModelSourceFingerprintRepository({
     source_fingerprint_profile: V2_MODEL_SOURCE_FINGERPRINT_REPOSITORY_PROFILE,
     provider: request.source.provider,
@@ -344,7 +368,26 @@ function inspectRepositoryRegistration(
     base_model_reference: request.source.base_model?.reference ?? null,
     base_model_revision: request.source.base_model?.revision ?? null,
   })
-  const classification = classifyModelVersionSourceV2(request.source)
+  const versionId = deriveV2ModelVersionIdFromCreateDigest(versionCreateDigest)
+  const resolvedEvidence = await repositoryRuntime?.resolve(
+    {
+      provider: request.source.provider,
+      repositoryId: request.source.repository_id,
+      revision: request.source.revision,
+      revisionKind: request.source.revision_kind,
+    },
+    signal,
+  )
+  signal?.throwIfAborted()
+  const initialEvidence =
+    resolvedEvidence === undefined || resolvedEvidence === null
+      ? null
+      : modelSourceEvidenceCatalogInput(namespaceId, versionId, resolvedEvidence)
+  const classification = classifyModelVersionSourceV2(
+    request.source,
+    resolvedEvidence === undefined || resolvedEvidence === null ? [] : [resolvedEvidence],
+    initialEvidence?.evidenceDigest ?? null,
+  )
   const registrationDigest = hashV2ModelRegistrationPlanRepository({
     plan_profile: V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE,
     namespace: namespaceId,
@@ -368,6 +411,27 @@ function inspectRepositoryRegistration(
           : 'The repository revision is declared-only and has not been provider verified',
     },
   ]
+  if (request.source.provider === 'hugging_face') {
+    warnings.push({
+      code: 'repository_provider_not_enabled',
+      path: '/source/provider',
+      message: 'Hugging Face runtime resolution is not enabled in this implementation step',
+    })
+  } else if (resolvedEvidence === null || resolvedEvidence === undefined) {
+    warnings.push({
+      code: 'repository_declared_only',
+      path: '/source/revision',
+      message:
+        'Repository resolution is offline; this reference will be registered as declared-only',
+    })
+  } else if (resolvedEvidence.result !== 'verified') {
+    warnings.push({
+      code: `repository_resolution_${resolvedEvidence.result}`,
+      path: '/source/revision',
+      message:
+        'Repository metadata could not verify the declared revision; registration remains allowed',
+    })
+  }
   appendDeploymentDeferredWarning(request, warnings)
   return finalizeInspection({
     namespaceId,
@@ -390,6 +454,7 @@ function inspectRepositoryRegistration(
       revision: request.source.revision,
       revisionKind: request.source.revision_kind,
     },
+    initialEvidence,
   })
 }
 
@@ -481,6 +546,7 @@ function finalizeInspection(input: {
   readonly baseModelRevision: string | null
   readonly baseModelBindingStatus: CreateModelRegistrationV2['version']['baseModelBindingStatus']
   readonly source: CatalogModelVersionSourceV2
+  readonly initialEvidence?: CreateModelRegistrationV2['initialEvidence']
 }): InspectedModelRegistrationV2 {
   const versionId = deriveV2ModelVersionIdFromCreateDigest(input.versionCreateDigest)
   const plan = ModelRegistrationPlanV2Schema.parse({
@@ -516,6 +582,7 @@ function finalizeInspection(input: {
         baseModelBindingStatus: input.baseModelBindingStatus,
       },
       source: input.source,
+      initialEvidence: input.initialEvidence ?? null,
       alias:
         input.request.alias === undefined
           ? null
@@ -524,6 +591,65 @@ function finalizeInspection(input: {
               expectedVersionId: input.request.alias.expected_version_id,
             },
     },
+  })
+}
+
+function modelSourceEvidenceCatalogInput(
+  namespaceId: string,
+  modelVersionId: string,
+  observation: import('@databench/schema').ModelSourceEvidenceV2,
+): NonNullable<CreateModelRegistrationV2['initialEvidence']> {
+  const evidenceDigest = hashV2ModelSourceEvidence({
+    evidence_profile: V2_MODEL_SOURCE_EVIDENCE_PROFILE,
+    namespace: namespaceId,
+    model_version_id: modelVersionId,
+    evidence_kind: observation.evidence_kind,
+    adapter: observation.adapter,
+    adapter_version: observation.adapter_version,
+    observed_revision: observation.observed_revision,
+    result: observation.result,
+    response_digest: observation.response_digest,
+    license: observation.license,
+    cache_status: observation.cache_status,
+  })
+  return {
+    id: deriveV2ModelSourceEvidenceIdFromDigest(evidenceDigest),
+    namespaceId,
+    modelVersionId,
+    evidenceProfile: V2_MODEL_SOURCE_EVIDENCE_PROFILE,
+    evidenceDigest,
+    evidenceKind: observation.evidence_kind,
+    adapter: observation.adapter,
+    adapterVersion: observation.adapter_version,
+    observedRevision: observation.observed_revision,
+    observedAt: new Date(observation.observed_at),
+    result: observation.result,
+    responseDigest: observation.response_digest,
+    license: observation.license,
+    cacheStatus: observation.cache_status,
+  }
+}
+
+function planProfileForSource(
+  kind: ModelRegistrationInspectRequestV2['source']['kind'],
+): CreateModelRegistrationV2['planProfile'] {
+  return kind === 'databench_artifact'
+    ? V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE
+    : kind === 'repository_reference'
+      ? V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE
+      : V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE
+}
+
+function registrationResult(
+  result: CatalogModelRegistrationResultV2,
+): ModelRegistrationCommitResultV2 {
+  return ModelRegistrationCommitResultV2Schema.parse({
+    registration_digest: result.claim.registrationDigest,
+    model_id: result.model.id,
+    model_version_id: result.version.id,
+    source_fingerprint: result.version.sourceFingerprint,
+    alias: result.alias?.alias ?? null,
+    replayed: result.replayed,
   })
 }
 

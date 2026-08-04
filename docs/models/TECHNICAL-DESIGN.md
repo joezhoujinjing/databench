@@ -1087,6 +1087,7 @@ packages/schema/src/v2/model-version.ts
 packages/catalog/src/v2/catalog.ts
 packages/workspace/src/v2/model.ts
 packages/workspace/src/v2/model-registration.ts
+packages/workspace/src/v2/model-repository.ts
 packages/workspace/src/v2/model-deployment.ts
 
 apps/api/src/model-endpoint-policy/

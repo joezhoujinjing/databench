@@ -239,6 +239,34 @@
     "artifactId": "Artifact ID",
     "archiveDigest": "Archive digest",
     "manifestDigest": "Manifest digest",
+    "repository": {
+      "refresh": "刷新来源证据",
+      "refreshing": "正在刷新…",
+      "provider": "仓库 Provider",
+      "repositoryId": "Repository ID",
+      "revision": "仓库 Revision",
+      "availability": "可用性观察",
+      "license": "License 观察",
+      "cache": "本地缓存观察",
+      "observedRevision": "观测到的 Revision",
+      "observedAt": "观测时间",
+      "weights": "权重托管",
+      "notMaterialized": "未托管权重；仅由独立 materialize/import 任务衔接",
+      "unknown": "未知",
+      "unobserved": "尚未观测",
+      "availabilityValues": {
+        "unobserved": "尚未观测",
+        "available": "Provider 可用",
+        "not_found": "未找到",
+        "unavailable": "Provider 不可达",
+        "invalid": "证据无效"
+      },
+      "cacheValues": {
+        "cached": "已在 operator 管理缓存中",
+        "not_cached": "未在本地缓存",
+        "unknown": "未知"
+      }
+    },
     "sources": {
       "databench_artifact": "Databench Artifact",
       "repository_reference": "模型仓库",
@@ -252,10 +280,10 @@
     },
     "wizard": {
       "title": "注册 Model Version",
-      "description": "按固定顺序选择逻辑 Model 与 Artifact，先 Inspect，再提交锁定的 digest。",
+      "description": "按固定顺序选择逻辑 Model 与来源，先 Inspect，再提交锁定的 digest。",
       "steps": {
         "model": "Model 信息",
-        "artifact": "Artifact 来源",
+        "source": "来源",
         "inspect": "Inspect",
         "commit": "Commit"
       },
@@ -270,9 +298,26 @@
       "taskFamily": "任务类型",
       "tags": "标签（逗号分隔）",
       "versionLabel": "Version label",
+      "sourceType": "注册来源",
+      "sourceArtifact": "从 Databench Artifact 注册",
+      "sourceRepository": "从模型仓库注册",
+      "repositoryProvider": "Repository Provider",
+      "operatorManaged": "Operator 管理的本地仓库",
+      "repositoryId": "Repository ID / 本地 opaque alias",
+      "repositoryRevision": "精确 Revision",
+      "revisionKind": "Revision 类型",
+      "revisionKinds": {
+        "commit": "Commit",
+        "digest": "Digest",
+        "tag": "Tag（可变）",
+        "opaque": "Opaque"
+      },
+      "baseModelOptional": "基础模型（可选）",
+      "baseRevisionOptional": "基础模型 Revision（可选）",
+      "repositoryBoundary": "仅登记仓库引用与有界 metadata；不下载权重，不创建 Artifact。",
       "loadingArtifacts": "正在加载 Artifact…",
       "noArtifacts": "当前没有可注册的 Artifact。",
-      "inspectHint": "Inspect 会重新读取不可变 Artifact 元数据并计算唯一注册 digest，不会写入 Model。",
+      "inspectHint": "Inspect 会规范化来源、计算唯一注册 digest，并明确可变性与验证级别；此步骤不会写入 Model。",
       "artifact": "Artifact",
       "inspected": "Inspect 已完成，digest 已锁定",
       "commitHint": "Commit 只接受上一步的 exact request 与 digest；内容变化会被拒绝。",

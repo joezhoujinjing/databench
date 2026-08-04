@@ -49,6 +49,7 @@
     "POST /v2/model-deployments/{deployment_id}:disable",
     "POST /v2/model-registrations:inspect",
     "POST /v2/model-versions/{version_id}/deployments/{deployment_id}:adopt",
+    "POST /v2/model-versions/{version_id}:refresh-source-evidence",
     "POST /v2/models/{model_id}/aliases/{alias}:move",
     "POST /v2/models/{model_id}/versions:register",
     "POST /v2/models/{model_id}:archive",

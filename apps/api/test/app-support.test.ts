@@ -112,6 +112,34 @@ describe('api support', () => {
     ).toThrow('must be distinct')
   })
 
+  test('defaults Model Repository resolution offline and validates connected configuration', () => {
+    const base = {
+      DATABENCH_OBJECT_STORE: 's3',
+      DATABENCH_V2_CURSOR_SECRET: 'databench-api-v2-config-secret',
+      S3_BUCKET: 'v2-config-test',
+    }
+
+    expect(loadConfig(base).modelRepository).toEqual({ mode: 'offline', timeoutMs: 5_000 })
+    expect(
+      loadConfig({
+        ...base,
+        DATABENCH_MODEL_REPOSITORY_MODE: 'connected',
+        DATABENCH_MODEL_REPOSITORY_CONFIG: ' /etc/databench/model-repositories.json ',
+        DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS: '30000',
+      }).modelRepository,
+    ).toEqual({
+      mode: 'connected',
+      operatorConfigPath: '/etc/databench/model-repositories.json',
+      timeoutMs: 30_000,
+    })
+    expect(() => loadConfig({ ...base, DATABENCH_MODEL_REPOSITORY_MODE: 'public' })).toThrow()
+    expect(() =>
+      loadConfig({ ...base, DATABENCH_MODEL_REPOSITORY_CONFIG: './repositories.json' }),
+    ).toThrow('Path must be absolute')
+    expect(() => loadConfig({ ...base, DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS: '99' })).toThrow()
+    expect(() => loadConfig({ ...base, DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS: '30001' })).toThrow()
+  })
+
   test('keeps EvalScope disabled by default and validates enabled internal routing', () => {
     const base = {
       DATABENCH_OBJECT_STORE: 's3',

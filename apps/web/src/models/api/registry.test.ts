@@ -1,14 +1,14 @@
 import { describe, expect, test, vi } from 'vitest'
 import {
-  type ArtifactRegistrationRequestV2,
-  commitArtifactRegistrationV2,
-  inspectArtifactRegistrationV2,
+  commitModelRegistrationV2,
+  inspectModelRegistrationV2,
   listModelsV2,
+  type ModelRegistrationRequestV2,
 } from './registry.js'
 
 const modelId = '123e4567-e89b-42d3-a456-426614174010'
 const artifactId = '123e4567-e89b-42d3-a456-426614174012'
-const request: ArtifactRegistrationRequestV2 = {
+const request: ModelRegistrationRequestV2 = {
   target: { kind: 'existing_model', model_id: modelId },
   version_label: 'r2',
   source: { kind: 'databench_artifact', artifact_id: artifactId },
@@ -51,8 +51,8 @@ describe('Model Registry generated API client', () => {
       )
     })
     const common = { base: 'https://api.example.test', fetch: fetchMock, token: '' }
-    await inspectArtifactRegistrationV2({ ...common, request })
-    await commitArtifactRegistrationV2({
+    await inspectModelRegistrationV2({ ...common, request })
+    await commitModelRegistrationV2({
       ...common,
       request: { expected_registration_digest: 'a'.repeat(64), request },
     })

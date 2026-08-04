@@ -72,6 +72,9 @@ export async function registerModelVersionV2(
       const model = await createOrReadRegistrationModel(transaction, input)
       const version = await createOrReadRegistrationVersion(transaction, input, model)
       const source = await createOrReadVersionSource(transaction, input, version)
+      if (input.initialEvidence !== undefined && input.initialEvidence !== null) {
+        await appendModelSourceEvidenceWithClient(transaction, input.initialEvidence)
+      }
       const alias =
         input.alias === null
           ? null
@@ -116,6 +119,31 @@ export async function registerModelVersionV2(
     },
     { timeout: 30_000 },
   )
+}
+
+export async function replayModelRegistrationV2(
+  client: PrismaClient,
+  namespaceId: string,
+  registrationDigest: string,
+  planProfile: CreateModelRegistrationV2['planProfile'],
+  normalizedRequest: { readonly [key: string]: CatalogJsonValueV2 },
+): Promise<CatalogModelRegistrationResultV2 | null> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateDigest(registrationDigest, 'registration digest')
+  if (!isJsonObject(normalizedRequest as Prisma.JsonValue)) {
+    throw new V2CatalogInputError('Normalized Model registration request must be an object')
+  }
+  const claim = await client.v2ModelRegistrationClaim.findFirst({
+    where: { namespaceId, registrationDigest },
+  })
+  if (!claim) return null
+  if (
+    claim.planProfile !== planProfile ||
+    !sameJsonValue(claim.normalizedRequest, normalizedRequest)
+  ) {
+    throw new V2CatalogModelRegistrationConflictError('request_mismatch', registrationDigest)
+  }
+  return await loadRegistrationResult(client, claim, true)
 }
 
 export async function getModelV2(
@@ -258,7 +286,23 @@ export async function listModelsV2(
           where: { namespaceId, id: { in: candidateVersionIds } },
         })
   const candidateRows = candidateVersions.map(modelVersionRow)
-  const candidateSources = await readVersionSources(client, candidateRows)
+  const [candidateSources, candidateEvidenceRows] = await Promise.all([
+    readVersionSources(client, candidateRows),
+    candidateVersionIds.length === 0
+      ? Promise.resolve([])
+      : client.v2ModelSourceEvidence.findMany({
+          where: { namespaceId, modelVersionId: { in: candidateVersionIds } },
+          orderBy: [{ observedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+          take: 3_000,
+        }),
+  ])
+  const candidateEvidence = new Map<string, CatalogModelSourceEvidenceRowV2[]>()
+  for (const storedEvidence of candidateEvidenceRows) {
+    const parsedEvidence = modelSourceEvidenceRow(storedEvidence)
+    const rows = candidateEvidence.get(parsedEvidence.modelVersionId) ?? []
+    rows.push(parsedEvidence)
+    candidateEvidence.set(parsedEvidence.modelVersionId, rows)
+  }
   const modelById = new Map(storedModels.map((row) => [row.id, modelRow(row)]))
   const countByModel = new Map(versionCounts.map((row) => [row.modelId, row._count._all]))
   const aliasByModel = new Map(candidateAliases.map((row) => [row.modelId, modelAliasRow(row)]))
@@ -279,6 +323,7 @@ export async function listModelsV2(
             alias,
             version: candidateVersion,
             source: requiredVersionSource(candidateSources, candidateVersion.id),
+            evidence: Object.freeze(candidateEvidence.get(candidateVersion.id) ?? []),
           }
     const deploymentCounts = adoptionByModel.get(model.id)
     return Object.freeze({
@@ -353,7 +398,7 @@ export async function listModelVersionsV2(
       ? []
       : await client.v2ModelSourceEvidence.findMany({
           where: { namespaceId, modelVersionId: { in: versions.map((version) => version.id) } },
-          orderBy: [{ observedAt: 'asc' }, { id: 'asc' }],
+          orderBy: [{ observedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
           take: 10_000,
         })
   const evidenceByVersion = new Map<string, CatalogModelSourceEvidenceRowV2[]>()
@@ -469,6 +514,15 @@ export async function appendModelSourceEvidenceV2(
   client: PrismaClient,
   input: AppendModelSourceEvidenceV2,
 ): Promise<CatalogModelSourceEvidenceRowV2> {
+  return await appendModelSourceEvidenceWithClient(client, input)
+}
+
+type ModelSourceEvidenceClient = Pick<PrismaClient, 'v2ModelSourceEvidence'>
+
+async function appendModelSourceEvidenceWithClient(
+  client: ModelSourceEvidenceClient,
+  input: AppendModelSourceEvidenceV2,
+): Promise<CatalogModelSourceEvidenceRowV2> {
   validateEvidence(input)
   await client.v2ModelSourceEvidence.createMany({
     data: [input],
@@ -498,7 +552,7 @@ export async function listModelSourceEvidenceV2(
   validateUuid(modelVersionId, 'Model Version ID')
   const rows = await client.v2ModelSourceEvidence.findMany({
     where: { namespaceId, modelVersionId },
-    orderBy: [{ observedAt: 'asc' }, { id: 'asc' }],
+    orderBy: [{ observedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
     take: 1_000,
   })
   return Object.freeze(rows.map(modelSourceEvidenceRow))
@@ -1098,6 +1152,8 @@ function modelSourceEvidenceRow(row: {
   readonly observedAt: Date
   readonly result: string
   readonly responseDigest: string | null
+  readonly license: string | null
+  readonly cacheStatus: string
   readonly createdAt: Date
 }): CatalogModelSourceEvidenceRowV2 {
   return {
@@ -1113,6 +1169,8 @@ function modelSourceEvidenceRow(row: {
     observedAt: row.observedAt,
     result: row.result as CatalogModelSourceEvidenceRowV2['result'],
     responseDigest: row.responseDigest,
+    license: row.license,
+    cacheStatus: row.cacheStatus as CatalogModelSourceEvidenceRowV2['cacheStatus'],
     createdAt: row.createdAt,
   }
 }
@@ -1202,9 +1260,10 @@ function sameEvidence(
     stored.adapter === expected.adapter &&
     stored.adapterVersion === expected.adapterVersion &&
     stored.observedRevision === expected.observedRevision &&
-    stored.observedAt.getTime() === expected.observedAt.getTime() &&
     stored.result === expected.result &&
-    stored.responseDigest === expected.responseDigest
+    stored.responseDigest === expected.responseDigest &&
+    stored.license === expected.license &&
+    stored.cacheStatus === expected.cacheStatus
   )
 }
 
@@ -1310,6 +1369,17 @@ function validateRegistration(input: CreateModelRegistrationV2): void {
   if (!isJsonObject(input.normalizedRequest as Prisma.JsonValue)) {
     throw new V2CatalogInputError('Normalized Model registration request must be an object')
   }
+  if (input.initialEvidence !== undefined && input.initialEvidence !== null) {
+    validateEvidence(input.initialEvidence)
+    if (
+      input.initialEvidence.namespaceId !== input.namespaceId ||
+      input.initialEvidence.modelVersionId !== input.version.id
+    ) {
+      throw new V2CatalogInputError(
+        'Initial Model source evidence does not match the registered Version',
+      )
+    }
+  }
 }
 
 function validateMetadataUpdate(input: UpdateCatalogModelMetadataV2): void {
@@ -1380,20 +1450,29 @@ function validateEvidence(input: AppendModelSourceEvidenceV2): void {
   validateUuid(input.modelVersionId, 'Model Version ID')
   validateDigest(input.evidenceDigest, 'evidence digest')
   if (input.responseDigest !== null) validateDigest(input.responseDigest, 'response digest')
+  validateMillisecondDate(input.observedAt, 'Model source evidence observation time')
   if (
     input.evidenceProfile !== 'model-source-evidence-v1' ||
     !['provider_resolution', 'operator_attestation'].includes(input.evidenceKind) ||
-    !['verified', 'not_found', 'unavailable', 'invalid'].includes(input.result) ||
+    !['verified', 'not_found', 'unavailable', 'invalid', 'revision_mismatch'].includes(
+      input.result,
+    ) ||
     !SAFE_TOKEN.test(input.adapter) ||
-    !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(input.adapterVersion)
+    !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(input.adapterVersion) ||
+    (input.observedRevision !== null &&
+      (input.observedRevision.length === 0 ||
+        new TextEncoder().encode(input.observedRevision).byteLength > 256)) ||
+    !['cached', 'not_cached', 'unknown'].includes(input.cacheStatus) ||
+    (input.license !== null &&
+      (input.license.length === 0 || new TextEncoder().encode(input.license).byteLength > 256))
   ) {
     throw new V2CatalogInputError('Model source evidence adapter is invalid')
   }
   if (
-    input.result === 'verified' &&
+    (input.result === 'verified' || input.result === 'revision_mismatch') &&
     (input.observedRevision === null || input.responseDigest === null)
   ) {
-    throw new V2CatalogInputError('Verified Model source evidence is incomplete')
+    throw new V2CatalogInputError('Model source revision evidence is incomplete')
   }
 }
 

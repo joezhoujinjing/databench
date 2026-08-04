@@ -127,7 +127,8 @@ export function ModelDetailRoute() {
                     <TableCell>
                       <Badge
                         tone={
-                          version.classification.verification_level === 'content_verified'
+                          version.classification.verification_level === 'content_verified' ||
+                          version.classification.verification_level === 'provider_verified'
                             ? 'green'
                             : 'orange'
                         }

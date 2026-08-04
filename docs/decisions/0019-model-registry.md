@@ -1,7 +1,7 @@
 # ADR 0019 — Model Registry、三种注册来源与版本绑定部署
 
 - **状态:** Accepted——owner 于 2026-08-04 在四项推荐范围列明后要求“下一步叭”，接受本 ADR、
-  技术方案与实施计划并授权进入 MR0
+  技术方案与实施计划；随后要求“按照实施计划依次的实现吧”，授权按 Gate 顺序实施 MR0-MR8
 - **日期:** 2026-08-04
 - **决策者:** owner
 - **依赖:** [ADR 0011](0011-identity-hashing-versioning-v2.md)、
@@ -12,8 +12,8 @@
 - **详细方案:** [Model Registry 技术方案](../models/TECHNICAL-DESIGN.md)
 - **实施计划:** [Model Registry 实施计划](../models/PLAN.md)
 
-> 本 ADR 只授权按 MR0-MR8 逐 Step 实施；当前仅进入 MR0，不授权提前修改 MR1+ runtime、OpenAPI、
-> Prisma、离线发布或产品 capability。
+> 本 ADR 只授权按 MR0-MR8 逐 Step 实施；每个 Gate 全绿并单独提交后才能进入下一 Step，不授权跳 Step、
+> 公共云 D3 选型、hosted secret backend、managed serving、GPU gate 或 production readiness。
 
 ## 背景
 
@@ -256,5 +256,5 @@ owner 接受：
 
 ## 实施授权边界
 
-owner 已授权进入 MR0。每个后续 Step 仍必须在前一 Gate 全绿后单独进入；接受本 ADR 不自动接受公共云、
-hosted secret backend、managed serving、deferred GPU gate 或 production readiness。
+owner 已授权按 Gate 顺序实施 MR0-MR8。每个 Step 仍必须在前一 Gate 全绿并单独提交后进入；接受本 ADR
+不自动接受公共云、hosted secret backend、managed serving、deferred GPU gate 或 production readiness。

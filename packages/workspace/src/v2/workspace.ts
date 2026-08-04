@@ -1,5 +1,6 @@
 import { parse as parsePath, resolve as resolvePath } from 'node:path'
 import {
+  type AppendModelSourceEvidenceV2,
   type DeleteRefResultV2 as CatalogDeleteRefResultV2,
   type CatalogEvaluationRunCursorV2,
   type CatalogEvaluationRunListFilterV2,
@@ -7,6 +8,7 @@ import {
   type CatalogEvaluationRunRowV2,
   type CatalogIdentityClaimInputV2,
   type CatalogIdentityClaimResultV2,
+  type CatalogJsonValueV2,
   type CatalogLayoutRowV2,
   type CatalogModelAliasRowV2,
   type CatalogModelArtifactCursorV2,
@@ -87,6 +89,7 @@ import {
 import {
   canonicalJsonV2,
   createArtifactHasher,
+  deriveV2ModelSourceEvidenceIdFromDigest,
   hashV2EvaluationRunCreate,
   hashV2EvaluationRunCreateWithDeployment,
   hashV2EvaluationRunCreateWithDeploymentAndMetrics,
@@ -94,6 +97,7 @@ import {
   hashV2ModelArtifactImportCreate,
   hashV2ModelDeploymentAdoption,
   hashV2ModelDeploymentCreate,
+  hashV2ModelSourceEvidence,
   hashV2SwiftStudioOutputHandle,
   hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
@@ -106,6 +110,7 @@ import {
   V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
   V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE,
   V2_MODEL_DEPLOYMENT_CREATE_PROFILE,
+  V2_MODEL_SOURCE_EVIDENCE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '@databench/hashing'
 import {
@@ -238,6 +243,7 @@ import {
   ModelPageV2Schema,
   type ModelRegistrationInspectRequestV2,
   type ModelRegistrationPlanV2,
+  type ModelSourceEvidenceV2,
   type ModelV2,
   ModelVersionIdV2Schema,
   type ModelVersionPageRequestV2,
@@ -396,6 +402,12 @@ import {
   type ModelRegistrationCommitResultV2,
 } from './model-registration.js'
 import {
+  DECLARED_ONLY_MODEL_REPOSITORY_RUNTIME_V2,
+  openModelRepositoryRuntimeV2,
+  type V2ModelRepositoryOpenOptions,
+  type V2ModelRepositoryRuntime,
+} from './model-repository.js'
+import {
   swiftStudioProviderArtifactImportIdForDigestV2,
   swiftStudioProviderSessionIdForDigestV2,
   swiftStudioSessionFromCatalogV2,
@@ -488,6 +500,12 @@ export interface V2WorkspaceCatalog {
     limit: number,
   ): Promise<CatalogModelArtifactPageV2>
   registerModelVersion(input: CreateModelRegistrationV2): Promise<CatalogModelRegistrationResultV2>
+  replayModelRegistration(
+    namespaceId: string,
+    registrationDigest: string,
+    planProfile: CreateModelRegistrationV2['planProfile'],
+    normalizedRequest: { readonly [key: string]: CatalogJsonValueV2 },
+  ): Promise<CatalogModelRegistrationResultV2 | null>
   getModel(namespaceId: string, modelId: string): Promise<CatalogModelRowV2 | null>
   listModels(
     namespaceId: string,
@@ -534,6 +552,9 @@ export interface V2WorkspaceCatalog {
     namespaceId: string,
     modelVersionId: string,
   ): Promise<readonly CatalogModelSourceEvidenceRowV2[]>
+  appendModelSourceEvidence(
+    input: AppendModelSourceEvidenceV2,
+  ): Promise<CatalogModelSourceEvidenceRowV2>
   createOrReadModelDeploymentAdoption(
     input: CreateModelDeploymentAdoptionV2,
   ): Promise<CatalogModelDeploymentAdoptionResultV2>
@@ -685,6 +706,7 @@ export interface V2WorkspaceOptions {
   readonly swiftStudio?: V2SwiftStudioWorkspaceOptions
   readonly modelDeploymentFetch?: typeof fetch
   readonly modelDeploymentHealthTimeoutMs?: number
+  readonly modelRepository?: V2ModelRepositoryRuntime
   readonly evaluationArtifactStore?: EvaluationArtifactStoreV1
 }
 
@@ -729,6 +751,7 @@ export interface V2WorkspaceOpenOptions {
   readonly swiftStudio?: V2SwiftStudioWorkspaceOpenOptions
   readonly evaluationArchiveMaxBytes?: number
   readonly evaluationArchiveSignedUrlTtlMs?: number
+  readonly modelRepository?: V2ModelRepositoryOpenOptions
 }
 
 interface ResolvedLayoutV2 {
@@ -776,6 +799,7 @@ export class V2Workspace {
   readonly #modelDeploymentFetch: typeof fetch
   readonly #modelDeploymentHealthTimeoutMs: number
   readonly #evaluationArtifacts: EvaluationArtifactStoreV1 | undefined
+  readonly #modelRepository: V2ModelRepositoryRuntime
   #namespacePromise: Promise<string> | undefined
   #closeOwnedResources: (() => Promise<void>) | undefined
   #closePromise: Promise<void> | undefined
@@ -808,6 +832,7 @@ export class V2Workspace {
             options.evaluationArchiveSignedUrlTtlMs ??
             V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS,
         }),
+        modelRepository: await openModelRepositoryRuntimeV2(options.modelRepository),
         ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
         ...(options.transformLimits === undefined
           ? {}
@@ -926,6 +951,7 @@ export class V2Workspace {
       options.modelDeploymentHealthTimeoutMs ?? DEFAULT_MODEL_DEPLOYMENT_HEALTH_TIMEOUT_MS,
     )
     this.#evaluationArtifacts = options.evaluationArtifactStore
+    this.#modelRepository = options.modelRepository ?? DECLARED_ONLY_MODEL_REPOSITORY_RUNTIME_V2
     this.#runtimeCapability = postTrainingV2Capability({
       datasetLimits: this.#datasetLimits,
       jsonlLimits: this.#jsonlLimits,
@@ -959,7 +985,13 @@ export class V2Workspace {
     context: V2WorkspaceOperationOptions = {},
   ): Promise<ModelRegistrationPlanV2> {
     const namespaceId = await this.#namespace(context.signal)
-    return await inspectModelRegistrationV2(this.#catalog, namespaceId, request, context.signal)
+    return await inspectModelRegistrationV2(
+      this.#catalog,
+      namespaceId,
+      request,
+      this.#modelRepository,
+      context.signal,
+    )
   }
 
   async commitModelRegistration(
@@ -967,7 +999,13 @@ export class V2Workspace {
     context: V2WorkspaceOperationOptions = {},
   ): Promise<ModelRegistrationCommitResultV2> {
     const namespaceId = await this.#namespace(context.signal)
-    return await commitModelRegistrationV2(this.#catalog, namespaceId, request, context.signal)
+    return await commitModelRegistrationV2(
+      this.#catalog,
+      namespaceId,
+      request,
+      this.#modelRepository,
+      context.signal,
+    )
   }
 
   async listModels(
@@ -1125,6 +1163,56 @@ export class V2Workspace {
       if (stored === null) return null
       const evidence = await this.#catalog.listModelSourceEvidence(namespaceId, versionId)
       return modelVersionFromCatalogV2(modelVersionItem(stored.version, stored.source, evidence))
+    } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async refreshModelSourceEvidence(
+    versionIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const stored = await this.#catalog.getModelVersion(namespaceId, versionId)
+    if (stored === null) {
+      throw new NotFoundError('Model Version was not found', { model_version_id: versionId })
+    }
+    if (stored.source.kind !== 'repository_reference') {
+      throw new ValidationError('Only Repository Model Versions have refreshable source evidence', {
+        issues: [
+          {
+            path: '/version_id',
+            line: null,
+            code: 'source_evidence_requires_repository',
+            message: 'The selected Model Version is not a Repository reference',
+          },
+        ],
+      })
+    }
+    const observation = await this.#modelRepository.resolve(
+      {
+        provider: stored.source.provider,
+        repositoryId: stored.source.repositoryId,
+        revision: stored.source.revision,
+        revisionKind: stored.source.revisionKind,
+      },
+      context.signal,
+    )
+    context.signal?.throwIfAborted()
+    if (observation === null) {
+      throw new ServiceUnavailableError('Repository source resolution is not enabled', {
+        dependency: 'model_repository_provider',
+        provider: stored.source.provider,
+        mode: this.#modelRepository.mode,
+      })
+    }
+    const evidence = catalogModelSourceEvidence(namespaceId, versionId, observation)
+    try {
+      await this.#catalog.appendModelSourceEvidence(evidence)
+      const allEvidence = await this.#catalog.listModelSourceEvidence(namespaceId, versionId)
+      return modelVersionFromCatalogV2(modelVersionItem(stored.version, stored.source, allEvidence))
     } catch (error) {
       throw mapModelRegistryCatalogError(error)
     }
@@ -6168,6 +6256,42 @@ export function v2WorkspaceTempRoot(root = './bench'): string {
   return resolvePath(absoluteRoot, V2_WORKSPACE_TEMP_DIRECTORY)
 }
 
+function catalogModelSourceEvidence(
+  namespaceId: string,
+  modelVersionId: string,
+  observation: ModelSourceEvidenceV2,
+): AppendModelSourceEvidenceV2 {
+  const evidenceDigest = hashV2ModelSourceEvidence({
+    evidence_profile: V2_MODEL_SOURCE_EVIDENCE_PROFILE,
+    namespace: namespaceId,
+    model_version_id: modelVersionId,
+    evidence_kind: observation.evidence_kind,
+    adapter: observation.adapter,
+    adapter_version: observation.adapter_version,
+    observed_revision: observation.observed_revision,
+    result: observation.result,
+    response_digest: observation.response_digest,
+    license: observation.license,
+    cache_status: observation.cache_status,
+  })
+  return {
+    id: deriveV2ModelSourceEvidenceIdFromDigest(evidenceDigest),
+    namespaceId,
+    modelVersionId,
+    evidenceProfile: V2_MODEL_SOURCE_EVIDENCE_PROFILE,
+    evidenceDigest,
+    evidenceKind: observation.evidence_kind,
+    adapter: observation.adapter,
+    adapterVersion: observation.adapter_version,
+    observedRevision: observation.observed_revision,
+    observedAt: new Date(observation.observed_at),
+    result: observation.result,
+    responseDigest: observation.response_digest,
+    license: observation.license,
+    cacheStatus: observation.cache_status,
+  }
+}
+
 function snapshotV2WorkspaceOpenOptions(
   input: V2WorkspaceOpenOptions,
 ): Readonly<V2WorkspaceOpenOptions> {
@@ -6217,6 +6341,9 @@ function snapshotV2WorkspaceOpenOptions(
     ...(input.swiftStudio === undefined
       ? {}
       : { swiftStudio: snapshotSwiftStudioWorkspaceOpenOptions(input.swiftStudio) }),
+    ...(input.modelRepository === undefined
+      ? {}
+      : { modelRepository: Object.freeze({ ...input.modelRepository }) }),
     ...(input.evaluationArchiveMaxBytes === undefined
       ? {}
       : { evaluationArchiveMaxBytes: input.evaluationArchiveMaxBytes }),

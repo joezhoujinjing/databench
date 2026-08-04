@@ -44,6 +44,7 @@ export type ApiV2Workspace = Pick<
   | 'archiveModel'
   | 'listModelVersions'
   | 'getModelVersion'
+  | 'refreshModelSourceEvidence'
   | 'listModelAliases'
   | 'moveCandidateModelAlias'
   | 'adoptModelDeployment'

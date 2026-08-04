@@ -1,15 +1,26 @@
+import { readFileSync } from 'node:fs'
+import { hashV2ModelSourceEvidence } from '@databench/hashing'
 import { describe, expect, test } from 'vitest'
 import {
   classifyModelVersionSourceV2,
   ModelRegistrationInspectRequestV2Schema,
   ModelRegistrationPlanArtifactIdentityV1Schema,
   ModelRegistrationSourceV2Schema,
+  ModelSourceEvidenceIdentityV1Schema,
   ModelSourceEvidenceV2Schema,
   ModelVersionCreateRepositoryIdentityV1Schema,
 } from '../src/index.js'
 
 const MODEL_ID = '8d5e4c3b-2a19-8877-9665-4433221100ff'
 const DIGEST = 'a'.repeat(64)
+const evidenceFixture = JSON.parse(
+  readFileSync(new URL('./fixtures/model-source-evidence-v1.json', import.meta.url), 'utf8'),
+) as {
+  readonly profile: string
+  readonly identity: unknown
+  readonly expected_digest: string
+  readonly wire_observation: unknown
+}
 
 function repositoryRequest() {
   return {
@@ -143,12 +154,82 @@ describe('Model registry strict contracts', () => {
       observed_at: '2026-08-04T12:00:00.000Z',
       result: 'verified',
       response_digest: DIGEST,
+      license: 'apache-2.0',
+      cache_status: 'not_cached',
     })
     expect(classifyModelVersionSourceV2(mutableRepository, [verifiedEvidence])).toEqual({
       source_mutability: 'mutable',
       verification_level: 'provider_verified',
       evidence_digest: null,
     })
+
+    const exactRepository = ModelRegistrationSourceV2Schema.parse({
+      ...repositoryRequest().source,
+      revision_kind: 'commit',
+    })
+    expect(classifyModelVersionSourceV2(exactRepository, [verifiedEvidence], DIGEST)).toEqual({
+      source_mutability: 'immutable',
+      verification_level: 'provider_verified',
+      evidence_digest: DIGEST,
+    })
+    const operatorAttestation = ModelSourceEvidenceV2Schema.parse({
+      ...verifiedEvidence,
+      evidence_kind: 'operator_attestation',
+    })
+    expect(classifyModelVersionSourceV2(exactRepository, [operatorAttestation], DIGEST)).toEqual({
+      source_mutability: 'unknown',
+      verification_level: 'operator_attested',
+      evidence_digest: null,
+    })
+    const opaqueRepository = ModelRegistrationSourceV2Schema.parse({
+      ...repositoryRequest().source,
+      revision_kind: 'opaque',
+    })
+    expect(classifyModelVersionSourceV2(opaqueRepository, [verifiedEvidence], DIGEST)).toEqual({
+      source_mutability: 'unknown',
+      verification_level: 'provider_verified',
+      evidence_digest: DIGEST,
+    })
+    const drift = ModelSourceEvidenceV2Schema.parse({
+      ...verifiedEvidence,
+      observed_revision: 'different',
+      result: 'revision_mismatch',
+    })
+    expect(
+      classifyModelVersionSourceV2(exactRepository, [verifiedEvidence, drift], DIGEST),
+    ).toEqual({
+      source_mutability: 'unknown',
+      verification_level: 'operator_attested',
+      evidence_digest: DIGEST,
+    })
+    expect(
+      ModelSourceEvidenceV2Schema.safeParse({
+        ...drift,
+        observed_revision: null,
+        response_digest: null,
+      }).success,
+    ).toBe(false)
+  })
+
+  test('locks the strict source-evidence wire profile and deterministic digest', () => {
+    const identity = ModelSourceEvidenceIdentityV1Schema.parse(evidenceFixture.identity)
+    const observation = ModelSourceEvidenceV2Schema.parse(evidenceFixture.wire_observation)
+
+    expect(evidenceFixture.profile).toBe('model-source-evidence-v1')
+    expect(hashV2ModelSourceEvidence(identity)).toBe(evidenceFixture.expected_digest)
+    expect(observation.observed_at).toBe('2026-08-04T12:00:00.000Z')
+    expect(
+      ModelSourceEvidenceV2Schema.safeParse({
+        ...(evidenceFixture.wire_observation as Record<string, unknown>),
+        provider_response: { forbidden: true },
+      }).success,
+    ).toBe(false)
+    expect(
+      ModelSourceEvidenceIdentityV1Schema.safeParse({
+        ...(evidenceFixture.identity as Record<string, unknown>),
+        observed_at: observation.observed_at,
+      }).success,
+    ).toBe(false)
   })
 
   test('registration plan identity rejects client-injected classification fields and extras', () => {

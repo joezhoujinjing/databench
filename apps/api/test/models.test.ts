@@ -39,6 +39,37 @@ const registrationPlan = {
   registration_digest: '4'.repeat(64),
 }
 
+const repositoryRegistration = {
+  target: createRegistration.target,
+  version_label: createRegistration.version_label,
+  source: {
+    kind: 'repository_reference' as const,
+    provider: 'modelscope' as const,
+    repository_id: 'Qwen/Qwen3-0.6B',
+    revision: 'main',
+    revision_kind: 'tag' as const,
+    base_model: null,
+  },
+}
+
+const repositoryPlan = {
+  ...registrationPlan,
+  plan_profile: 'model-registration-plan-repository-v1' as const,
+  normalized_request: repositoryRegistration,
+  classification: {
+    source_mutability: 'mutable' as const,
+    verification_level: 'operator_attested' as const,
+    evidence_digest: null,
+  },
+  warnings: [
+    {
+      code: 'repository_revision_mutable',
+      path: '/source/revision',
+      message: 'The declared repository revision is mutable',
+    },
+  ],
+}
+
 const model = {
   id: MODEL_ID,
   key: 'support-model',
@@ -69,6 +100,7 @@ const version = {
     archive_digest: '5'.repeat(64),
     manifest_digest: '6'.repeat(64),
   },
+  repository_observation: null,
   created_at: NOW,
 }
 
@@ -81,7 +113,9 @@ const alias = {
 
 function workspace(): ApiV2Workspace {
   return {
-    inspectModelRegistration: vi.fn(async () => registrationPlan),
+    inspectModelRegistration: vi.fn(async (request) =>
+      request.source.kind === 'repository_reference' ? repositoryPlan : registrationPlan,
+    ),
     commitModelRegistration: vi.fn(async () => ({
       registration_digest: registrationPlan.registration_digest,
       model_id: MODEL_ID,
@@ -114,6 +148,7 @@ function workspace(): ApiV2Workspace {
     archiveModel: vi.fn(async () => ({ ...model, metadata_revision: 1, archived_at: NOW })),
     listModelVersions: vi.fn(async () => ({ items: [version], next_cursor: null })),
     getModelVersion: vi.fn(async () => version),
+    refreshModelSourceEvidence: vi.fn(async () => version),
     listModelAliases: vi.fn(async () => ({ items: [alias] })),
     moveCandidateModelAlias: vi.fn(async () => alias),
     adoptModelDeployment: vi.fn(async () => ({
@@ -146,7 +181,7 @@ function write(body: unknown, token = OPERATOR_TOKEN): RequestInit {
 }
 
 describe('Model Registry HTTP contract', () => {
-  test('exposes Artifact-only inspect and separate create-Model/register-Version commits', async () => {
+  test('exposes Artifact and Repository inspect with separate create-Model/register-Version commits', async () => {
     const fake = workspace()
     const app = createTestApp({
       v2Workspace: fake,
@@ -191,23 +226,11 @@ describe('Model Registry HTTP contract', () => {
     expect(wrongRoute.status).toBe(422)
 
     const repositoryAttempt = await app.fetch(
-      request(
-        '/v2/model-registrations:inspect',
-        write({
-          ...createRegistration,
-          source: {
-            kind: 'repository_reference',
-            provider: 'modelscope',
-            repository_id: 'Qwen/Qwen3-0.6B',
-            revision: 'main',
-            revision_kind: 'tag',
-            base_model: null,
-          },
-        }),
-      ),
+      request('/v2/model-registrations:inspect', write(repositoryRegistration)),
     )
-    expect(repositoryAttempt.status).toBe(422)
-    expect(fake.inspectModelRegistration).toHaveBeenCalledTimes(1)
+    expect(repositoryAttempt.status).toBe(200)
+    expect(await repositoryAttempt.json()).toEqual(repositoryPlan)
+    expect(fake.inspectModelRegistration).toHaveBeenCalledTimes(2)
   })
 
   test('serves stable Model, Version, and Alias read routes', async () => {
@@ -254,6 +277,7 @@ describe('Model Registry HTTP contract', () => {
           expected_deployment_digest: '8'.repeat(64),
         },
       ],
+      [`/v2/model-versions/${VERSION_ID}:refresh-source-evidence`, {}],
     ]
     for (const [path, body] of actions) {
       const denied = await app.fetch(request(path, write(body, 'wrong-token-but-long-enough')))
@@ -265,5 +289,6 @@ describe('Model Registry HTTP contract', () => {
     expect(fake.archiveModel).toHaveBeenCalledOnce()
     expect(fake.moveCandidateModelAlias).toHaveBeenCalledOnce()
     expect(fake.adoptModelDeployment).toHaveBeenCalledOnce()
+    expect(fake.refreshModelSourceEvidence).toHaveBeenCalledOnce()
   })
 })

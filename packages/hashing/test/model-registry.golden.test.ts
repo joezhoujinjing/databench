@@ -9,6 +9,7 @@ import {
   hashV2ModelRegistrationPlanArtifact,
   hashV2ModelRegistrationPlanRepository,
   hashV2ModelRegistrationPlanService,
+  hashV2ModelSourceEvidence,
   hashV2ModelSourceFingerprintArtifact,
   hashV2ModelSourceFingerprintRepository,
   hashV2ModelSourceFingerprintService,
@@ -66,6 +67,40 @@ describe('Model registry identity fixed vectors', () => {
   test.each(fixtureNames)('%s is invariant to object insertion order', (name) => {
     const fixture = readFixture(name)
     expect(hashByProfile[name]?.(reverseObjectOrder(fixture.input) as never)).toBe(fixture.digest)
+  })
+
+  test('model-source-evidence-v1 locks domain, canonical bytes, and an independent digest', async () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        fileURLToPath(
+          new URL('../../schema/test/fixtures/model-source-evidence-v1.json', import.meta.url),
+        ),
+        'utf8',
+      ),
+    ) as {
+      readonly profile: string
+      readonly domain_utf8_hex: string
+      readonly identity: Parameters<typeof hashV2ModelSourceEvidence>[0]
+      readonly canonical: string
+      readonly expected_digest: string
+    }
+    const canonical = canonicalJsonV2(fixture.identity)
+    const independent = await createBLAKE3()
+
+    expect(fixture.profile).toBe('model-source-evidence-v1')
+    expect(canonical).toBe(fixture.canonical)
+    expect(hashV2ModelSourceEvidence(fixture.identity)).toBe(fixture.expected_digest)
+    expect(
+      independent
+        .init()
+        .update(
+          Buffer.concat([
+            Buffer.from(fixture.domain_utf8_hex, 'hex'),
+            Buffer.from(canonical, 'utf8'),
+          ]),
+        )
+        .digest('hex'),
+    ).toBe(fixture.expected_digest)
   })
 
   test('source fingerprints exclude Model ID and label while Version digests bind both', () => {

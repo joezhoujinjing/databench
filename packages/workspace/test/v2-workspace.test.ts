@@ -67,6 +67,7 @@ import {
   V2CatalogModelDeploymentAdmissionError,
   V2CatalogModelDeploymentAdoptionConflictError,
   V2CatalogModelMetadataConflictError,
+  V2CatalogModelRegistrationConflictError,
   V2CatalogRefConflictError,
   V2CatalogRefStateConflictError,
   V2CatalogTargetNotCommittedError,
@@ -88,6 +89,7 @@ import {
   NotFoundError,
   type PostTrainingRecordV2,
   RefConflictErrorV2,
+  ServiceUnavailableError,
   V2_EXPORT_PREVIEW_MAX_BYTES,
   V2_LINEAGE_CURSOR_MAX_CHARS,
 } from '@databench/schema'
@@ -3084,6 +3086,14 @@ describe('V2Workspace Model Registry', () => {
       replayed: false,
     })
     expect(replayed).toEqual({ ...created, replayed: true })
+    await expect(
+      rig.workspace.refreshModelSourceEvidence(created.model_version_id),
+    ).rejects.toMatchObject({
+      name: 'ValidationError',
+      detail: {
+        issues: [expect.objectContaining({ code: 'source_evidence_requires_repository' })],
+      },
+    })
   })
 
   test('keeps repository registration declared-only with no network dependency', async () => {
@@ -3114,14 +3124,25 @@ describe('V2Workspace Model Registry', () => {
         source_mutability: 'unknown',
         verification_level: 'operator_attested',
       },
-      warnings: [{ code: 'repository_revision_unverified' }],
+      warnings: [
+        { code: 'repository_revision_unverified' },
+        { code: 'repository_provider_not_enabled' },
+      ],
     })
+    const created = await rig.workspace.commitModelRegistration({
+      request,
+      expected_registration_digest: plan.registration_digest,
+    })
+    expect(created).toMatchObject({ replayed: false })
+    await expect(
+      rig.workspace.refreshModelSourceEvidence(created.model_version_id),
+    ).rejects.toBeInstanceOf(ServiceUnavailableError)
     await expect(
       rig.workspace.commitModelRegistration({
         request,
         expected_registration_digest: plan.registration_digest,
       }),
-    ).resolves.toMatchObject({ replayed: false })
+    ).resolves.toMatchObject({ replayed: true })
   })
 
   test('fails before writes on digest drift, mutable Alias, and deferred Deployment profiles', async () => {
@@ -4251,6 +4272,7 @@ class FakeCatalog implements V2WorkspaceCatalog {
                     alias,
                     version: candidateVersion.version,
                     source: candidateVersion.source,
+                    evidence: this.modelSourceEvidence.get(candidateVersion.version.id) ?? [],
                   },
             versionCount: versions.length,
             adoptedDeploymentCount: adoptions.length,
@@ -4429,6 +4451,17 @@ class FakeCatalog implements V2WorkspaceCatalog {
       ),
   )
 
+  readonly appendModelSourceEvidence = vi.fn(
+    async (input: import('@databench/catalog').AppendModelSourceEvidenceV2) => {
+      const current = this.modelSourceEvidence.get(input.modelVersionId) ?? []
+      const replay = current.find((row) => row.evidenceDigest === input.evidenceDigest)
+      if (replay !== undefined) return replay
+      const row = { ...input, createdAt: NOW }
+      this.modelSourceEvidence.set(input.modelVersionId, [...current, row])
+      return row
+    },
+  )
+
   readonly createOrReadModelDeploymentAdoption = vi.fn(
     async (
       input: CreateModelDeploymentAdoptionV2,
@@ -4507,9 +4540,33 @@ class FakeCatalog implements V2WorkspaceCatalog {
       }
       this.models.set(model.id, model)
       this.modelVersions.set(version.id, { version, source: input.source })
+      if (input.initialEvidence !== undefined && input.initialEvidence !== null) {
+        const row = { ...input.initialEvidence, createdAt: NOW }
+        this.modelSourceEvidence.set(version.id, [row])
+      }
       if (alias !== null) this.modelAliases.set(`${model.id}:${alias.alias}`, alias)
       this.modelRegistrationResults.set(input.registrationDigest, result)
       return result
+    },
+  )
+
+  readonly replayModelRegistration = vi.fn(
+    async (
+      namespaceId: string,
+      registrationDigest: string,
+      planProfile: CreateModelRegistrationV2['planProfile'],
+      normalizedRequest: CreateModelRegistrationV2['normalizedRequest'],
+    ): Promise<CatalogModelRegistrationResultV2 | null> => {
+      const result = this.modelRegistrationResults.get(registrationDigest)
+      if (result === undefined) return null
+      if (
+        result.claim.namespaceId !== namespaceId ||
+        result.claim.planProfile !== planProfile ||
+        canonicalJsonV2(result.claim.normalizedRequest) !== canonicalJsonV2(normalizedRequest)
+      ) {
+        throw new V2CatalogModelRegistrationConflictError('request_mismatch', registrationDigest)
+      }
+      return { ...result, replayed: true }
     },
   )
 
