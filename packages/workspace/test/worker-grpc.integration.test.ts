@@ -317,6 +317,8 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
         capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
         capabilityVersion: '1',
         inputCount: BigInt(dataset.length),
+        resultRefNamespaceId: null,
+        resultRefName: null,
       })
       const job = await catalog.claimNextTransformJob({
         leaseOwner: 'worker.integration',

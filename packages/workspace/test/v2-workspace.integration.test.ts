@@ -556,7 +556,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       run_id: `run_${cacheKey}`,
       op: 'basic-clean',
       op_version: '1',
-      normalized_params: job.params,
+      normalized_params: claimed.params,
       created_at: run.createdAt.toISOString(),
       input_dataset_versions: [input.version],
       output_dataset_version: completed.outputVersion,

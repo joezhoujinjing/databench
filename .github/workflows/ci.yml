@@ -46,14 +46,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: 3.11.15
-
       - uses: astral-sh/setup-uv@v6
         with:
           version: 0.11.1
 
+      - run: uv python install 3.11.15
       - run: pnpm install --frozen-lockfile
       - run: uv sync --directory workers/python --frozen
       - run: pnpm codegen:worker:check
@@ -81,9 +78,11 @@ jobs:
       - run: pnpm evalscope:parity:test
       - run: pnpm ecs:check
 
-      # Stateful backends for the golden/e2e tests. The store suite creates its
-      # own temporary bucket, so minio-init is not required here.
-      - run: docker compose up -d --wait postgres minio
+      # Stateful backends for the golden/e2e tests. Store tests create temporary
+      # buckets, while Workspace/API/CLI integration suites use the default one.
+      - run: |
+          docker compose up -d --wait postgres minio
+          docker compose run --rm --no-deps minio-init
 
       # The pg driver adapter ignores the connection URL's ?schema param, so the
       # runtime queries the public schema. Migrate it here (CI's DB starts empty;
