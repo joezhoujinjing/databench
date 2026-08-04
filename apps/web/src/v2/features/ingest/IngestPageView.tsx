@@ -9,13 +9,14 @@ import { TextInput } from '@/components/ui/input.js'
 import {
   KeyValueGrid,
   KeyValueRow,
-  PageHeader,
   PageShell,
   Surface,
   SurfaceBody,
   SurfaceHeader,
   SurfaceTitle,
 } from '@/components/ui/surface.js'
+import { Tabs } from '@/components/ui/tabs.js'
+import { formatBytes } from '@/lib/format.js'
 import { useV2Ingest } from '../../api/hooks.js'
 import type { IngestResultV2 } from '../../api/types.js'
 import { RefConflictRecovery, readRefConflictDetail } from '../../components/RefConflictRecovery.js'
@@ -81,149 +82,72 @@ const RECORDS_PLACEHOLDER = `[
 export function V2IngestPageView() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const ingest = useV2Ingest()
+  const upload = useV2Ingest()
+  const create = useV2Ingest()
+  const [mode, setMode] = useState<'upload' | 'paste'>('upload')
   const [file, setFile] = useState<File | null>(null)
-  const [ref, setRef] = useState('')
-  const [expectedVersion, setExpectedVersion] = useState('')
-  const [message, setMessage] = useState('')
-  const [formError, setFormError] = useState<string | null>(null)
-  const controllerRef = useRef<AbortController | null>(null)
-  useEffect(() => () => controllerRef.current?.abort(), [])
+  const [uploadRef, setUploadRef] = useState('')
+  const [uploadExpectedVersion, setUploadExpectedVersion] = useState('')
+  const [uploadMessage, setUploadMessage] = useState('')
+  const [uploadFormError, setUploadFormError] = useState<string | null>(null)
+  const [pasteRef, setPasteRef] = useState('')
+  const [pasteMessage, setPasteMessage] = useState('')
+  const [pasteText, setPasteText] = useState('')
+  const [pasteFormError, setPasteFormError] = useState<string | null>(null)
+  const uploadControllerRef = useRef<AbortController | null>(null)
+  const pasteControllerRef = useRef<AbortController | null>(null)
+  useEffect(
+    () => () => {
+      uploadControllerRef.current?.abort()
+      pasteControllerRef.current?.abort()
+    },
+    [],
+  )
 
-  function submit(event: FormEvent) {
+  function submitUpload(event: FormEvent) {
     event.preventDefault()
     if (file === null) {
-      setFormError(t('v2.ingest.fileRequired'))
+      setUploadFormError(t('v2.ingest.fileRequired'))
       return
     }
-    if (expectedVersion.trim() !== '' && ref.trim() === '') {
-      setFormError(t('v2.ingest.expectedNeedsRef'))
+    if (uploadExpectedVersion.trim() !== '' && uploadRef.trim() === '') {
+      setUploadFormError(t('v2.ingest.expectedNeedsRef'))
       return
     }
-    if (message.trim() !== '' && ref.trim() === '') {
-      setFormError(t('v2.ingest.messageNeedsRef'))
+    if (uploadMessage.trim() !== '' && uploadRef.trim() === '') {
+      setUploadFormError(t('v2.ingest.messageNeedsRef'))
       return
     }
-    setFormError(null)
-    controllerRef.current?.abort()
+    setUploadFormError(null)
+    uploadControllerRef.current?.abort()
     const controller = new AbortController()
-    controllerRef.current = controller
-    ingest.mutate(
+    uploadControllerRef.current = controller
+    upload.mutate(
       {
-        expectedRefVersion: blankToNull(expectedVersion),
+        expectedRefVersion: blankToNull(uploadExpectedVersion),
         file,
-        message: blankToNull(message),
-        ref: blankToNull(ref),
+        message: blankToNull(uploadMessage),
+        ref: blankToNull(uploadRef),
         signal: controller.signal,
       },
       {
         onSettled: () => {
-          if (controllerRef.current === controller) controllerRef.current = null
-          if (controller.signal.aborted) ingest.reset()
+          if (uploadControllerRef.current === controller) uploadControllerRef.current = null
+          if (controller.signal.aborted) upload.reset()
         },
       },
     )
   }
 
-  return (
-    <PageShell>
-      <PageHeader title={t('v2.ingest.title')} />
-      <Surface>
-        <SurfaceHeader>
-          <SurfaceTitle>{t('v2.ingest.upload')}</SurfaceTitle>
-        </SurfaceHeader>
-        <SurfaceBody>
-          <form className="space-y-5" onSubmit={submit}>
-            <label className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-[6px] border border-dashed border-border-strong bg-background/65 px-6 py-8 text-center transition hover:border-primary focus-within:border-primary">
-              <Upload aria-hidden="true" className="text-primary" size={24} />
-              <span className="mt-4 text-sm">{t('v2.ingest.chooseFile')}</span>
-              <span className="mt-2 text-dim-foreground text-xs">
-                {file?.name ?? t('v2.ingest.fileHint')}
-              </span>
-              <input
-                accept=".jsonl,application/x-ndjson"
-                className="sr-only"
-                onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
-                type="file"
-              />
-            </label>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field hint={t('v2.ingest.refHint')} label={t('v2.ingest.ref')}>
-                <TextInput
-                  aria-label={t('v2.ingest.ref')}
-                  onChange={(event) => setRef(event.currentTarget.value)}
-                  value={ref}
-                />
-              </Field>
-              <Field hint={t('v2.ingest.expectedHint')} label={t('v2.ingest.expected')}>
-                <TextInput
-                  aria-label={t('v2.ingest.expected')}
-                  disabled={ref.trim() === ''}
-                  onChange={(event) => setExpectedVersion(event.currentTarget.value)}
-                  value={expectedVersion}
-                />
-              </Field>
-            </div>
-            <Field label={t('v2.ingest.message')}>
-              <TextInput
-                aria-label={t('v2.ingest.message')}
-                disabled={ref.trim() === ''}
-                onChange={(event) => setMessage(event.currentTarget.value)}
-                value={message}
-              />
-            </Field>
-            {formError ? <FormError>{formError}</FormError> : null}
-            <div className="flex flex-wrap gap-2">
-              <Button disabled={ingest.isPending} type="submit">
-                {ingest.isPending ? t('v2.ingest.uploading') : t('v2.ingest.action')}
-              </Button>
-              {ingest.isPending ? (
-                <Button
-                  onClick={() => controllerRef.current?.abort()}
-                  type="button"
-                  variant="outline"
-                >
-                  {t('v2.ingest.cancel')}
-                </Button>
-              ) : null}
-            </div>
-          </form>
-        </SurfaceBody>
-      </Surface>
-      <IngestOutcome
-        error={ingest.error}
-        isError={ingest.isError}
-        onResolved={(version) => {
-          void navigate({ params: { ref: version }, to: '/datasets/$ref' })
-        }}
-        result={ingest.data}
-      />
-
-      <JsonArrayCreatePanel />
-    </PageShell>
-  )
-}
-
-function JsonArrayCreatePanel() {
-  const { t } = useTranslation()
-  const navigate = useNavigate()
-  const create = useV2Ingest()
-  const [ref, setRef] = useState('')
-  const [message, setMessage] = useState('')
-  const [text, setText] = useState(RECORDS_PLACEHOLDER)
-  const [formError, setFormError] = useState<string | null>(null)
-  const controllerRef = useRef<AbortController | null>(null)
-  useEffect(() => () => controllerRef.current?.abort(), [])
-
-  function submit(event: FormEvent) {
+  function submitPaste(event: FormEvent) {
     event.preventDefault()
-    if (message.trim() !== '' && ref.trim() === '') {
-      setFormError(t('v2.ingest.messageNeedsRef'))
+    if (pasteMessage.trim() !== '' && pasteRef.trim() === '') {
+      setPasteFormError(t('v2.ingest.messageNeedsRef'))
       return
     }
-    const converted = canonicalJsonArrayToJsonl(text)
+    const converted = canonicalJsonArrayToJsonl(pasteText)
     if (!converted.ok) {
-      setFormError(
+      setPasteFormError(
         converted.reason === 'not_array'
           ? t('v2.ingest.jsonArrayRequired')
           : t('v2.ingest.jsonInvalid', { message: converted.message }),
@@ -231,94 +155,248 @@ function JsonArrayCreatePanel() {
       return
     }
 
-    setFormError(null)
-    controllerRef.current?.abort()
+    setPasteFormError(null)
+    pasteControllerRef.current?.abort()
     const controller = new AbortController()
-    controllerRef.current = controller
+    pasteControllerRef.current = controller
     create.mutate(
       {
         expectedRefVersion: null,
         file: new File([converted.jsonl], 'pasted-records.jsonl', {
           type: 'application/x-ndjson',
         }),
-        message: blankToNull(message),
-        ref: blankToNull(ref),
+        message: blankToNull(pasteMessage),
+        ref: blankToNull(pasteRef),
         signal: controller.signal,
       },
       {
         onSettled: () => {
-          if (controllerRef.current === controller) controllerRef.current = null
+          if (pasteControllerRef.current === controller) pasteControllerRef.current = null
           if (controller.signal.aborted) create.reset()
         },
       },
     )
   }
 
+  const openDataset = (version: string) => {
+    void navigate({ params: { ref: version }, to: '/datasets/$ref' })
+  }
+
   return (
-    <>
-      <Surface>
-        <SurfaceHeader>
-          <SurfaceTitle>{t('v2.ingest.createTitle')}</SurfaceTitle>
-          <p className="mt-2 text-muted-foreground text-sm leading-6">
-            {t('v2.ingest.createDescription')}
-          </p>
-        </SurfaceHeader>
-        <SurfaceBody>
-          <form className="space-y-5" onSubmit={submit}>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field hint={t('v2.ingest.refHint')} label={t('v2.ingest.ref')}>
-                <TextInput
-                  aria-label={t('v2.ingest.ref')}
-                  onChange={(event) => setRef(event.currentTarget.value)}
-                  value={ref}
-                />
-              </Field>
-              <Field label={t('v2.ingest.message')}>
-                <TextInput
-                  aria-label={t('v2.ingest.message')}
-                  disabled={ref.trim() === ''}
-                  onChange={(event) => setMessage(event.currentTarget.value)}
-                  value={message}
-                />
-              </Field>
-            </div>
-            <Field label={t('v2.ingest.recordsJson')}>
-              <CodeEditor
-                aria-label={t('v2.ingest.recordsJson')}
-                language="JSON"
-                maxRows={16}
-                minRows={16}
-                onChange={(event) => setText(event.currentTarget.value)}
-                value={text}
-              />
-            </Field>
-            {formError ? <FormError>{formError}</FormError> : null}
-            <div className="flex justify-end gap-2">
-              {create.isPending ? (
-                <Button
-                  onClick={() => controllerRef.current?.abort()}
-                  type="button"
-                  variant="outline"
-                >
-                  {t('v2.ingest.cancelCreate')}
-                </Button>
-              ) : null}
-              <Button disabled={text.trim() === '' || create.isPending} type="submit">
-                {create.isPending ? t('v2.ingest.creating') : t('v2.ingest.createAction')}
-              </Button>
-            </div>
-          </form>
+    <PageShell className="space-y-4">
+      <header className="pb-1">
+        <h1 className="font-semibold text-[1.75rem] leading-tight tracking-tight">
+          {t('v2.ingest.title')}
+        </h1>
+      </header>
+      <Surface className="shadow-[0_18px_48px_rgba(75,56,30,0.08)]">
+        <SurfaceBody className="py-5">
+          <Tabs
+            ariaLabel={t('v2.ingest.title')}
+            items={[
+              {
+                label: t('v2.ingest.upload'),
+                panel: (
+                  <form
+                    className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.75fr)]"
+                    onSubmit={submitUpload}
+                  >
+                    <section className="min-w-0 space-y-3">
+                      <div>
+                        <h2 className="font-medium text-sm">{t('v2.ingest.content')}</h2>
+                        <p className="mt-1 text-dim-foreground text-xs leading-5">
+                          {t('v2.ingest.fileHint')}
+                        </p>
+                      </div>
+                      <label className="flex min-h-[15.5rem] cursor-pointer flex-col items-center justify-center rounded-[6px] border border-dashed border-border-strong bg-background/55 px-6 py-7 text-center transition hover:border-primary hover:bg-background/75 focus-within:border-primary focus-within:bg-background/75">
+                        <span className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Upload aria-hidden="true" size={22} />
+                        </span>
+                        <span className="mt-4 font-medium text-sm">
+                          {file?.name ?? t('v2.ingest.chooseFile')}
+                        </span>
+                        <span className="mt-1.5 text-dim-foreground text-xs">
+                          {file === null ? t('v2.ingest.fileHint') : formatBytes(file.size)}
+                        </span>
+                        <input
+                          accept=".jsonl,application/x-ndjson"
+                          className="sr-only"
+                          onChange={(event) => {
+                            setFile(event.currentTarget.files?.[0] ?? null)
+                            setUploadFormError(null)
+                          }}
+                          type="file"
+                        />
+                      </label>
+                    </section>
+                    <section className="flex min-w-0 flex-col border-border xl:border-l xl:pl-5">
+                      <DatasetInformationFields
+                        expectedVersion={uploadExpectedVersion}
+                        message={uploadMessage}
+                        onExpectedVersionChange={setUploadExpectedVersion}
+                        onMessageChange={setUploadMessage}
+                        onRefChange={setUploadRef}
+                        refValue={uploadRef}
+                      />
+                      {uploadFormError ? (
+                        <div className="mt-4">
+                          <FormError>{uploadFormError}</FormError>
+                        </div>
+                      ) : null}
+                      <div className="mt-auto flex flex-wrap justify-end gap-2 pt-5">
+                        {upload.isPending ? (
+                          <Button
+                            onClick={() => uploadControllerRef.current?.abort()}
+                            type="button"
+                            variant="outline"
+                          >
+                            {t('v2.ingest.cancel')}
+                          </Button>
+                        ) : null}
+                        <Button disabled={file === null || upload.isPending} type="submit">
+                          {upload.isPending ? t('v2.ingest.uploading') : t('v2.ingest.action')}
+                        </Button>
+                      </div>
+                    </section>
+                  </form>
+                ),
+                value: 'upload' as const,
+              },
+              {
+                label: t('v2.ingest.createTitle'),
+                panel: (
+                  <form
+                    className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(22rem,0.75fr)]"
+                    onSubmit={submitPaste}
+                  >
+                    <section className="min-w-0 space-y-3">
+                      <div>
+                        <h2 className="font-medium text-sm">{t('v2.ingest.content')}</h2>
+                        <p className="mt-1 text-dim-foreground text-xs leading-5">
+                          {t('v2.ingest.createDescription')}
+                        </p>
+                      </div>
+                      <CodeEditor
+                        aria-label={t('v2.ingest.recordsJson')}
+                        language="JSON"
+                        maxRows={18}
+                        minRows={12}
+                        onChange={(event) => {
+                          setPasteText(event.currentTarget.value)
+                          setPasteFormError(null)
+                        }}
+                        placeholder={RECORDS_PLACEHOLDER}
+                        value={pasteText}
+                      />
+                    </section>
+                    <section className="flex min-w-0 flex-col border-border xl:border-l xl:pl-5">
+                      <DatasetInformationFields
+                        message={pasteMessage}
+                        onMessageChange={setPasteMessage}
+                        onRefChange={setPasteRef}
+                        refValue={pasteRef}
+                      />
+                      {pasteFormError ? (
+                        <div className="mt-4">
+                          <FormError>{pasteFormError}</FormError>
+                        </div>
+                      ) : null}
+                      <div className="mt-auto flex flex-wrap justify-end gap-2 pt-5">
+                        {create.isPending ? (
+                          <Button
+                            onClick={() => pasteControllerRef.current?.abort()}
+                            type="button"
+                            variant="outline"
+                          >
+                            {t('v2.ingest.cancelCreate')}
+                          </Button>
+                        ) : null}
+                        <Button
+                          disabled={pasteText.trim() === '' || create.isPending}
+                          type="submit"
+                        >
+                          {create.isPending ? t('v2.ingest.creating') : t('v2.ingest.createAction')}
+                        </Button>
+                      </div>
+                    </section>
+                  </form>
+                ),
+                value: 'paste' as const,
+              },
+            ]}
+            onChange={setMode}
+            value={mode}
+          />
         </SurfaceBody>
       </Surface>
-      <IngestOutcome
-        error={create.error}
-        isError={create.isError}
-        onResolved={(version) => {
-          void navigate({ params: { ref: version }, to: '/datasets/$ref' })
-        }}
-        result={create.data}
-      />
-    </>
+      {mode === 'upload' ? (
+        <IngestOutcome
+          error={upload.error}
+          isError={upload.isError}
+          onResolved={openDataset}
+          result={upload.data}
+        />
+      ) : (
+        <IngestOutcome
+          error={create.error}
+          isError={create.isError}
+          onResolved={openDataset}
+          result={create.data}
+        />
+      )}
+    </PageShell>
+  )
+}
+
+function DatasetInformationFields({
+  expectedVersion,
+  message,
+  onExpectedVersionChange,
+  onMessageChange,
+  onRefChange,
+  refValue,
+}: {
+  expectedVersion?: string
+  message: string
+  onExpectedVersionChange?(value: string): void
+  onMessageChange(value: string): void
+  onRefChange(value: string): void
+  refValue: string
+}) {
+  const { t } = useTranslation()
+  const hasRef = refValue.trim() !== ''
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-medium text-sm">{t('v2.ingest.details')}</h2>
+        <p className="mt-1 text-dim-foreground text-xs leading-5">{t('v2.ingest.refHint')}</p>
+      </div>
+      <Field label={t('v2.ingest.ref')}>
+        <TextInput
+          aria-label={t('v2.ingest.ref')}
+          onChange={(event) => onRefChange(event.currentTarget.value)}
+          value={refValue}
+        />
+      </Field>
+      {expectedVersion !== undefined && onExpectedVersionChange !== undefined ? (
+        <Field hint={t('v2.ingest.expectedHint')} label={t('v2.ingest.expected')}>
+          <TextInput
+            aria-label={t('v2.ingest.expected')}
+            disabled={!hasRef}
+            onChange={(event) => onExpectedVersionChange(event.currentTarget.value)}
+            value={expectedVersion}
+          />
+        </Field>
+      ) : null}
+      <Field label={t('v2.ingest.message')}>
+        <TextInput
+          aria-label={t('v2.ingest.message')}
+          disabled={!hasRef}
+          onChange={(event) => onMessageChange(event.currentTarget.value)}
+          value={message}
+        />
+      </Field>
+    </div>
   )
 }
 
