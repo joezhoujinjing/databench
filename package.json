@@ -33,6 +33,8 @@
     "swift:s1:gpu:evidence:check": "node scripts/check-swift-s1-gpu-evidence.mjs",
     "swift:s1:gpu:evidence:test": "node --test scripts/check-swift-s1-gpu-evidence.test.mjs",
     "swift:lock:generate": "node scripts/generate-swift-runtime-lock.mjs",
+    "models:status:check": "node scripts/check-model-registry-status.mjs",
+    "models:status:test": "node --test scripts/check-model-registry-status.test.mjs",
     "v2:status:check": "node scripts/check-v2-status.mjs",
     "v1:retire": "pnpm --filter @databench/v1-retirement retire",
     "openapi:check": "turbo run openapi:check",

@@ -1,0 +1,57 @@
+{
+  "baseline_version": 1,
+  "captured_at": "2026-08-04",
+  "source_commit": "main@b8167b7",
+  "purpose": "Protect ADR 0017/0018 artifact-bound-v1 semantics while allowing additive Model Registry routes and schemas.",
+  "identity": {
+    "profile": "model-deployment-create-v1",
+    "canonical_json": "{\"artifact_id\":\"22222222-2222-4222-8222-222222222222\",\"auth_mode\":\"none\",\"display_name\":\"customer-service-lora\",\"endpoint_base_url\":\"http://model.internal:8000/v1\",\"model_deployment_create_profile\":\"model-deployment-create-v1\",\"namespace\":\"11111111-1111-4111-8111-111111111111\",\"provider\":\"openai_compatible\",\"served_model_name\":\"customer-service-lora-v1\"}",
+    "blake3_hex": "b1947d1aa720c28bb75cd5e7140d33d8d84b6c8ea8c13479191472916ba814d7",
+    "source": "packages/hashing/test/v2.golden.test.ts"
+  },
+  "database": {
+    "migration": "prisma/migrations/0013_model_deployments_v2/migration.sql",
+    "sha256": "b40c1b2f261c768d128201cd5558dfbf713912cc1647777694b106cbda15b3ff",
+    "artifact_id_nullable": false,
+    "provider": "openai_compatible",
+    "auth_mode": "none",
+    "statuses": ["active", "disabled"]
+  },
+  "openapi": {
+    "algorithm": "sha256-sorted-json-v1",
+    "operations": {
+      "POST /v2/model-deployments": "6491029cdee213e54c93c4293acda121d587fa9c62c098d8f81c7a9ffe9377ca",
+      "GET /v2/model-deployments": "2db38e5bc62b41776218d870db991443250d6e9581a569f3016902822e07c77e",
+      "GET /v2/model-deployments/{deployment_id}": "7ce748b73642485a9277d408b71b061e012107ee9d420229fe9902dea32d3f9b",
+      "POST /v2/model-deployments/{deployment_id}:check": "c18c90d85750d437c74f7abb1ba819a52d3aacbcb05a271f6d6f865ad019d5b1",
+      "POST /v2/model-deployments/{deployment_id}:disable": "9051acaae38a9bce8e5bd0348098084ed35a4691817eeb9197ecda63c1f9a07d"
+    },
+    "schemas": {
+      "CreateModelDeploymentRequestV2": "b80e18ac347f4a4c243f937ecaf164b60d39c71aad055c3b6823fa711de57a70",
+      "ModelDeploymentV2": "a8ee1ad53ea307a4402ce479631f0a3c9995b95642243793ac4f7b01c36993a5",
+      "ModelDeploymentPageV2": "c872a064e1208dbfe28d0318727806ed650ec81347f9d734c9021a0bf5cd5e9c"
+    }
+  },
+  "internal_v1": {
+    "route": "/internal/v1/model-deployments/{deployment_id}:resolve",
+    "fields": [
+      "id",
+      "artifact_id",
+      "create_digest",
+      "provider",
+      "registration_mode",
+      "served_model_name",
+      "endpoint_base_url",
+      "auth_mode",
+      "base_model_reference",
+      "base_model_revision"
+    ],
+    "constants": {
+      "provider": "openai_compatible",
+      "registration_mode": "operator_attested",
+      "auth_mode": "none"
+    },
+    "api_source": "apps/api/src/routes/v2/model-deployments.ts",
+    "consumer_source": "workers/evalscope/src/databench_evalscope/databench.py"
+  }
+}

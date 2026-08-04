@@ -1,0 +1,41 @@
+{
+  "fixture_version": 1,
+  "profile": "model-endpoint-policy-v1",
+  "note": "MR0 pre-registers decisions only. MR4 must execute these cases in both TypeScript and Python and add exact DNS/socket fixtures.",
+  "required_cases": [
+    { "id": "private-exact-host-cidr-port-http", "scope": "private_network", "expected": "allow" },
+    { "id": "private-host-match-cidr-miss", "scope": "private_network", "expected": "deny" },
+    { "id": "private-cidr-match-host-miss", "scope": "private_network", "expected": "deny" },
+    { "id": "private-ip-literal-in-cidr", "scope": "private_network", "expected": "allow" },
+    { "id": "private-ip-literal-outside-cidr", "scope": "private_network", "expected": "deny" },
+    {
+      "id": "public-https-global-v4",
+      "scope": "public_network",
+      "expected": "allow-connected-only"
+    },
+    {
+      "id": "public-https-global-v6",
+      "scope": "public_network",
+      "expected": "allow-connected-only"
+    },
+    { "id": "public-http", "scope": "public_network", "expected": "deny" },
+    { "id": "public-loopback", "scope": "public_network", "expected": "deny" },
+    { "id": "public-rfc1918", "scope": "public_network", "expected": "deny" },
+    { "id": "public-cgnat", "scope": "public_network", "expected": "deny" },
+    { "id": "public-link-local", "scope": "public_network", "expected": "deny" },
+    { "id": "public-cloud-metadata", "scope": "public_network", "expected": "deny" },
+    { "id": "public-ula", "scope": "public_network", "expected": "deny" },
+    { "id": "dns-rebinding-second-resolution", "scope": "both", "expected": "deny" },
+    { "id": "dual-stack-one-address-denied", "scope": "both", "expected": "deny" },
+    { "id": "ipv4-mapped-ipv6-bypass", "scope": "both", "expected": "deny" },
+    { "id": "idna-or-trailing-dot-confusion", "scope": "both", "expected": "deny" },
+    { "id": "ipv6-zone-id", "scope": "both", "expected": "deny" },
+    { "id": "ambient-proxy-present", "scope": "both", "expected": "ignore-proxy" },
+    { "id": "redirect", "scope": "both", "expected": "deny" },
+    {
+      "id": "offline-public-network",
+      "scope": "public_network",
+      "expected": "registered-unavailable"
+    }
+  ]
+}

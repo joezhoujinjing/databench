@@ -1,0 +1,99 @@
+{
+  "fixture_version": 1,
+  "decision": "ADR-0019",
+  "status": "planned-runtime",
+  "core_tables": [
+    "models_v2",
+    "model_versions_v2",
+    "model_version_artifact_sources_v2",
+    "model_version_repository_sources_v2",
+    "model_version_service_sources_v2",
+    "model_source_evidence_v2",
+    "model_aliases_v2",
+    "model_registration_claims_v2",
+    "model_version_deployment_adoptions_v2"
+  ],
+  "model_version_unique_keys": [
+    ["namespace_id", "id"],
+    ["namespace_id", "model_id", "id"],
+    ["namespace_id", "model_id", "version_label"],
+    ["namespace_id", "model_id", "source_fingerprint"]
+  ],
+  "source_xor": {
+    "mechanism": "deferred_constraint_trigger",
+    "cardinality": "exactly_one",
+    "selector": "model_versions_v2.source_kind",
+    "source_tables": [
+      "model_version_artifact_sources_v2",
+      "model_version_repository_sources_v2",
+      "model_version_service_sources_v2"
+    ]
+  },
+  "artifact_binding": {
+    "truth": "model_version_artifact_sources_v2",
+    "cardinality": "one_primary_per_artifact_source_version",
+    "unique_key": ["namespace_id", "model_version_id", "artifact_id"]
+  },
+  "deployment_profiles": {
+    "artifact-bound-v1": {
+      "model_version_id": "null",
+      "artifact_id": "required",
+      "auth_mode": ["none"],
+      "status": ["active", "disabled"],
+      "public_route_family": "/v2/model-deployments*",
+      "internal_resolver": "/internal/v1/model-deployments/{deployment_id}:resolve"
+    },
+    "model-version-v1": {
+      "model_version_id": "required",
+      "artifact_source_artifact_id": "required-primary",
+      "repository_service_artifact_id": "null",
+      "auth_mode": ["none", "bearer_ref"],
+      "status": ["registered", "active", "disabled"],
+      "public_route_family": "/v2/model-versions/{version_id}/deployments*",
+      "internal_resolver": "/internal/v2/model-deployments/{deployment_id}:resolve"
+    }
+  },
+  "legacy_adoption": {
+    "table": "model_version_deployment_adoptions_v2",
+    "primary_key": ["namespace_id", "deployment_id"],
+    "mutation": "absent_to_exact_only",
+    "evaluation_v5_v6_eligible": false
+  },
+  "evaluation_v5_v6_foreign_keys": [
+    {
+      "columns": ["namespace_id", "model_id", "model_version_id"],
+      "references": ["model_versions_v2", "namespace_id", "model_id", "id"]
+    },
+    {
+      "columns": [
+        "namespace_id",
+        "model_version_id",
+        "model_deployment_id",
+        "model_deployment_digest"
+      ],
+      "references": [
+        "model_deployments_v2",
+        "namespace_id",
+        "model_version_id",
+        "id",
+        "create_digest"
+      ]
+    },
+    {
+      "condition": "model_artifact_id_is_not_null",
+      "columns": [
+        "namespace_id",
+        "model_deployment_id",
+        "model_artifact_id",
+        "model_deployment_digest"
+      ],
+      "references": ["model_deployments_v2", "namespace_id", "id", "artifact_id", "create_digest"]
+    }
+  ],
+  "migration_rules": {
+    "additive": true,
+    "foreign_key_action": "RESTRICT",
+    "automatic_backfill": false,
+    "historical_identity_rewrite": false
+  }
+}

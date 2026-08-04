@@ -1,0 +1,225 @@
+{
+  "fixture_index_version": 1,
+  "decision": "ADR-0019",
+  "identity_profile": "databench-v2-jcs-1",
+  "fixtures": [
+    {
+      "id": "mr0-legacy-s4-baseline",
+      "step": "MR0",
+      "owner": "model-registry",
+      "category": "legacy-contract",
+      "path": "docs/models/fixtures/legacy-s4-baseline.json",
+      "assertion": "Locks the current artifact-bound public, internal, migration, and identity semantics without locking unrelated new routes.",
+      "source": "ADR 0017/0018 accepted runtime",
+      "status": "verified"
+    },
+    {
+      "id": "mr0-database-shape",
+      "step": "MR1",
+      "owner": "model-registry",
+      "category": "database-shape",
+      "path": "docs/models/fixtures/database-shape.json",
+      "assertion": "Pre-registers the exact MR1/MR5/MR6 tables, unique keys, source XOR, deployment profiles, and evaluation foreign keys.",
+      "source": "ADR 0019 sections 6-7",
+      "status": "planned"
+    },
+    {
+      "id": "mr0-endpoint-policy-schema",
+      "step": "MR4",
+      "owner": "model-security",
+      "category": "security-schema",
+      "profile": "model-endpoint-policy-v1",
+      "path": "docs/models/fixtures/model-endpoint-policy-v1.schema.json",
+      "assertion": "Defines a strict default-deny policy configuration envelope before TS or Python runtime implementation.",
+      "source": "ADR 0019 section 8",
+      "status": "planned"
+    },
+    {
+      "id": "mr0-endpoint-policy-cases",
+      "step": "MR4",
+      "owner": "model-security",
+      "category": "cross-language-cases",
+      "profile": "model-endpoint-policy-v1",
+      "path": "docs/models/fixtures/model-endpoint-policy-v1.cases.json",
+      "assertion": "Pre-registers required allow and deny categories for identical TS/Python decisions in MR4.",
+      "source": "ADR 0019 section 8",
+      "status": "planned"
+    },
+    {
+      "id": "mr0-credential-registry-schema",
+      "step": "MR4",
+      "owner": "model-security",
+      "category": "security-schema",
+      "profile": "model-credentials-v1",
+      "path": "docs/models/fixtures/model-credentials-v1.schema.json",
+      "assertion": "Defines the strict offline authority/projection envelope without committing any secret value.",
+      "source": "ADR 0019 section 9",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-model-create-v1",
+      "step": "MR1",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "model-create-v1",
+      "path": "packages/hashing/test/fixtures/model-create-v1.json",
+      "assertion": "Binds namespace and stable Model key only; initial metadata remains in the registration plan.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-source-fingerprint-artifact-v1",
+      "step": "MR1",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "model-source-fingerprint-artifact-v1",
+      "path": "packages/hashing/test/fixtures/model-source-fingerprint-artifact-v1.json",
+      "assertion": "Binds exact Artifact and manifest bytes while excluding Model ID and version label.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-source-fingerprint-repository-v1",
+      "step": "MR1",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "model-source-fingerprint-repository-v1",
+      "path": "packages/hashing/test/fixtures/model-source-fingerprint-repository-v1.json",
+      "assertion": "Binds provider, canonical repository ID, revision, and revision kind while excluding evidence observations.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-source-fingerprint-service-v1",
+      "step": "MR1",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "model-source-fingerprint-service-v1",
+      "path": "packages/hashing/test/fixtures/model-source-fingerprint-service-v1.json",
+      "assertion": "Binds external model/version references and declared reference kind while excluding endpoint and served model.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-version-create-artifact-v1",
+      "step": "MR1",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "model-version-create-artifact-v1",
+      "path": "packages/hashing/test/fixtures/model-version-create-artifact-v1.json",
+      "assertion": "Binds namespace, Model ID, label, Artifact source fingerprint, and immutable base binding.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-version-create-repository-v1",
+      "step": "MR1",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "model-version-create-repository-v1",
+      "path": "packages/hashing/test/fixtures/model-version-create-repository-v1.json",
+      "assertion": "Binds namespace, Model ID, label, Repository source fingerprint, and declared base binding.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-version-create-service-v1",
+      "step": "MR1",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "model-version-create-service-v1",
+      "path": "packages/hashing/test/fixtures/model-version-create-service-v1.json",
+      "assertion": "Binds namespace, Model ID, label, Existing Service source fingerprint, and declared base binding.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-registration-plan-artifact-v1",
+      "step": "MR1",
+      "owner": "workspace",
+      "category": "identity",
+      "profile": "model-registration-plan-artifact-v1",
+      "path": "packages/hashing/test/fixtures/model-registration-plan-artifact-v1.json",
+      "assertion": "Binds the full normalized Artifact registration plan and classification evidence digest.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-registration-plan-repository-v1",
+      "step": "MR1",
+      "owner": "workspace",
+      "category": "identity",
+      "profile": "model-registration-plan-repository-v1",
+      "path": "packages/hashing/test/fixtures/model-registration-plan-repository-v1.json",
+      "assertion": "Binds the full normalized Repository registration plan and classification evidence digest.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr1-registration-plan-service-v1",
+      "step": "MR1",
+      "owner": "workspace",
+      "category": "identity",
+      "profile": "model-registration-plan-service-v1",
+      "path": "packages/hashing/test/fixtures/model-registration-plan-service-v1.json",
+      "assertion": "Binds the full normalized Existing Service registration plan without secret value or health observation.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr2-deployment-adoption-v1",
+      "step": "MR2",
+      "owner": "workspace",
+      "category": "identity",
+      "profile": "model-deployment-adoption-v1",
+      "path": "packages/hashing/test/fixtures/model-deployment-adoption-v1.json",
+      "assertion": "Binds a one-time legacy Deployment, exact Artifact, Model Version, and adoption intent without changing the legacy digest.",
+      "source": "ADR 0019 section 5",
+      "status": "planned"
+    },
+    {
+      "id": "mr3-repository-source-evidence-v1",
+      "step": "MR3",
+      "owner": "schema",
+      "category": "wire-profile",
+      "profile": "model-source-evidence-v1",
+      "path": "packages/schema/test/fixtures/model-source-evidence-v1.json",
+      "assertion": "Locks bounded append-only provider evidence without storing provider response bodies or changing Version identity.",
+      "source": "ADR 0019 section 3",
+      "status": "planned"
+    },
+    {
+      "id": "mr5-model-deployment-create-v2",
+      "step": "MR5",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "model-deployment-create-v2",
+      "path": "packages/hashing/test/fixtures/model-deployment-create-v2.json",
+      "assertion": "Binds Model Version ID, source fingerprint, serving route, endpoint policy, credential ref name, and declared capabilities.",
+      "source": "ADR 0019 section 6",
+      "status": "planned"
+    },
+    {
+      "id": "mr6-evaluation-run-create-v5",
+      "step": "MR6",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "evaluation-run-create-v5",
+      "path": "packages/hashing/test/fixtures/evaluation-run-create-v5.json",
+      "assertion": "Binds Model/Version/Deployment/Artifact nullable lineage and default benchmark metrics.",
+      "source": "ADR 0019 section 10",
+      "status": "planned"
+    },
+    {
+      "id": "mr6-evaluation-run-create-v6",
+      "step": "MR6",
+      "owner": "hashing",
+      "category": "identity",
+      "profile": "evaluation-run-create-v6",
+      "path": "packages/hashing/test/fixtures/evaluation-run-create-v6.json",
+      "assertion": "Binds Model/Version/Deployment/Artifact nullable lineage and explicit canonical metrics.",
+      "source": "ADR 0019 section 10",
+      "status": "planned"
+    }
+  ]
+}
