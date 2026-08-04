@@ -2722,6 +2722,222 @@ describe('V2Workspace evaluation runs', () => {
     })
   })
 
+  test('creates v5/v6 runs for Artifact, Repository, and Service source snapshots', async () => {
+    const runtime: V2ModelVersionDeploymentRuntime = {
+      configuration: vi.fn(async () => ({ policyGeneration: 1, credentialGeneration: null })),
+      observe: vi.fn(async () => ({ status: 'healthy', error: null })),
+    }
+    const rig = createRig({}, undefined, undefined, undefined, undefined, undefined, runtime)
+    const dataset = makeDataset('9', 'Evaluate three Registry source kinds.')
+    rig.seed(dataset)
+    const inspected = await rig.workspace.inspectExport(dataset.version, {
+      converter: 'evalscope-general-qa',
+      options: { target_source: 'none' },
+    })
+    const artifact = modelArtifactRowForRegistration()
+    rig.catalog.modelArtifacts.set(artifact.id, artifact)
+
+    const artifactRequest = artifactRegistrationRequest(
+      artifact.id,
+      'evaluation-artifact-model',
+      'Evaluation Artifact Model',
+      'r1',
+    )
+    const repositoryRequest = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'evaluation-repository-model',
+        display_name: 'Evaluation Repository Model',
+        description: '',
+        task_family: 'chat',
+        tags: [],
+      },
+      version_label: 'latest',
+      source: {
+        kind: 'repository_reference' as const,
+        provider: 'hugging_face' as const,
+        repository_id: 'Qwen/Qwen2.5-7B',
+        revision: 'latest',
+        revision_kind: 'tag' as const,
+        base_model: null,
+      },
+    }
+    const serviceRequest = {
+      target: {
+        kind: 'create_model' as const,
+        key: 'evaluation-service-model',
+        display_name: 'Evaluation Service Model',
+        description: '',
+        task_family: 'chat',
+        tags: [],
+      },
+      version_label: 'r1',
+      source: {
+        kind: 'existing_service' as const,
+        provider: 'openai_compatible' as const,
+        external_model_ref: 'service-model',
+        external_version_ref: 'r1',
+        declared_reference_kind: 'immutable_version' as const,
+        base_model: null,
+        deployment: {
+          display_name: 'Service Deployment',
+          served_model_name: 'service-route',
+          connectivity_scope: 'private_network' as const,
+          endpoint_base_url: 'https://service.example.test/v1',
+          auth_profile: 'none' as const,
+          credential_ref: null,
+          declared_capabilities: {
+            interfaces: ['chat_completions' as const],
+            context_limit: 32_768,
+          },
+        },
+      },
+    }
+    const registrations = []
+    for (const request of [artifactRequest, repositoryRequest, serviceRequest]) {
+      const plan = await rig.workspace.inspectModelRegistration(request)
+      registrations.push(
+        await rig.workspace.commitModelRegistration({
+          request,
+          expected_registration_digest: plan.registration_digest,
+        }),
+      )
+    }
+
+    const deploymentDraft = {
+      display_name: 'Evaluation Deployment',
+      served_model_name: 'registry-route',
+      endpoint_base_url: 'https://models.example.test/v1',
+      connectivity_scope: 'private_network' as const,
+      auth_profile: 'none' as const,
+      credential_ref: null,
+      declared_capabilities: {
+        interfaces: ['chat_completions' as const],
+        context_limit: 32_768,
+      },
+    }
+    const deployments = []
+    for (const [index, registration] of registrations.entries()) {
+      const deployment =
+        registration.deployment_id === null
+          ? await rig.workspace.createModelVersionDeployment(registration.model_version_id, {
+              ...deploymentDraft,
+              served_model_name: `registry-route-${index}`,
+            })
+          : await rig.workspace
+              .listModelVersionDeployments(registration.model_version_id, {
+                cursor: null,
+                limit: 20,
+              })
+              .then((page) => page.items[0])
+      if (deployment === undefined) throw new Error('Registry Deployment was not created')
+      deployments.push(
+        await rig.workspace.activateModelVersionDeployment(
+          registration.model_version_id,
+          deployment.id,
+        ),
+      )
+    }
+
+    const expectedSnapshots = [
+      {
+        source_mutability_snapshot: 'immutable',
+        verification_level_snapshot: 'content_verified',
+        model_artifact_id: artifact.id,
+      },
+      {
+        source_mutability_snapshot: 'mutable',
+        verification_level_snapshot: 'operator_attested',
+        model_artifact_id: null,
+      },
+      {
+        source_mutability_snapshot: 'unknown',
+        verification_level_snapshot: 'operator_attested',
+        model_artifact_id: null,
+      },
+    ] as const
+    const runs = []
+    for (const [index, deployment] of deployments.entries()) {
+      const run = await rig.workspace.createEvaluationRun({
+        provider: 'evalscope',
+        provider_task_id: `task-registry-source-${index}`,
+        dataset_version: dataset.version,
+        source_ref: null,
+        converter: 'evalscope-general-qa',
+        converter_options: { target_source: 'none' },
+        accepted_fidelity_digest: inspected.fidelity_digest,
+        model_name: null,
+        model_deployment_id: deployment.id,
+        evalscope_commit: null,
+      })
+      expect(run).toMatchObject({
+        create_profile: 'evaluation-run-create-v5',
+        model_id: registrations[index]?.model_id,
+        model_version_id: registrations[index]?.model_version_id,
+        model_deployment_id: deployment.id,
+        source_evidence_digest: null,
+        source_observed_at: NOW.toISOString(),
+        ...expectedSnapshots[index],
+      })
+      runs.push(run)
+    }
+
+    const metricRun = await rig.workspace.createEvaluationRun({
+      provider: 'evalscope',
+      provider_task_id: 'task-registry-source-metrics',
+      dataset_version: dataset.version,
+      source_ref: null,
+      converter: 'evalscope-general-qa',
+      converter_options: { target_source: 'none' },
+      accepted_fidelity_digest: inspected.fidelity_digest,
+      model_name: null,
+      model_deployment_id: deployments[0]?.id ?? null,
+      evalscope_commit: 'c'.repeat(40),
+      scoring_config: scoringConfig(),
+    })
+    expect(metricRun).toMatchObject({
+      create_profile: 'evaluation-run-create-v6',
+      model_artifact_id: artifact.id,
+      primary_metric_id: 'exact_match',
+    })
+
+    await rig.workspace.disableModelVersionDeployment(
+      registrations[0]?.model_version_id ?? '',
+      deployments[0]?.id ?? '',
+    )
+    await expect(
+      rig.workspace.createEvaluationRun({
+        provider: 'evalscope',
+        provider_task_id: 'task-registry-source-0',
+        dataset_version: dataset.version,
+        source_ref: null,
+        converter: 'evalscope-general-qa',
+        converter_options: { target_source: 'none' },
+        accepted_fidelity_digest: inspected.fidelity_digest,
+        model_name: null,
+        model_deployment_id: deployments[0]?.id ?? null,
+        evalscope_commit: null,
+      }),
+    ).resolves.toEqual(runs[0])
+    await expect(
+      rig.workspace.createEvaluationRun({
+        provider: 'evalscope',
+        provider_task_id: 'task-registry-source-disabled-new',
+        dataset_version: dataset.version,
+        source_ref: null,
+        converter: 'evalscope-general-qa',
+        converter_options: { target_source: 'none' },
+        accepted_fidelity_digest: inspected.fidelity_digest,
+        model_name: null,
+        model_deployment_id: deployments[0]?.id ?? null,
+        evalscope_commit: null,
+      }),
+    ).rejects.toMatchObject({
+      code: 'validation_error',
+      detail: { issues: [expect.objectContaining({ code: 'model_deployment_disabled' })] },
+    })
+  })
+
   test('enforces the transition matrix and idempotent terminal replay body', async () => {
     const rig = createRig()
     const dataset = makeDataset('c', 'Run lifecycle prompt.')
@@ -4143,12 +4359,29 @@ class FakeCatalog implements V2WorkspaceCatalog {
           throw new V2CatalogModelDeploymentAdmissionError('disabled', deployment.id)
         }
       }
+      if (
+        input.createProfile === 'evaluation-run-create-v5' ||
+        input.createProfile === 'evaluation-run-create-v6'
+      ) {
+        const deployment = this.modelVersionDeployments.get(input.modelDeploymentId ?? '')
+        if (deployment?.lifecycle !== 'active') {
+          throw new V2CatalogModelDeploymentAdmissionError(
+            'disabled',
+            input.modelDeploymentId ?? '',
+          )
+        }
+      }
       const serial = String(this.evaluationRuns.size + 1).padStart(12, '0')
       const row: CatalogEvaluationRunRowV2 = {
         ...input,
         id: `22222222-2222-4222-8222-${serial}`,
         providerReportIds: null,
         status: 'prepared',
+        sourceObservedAt:
+          input.createProfile === 'evaluation-run-create-v5' ||
+          input.createProfile === 'evaluation-run-create-v6'
+            ? NOW
+            : null,
         metrics: null,
         error: null,
         archiveStatus: 'not_requested',

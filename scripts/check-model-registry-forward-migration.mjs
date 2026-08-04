@@ -289,6 +289,102 @@ try {
     throw new Error('0018 Deployment and registration-claim exact FK columns have drifted')
   }
 
+  await seedLegacyEvaluationProfiles()
+  const legacyEvaluationsBeforeMr6 = await legacyEvaluationRuns()
+  await applyMigration('0019_model_version_evaluations_v2')
+  const legacyEvaluationsAfterMr6 = await legacyEvaluationRuns()
+  if (JSON.stringify(legacyEvaluationsAfterMr6) !== JSON.stringify(legacyEvaluationsBeforeMr6)) {
+    throw new Error('0019 changed pre-existing Evaluation v1-v4 rows')
+  }
+
+  const legacyEvaluationSnapshots = await client.query(`
+    SELECT
+      "create_profile", "model_id", "model_version_id", "source_mutability_snapshot",
+      "verification_level_snapshot", "source_evidence_digest", "source_observed_at"
+    FROM "evaluation_runs_v2"
+    WHERE "create_profile" IN (
+      'evaluation-run-create-v1', 'evaluation-run-create-v2',
+      'evaluation-run-create-v3', 'evaluation-run-create-v4'
+    )
+    ORDER BY "create_profile" COLLATE "C"
+  `)
+  if (
+    legacyEvaluationSnapshots.rows.length !== 4 ||
+    legacyEvaluationSnapshots.rows.some(
+      ({
+        model_id: modelId,
+        model_version_id: modelVersionId,
+        source_mutability_snapshot: sourceMutability,
+        verification_level_snapshot: verificationLevel,
+        source_evidence_digest: evidenceDigest,
+        source_observed_at: observedAt,
+      }) =>
+        modelId !== null ||
+        modelVersionId !== null ||
+        sourceMutability !== null ||
+        verificationLevel !== null ||
+        evidenceDigest !== null ||
+        observedAt !== null,
+    )
+  ) {
+    throw new Error('0019 did not preserve the null Registry projection for Evaluation v1-v4')
+  }
+
+  const evaluationConstraints = await client.query(`
+    SELECT "conname", pg_get_constraintdef("oid") AS "definition"
+    FROM "pg_constraint"
+    WHERE
+      "connamespace" = current_schema()::regnamespace AND
+      "conname" IN (
+        'evaluation_runs_v2_create_profile_check',
+        'evaluation_runs_v2_deployment_shape_check',
+        'evaluation_runs_v2_registry_snapshot_shape_check',
+        'evaluation_runs_v2_scoring_shape_check',
+        'evaluation_runs_v2_model_deployment_fkey',
+        'evaluation_runs_v2_model_version_fkey',
+        'evaluation_runs_v2_version_deployment_fkey',
+        'evaluation_runs_v2_source_evidence_fkey'
+      )
+    ORDER BY "conname" COLLATE "C"
+  `)
+  const evaluationTriggers = await client.query(`
+    SELECT "tgname"
+    FROM "pg_trigger"
+    WHERE
+      NOT "tgisinternal" AND
+      "tgrelid" = 'evaluation_runs_v2'::regclass AND
+      "tgname" = 'evaluation_runs_v2_model_source_binding_check'
+  `)
+  if (evaluationConstraints.rows.length !== 8 || evaluationTriggers.rows.length !== 1) {
+    throw new Error('0019 did not install the Evaluation v5/v6 shapes, exact FKs, and trigger')
+  }
+  const evaluationDefinitions = evaluationConstraints.rows.map(({ definition }) => definition)
+  if (
+    !evaluationDefinitions.some(
+      (definition) =>
+        definition.includes('evaluation-run-create-v5') &&
+        definition.includes('evaluation-run-create-v6'),
+    ) ||
+    !evaluationDefinitions.some((definition) =>
+      definition.includes('FOREIGN KEY (namespace_id, model_id, model_version_id)'),
+    ) ||
+    !evaluationDefinitions.some((definition) =>
+      definition.includes(
+        'FOREIGN KEY (namespace_id, model_version_id, model_deployment_id, model_deployment_digest)',
+      ),
+    ) ||
+    !evaluationDefinitions.some((definition) =>
+      definition.includes(
+        'FOREIGN KEY (namespace_id, model_deployment_id, model_artifact_id, model_deployment_digest)',
+      ),
+    ) ||
+    !evaluationDefinitions.some((definition) =>
+      definition.includes('FOREIGN KEY (namespace_id, model_version_id, source_evidence_digest)'),
+    )
+  ) {
+    throw new Error('0019 Evaluation profile or exact FK definitions have drifted')
+  }
+
   console.log(
     JSON.stringify({
       status: 'ok',
@@ -304,6 +400,8 @@ try {
         ...evidenceShape.rows.map(() => 'model_source_evidence_v2_shape_check'),
         ...deploymentConstraints.rows.map(({ conname }) => conname),
         ...deploymentTriggers.rows.map(({ tgname }) => tgname),
+        ...evaluationConstraints.rows.map(({ conname }) => conname),
+        ...evaluationTriggers.rows.map(({ tgname }) => tgname),
       ],
     }),
   )
@@ -544,6 +642,67 @@ async function seedLegacyModelDeployment() {
   }
 }
 
+async function seedLegacyEvaluationProfiles() {
+  const namespaceId = '11111111-1111-4111-8111-111111111111'
+  const datasetVersion = 'a'.repeat(64)
+  const artifactId = '70000000-0000-8000-8000-000000000001'
+  const deploymentId = '40000000-0000-8000-8000-000000000001'
+  const deploymentDigest = '1'.repeat(64)
+  const scoringConfig = JSON.stringify({
+    schema_version: 1,
+    mode: 'explicit',
+    evalscope_commit: 'a'.repeat(40),
+    benchmark: 'general_qa',
+    metrics: [
+      {
+        id: 'exact_match',
+        implementation_digest: 'd'.repeat(64),
+        parameters: {},
+        output_keys: ['exact_match'],
+      },
+    ],
+    primary_metric_id: 'exact_match',
+    primary_output_key: 'exact_match',
+  })
+  for (const profile of [2, 3, 4]) {
+    const hasDeployment = profile === 2 || profile === 4
+    const hasScoring = profile === 3 || profile === 4
+    await client.query(
+      `
+        INSERT INTO "evaluation_runs_v2" (
+          "id", "namespace_id", "provider", "provider_task_id", "create_profile",
+          "create_request_digest", "dataset_version", "source_ref", "converter",
+          "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
+          "model_name", "model_deployment_id", "model_artifact_id",
+          "model_deployment_digest", "evalscope_commit", "scoring_config_json",
+          "primary_metric_id", "primary_output_key", "status"
+        ) VALUES (
+          $1::uuid, $2::uuid, 'evalscope', $3, $4, $5, $6, 'main',
+          'evalscope-general-qa', '1.0.0', '{}'::jsonb, $7, 'general_qa', $8,
+          $9::uuid, $10::uuid, $11, $12, $13::jsonb, $14, $15, 'prepared'
+        )
+      `,
+      [
+        `22222222-2222-4222-8222-00000000000${profile}`,
+        namespaceId,
+        `forward-fixture-v${profile}`,
+        `evaluation-run-create-v${profile}`,
+        `${profile}`.repeat(64),
+        datasetVersion,
+        `${profile + 3}`.repeat(64),
+        hasDeployment ? 'forward-model' : 'untracked-model',
+        hasDeployment ? deploymentId : null,
+        hasDeployment ? artifactId : null,
+        hasDeployment ? deploymentDigest : null,
+        hasScoring ? 'a'.repeat(40) : null,
+        hasScoring ? scoringConfig : null,
+        hasScoring ? 'exact_match' : null,
+        hasScoring ? 'exact_match' : null,
+      ],
+    )
+  }
+}
+
 async function legacyModelDeployment() {
   const result = await client.query(`
     SELECT
@@ -553,6 +712,25 @@ async function legacyModelDeployment() {
       "created_at", "disabled_at", "updated_at"
     FROM "model_deployments_v2"
     WHERE "id" = '40000000-0000-8000-8000-000000000001'::uuid
+  `)
+  return result.rows
+}
+
+async function legacyEvaluationRuns() {
+  const result = await client.query(`
+    SELECT
+      "id"::text, "namespace_id"::text, "provider", "provider_task_id", "create_profile",
+      "create_request_digest", "dataset_version", "source_ref", "converter",
+      "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
+      "model_name", "model_deployment_id"::text, "model_artifact_id"::text,
+      "model_deployment_digest", "evalscope_commit", "scoring_config_json",
+      "primary_metric_id", "primary_output_key", "status"
+    FROM "evaluation_runs_v2"
+    WHERE "create_profile" IN (
+      'evaluation-run-create-v1', 'evaluation-run-create-v2',
+      'evaluation-run-create-v3', 'evaluation-run-create-v4'
+    )
+    ORDER BY "create_profile" COLLATE "C"
   `)
   return result.rows
 }

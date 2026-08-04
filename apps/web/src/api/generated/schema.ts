@@ -1488,6 +1488,8 @@ export interface components {
         | 'evaluation-run-create-v2'
         | 'evaluation-run-create-v3'
         | 'evaluation-run-create-v4'
+        | 'evaluation-run-create-v5'
+        | 'evaluation-run-create-v6'
       create_request_digest: string
       created_at: string
       dataset_version: string
@@ -1500,9 +1502,14 @@ export interface components {
       metrics: components['schemas']['EvaluationMetricV2'][] | null
       /** Format: uuid */
       model_artifact_id: string | null
+      model_deployment_digest?: string
       /** Format: uuid */
       model_deployment_id: string | null
+      /** Format: uuid */
+      model_id?: string
       model_name: string | null
+      /** Format: uuid */
+      model_version_id?: string
       primary_metric_id: string | null
       primary_output_key: string | null
       /** @enum {string} */
@@ -1513,11 +1520,21 @@ export interface components {
       result_artifact_key: string | null
       result_artifact_size_bytes: number | null
       scoring_config: components['schemas']['EvaluationScoringConfigV2']
+      source_evidence_digest?: string | null
+      /** @enum {string} */
+      source_mutability_snapshot?: 'immutable' | 'mutable' | 'unknown'
+      source_observed_at?: string
       source_ref: string | null
       started_at: string | null
       /** @enum {string} */
       status: 'prepared' | 'running' | 'completed' | 'failed' | 'cancelled'
       updated_at: string
+      /** @enum {string} */
+      verification_level_snapshot?:
+        | 'content_verified'
+        | 'provider_verified'
+        | 'operator_attested'
+        | 'unverified'
     }
     EvaluationScoringConfigV2: {
       benchmark: string

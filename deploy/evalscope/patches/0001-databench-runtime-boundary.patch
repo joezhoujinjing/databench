@@ -105,7 +105,29 @@ diff --git a/evalscope/service/app.py b/evalscope/service/app.py
 diff --git a/evalscope/service/blueprints/eval.py b/evalscope/service/blueprints/eval.py
 --- a/evalscope/service/blueprints/eval.py
 +++ b/evalscope/service/blueprints/eval.py
-@@ -123,5 +123,8 @@ def _build_task_config(data: dict) -> TaskConfig:
+@@ -88,6 +88,21 @@
+     return jsonify({'error': exc.message}), exc.status_code
+
+
++def _credential_fd() -> int | None:
++    raw = request.headers.get('Databench-Credential-Fd')
++    if raw is None:
++        return None
++    if (
++        not raw.isascii()
++        or not raw.isdecimal()
++        or raw.startswith('0')
++        or not 1 <= len(raw) <= 10
++        or int(raw) > 2_147_483_647
++    ):
++        raise RequestValidationError('Databench-Credential-Fd must be a positive descriptor')
++    return int(raw)
++
++
+ def _parse_request() -> tuple[dict, str]:
+     """Validate the request body and return (data, task_id).
+
+@@ -123,7 +138,10 @@
      task_config = TaskConfig.from_dict(data)
      task_config.no_timestamp = True
      task_config.enable_progress_tracker = True
@@ -115,6 +137,49 @@ diff --git a/evalscope/service/blueprints/eval.py b/evalscope/service/blueprints
 +        raise RequestValidationError('analysis_report must be a boolean')
 +    task_config.analysis_report = requested_analysis
      return task_config
+
+
+@@ -142,11 +160,21 @@
+     return False
+
+
+-def _execute_task(task_id: str, task_config: TaskConfig, label: str = 'Task'):
++def _execute_task(
++    task_id: str,
++    task_config: TaskConfig,
++    credential_fd: int | None = None,
++    label: str = 'Task',
++):
+     """Run the evaluation subprocess and return a Flask response."""
+     create_log_file(task_id, os.path.join('logs', 'eval_log.log'))
+     try:
+-        result = run_in_subprocess(run_eval_wrapper, task_config, task_id=task_id)
++        result = run_in_subprocess(
++            run_eval_wrapper,
++            task_config,
++            task_id=task_id,
++            credential_fd=credential_fd,
++        )
+         table_str = _build_result_table(task_config.work_dir)
+         if _all_results_empty(result):
+             error_msg = (
+@@ -175,6 +203,7 @@
+     Returns the evaluation result when the task completes.
+     """
+     data, task_id = _parse_request()
++    credential_fd = _credential_fd()
+
+     task_config = _build_task_config(data)
+     task_config.work_dir = os.path.join(OUTPUT_DIR, task_id)
+@@ -182,7 +211,7 @@
+     logger.info(f'[{task_id}] Running evaluation task for model: {task_config.model}')
+     logger.info(f'[{task_id}] Datasets: {task_config.datasets}')
+
+-    return _execute_task(task_id, task_config, label='Task')
++    return _execute_task(task_id, task_config, credential_fd=credential_fd, label='Task')
+
+
+ @bp_eval.route('/stop', methods=['POST'])
 diff --git a/evalscope/service/blueprints/reports.py b/evalscope/service/blueprints/reports.py
 --- a/evalscope/service/blueprints/reports.py
 +++ b/evalscope/service/blueprints/reports.py
@@ -343,22 +408,88 @@ diff --git a/evalscope/utils/data_utils.py b/evalscope/utils/data_utils.py
 diff --git a/evalscope/service/utils/process.py b/evalscope/service/utils/process.py
 --- a/evalscope/service/utils/process.py
 +++ b/evalscope/service/utils/process.py
-@@ -3,0 +4,2 @@
+@@ -1,6 +1,9 @@
+ import contextlib
+ import io
+ import multiprocessing
++from multiprocessing.reduction import DupFd
 +import os
 +from pathlib import Path
-@@ -29,0 +31,2 @@
+ import queue
+ import sys
+ import threading
+@@ -11,6 +14,7 @@
+ from evalscope.perf.main import run_perf_benchmark
+ from evalscope.run import run_task
+ from evalscope.utils.logger import get_logger
++from pydantic import SecretStr
+
+ logger = get_logger()
+
+@@ -27,6 +31,8 @@
+ def register_process(task_id: str, proc: multiprocessing.Process) -> None:
+     """Register a running subprocess so it can be stopped later."""
+     with _active_lock:
 +        if task_id in _active_processes:
 +            raise RuntimeError(f'Task {task_id} already has an active process')
-@@ -84,0 +88,6 @@
+         _active_processes[task_id] = proc
+
+
+@@ -76,14 +82,26 @@
+         sys.stderr = original
+
+
+-def _process_worker(func, result_queue, *args, **kwargs):
++def _process_worker(func, result_queue, credential_handle, *args, **kwargs):
+     """Target for multiprocessing.Process — executes *func* and posts result.
+
+     stderr is captured and forwarded through the queue so the parent process
+     can surface it even when the child crashes before *func* is reached.
+     """
 +    from databench_evalscope.model_endpoint_policy import (
 +        ModelEndpointPolicyV1, install_pinned_socket_transport_v1, load_model_endpoint_policy_v1,
 +    )
 +    policy_path = os.getenv('EVALSCOPE_TASK_MODEL_ENDPOINT_POLICY', '')
 +    policy = ModelEndpointPolicyV1(load_model_endpoint_policy_v1(Path(policy_path) if policy_path else None))
 +    restore_socket = install_pinned_socket_transport_v1(policy)
-@@ -95,0 +105,2 @@
+     with _capture_stderr() as stderr_buf:
+         try:
++            if credential_handle is not None:
++                from databench_evalscope.model_credentials import read_anonymous_credential_fd_v1
++                if not args or not isinstance(args[0], TaskConfig):
++                    raise RuntimeError('Credential handoff requires an evaluation TaskConfig')
++                descriptor = credential_handle.detach()
++                args[0].api_key = SecretStr(read_anonymous_credential_fd_v1(descriptor))
+             result = func(*args, **kwargs)
+             result_queue.put({'status': 'success', 'result': result})
+         except BaseException as e:
+@@ -93,9 +111,11 @@
+                 'traceback': traceback.format_exc(),
+                 'stderr': stderr_buf.getvalue(),
+             })
 +        finally:
 +            restore_socket()
+
+
+-def run_in_subprocess(func, *args, task_id=None, **kwargs):
++def run_in_subprocess(func, *args, task_id=None, credential_fd=None, **kwargs):
+     """Run *func* in a child process and return its result (blocks caller).
+
+     Returns the function's return value on success; raises on error.
+@@ -115,7 +135,12 @@
+     # Linux defaults to fork).
+     ctx = multiprocessing.get_context('spawn')
+     result_queue = ctx.Queue()
+-    p = ctx.Process(target=_process_worker, args=(func, result_queue, *args), kwargs=kwargs)
++    credential_handle = None if credential_fd is None else DupFd(credential_fd)
++    p = ctx.Process(
++        target=_process_worker,
++        args=(func, result_queue, credential_handle, *args),
++        kwargs=kwargs,
++    )
+     p.start()
+
+     if task_id:
 diff --git a/evalscope/models/openai_compatible.py b/evalscope/models/openai_compatible.py
 --- a/evalscope/models/openai_compatible.py
 +++ b/evalscope/models/openai_compatible.py

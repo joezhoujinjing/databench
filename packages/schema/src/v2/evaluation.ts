@@ -8,8 +8,14 @@ import {
 } from './contracts.js'
 import { ConverterNameV2Schema, ConverterVersionV2Schema } from './converter.js'
 import { JsonObjectSchema } from './json-value.js'
+import {
+  ModelIdV2Schema,
+  ModelSourceMutabilityV2Schema,
+  ModelVerificationLevelV2Schema,
+} from './model.js'
 import { ModelArtifactIdV2Schema } from './model-artifact.js'
 import { ModelDeploymentIdV2Schema } from './model-deployment.js'
+import { ModelVersionIdV2Schema } from './model-version.js'
 
 export const V2_EVALUATION_RUN_PAGE_DEFAULT_LIMIT = 20
 export const V2_EVALUATION_RUN_PAGE_MAX_LIMIT = 100
@@ -77,6 +83,8 @@ export const EvaluationRunCreateProfileV2Schema = z.enum([
   'evaluation-run-create-v2',
   'evaluation-run-create-v3',
   'evaluation-run-create-v4',
+  'evaluation-run-create-v5',
+  'evaluation-run-create-v6',
 ])
 export type EvaluationRunCreateProfileV2 = z.infer<typeof EvaluationRunCreateProfileV2Schema>
 
@@ -457,6 +465,13 @@ export const EvaluationRunV2Schema = z
     model_name: utf8BoundedString(512).nullable(),
     model_deployment_id: ModelDeploymentIdV2Schema.nullable(),
     model_artifact_id: ModelArtifactIdV2Schema.nullable(),
+    model_deployment_digest: DigestHexSchema.optional(),
+    model_id: ModelIdV2Schema.optional(),
+    model_version_id: ModelVersionIdV2Schema.optional(),
+    source_mutability_snapshot: ModelSourceMutabilityV2Schema.optional(),
+    verification_level_snapshot: ModelVerificationLevelV2Schema.optional(),
+    source_evidence_digest: DigestHexSchema.nullable().optional(),
+    source_observed_at: Rfc3339UtcSchema.optional(),
     evalscope_commit: z.string().regex(GIT_COMMIT).nullable(),
     scoring_config: EvaluationScoringConfigV2Schema.nullable(),
     primary_metric_id: MetricIdentityV2Schema.nullable(),
@@ -477,26 +492,68 @@ export const EvaluationRunV2Schema = z
   })
   .superRefine((run, context) => {
     const hasDeployment = run.model_deployment_id !== null
-    if (hasDeployment !== (run.model_artifact_id !== null)) {
-      context.addIssue({
-        code: 'custom',
-        path: ['model_artifact_id'],
-        message: 'Deployment-bound runs require both Deployment and Artifact IDs',
-      })
-    }
-    const deploymentProfile =
+    const legacyDeploymentProfile =
       run.create_profile === 'evaluation-run-create-v2' ||
       run.create_profile === 'evaluation-run-create-v4'
-    if (deploymentProfile !== hasDeployment) {
+    const modelVersionDeploymentProfile =
+      run.create_profile === 'evaluation-run-create-v5' ||
+      run.create_profile === 'evaluation-run-create-v6'
+    if (modelVersionDeploymentProfile !== (run.model_deployment_digest !== undefined)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['model_deployment_digest'],
+        message: 'Deployment-bound runs require both Deployment ID and digest',
+      })
+    }
+    if ((legacyDeploymentProfile || modelVersionDeploymentProfile) !== hasDeployment) {
       context.addIssue({
         code: 'custom',
         path: ['create_profile'],
         message: 'Only Deployment evaluation profiles can bind a Model Deployment',
       })
     }
+    if (legacyDeploymentProfile && run.model_artifact_id === null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['model_artifact_id'],
+        message: 'Legacy Deployment evaluation profiles require an Artifact',
+      })
+    }
+    const registrySnapshotFields = [
+      run.model_id ?? null,
+      run.model_version_id ?? null,
+      run.source_mutability_snapshot ?? null,
+      run.verification_level_snapshot ?? null,
+      run.source_observed_at ?? null,
+    ]
+    const hasCompleteRegistrySnapshot = registrySnapshotFields.every((value) => value !== null)
+    if (
+      hasCompleteRegistrySnapshot !== registrySnapshotFields.some((value) => value !== null) ||
+      modelVersionDeploymentProfile !== hasCompleteRegistrySnapshot ||
+      (modelVersionDeploymentProfile && run.source_evidence_digest === undefined) ||
+      (!modelVersionDeploymentProfile && run.source_evidence_digest !== undefined)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['model_version_id'],
+        message: 'Model Version evaluation profiles require a complete source snapshot',
+      })
+    }
+    if (
+      modelVersionDeploymentProfile &&
+      run.verification_level_snapshot === 'provider_verified' &&
+      run.source_evidence_digest == null
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['source_evidence_digest'],
+        message: 'Provider-verified evaluations require exact source evidence',
+      })
+    }
     const metricProfile =
       run.create_profile === 'evaluation-run-create-v3' ||
-      run.create_profile === 'evaluation-run-create-v4'
+      run.create_profile === 'evaluation-run-create-v4' ||
+      run.create_profile === 'evaluation-run-create-v6'
     const scoringFields = [run.scoring_config, run.primary_metric_id, run.primary_output_key]
     const hasScoringConfig = scoringFields.every((value) => value !== null)
     if (

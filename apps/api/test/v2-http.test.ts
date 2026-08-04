@@ -155,6 +155,32 @@ describe('V2 HTTP API', () => {
     expect(document.components.schemas.TransformJobPageV2).toMatchObject({
       properties: { items: { maxItems: 100 } },
     })
+    const evaluationRequestSchema = document.components.schemas.CreateEvaluationRunRequestV2 as {
+      readonly properties: Readonly<Record<string, unknown>>
+    }
+    expect(evaluationRequestSchema.properties.model_deployment_id).toBeDefined()
+    for (const forbiddenField of [
+      'endpoint_base_url',
+      'served_model_name',
+      'credential_ref',
+      'credential',
+      'api_key',
+    ]) {
+      expect(evaluationRequestSchema.properties[forbiddenField]).toBeUndefined()
+    }
+    const evaluationResponseSchema = JSON.stringify(document.components.schemas.EvaluationRunV2)
+    for (const requiredValue of [
+      'evaluation-run-create-v5',
+      'evaluation-run-create-v6',
+      'model_version_id',
+      'model_deployment_digest',
+      'source_mutability_snapshot',
+      'verification_level_snapshot',
+      'source_evidence_digest',
+      'source_observed_at',
+    ]) {
+      expect(evaluationResponseSchema).toContain(requiredValue)
+    }
     expect(document.paths['/v2/transforms/basic-clean/jobs']?.post.responses[202]).toBeDefined()
     expect(document.paths['/v2/transform-jobs/{job_id}:retry']?.post.responses[202]).toBeDefined()
 

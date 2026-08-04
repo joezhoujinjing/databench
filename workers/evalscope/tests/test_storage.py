@@ -100,7 +100,7 @@ def test_manual_reconcile_preserves_callback_loss_for_retry(tmp_path: Path) -> N
     assert store.reconcile_one(EVAL_ID, lambda _manifest, _integration: True)['callback_confirmed'] is True
 
 
-def test_integration_manifest_accepts_v1_and_v2_without_endpoint_material(tmp_path: Path) -> None:
+def test_integration_manifest_accepts_v1_v2_v5_v6_without_endpoint_material(tmp_path: Path) -> None:
     root = tmp_path / 'outputs'
     root.mkdir()
     store = TaskManifestStore(root)
@@ -115,6 +115,22 @@ def test_integration_manifest_accepts_v1_and_v2_without_endpoint_material(tmp_pa
     assert 'api_url' not in serialized
     assert 'endpoint' not in serialized
     assert '127.0.0.1' not in serialized
+
+    fifth = 'eval_123e4567-e89b-42d3-a456-426614174010'
+    store.claim(fifth, 'evaluation', config_digest({'five': 5}, b'x' * 32))
+    persisted = store.write_integration(fifth, _model_version_integration(fifth, schema_version=5))
+    assert persisted['schema_version'] == 5
+    assert persisted['model_artifact_id'] is None
+
+    sixth = 'eval_123e4567-e89b-42d3-a456-426614174011'
+    store.claim(sixth, 'evaluation', config_digest({'six': 6}, b'x' * 32))
+    persisted = store.write_integration(sixth, _model_version_integration(sixth, schema_version=6))
+    assert persisted['schema_version'] == 6
+    assert persisted['scoring_config']['primary_metric_id'] == 'exact_match'
+    for task_id in (fifth, sixth):
+        serialized = (root / task_id / 'databench-integration.json').read_text()
+        for forbidden in ('api_url', 'endpoint', 'credential_ref', 'secret', '127.0.0.1'):
+            assert forbidden not in serialized
 
 
 def test_process_registry_never_overwrites() -> None:
@@ -178,3 +194,32 @@ def _deployment_integration(task_id: str) -> dict[str, object]:
         'model_deployment_digest': 'd' * 64,
         'model_name': 'deployed-lora-v1',
     }
+
+
+def _model_version_integration(task_id: str, *, schema_version: int) -> dict[str, object]:
+    value: dict[str, object] = {
+        **_integration(task_id),
+        'schema_version': schema_version,
+        'model_id': '123e4567-e89b-42d3-a456-426614174010',
+        'model_version_id': '123e4567-e89b-42d3-a456-426614174011',
+        'model_deployment_id': '123e4567-e89b-42d3-a456-426614174012',
+        'model_artifact_id': None,
+        'model_deployment_digest': 'e' * 64,
+        'model_name': 'registry-model-route',
+    }
+    if schema_version == 6:
+        value['scoring_config'] = {
+            'schema_version': 1,
+            'mode': 'explicit',
+            'evalscope_commit': 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
+            'benchmark': 'general_qa',
+            'metrics': [{
+                'id': 'exact_match',
+                'implementation_digest': 'f' * 64,
+                'parameters': {},
+                'output_keys': ['exact_match'],
+            }],
+            'primary_metric_id': 'exact_match',
+            'primary_output_key': 'exact_match',
+        }
+    return value

@@ -18,6 +18,7 @@ from databench_evalscope.databench import (
     ResolvedModelVersionDeployment,
 )
 from databench_evalscope.errors import RuntimePolicyError, UpstreamProtocolError
+from databench_evalscope.metrics import MetricCatalogue
 from databench_evalscope.storage import TaskManifestStore, config_digest
 
 TASK_ID = 'eval_123e4567-e89b-42d3-a456-426614174000'
@@ -112,6 +113,20 @@ def resolved_model_version_deployment(source_kind: str) -> dict[str, Any]:
     }
 
 
+def explicit_scoring_config() -> dict[str, Any]:
+    resolved = MetricCatalogue.load().resolve(
+        {
+            'mode': 'explicit',
+            'metric_ids': ['exact_match'],
+            'primary_metric_id': 'exact_match',
+            'parameters': {},
+        },
+        'general_qa',
+    )
+    assert resolved is not None
+    return resolved.scoring_config
+
+
 @pytest.mark.parametrize(
     ('source_kind', 'source_type'),
     [
@@ -198,7 +213,7 @@ def test_model_version_deployment_parser_rejects_cross_union_and_runtime_drift(
         ResolvedModelVersionDeployment.parse(value, MODEL_VERSION_DEPLOYMENT_ID)
 
 
-def test_resolves_model_version_deployment_without_switching_evaluation_execution(
+def test_resolves_model_version_deployment_for_mr6_evaluation_execution(
     runtime_config,
 ) -> None:
     runtime_config.prepare()
@@ -232,6 +247,209 @@ def test_resolves_model_version_deployment_without_switching_evaluation_executio
         f'/internal/v2/model-deployments/{MODEL_VERSION_DEPLOYMENT_ID}:resolve',
     ]
     assert not (runtime_config.output_dir / TASK_ID).exists()
+
+
+@pytest.mark.parametrize(
+    ('source_kind', 'explicit_metrics', 'expected_profile', 'expected_schema'),
+    [
+        ('databench_artifact', False, 'evaluation-run-create-v5', 5),
+        ('repository_reference', True, 'evaluation-run-create-v6', 6),
+        ('existing_service', True, 'evaluation-run-create-v6', 6),
+    ],
+)
+def test_prepares_v5_v6_with_exact_version_deployment_lineage(
+    runtime_config,
+    source_kind: str,
+    explicit_metrics: bool,
+    expected_profile: str,
+    expected_schema: int,
+) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    manifests.claim(TASK_ID, 'evaluation', config_digest({'task': 5}, runtime_config.task_hmac_key))
+    deployment = ResolvedModelVersionDeployment.parse(
+        resolved_model_version_deployment(source_kind),
+        MODEL_VERSION_DEPLOYMENT_ID,
+    )
+    scoring = explicit_scoring_config() if explicit_metrics else None
+    requests: list[tuple[str, str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        requests.append((request.method, request.url.path, body))
+        if request.method == 'GET' and request.url.path == f'/v2/datasets/{VERSION}':
+            return httpx.Response(200, json={
+                'requested_ref': VERSION,
+                'ref_name': None,
+                'dataset_version': VERSION,
+            })
+        if request.url.path == f'/v2/datasets/{VERSION}:inspect-export':
+            return httpx.Response(200, json={
+                'dataset_version': VERSION,
+                'converter': 'evalscope-general-qa',
+                'converter_version': '1.0.0',
+                'normalized_options': {'target_source': 'none'},
+                'media_type': 'application/x-ndjson',
+                'fidelity_digest': FIDELITY,
+                'config_hints': {'evalscope': {'benchmark': 'general_qa', 'subset': 'databench'}},
+            })
+        if request.url.path == '/v2/evaluation-runs':
+            artifact_source = source_kind == 'databench_artifact'
+            return httpx.Response(201, json={
+                'id': RUN_ID,
+                'status': 'prepared',
+                'create_profile': expected_profile,
+                'model_id': MODEL_ID,
+                'model_version_id': MODEL_VERSION_ID,
+                'model_name': 'qwen-registry-route',
+                'model_deployment_id': MODEL_VERSION_DEPLOYMENT_ID,
+                'model_deployment_digest': '1' * 64,
+                'model_artifact_id': MODEL_ARTIFACT_ID if artifact_source else None,
+                'source_mutability_snapshot': 'immutable' if artifact_source else 'unknown',
+                'verification_level_snapshot': (
+                    'content_verified' if artifact_source else 'operator_attested'
+                ),
+                'source_evidence_digest': None if artifact_source else '8' * 64,
+                'source_observed_at': '2026-08-05T12:34:56.789Z',
+            })
+        if request.url.path == f'/v2/datasets/{VERSION}:export':
+            return httpx.Response(
+                200,
+                content=b'{"messages":[{"role":"user","content":"hi"}]}\n',
+                headers={'content-type': 'application/x-ndjson'},
+            )
+        raise AssertionError(f'unexpected request: {request.method} {request.url.path}')
+
+    client = DatabenchClient(
+        runtime_config,
+        manifests,
+        client=httpx.Client(
+            base_url=runtime_config.databench_base_url,
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    prepared = client.prepare_evaluation(
+        TASK_ID,
+        {
+            'databench_deployment_id': MODEL_VERSION_DEPLOYMENT_ID,
+            'databench_source': {},
+            'api_url': deployment.endpoint_base_url,
+            'model': deployment.served_model_name,
+        },
+        source(),
+        deployment,
+        scoring,
+    )
+    assert prepared.run_id == RUN_ID
+    integration = manifests.read_integration(TASK_ID)
+    assert integration is not None
+    assert integration['schema_version'] == expected_schema
+    assert integration['model_id'] == MODEL_ID
+    assert integration['model_version_id'] == MODEL_VERSION_ID
+    assert integration['model_deployment_id'] == MODEL_VERSION_DEPLOYMENT_ID
+    assert integration['model_artifact_id'] == (
+        MODEL_ARTIFACT_ID if source_kind == 'databench_artifact' else None
+    )
+    serialized = json.dumps(integration)
+    for forbidden in ('endpoint_base_url', 'credential_ref', 'api_key', 'model-service:8000'):
+        assert forbidden not in serialized
+    expected_create = {
+        'provider': 'evalscope',
+        'provider_task_id': TASK_ID,
+        'dataset_version': VERSION,
+        'source_ref': 'support-qa',
+        'converter': 'evalscope-general-qa',
+        'converter_options': {'target_source': 'none'},
+        'accepted_fidelity_digest': FIDELITY,
+        'model_name': None,
+        'evalscope_commit': 'b2a62f05fd81e89ec2cf4f83b9a79ce0a5535d60',
+        'model_deployment_id': MODEL_VERSION_DEPLOYMENT_ID,
+    }
+    if scoring is not None:
+        expected_create['scoring_config'] = scoring
+    assert ('POST', '/v2/evaluation-runs', expected_create) in requests
+
+
+@pytest.mark.parametrize(
+    ('field', 'invalid_value'),
+    [
+        ('create_profile', 'evaluation-run-create-v2'),
+        ('model_id', RUN_ID),
+        ('model_version_id', RUN_ID),
+        ('model_deployment_id', RUN_ID),
+        ('model_deployment_digest', '9' * 64),
+        ('model_artifact_id', MODEL_ARTIFACT_ID),
+        ('source_mutability_snapshot', 'floating'),
+        ('verification_level_snapshot', 'content_verified'),
+        ('source_evidence_digest', 'not-a-digest'),
+        ('source_observed_at', 'not-a-time'),
+    ],
+)
+def test_v5_v6_response_lineage_mismatch_fails_closed(
+    runtime_config,
+    field: str,
+    invalid_value: Any,
+) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    manifests.claim(TASK_ID, 'evaluation', config_digest({'task': 6}, runtime_config.task_hmac_key))
+    deployment = ResolvedModelVersionDeployment.parse(
+        resolved_model_version_deployment('existing_service'),
+        MODEL_VERSION_DEPLOYMENT_ID,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == 'GET':
+            return httpx.Response(200, json={
+                'requested_ref': VERSION,
+                'ref_name': None,
+                'dataset_version': VERSION,
+            })
+        if request.url.path.endswith(':inspect-export'):
+            return httpx.Response(200, json={
+                'dataset_version': VERSION,
+                'converter': 'evalscope-general-qa',
+                'converter_version': '1.0.0',
+                'normalized_options': {'target_source': 'none'},
+                'media_type': 'application/x-ndjson',
+                'fidelity_digest': FIDELITY,
+                'config_hints': {'evalscope': {'benchmark': 'general_qa', 'subset': 'databench'}},
+            })
+        if request.url.path == '/v2/evaluation-runs':
+            response = {
+                'id': RUN_ID,
+                'status': 'prepared',
+                'create_profile': 'evaluation-run-create-v5',
+                'model_id': MODEL_ID,
+                'model_version_id': MODEL_VERSION_ID,
+                'model_name': 'qwen-registry-route',
+                'model_deployment_id': MODEL_VERSION_DEPLOYMENT_ID,
+                'model_deployment_digest': '1' * 64,
+                'model_artifact_id': None,
+                'source_mutability_snapshot': 'unknown',
+                'verification_level_snapshot': 'operator_attested',
+                'source_evidence_digest': '8' * 64,
+                'source_observed_at': '2026-08-05T12:34:56.789Z',
+            }
+            response[field] = invalid_value
+            return httpx.Response(201, json=response)
+        raise AssertionError(f'unexpected request: {request.method} {request.url.path}')
+
+    client = DatabenchClient(
+        runtime_config,
+        manifests,
+        client=httpx.Client(
+            base_url=runtime_config.databench_base_url,
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    with pytest.raises(UpstreamProtocolError):
+        client.prepare_evaluation(
+            TASK_ID,
+            {'api_url': deployment.endpoint_base_url, 'model': deployment.served_model_name},
+            source(),
+            deployment,
+        )
 
 
 def test_exact_inspect_create_export_start_and_complete(runtime_config) -> None:
@@ -495,6 +713,7 @@ def test_resolves_deployment_and_persists_only_v2_lineage(runtime_config) -> Non
             return httpx.Response(201, json={
                 'id': RUN_ID,
                 'status': 'prepared',
+                'create_profile': 'evaluation-run-create-v2',
                 'model_name': 'deployed-lora-v1',
                 'model_deployment_id': deployment_id,
                 'model_artifact_id': artifact_id,

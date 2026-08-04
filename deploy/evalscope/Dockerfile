@@ -28,7 +28,7 @@ COPY deploy/evalscope/vendor/evalscope-upstream.tar.gz /workspace/deploy/evalsco
 RUN printf '%s  %s\n' "${EVALSCOPE_SOURCE_SHA256}" /workspace/deploy/evalscope/vendor/evalscope-upstream.tar.gz | sha256sum -c - \
     && uv sync --frozen --no-dev --no-install-package evalscope
 
-ARG EVALSCOPE_PATCH_SHA256=df739d26eea044748819b2a1381969d9f89ce8c11682e5ac54b2cf52dc53113a
+ARG EVALSCOPE_PATCH_SHA256=8caa970d5dd7bf139b6774605c94558d423fc4b9c58921c2deace285d6f2e140
 COPY deploy/evalscope/vendor/plotly-2.35.2.min.js /opt/vendor/plotly-2.35.2.min.js
 COPY deploy/evalscope/vendor/plotly-LICENSE.txt /opt/vendor/plotly-LICENSE.txt
 COPY deploy/evalscope/vendor/punkt_tab.zip /opt/vendor/punkt_tab.zip

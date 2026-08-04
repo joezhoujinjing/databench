@@ -4,10 +4,14 @@ import {
   hashV2EvaluationRunCreateWithDeployment,
   hashV2EvaluationRunCreateWithDeploymentAndMetrics,
   hashV2EvaluationRunCreateWithMetrics,
+  hashV2EvaluationRunCreateWithModelVersionDeployment,
+  hashV2EvaluationRunCreateWithModelVersionDeploymentAndMetrics,
   V2_EVALUATION_RUN_CREATE_PROFILE,
   V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
   V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
   V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE,
 } from '@databench/hashing'
 import {
   type ConverterNameV2,
@@ -76,6 +80,24 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
           primary_output_key: row.primaryOutputKey,
         }
       : null
+  const modelVersionDeploymentIdentity =
+    row.modelId != null &&
+    row.modelVersionId != null &&
+    row.modelDeploymentId !== null &&
+    row.modelDeploymentDigest !== null &&
+    row.sourceMutabilitySnapshot != null &&
+    row.verificationLevelSnapshot != null
+      ? {
+          model_id: row.modelId,
+          model_version_id: row.modelVersionId,
+          model_deployment_id: row.modelDeploymentId,
+          model_deployment_digest: row.modelDeploymentDigest,
+          model_artifact_id: row.modelArtifactId,
+          source_mutability_snapshot: row.sourceMutabilitySnapshot,
+          verification_level_snapshot: row.verificationLevelSnapshot,
+          source_evidence_digest: row.sourceEvidenceDigest ?? null,
+        }
+      : null
   const recomputedDigest =
     row.createProfile === V2_EVALUATION_RUN_CREATE_PROFILE
       ? hashV2EvaluationRunCreate({
@@ -106,7 +128,27 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
                 ...deploymentIdentity,
                 ...scoringIdentity,
               })
-            : null
+            : row.createProfile ===
+                  V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE &&
+                modelVersionDeploymentIdentity !== null
+              ? hashV2EvaluationRunCreateWithModelVersionDeployment({
+                  evaluation_run_create_profile:
+                    V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE,
+                  ...baseIdentity,
+                  ...modelVersionDeploymentIdentity,
+                })
+              : row.createProfile ===
+                    V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE &&
+                  modelVersionDeploymentIdentity !== null &&
+                  scoringIdentity !== null
+                ? hashV2EvaluationRunCreateWithModelVersionDeploymentAndMetrics({
+                    evaluation_run_create_profile:
+                      V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE,
+                    ...baseIdentity,
+                    ...modelVersionDeploymentIdentity,
+                    ...scoringIdentity,
+                  })
+                : null
   if (recomputedDigest !== row.createRequestDigest) {
     throw new IntegrityError('Stored evaluation run create digest is inconsistent', {
       reason: 'evaluation_create_digest_mismatch',
@@ -130,6 +172,18 @@ export function evaluationRunFromCatalogV2(row: CatalogEvaluationRunRowV2): Eval
     model_name: row.modelName,
     model_deployment_id: row.modelDeploymentId,
     model_artifact_id: row.modelArtifactId,
+    ...(row.createProfile === V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE ||
+    row.createProfile === V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE
+      ? {
+          model_deployment_digest: row.modelDeploymentDigest ?? undefined,
+          model_id: row.modelId ?? undefined,
+          model_version_id: row.modelVersionId ?? undefined,
+          source_mutability_snapshot: row.sourceMutabilitySnapshot ?? undefined,
+          verification_level_snapshot: row.verificationLevelSnapshot ?? undefined,
+          source_evidence_digest: row.sourceEvidenceDigest ?? null,
+          source_observed_at: row.sourceObservedAt?.toISOString(),
+        }
+      : {}),
     evalscope_commit: row.evalscopeCommit,
     scoring_config: row.scoringConfig,
     primary_metric_id: row.primaryMetricId,

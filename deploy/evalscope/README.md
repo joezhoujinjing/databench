@@ -59,9 +59,18 @@ Optional bounded settings are `EVALSCOPE_INPUT_MAX_BYTES`, `EVALSCOPE_OUTPUT_MAX
 The production command is fixed to one Gunicorn worker with eight threads. One process owns the in-memory upstream
 process registry; the threads allow progress/log/stop requests while an invoke request blocks.
 
-The endpoint policy is validated before a task is claimed. The child process installs the pinned-address socket
-guard before importing the upstream execution path; every connection must remain inside the one approved DNS
-snapshot, redirects and ambient proxies are disabled, and normal hostname-based TLS verification stays enabled.
+After payload validation and digesting, a new task is atomically claimed before capacity, drain, Registry, endpoint,
+credential or provider I/O. Existing active/terminal claims replay without consulting current capacity, Deployment
+lifecycle, endpoint policy or credentials. A new Model Version Deployment task resolves internal v2 exactly once,
+then applies endpoint policy and resolves any bearer credential just in time. The child process installs the
+pinned-address socket guard before importing the upstream execution path; every connection must remain inside the one
+approved DNS snapshot, redirects and ambient proxies are disabled, and normal hostname-based TLS verification stays
+enabled.
+
+Bearer secrets cross the spawn boundary only through an anonymous file descriptor handed off with
+`multiprocessing.reduction.DupFd`. The child reads the descriptor into memory; the parent task config, argv,
+environment, task claim, integration manifest, response and archive never contain the secret. `auth_profile=none`
+does not create or send a credential descriptor.
 Offline native Benchmark data must be pre-populated or supplied through the reviewed Databench Dataset path; there is
 no general remote Dataset allowlist runtime input.
 

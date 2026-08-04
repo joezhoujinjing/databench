@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
+import tarfile
+import textwrap
 
 import pytest
 
@@ -115,3 +119,72 @@ def test_anonymous_fd_handoff_does_not_use_argv_env_or_disk(tmp_path: Path) -> N
         assert read_anonymous_credential_fd_v1(descriptor) == SECRET
     assert dict(os.environ) == before_env
     assert list(tmp_path.iterdir()) == [path]
+
+
+def test_patched_spawn_child_reads_exact_anonymous_fd_snapshot(tmp_path: Path) -> None:
+    repository_root = Path(__file__).resolve().parents[3]
+    archive = repository_root / 'deploy/evalscope/vendor/evalscope-upstream.tar.gz'
+    patch = repository_root / 'deploy/evalscope/patches/0001-databench-runtime-boundary.patch'
+    with tarfile.open(archive, 'r:gz') as source:
+        source.extractall(tmp_path, filter='data')
+    upstream = tmp_path / 'evalscope-upstream'
+    applied = subprocess.run(
+        ['patch', '--batch', '--forward', '-p1'],
+        cwd=upstream,
+        input=patch.read_bytes(),
+        capture_output=True,
+        check=False,
+    )
+    assert applied.returncode == 0, applied.stderr.decode('utf-8', errors='replace')
+
+    probe = tmp_path / 'credential_fd_probe.py'
+    probe.write_text(textwrap.dedent('''
+        from secrets import token_hex
+
+        from evalscope.config import TaskConfig
+        from evalscope.service.utils.process import run_in_subprocess
+        from databench_evalscope.model_credentials import (
+            AnonymousCredentialFdHandoffV1,
+            ModelCredentialSnapshotV1,
+        )
+
+
+        def reveal_credential(task_config):
+            return task_config.api_key.get_secret_value()
+
+
+        if __name__ == '__main__':
+            secret = token_hex(32)
+            snapshot = ModelCredentialSnapshotV1('runtime-test', 1, secret)
+            task_config = TaskConfig.from_dict({
+                'model': 'runtime-test-model',
+                'datasets': ['general_qa'],
+                'api_url': 'http://127.0.0.1:8001/v1',
+            })
+            before = task_config.api_key.get_secret_value()
+            with AnonymousCredentialFdHandoffV1(snapshot) as handoff:
+                observed = run_in_subprocess(
+                    reveal_credential,
+                    task_config,
+                    credential_fd=handoff.read_fd,
+                )
+            assert observed == secret
+            assert task_config.api_key.get_secret_value() == before
+            print('fd-handoff-ok')
+    '''), encoding='utf-8')
+    python_path = os.pathsep.join((
+        str(upstream),
+        str(repository_root / 'workers/evalscope/src'),
+        os.environ.get('PYTHONPATH', ''),
+    ))
+    result = subprocess.run(
+        [sys.executable, str(probe)],
+        cwd=tmp_path,
+        env={**os.environ, 'PYTHONPATH': python_path},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'fd-handoff-ok'

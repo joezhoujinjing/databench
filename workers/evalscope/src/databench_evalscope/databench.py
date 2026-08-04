@@ -10,6 +10,7 @@ import re
 import unicodedata
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -497,7 +498,7 @@ class DatabenchClient:
         task_id: str,
         payload: dict[str, Any],
         source: DatabenchSource,
-        deployment: ResolvedModelDeployment | None = None,
+        deployment: ResolvedModelDeployment | ResolvedModelVersionDeployment | None = None,
         scoring_config: dict[str, Any] | None = None,
     ) -> PreparedDatabenchEvaluation:
         model_name = (
@@ -505,14 +506,22 @@ class DatabenchClient:
             if deployment is not None
             else _bounded_optional_string(payload.get('model'), 'model')
         )
+        model_version_deployment = (
+            deployment if isinstance(deployment, ResolvedModelVersionDeployment) else None
+        )
+        legacy_deployment = deployment if isinstance(deployment, ResolvedModelDeployment) else None
         integration = {
             'schema_version': (
-                4
-                if deployment is not None and scoring_config is not None
+                6
+                if model_version_deployment is not None and scoring_config is not None
+                else 5
+                if model_version_deployment is not None
+                else 4
+                if legacy_deployment is not None and scoring_config is not None
                 else 3
                 if scoring_config is not None
                 else 2
-                if deployment is not None
+                if legacy_deployment is not None
                 else 1
             ),
             'task_id': task_id,
@@ -528,11 +537,19 @@ class DatabenchClient:
         }
         if scoring_config is not None:
             integration['scoring_config'] = scoring_config
-        if deployment is not None:
+        if legacy_deployment is not None:
             integration.update({
-                'model_deployment_id': deployment.deployment_id,
-                'model_artifact_id': deployment.artifact_id,
-                'model_deployment_digest': deployment.create_digest,
+                'model_deployment_id': legacy_deployment.deployment_id,
+                'model_artifact_id': legacy_deployment.artifact_id,
+                'model_deployment_digest': legacy_deployment.create_digest,
+            })
+        if model_version_deployment is not None:
+            integration.update({
+                'model_id': model_version_deployment.model_id,
+                'model_version_id': model_version_deployment.model_version_id,
+                'model_deployment_id': model_version_deployment.deployment_id,
+                'model_artifact_id': model_version_deployment.artifact_id,
+                'model_deployment_digest': model_version_deployment.create_digest,
             })
         self._manifests.write_integration(task_id, integration)
 
@@ -577,12 +594,62 @@ class DatabenchClient:
         run_id = run.get('id')
         if not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id) or run.get('status') != 'prepared':
             raise UpstreamProtocolError('Databench returned an invalid evaluation run')
-        if deployment is not None and (
-            run.get('model_deployment_id') != deployment.deployment_id
-            or run.get('model_artifact_id') != deployment.artifact_id
-            or run.get('model_name') != deployment.served_model_name
-        ):
-            raise UpstreamProtocolError('Databench returned mismatched Model Deployment lineage')
+        if legacy_deployment is not None:
+            if (
+                run.get('create_profile') not in {
+                    'evaluation-run-create-v2',
+                    'evaluation-run-create-v4',
+                }
+                or run.get('model_deployment_id') != legacy_deployment.deployment_id
+                or run.get('model_artifact_id') != legacy_deployment.artifact_id
+                or run.get('model_name') != legacy_deployment.served_model_name
+            ):
+                raise UpstreamProtocolError('Databench returned mismatched Model Deployment lineage')
+        if model_version_deployment is not None:
+            expected_profile = (
+                'evaluation-run-create-v6'
+                if scoring_config is not None
+                else 'evaluation-run-create-v5'
+            )
+            source_mutability = run.get('source_mutability_snapshot')
+            verification_level = run.get('verification_level_snapshot')
+            source_evidence_digest = run.get('source_evidence_digest')
+            if (
+                run.get('create_profile') != expected_profile
+                or run.get('model_id') != model_version_deployment.model_id
+                or run.get('model_version_id') != model_version_deployment.model_version_id
+                or run.get('model_deployment_id') != model_version_deployment.deployment_id
+                or run.get('model_deployment_digest') != model_version_deployment.create_digest
+                or run.get('model_artifact_id') != model_version_deployment.artifact_id
+                or run.get('model_name') != model_version_deployment.served_model_name
+                or source_mutability not in {'immutable', 'mutable', 'unknown'}
+                or verification_level not in {
+                    'content_verified', 'provider_verified', 'operator_attested', 'unverified'
+                }
+                or (
+                    source_evidence_digest is not None
+                    and (
+                        not isinstance(source_evidence_digest, str)
+                        or not _DIGEST.fullmatch(source_evidence_digest)
+                    )
+                )
+                or (
+                    model_version_deployment.source_kind == 'databench_artifact'
+                    and (
+                        source_mutability != 'immutable'
+                        or verification_level != 'content_verified'
+                        or source_evidence_digest is not None
+                    )
+                )
+                or (
+                    model_version_deployment.source_kind != 'databench_artifact'
+                    and verification_level == 'content_verified'
+                )
+                or not _rfc3339_utc(run.get('source_observed_at'))
+            ):
+                raise UpstreamProtocolError(
+                    'Databench returned mismatched Model Version Deployment lineage'
+                )
         self._manifests.update_integration(task_id, {'run_id': run_id})
 
         input_file = self._export(task_id, source)
@@ -1061,6 +1128,16 @@ def _resolved_endpoint(value: Any) -> str:
     ):
         raise _invalid_model_version_deployment()
     return endpoint
+
+
+def _rfc3339_utc(value: Any) -> bool:
+    if not isinstance(value, str) or not value.endswith('Z') or len(value) > 32:
+        return False
+    try:
+        datetime.fromisoformat(value[:-1] + '+00:00')
+    except ValueError:
+        return False
+    return True
 
 
 def _write_all(fd: int, raw: bytes) -> None:

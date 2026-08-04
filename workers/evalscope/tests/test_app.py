@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from dataclasses import replace
@@ -12,13 +13,23 @@ import pytest
 
 import databench_evalscope.app as app_module
 from databench_evalscope.app import create_app
-from databench_evalscope.databench import ResolvedModelDeployment
+from databench_evalscope.databench import (
+    ResolvedModelDeclaredCapabilities,
+    ResolvedModelServiceSource,
+    ResolvedModelVersionDeployment,
+)
 from databench_evalscope.errors import RuntimePolicyError
+from databench_evalscope.model_credentials import (
+    ModelCredentialRegistryV1,
+    read_anonymous_credential_fd_v1,
+)
 from databench_evalscope.storage import TaskManifestStore, config_digest
 
 EVAL_ID = 'eval_123e4567-e89b-42d3-a456-426614174000'
 EVAL_ID_2 = 'eval_123e4567-e89b-42d3-a456-426614174001'
+EVAL_ID_3 = 'eval_123e4567-e89b-42d3-a456-426614174002'
 PERF_ID = 'perf_123e4567-e89b-42d3-a456-426614174002'
+PERF_ID_2 = 'perf_123e4567-e89b-42d3-a456-426614174003'
 
 
 class FakeDatabench:
@@ -30,16 +41,48 @@ class FakeDatabench:
         self.callbacks.append(manifest['phase'])
         return True
 
-    def resolve_model_deployment(self, deployment_id: str) -> ResolvedModelDeployment:
+    def resolve_model_version_deployment(
+        self,
+        deployment_id: str,
+    ) -> ResolvedModelVersionDeployment:
         self.resolve_calls.append(deployment_id)
-        return ResolvedModelDeployment(
+        return ResolvedModelVersionDeployment(
             deployment_id=deployment_id,
-            artifact_id='223e4567-e89b-42d3-a456-426614174000',
+            model_id='223e4567-e89b-42d3-a456-426614174010',
+            model_version_id='223e4567-e89b-42d3-a456-426614174011',
             create_digest='d' * 64,
+            source_fingerprint='e' * 64,
+            source_kind='existing_service',
+            artifact_id=None,
+            source=ResolvedModelServiceSource(
+                kind='existing_service',
+                provider='openai_compatible',
+                external_model_ref='deployed-lora',
+                external_version_ref='v1',
+                declared_reference_kind='immutable_version',
+            ),
             served_model_name='deployed-lora-v1',
             endpoint_base_url='http://127.0.0.1:8001/v1',
-            base_model_reference='Qwen/Qwen3-0.6B',
-            base_model_revision='0123456789abcdef',
+            connectivity_scope='private_network',
+            auth_profile='none',
+            credential_ref=None,
+            declared_capabilities=ResolvedModelDeclaredCapabilities(
+                interfaces=('chat_completions',),
+                context_limit=32_768,
+            ),
+        )
+
+
+class BearerFakeDatabench(FakeDatabench):
+    def resolve_model_version_deployment(
+        self,
+        deployment_id: str,
+    ) -> ResolvedModelVersionDeployment:
+        resolved = super().resolve_model_version_deployment(deployment_id)
+        return replace(
+            resolved,
+            auth_profile='bearer_ref',
+            credential_ref='deployment-a',
         )
 
 
@@ -49,6 +92,7 @@ def upstream_app(
     *,
     fail_eval: bool = False,
     received: list[dict[str, Any]] | None = None,
+    received_headers: list[dict[str, str]] | None = None,
     deployment_report_task_id: str | None = None,
     evaluation_result: dict[str, Any] | None = None,
 ) -> Flask:
@@ -59,6 +103,8 @@ def upstream_app(
         submitted = request.get_json()
         if received is not None:
             received.append(submitted)
+        if received_headers is not None:
+            received_headers.append(dict(request.headers))
         if started is not None:
             started.set()
         if release is not None:
@@ -492,10 +538,12 @@ def test_reports_expose_databench_source_identity_and_prediction_paging(runtime_
 def test_deployment_mode_claims_opaque_payload_before_one_server_side_resolution(runtime_config) -> None:
     databench = FakeDatabench()
     received: list[dict[str, Any]] = []
+    received_headers: list[dict[str, str]] = []
     app = create_app(
         runtime_config,
         upstream_app=upstream_app(
             received=received,
+            received_headers=received_headers,
             deployment_report_task_id=EVAL_ID,
         ),
         databench_client=databench,
@@ -524,6 +572,7 @@ def test_deployment_mode_claims_opaque_payload_before_one_server_side_resolution
         'datasets': ['general_qa'],
         'model': 'deployed-lora-v1',
     }]
+    assert 'Databench-Credential-Fd' not in received_headers[0]
     log = client.get(f'/api/v1/eval/log?task_id={EVAL_ID}').get_json()
     assert '127.0.0.1:8001' not in json.dumps(log)
     reports = client.get('/api/v1/reports/list').get_json()
@@ -550,6 +599,156 @@ def test_deployment_mode_claims_opaque_payload_before_one_server_side_resolution
     )
     assert mismatch.status_code == 409
     assert databench.resolve_calls == [deployment_id]
+
+
+def test_bearer_deployment_jit_resolves_after_claim_and_hands_secret_only_by_fd(
+    runtime_config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deployment_id = '123e4567-e89b-42d3-a456-426614174099'
+    secret = 'bearer-value-that-must-remain-process-local'
+    credentials_path = runtime_config.output_dir.parent / 'evalscope-model-credentials.json'
+    credentials_path.write_text(json.dumps({
+        'profile': 'model-credentials-v1',
+        'generation': 7,
+        'projection_for': 'evalscope',
+        'credentials': {
+            'deployment-a': {
+                'kind': 'bearer',
+                'secret': secret,
+                'allowed_consumers': ['evalscope'],
+                'allowed_deployments': [deployment_id],
+            },
+        },
+    }), encoding='utf-8')
+    credentials_path.chmod(0o440)
+    registry = ModelCredentialRegistryV1(
+        credentials_path,
+        'evalscope',
+        require_root_owner=False,
+    )
+    monkeypatch.setattr(app_module, 'ModelCredentialRegistryV1', lambda *_args, **_kwargs: registry)
+
+    observed_secrets: list[str] = []
+    received: list[dict[str, Any]] = []
+    upstream = Flask('bearer-upstream-test')
+
+    @upstream.post('/api/v1/eval/invoke')
+    def bearer_invoke():
+        descriptor = request.headers.get('Databench-Credential-Fd')
+        assert descriptor is not None and descriptor.isdecimal()
+        observed_secrets.append(read_anonymous_credential_fd_v1(os.dup(int(descriptor))))
+        received.append(request.get_json())
+        return jsonify({
+            'status': 'completed',
+            'task_id': request.headers['EvalScope-Task-Id'],
+            'result': {'answer': 'ok'},
+            'table': 'ok',
+        })
+
+    databench = BearerFakeDatabench()
+    app = create_app(
+        replace(runtime_config, model_credentials_path=credentials_path),
+        upstream_app=upstream,
+        databench_client=databench,
+        reconcile_on_start=False,
+    )
+    client = app.test_client()
+    opaque_payload = {
+        'databench_deployment_id': deployment_id,
+        'datasets': ['general_qa'],
+    }
+    first = client.post(
+        '/api/v1/eval/invoke',
+        json=opaque_payload,
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert first.status_code == 200
+    assert first.get_json()['terminal']['status'] == 'completed'
+    assert observed_secrets == [secret]
+    assert databench.resolve_calls == [deployment_id]
+    assert received == [{
+        'api_url': 'http://127.0.0.1:8001/v1',
+        'datasets': ['general_qa'],
+        'model': 'deployed-lora-v1',
+    }]
+    assert secret not in json.dumps(first.get_json())
+    assert secret not in json.dumps(received)
+    assert secret not in (runtime_config.output_dir / EVAL_ID / 'task-claim.json').read_text()
+    assert not (runtime_config.output_dir / EVAL_ID / 'databench-integration.json').exists()
+
+    def forbidden_live_access(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError('terminal replay performed live credential or Registry access')
+
+    monkeypatch.setattr(registry, 'resolve', forbidden_live_access)
+    monkeypatch.setattr(databench, 'resolve_model_version_deployment', forbidden_live_access)
+    credentials_path.unlink()
+    replay = client.post(
+        '/api/v1/eval/invoke',
+        json=opaque_payload,
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert replay.status_code == 200
+    assert replay.get_json()['status'] == 'terminal_replay'
+    assert replay.get_json()['terminal'] == first.get_json()['terminal']
+    assert observed_secrets == [secret]
+
+
+@pytest.mark.parametrize(
+    ('credentials', 'expected_code'),
+    [
+        ({}, 'credential_reference_unknown'),
+        ({
+            'deployment-a': {
+                'kind': 'bearer',
+                'secret': 'forbidden-secret',
+                'allowed_consumers': ['evalscope'],
+                'allowed_deployments': ['223e4567-e89b-42d3-a456-426614174099'],
+            },
+        }, 'credential_reference_forbidden'),
+    ],
+)
+def test_bearer_credential_acl_failure_is_typed_terminal_after_claim(
+    runtime_config,
+    monkeypatch: pytest.MonkeyPatch,
+    credentials: dict[str, Any],
+    expected_code: str,
+) -> None:
+    credentials_path = runtime_config.output_dir.parent / 'evalscope-model-credentials.json'
+    credentials_path.write_text(json.dumps({
+        'profile': 'model-credentials-v1',
+        'generation': 1,
+        'projection_for': 'evalscope',
+        'credentials': credentials,
+    }), encoding='utf-8')
+    credentials_path.chmod(0o440)
+    registry = ModelCredentialRegistryV1(
+        credentials_path,
+        'evalscope',
+        require_root_owner=False,
+    )
+    monkeypatch.setattr(app_module, 'ModelCredentialRegistryV1', lambda *_args, **_kwargs: registry)
+    app = create_app(
+        replace(runtime_config, model_credentials_path=credentials_path),
+        upstream_app=upstream_app(),
+        databench_client=BearerFakeDatabench(),
+        reconcile_on_start=False,
+    )
+    response = app.test_client().post(
+        '/api/v1/eval/invoke',
+        json={
+            'databench_deployment_id': '123e4567-e89b-42d3-a456-426614174099',
+            'datasets': ['general_qa'],
+        },
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert response.status_code == 200
+    assert response.get_json()['terminal']['error'] == {
+        'phase': 'credential_resolve',
+        'code': expected_code,
+        'message': 'Model credential operation failed',
+    }
+    assert (runtime_config.output_dir / EVAL_ID / 'task-claim.json').is_file()
 
 
 def test_terminal_replay_does_not_depend_on_current_disk_capacity(runtime_config, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -610,7 +809,7 @@ def test_deployment_mode_rejects_manual_model_fields_before_claim(runtime_config
     assert databench.resolve_calls == []
 
 
-def test_dataset_locator_and_model_endpoint_fail_before_claim(runtime_config) -> None:
+def test_dataset_locator_fails_before_claim_and_endpoint_failure_is_terminalized(runtime_config) -> None:
     app = create_app(
         runtime_config,
         upstream_app=upstream_app(),
@@ -633,8 +832,21 @@ def test_dataset_locator_and_model_endpoint_fail_before_claim(runtime_config) ->
         json={**eval_payload(), 'api_url': 'http://169.254.169.254/latest/meta-data'},
         headers={'EvalScope-Task-Id': EVAL_ID},
     )
-    assert endpoint.status_code == 422
-    assert not (runtime_config.output_dir / EVAL_ID).exists()
+    assert endpoint.status_code == 200
+    assert endpoint.get_json()['terminal']['error'] == {
+        'phase': 'endpoint_policy',
+        'code': 'model_endpoint_host_rejected',
+        'message': 'Model endpoint is not in the operator policy',
+    }
+    assert (runtime_config.output_dir / EVAL_ID / 'task-claim.json').is_file()
+    replay = client.post(
+        '/api/v1/eval/invoke',
+        json={**eval_payload(), 'api_url': 'http://169.254.169.254/latest/meta-data'},
+        headers={'EvalScope-Task-Id': EVAL_ID},
+    )
+    assert replay.status_code == 200
+    assert replay.get_json()['status'] == 'terminal_replay'
+    assert replay.get_json()['terminal'] == endpoint.get_json()['terminal']
 
 
 def test_reports_use_configured_root_and_safe_generated_documents(runtime_config) -> None:
@@ -740,8 +952,13 @@ def test_operator_drain_blocks_new_tasks_while_polling_and_active_task_complete(
             json=eval_payload(),
             headers={'EvalScope-Task-Id': EVAL_ID},
         )
-        assert rejected.status_code == 503
-        assert rejected.get_json()['error']['code'] == 'runtime_draining'
+        assert rejected.status_code == 200
+        assert rejected.get_json()['terminal']['error'] == {
+            'phase': 'task_capacity',
+            'code': 'runtime_draining',
+            'message': 'EvalScope is draining and does not accept new tasks',
+        }
+        assert (runtime_config.output_dir / EVAL_ID / 'task-claim.json').is_file()
         progress = client.get(f'/api/v1/eval/progress?task_id={EVAL_ID_2}')
         assert progress.status_code == 200
         status = client.get('/internal/v1/operator/status', headers=operator_headers)
@@ -759,9 +976,17 @@ def test_operator_drain_blocks_new_tasks_while_polling_and_active_task_complete(
         assert status.get_json() == {'active_tasks': 0, 'draining': True, 'ready': False}
         resumed = client.post('/internal/v1/operator/resume', headers=operator_headers)
         assert resumed.get_json() == {'active_tasks': 0, 'draining': False, 'ready': True}
+        replay = client.post(
+            '/api/v1/eval/invoke',
+            json=eval_payload(),
+            headers={'EvalScope-Task-Id': EVAL_ID},
+        )
+        assert replay.status_code == 200
+        assert replay.get_json()['status'] == 'terminal_replay'
+        assert replay.get_json()['terminal'] == rejected.get_json()['terminal']
 
 
-def test_capacity_admission_rejects_unbounded_eval_and_performance_before_claim(runtime_config) -> None:
+def test_capacity_admission_terminalizes_each_new_task_after_claim(runtime_config) -> None:
     app = create_app(
         runtime_config,
         upstream_app=upstream_app(),
@@ -774,19 +999,23 @@ def test_capacity_admission_rejects_unbounded_eval_and_performance_before_claim(
         json={**eval_payload(), 'limit': runtime_config.evaluation_sample_limit_max + 1},
         headers={'EvalScope-Task-Id': EVAL_ID},
     )
-    assert evaluation.status_code == 422
-    assert evaluation.get_json()['error'] == {
+    assert evaluation.status_code == 200
+    assert evaluation.get_json()['terminal']['error'] == {
+        'phase': 'task_capacity',
         'code': 'task_capacity_invalid',
-        'field': '/limit',
         'message': 'limit exceeds its configured bound',
     }
     evaluation_batch = client.post(
         '/api/v1/eval/invoke',
         json={**eval_payload(), 'eval_batch_size': runtime_config.evaluation_batch_size_max + 1},
-        headers={'EvalScope-Task-Id': EVAL_ID},
+        headers={'EvalScope-Task-Id': EVAL_ID_3},
     )
-    assert evaluation_batch.status_code == 422
-    assert evaluation_batch.get_json()['error']['field'] == '/eval_batch_size'
+    assert evaluation_batch.status_code == 200
+    assert evaluation_batch.get_json()['terminal']['error'] == {
+        'phase': 'task_capacity',
+        'code': 'task_capacity_invalid',
+        'message': 'eval_batch_size exceeds its configured bound',
+    }
     performance = client.post(
         '/api/v1/perf/invoke',
         json={
@@ -797,8 +1026,12 @@ def test_capacity_admission_rejects_unbounded_eval_and_performance_before_claim(
         },
         headers={'EvalScope-Task-Id': PERF_ID},
     )
-    assert performance.status_code == 422
-    assert performance.get_json()['error']['field'] == '/number'
+    assert performance.status_code == 200
+    assert performance.get_json()['terminal']['error'] == {
+        'phase': 'task_capacity',
+        'code': 'task_capacity_invalid',
+        'message': 'Performance sweep contains an out-of-range value',
+    }
     performance_rate = client.post(
         '/api/v1/perf/invoke',
         json={
@@ -808,12 +1041,16 @@ def test_capacity_admission_rejects_unbounded_eval_and_performance_before_claim(
             'number': [1],
             'rate': runtime_config.performance_rate_max + 1,
         },
-        headers={'EvalScope-Task-Id': PERF_ID},
+        headers={'EvalScope-Task-Id': PERF_ID_2},
     )
-    assert performance_rate.status_code == 422
-    assert performance_rate.get_json()['error']['field'] == '/rate'
-    assert not (runtime_config.output_dir / EVAL_ID).exists()
-    assert not (runtime_config.output_dir / PERF_ID).exists()
+    assert performance_rate.status_code == 200
+    assert performance_rate.get_json()['terminal']['error'] == {
+        'phase': 'task_capacity',
+        'code': 'task_capacity_invalid',
+        'message': 'rate exceeds its configured bound',
+    }
+    for task_id in (EVAL_ID, EVAL_ID_3, PERF_ID, PERF_ID_2):
+        assert (runtime_config.output_dir / task_id / 'task-claim.json').is_file()
 
 
 def test_task_runtime_limit_stops_and_records_stable_terminal(runtime_config) -> None:

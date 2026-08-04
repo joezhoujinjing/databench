@@ -10,8 +10,9 @@
 > ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
 > deferred GPU gate。S2 exact Dataset 与单 active Session bridge、S3 immutable LoRA Artifact 已完成
 > non-GPU gate；S4 Deployment + EvalScope opaque resolve/lineage 已完成 non-GPU contract，GPU gate deferred。
-> Model Registry ADR 0019 的 MR0-MR5 已完成；Existing Service、version-bound Deployment、nested REST、
-> internal v2 resolver 和 EvalScope strict parser已落地。Evaluation v5/v6 与执行切换仍属于 MR6。
+> Model Registry ADR 0019 的 MR0-MR6 已完成；Existing Service、version-bound Deployment、nested REST、
+> internal v2 resolver、Evaluation v5/v6 exact lineage、atomic claim 后的 single resolve 和 anonymous FD
+> secret handoff 已落地。完整 Model 产品面与 selector 仍属于 MR7。
 
 ## `third_party/ms-swift`
 
@@ -306,7 +307,7 @@ src/
    ├─ record/content/candidate/preference/signal/tool schemas
    ├─ revision/provenance/manifest/identity schemas
    ├─ transform/converter/projection contracts
-   ├─ evaluation.ts             E2 run、metric、error、pagination 与 transition wire contract
+   ├─ evaluation.ts             E2/E10/MR6 run、metric、v1-v6 lineage/snapshot 与 transition wire contract
    ├─ swift-studio.ts           S2 exact Dataset Studio Session wire contract
    ├─ model-artifact.ts         S3 output/import/immutable Artifact wire contract
    ├─ model-deployment.ts       S4 public/internal Deployment wire contract
@@ -404,7 +405,8 @@ src/
 
 只依赖 Prisma/Postgres。v2 snapshots、layouts、identity claims、transform/evaluation runs、Swift Studio
 Sessions、Model Artifact imports/artifacts、Model/Version/source/evidence/Alias/registration/adoption、
-Model Deployments、record lineage 与 refs 的数据模型在根 `prisma/schema.prisma`。
+Model Deployments、Evaluation v5/v6 source snapshots、record lineage 与 refs 的数据模型在根
+`prisma/schema.prisma`。
 
 ## `packages/workspace`
 
@@ -434,7 +436,7 @@ deterministic identity/materialize/import、persist、transform、CAS ref、reco
 audit、converter inspect/export、evaluation run exact binding/状态机与取消语义，以及 Swift Studio Session、
 Model Artifact import/finalize/download、三来源 Model registration、append-only source evidence/refresh、
 candidate Alias、legacy Deployment adoption、version-bound Model Deployment registry/activation/health/resolve
-与 legacy Deployment-bound Evaluation lineage 编排。
+与 legacy/Model Version Deployment-bound Evaluation exact lineage 编排。
 
 ## Tooling 与根目录
 
@@ -470,7 +472,8 @@ prisma/
    ├─ 0015_model_registry_v2/
    ├─ 0016_model_registry_artifact_product_v2/
    ├─ 0017_model_repository_evidence_v2/
-   └─ 0018_model_version_deployments_v2/
+   ├─ 0018_model_version_deployments_v2/
+   └─ 0019_model_version_evaluations_v2/
 ```
 
 EvalScope E0 另有：
@@ -505,7 +508,7 @@ workers/evalscope/
 ├─ .python-version · pyproject.toml · uv.lock
 ├─ src/databench_evalscope/
 │  ├─ app.py · wsgi.py · config.py
-│  ├─ databench.py              Dataset/Evaluation callbacks、legacy internal v1执行与MR5 internal v2 strict parser
+│  ├─ databench.py              Dataset/Evaluation callbacks、internal v1/v2 resolve 与 MR6 version-bound 执行
 │  ├─ archive.py · storage.py
 │  ├─ metrics.py · metric-descriptors.json
 │  ├─ model_endpoint_policy.py strict shared policy + pinned-address socket guard
@@ -538,6 +541,11 @@ exact staging cleanup 仍由 Store/Workspace/Catalog 边界拥有。
 E10 的 `metrics.py` 只加载 checked-in Descriptor、计算 runtime readiness 并把 Provider-owned selection
 编译为 EvalScope `dataset_args`；显式 scoring identity 与 canonical result output 仍经
 Schema/Hashing/Catalog/Workspace 和 Databench REST 持久化。
+
+Model Registry MR6 在 `app.py` 按 validate/digest → atomic claim → terminal replay → capacity/drain →
+internal v2 resolve → endpoint policy → credential resolve → provider launch 排序。`model_credentials.py` 只创建
+anonymous FD；patched upstream 用 `multiprocessing.reduction.DupFd` 把 secret 交给 spawn child，child 读取后
+只写入内存中的 `SecretStr`，parent TaskConfig、argv、environment 和持久化文件均不包含 secret。
 
 R4 maintenance tool和 forward migration必须保留，供尚未执行退役的安装环境使用；它们不是
 可达产品代码。标准操作流程见 `docs/v2/V1-RETIREMENT-RUNBOOK.md`。

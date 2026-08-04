@@ -4,6 +4,8 @@ import { createBLAKE3 } from 'hash-wasm'
 import { describe, expect, test } from 'vitest'
 import {
   canonicalJsonV2,
+  hashV2EvaluationRunCreateWithModelVersionDeployment,
+  hashV2EvaluationRunCreateWithModelVersionDeploymentAndMetrics,
   hashV2ModelCreate,
   hashV2ModelDeploymentAdoption,
   hashV2ModelRegistrationPlanArtifact,
@@ -29,6 +31,8 @@ interface Fixture {
 }
 
 const hashByProfile: Record<string, (input: never) => string> = {
+  'evaluation-run-create-v5': hashV2EvaluationRunCreateWithModelVersionDeployment,
+  'evaluation-run-create-v6': hashV2EvaluationRunCreateWithModelVersionDeploymentAndMetrics,
   'model-create-v1': hashV2ModelCreate,
   'model-deployment-adoption-v1': hashV2ModelDeploymentAdoption,
   'model-deployment-create-v2': hashV2ModelVersionDeploymentCreate,

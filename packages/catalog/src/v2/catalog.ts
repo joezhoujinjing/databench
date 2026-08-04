@@ -287,6 +287,12 @@ interface EvaluationRunSqlRow {
   readonly model_deployment_id: string | null
   readonly model_artifact_id: string | null
   readonly model_deployment_digest: string | null
+  readonly model_id: string | null
+  readonly model_version_id: string | null
+  readonly source_mutability_snapshot: string | null
+  readonly verification_level_snapshot: string | null
+  readonly source_evidence_digest: string | null
+  readonly source_observed_at: Date | null
   readonly evalscope_commit: string | null
   readonly scoring_config_json: Prisma.JsonValue | null
   readonly primary_metric_id: string | null
@@ -429,6 +435,8 @@ const EVALUATION_RUN_COLUMNS = Prisma.sql`
   "provider_report_ids_json", "dataset_version", "source_ref", "converter",
   "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
   "model_name", "model_deployment_id", "model_artifact_id", "model_deployment_digest",
+  "model_id", "model_version_id", "source_mutability_snapshot",
+  "verification_level_snapshot", "source_evidence_digest", "source_observed_at",
   "evalscope_commit", "scoring_config_json", "primary_metric_id", "primary_output_key",
   "status", "metrics_json", "error_json",
   "archive_status", "archive_attempt", "result_artifact_key", "result_artifact_digest",
@@ -767,6 +775,43 @@ export class V2Catalog {
         }
       }
 
+      if (
+        input.createProfile === 'evaluation-run-create-v5' ||
+        input.createProfile === 'evaluation-run-create-v6'
+      ) {
+        const deployments = await tx.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
+          SELECT ${MODEL_DEPLOYMENT_COLUMNS}
+          FROM "model_deployments_v2"
+          WHERE
+            "namespace_id" = ${input.namespaceId}::uuid AND
+            "deployment_profile" = 'model-version-v1' AND
+            "model_version_id" = ${input.modelVersionId}::uuid AND
+            "id" = ${input.modelDeploymentId}::uuid AND
+            "artifact_id" IS NOT DISTINCT FROM ${input.modelArtifactId}::uuid AND
+            "create_digest" = ${input.modelDeploymentDigest}
+          FOR SHARE
+        `)
+        if (deployments.length > 1) {
+          throw new V2CatalogConsistencyError(
+            'Evaluation run admission locked multiple Model Version Deployments',
+          )
+        }
+        const deployment = deployments[0]
+        if (!deployment) {
+          throw new V2CatalogInputError(
+            'Evaluation run Model Version Deployment binding is not registered',
+          )
+        }
+        if (deployment.status !== 'active') {
+          throw new V2CatalogModelDeploymentAdmissionError('disabled', deployment.id)
+        }
+        if (deployment.served_model_name !== input.modelName) {
+          throw new V2CatalogInputError(
+            'Evaluation run model name must match its immutable Model Deployment',
+          )
+        }
+      }
+
       const id = randomUUID()
       const converterOptionsJson = JSON.stringify(input.converterOptions)
       const scoringConfigJson =
@@ -777,7 +822,10 @@ export class V2Catalog {
           "create_request_digest", "dataset_version", "source_ref", "converter",
           "converter_version", "converter_options_json", "fidelity_digest", "benchmark",
           "model_name", "model_deployment_id", "model_artifact_id",
-          "model_deployment_digest", "evalscope_commit", "scoring_config_json",
+          "model_deployment_digest", "model_id", "model_version_id",
+          "source_mutability_snapshot", "verification_level_snapshot",
+          "source_evidence_digest", "source_observed_at",
+          "evalscope_commit", "scoring_config_json",
           "primary_metric_id", "primary_output_key", "status"
         )
         VALUES (
@@ -786,7 +834,14 @@ export class V2Catalog {
           ${input.sourceRef}, ${input.converter}, ${input.converterVersion},
           ${converterOptionsJson}::jsonb, ${input.fidelityDigest}, ${input.benchmark},
           ${input.modelName}, ${input.modelDeploymentId}::uuid, ${input.modelArtifactId}::uuid,
-          ${input.modelDeploymentDigest}, ${input.evalscopeCommit},
+          ${input.modelDeploymentDigest}, ${input.modelId ?? null}::uuid,
+          ${input.modelVersionId ?? null}::uuid,
+          ${input.sourceMutabilitySnapshot ?? null}, ${input.verificationLevelSnapshot ?? null},
+          ${input.sourceEvidenceDigest ?? null},
+          CASE WHEN ${input.createProfile} IN (
+            'evaluation-run-create-v5', 'evaluation-run-create-v6'
+          ) THEN clock_timestamp() ELSE NULL END,
+          ${input.evalscopeCommit},
           ${scoringConfigJson}::jsonb, ${input.primaryMetricId}, ${input.primaryOutputKey},
           'prepared'
         )
@@ -3814,6 +3869,12 @@ function sqlRowToEvaluationRun(row: EvaluationRunSqlRow): CatalogEvaluationRunRo
     modelDeploymentId: row.model_deployment_id,
     modelArtifactId: row.model_artifact_id,
     modelDeploymentDigest: row.model_deployment_digest,
+    modelId: row.model_id,
+    modelVersionId: row.model_version_id,
+    sourceMutabilitySnapshot: parseEvaluationSourceMutability(row.source_mutability_snapshot),
+    verificationLevelSnapshot: parseEvaluationVerificationLevel(row.verification_level_snapshot),
+    sourceEvidenceDigest: row.source_evidence_digest,
+    sourceObservedAt: row.source_observed_at,
     evalscopeCommit: row.evalscope_commit,
     scoringConfig,
     primaryMetricId: row.primary_metric_id,
@@ -4173,11 +4234,37 @@ function parseEvaluationRunCreateProfile(
     value === 'evaluation-run-create-v1' ||
     value === 'evaluation-run-create-v2' ||
     value === 'evaluation-run-create-v3' ||
-    value === 'evaluation-run-create-v4'
+    value === 'evaluation-run-create-v4' ||
+    value === 'evaluation-run-create-v5' ||
+    value === 'evaluation-run-create-v6'
   ) {
     return value
   }
   throw new V2CatalogConsistencyError('Stored evaluation run create profile is invalid')
+}
+
+function parseEvaluationSourceMutability(
+  value: string | null,
+): CatalogEvaluationRunRowV2['sourceMutabilitySnapshot'] {
+  if (value === null || value === 'immutable' || value === 'mutable' || value === 'unknown') {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored evaluation source mutability is invalid')
+}
+
+function parseEvaluationVerificationLevel(
+  value: string | null,
+): CatalogEvaluationRunRowV2['verificationLevelSnapshot'] {
+  if (
+    value === null ||
+    value === 'content_verified' ||
+    value === 'provider_verified' ||
+    value === 'operator_attested' ||
+    value === 'unverified'
+  ) {
+    return value
+  }
+  throw new V2CatalogConsistencyError('Stored evaluation verification level is invalid')
 }
 
 function parseEvaluationRunStatus(value: string): CatalogEvaluationRunStatusV2 {
@@ -5383,36 +5470,77 @@ function validateCreateEvaluationRun(input: CreateEvaluationRunV2): void {
   if (!EXACT_VERSION.test(input.createRequestDigest)) {
     throw new V2CatalogInputError('Evaluation create request digest is invalid')
   }
-  const deploymentFields = [
-    input.modelDeploymentId,
-    input.modelArtifactId,
-    input.modelDeploymentDigest,
-  ]
+  const deploymentFields = [input.modelDeploymentId, input.modelDeploymentDigest]
   const hasDeployment = deploymentFields.every((value) => value !== null)
   if (hasDeployment !== deploymentFields.some((value) => value !== null)) {
     throw new V2CatalogInputError('Evaluation Model Deployment binding is incomplete')
   }
   if (
     (input.createProfile === 'evaluation-run-create-v2' ||
-      input.createProfile === 'evaluation-run-create-v4') !== hasDeployment ||
+      input.createProfile === 'evaluation-run-create-v4' ||
+      input.createProfile === 'evaluation-run-create-v5' ||
+      input.createProfile === 'evaluation-run-create-v6') !== hasDeployment ||
     (input.createProfile !== 'evaluation-run-create-v1' &&
       input.createProfile !== 'evaluation-run-create-v2' &&
       input.createProfile !== 'evaluation-run-create-v3' &&
-      input.createProfile !== 'evaluation-run-create-v4')
+      input.createProfile !== 'evaluation-run-create-v4' &&
+      input.createProfile !== 'evaluation-run-create-v5' &&
+      input.createProfile !== 'evaluation-run-create-v6')
   ) {
     throw new V2CatalogInputError('Evaluation create profile does not match its Deployment binding')
   }
   if (hasDeployment) {
     if (
       input.modelDeploymentId === null ||
-      input.modelArtifactId === null ||
       input.modelDeploymentDigest === null ||
       !UUID.test(input.modelDeploymentId) ||
-      !UUID.test(input.modelArtifactId) ||
       !EXACT_VERSION.test(input.modelDeploymentDigest) ||
       input.modelName === null
     ) {
       throw new V2CatalogInputError('Evaluation Model Deployment identity is invalid')
+    }
+    if (input.modelArtifactId !== null && !UUID.test(input.modelArtifactId)) {
+      throw new V2CatalogInputError('Evaluation Model Artifact identity is invalid')
+    }
+  }
+  const legacyDeploymentProfile =
+    input.createProfile === 'evaluation-run-create-v2' ||
+    input.createProfile === 'evaluation-run-create-v4'
+  const modelVersionDeploymentProfile =
+    input.createProfile === 'evaluation-run-create-v5' ||
+    input.createProfile === 'evaluation-run-create-v6'
+  if (legacyDeploymentProfile && input.modelArtifactId === null) {
+    throw new V2CatalogInputError('Legacy Evaluation Deployment Artifact is required')
+  }
+  const registryFields = [
+    input.modelId ?? null,
+    input.modelVersionId ?? null,
+    input.sourceMutabilitySnapshot ?? null,
+    input.verificationLevelSnapshot ?? null,
+  ]
+  const hasRegistrySnapshot = registryFields.every((value) => value !== null)
+  if (
+    hasRegistrySnapshot !== registryFields.some((value) => value !== null) ||
+    modelVersionDeploymentProfile !== hasRegistrySnapshot ||
+    (!modelVersionDeploymentProfile && (input.sourceEvidenceDigest ?? null) !== null)
+  ) {
+    throw new V2CatalogInputError('Evaluation Model Version source snapshot is incomplete')
+  }
+  if (modelVersionDeploymentProfile) {
+    if (
+      input.modelId === null ||
+      input.modelVersionId === null ||
+      !UUID.test(input.modelId) ||
+      !UUID.test(input.modelVersionId) ||
+      !['immutable', 'mutable', 'unknown'].includes(input.sourceMutabilitySnapshot ?? '') ||
+      !['content_verified', 'provider_verified', 'operator_attested', 'unverified'].includes(
+        input.verificationLevelSnapshot ?? '',
+      ) ||
+      (input.sourceEvidenceDigest !== null && !EXACT_VERSION.test(input.sourceEvidenceDigest)) ||
+      (input.verificationLevelSnapshot === 'provider_verified' &&
+        input.sourceEvidenceDigest === null)
+    ) {
+      throw new V2CatalogInputError('Evaluation Model Version source snapshot is invalid')
     }
   }
   if (!EXACT_VERSION.test(input.datasetVersion)) {
@@ -5451,7 +5579,8 @@ function validateCreateEvaluationRun(input: CreateEvaluationRunV2): void {
   const hasScoring = scoringFields.every((value) => value !== null)
   const metricProfile =
     input.createProfile === 'evaluation-run-create-v3' ||
-    input.createProfile === 'evaluation-run-create-v4'
+    input.createProfile === 'evaluation-run-create-v4' ||
+    input.createProfile === 'evaluation-run-create-v6'
   if (
     hasScoring !== scoringFields.some((value) => value !== null) ||
     metricProfile !== hasScoring

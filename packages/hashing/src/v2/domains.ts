@@ -8,6 +8,8 @@ import type {
   EvaluationRunCreateIdentityV2,
   EvaluationRunCreateIdentityV3,
   EvaluationRunCreateIdentityV4,
+  EvaluationRunCreateIdentityV5,
+  EvaluationRunCreateIdentityV6,
   EventSeedV1,
   ExportFidelityIdentityV1,
   IdentityClaimHashInputV1,
@@ -41,6 +43,8 @@ const DOMAIN = {
   evaluationRunCreateV2: 'databench.evaluation-run-create.evaluation-run-create-v2\0',
   evaluationRunCreateV3: 'databench.evaluation-run-create.evaluation-run-create-v3\0',
   evaluationRunCreateV4: 'databench.evaluation-run-create.evaluation-run-create-v4\0',
+  evaluationRunCreateV5: 'databench.evaluation-run-create.evaluation-run-create-v5\0',
+  evaluationRunCreateV6: 'databench.evaluation-run-create.evaluation-run-create-v6\0',
   swiftStudioSessionCreate:
     'databench.swift-studio-session-create.swift-studio-session-create-v1\0',
   swiftStudioOutputHandle: 'databench.swift-studio-output-handle.v1\0',
@@ -249,6 +253,63 @@ export function hashV2EvaluationRunCreateWithDeploymentAndMetrics<
     model_deployment_id: identity.model_deployment_id,
     model_artifact_id: identity.model_artifact_id,
     model_deployment_digest: identity.model_deployment_digest,
+    evalscope_commit: identity.evalscope_commit,
+    scoring_config: identity.scoring_config,
+    primary_metric_id: identity.primary_metric_id,
+    primary_output_key: identity.primary_output_key,
+  })
+}
+
+export function hashV2EvaluationRunCreateWithModelVersionDeployment<
+  const Identity extends EvaluationRunCreateIdentityV5,
+>(identity: NoExtraKeys<EvaluationRunCreateIdentityV5, Identity>): string {
+  return hashDomain(DOMAIN.evaluationRunCreateV5, {
+    evaluation_run_create_profile: identity.evaluation_run_create_profile,
+    provider: identity.provider,
+    provider_task_id: identity.provider_task_id,
+    dataset_version: identity.dataset_version,
+    source_ref: identity.source_ref,
+    converter: identity.converter,
+    converter_version: identity.converter_version,
+    normalized_options: identity.normalized_options,
+    fidelity_digest: identity.fidelity_digest,
+    benchmark: identity.benchmark,
+    model_name: identity.model_name,
+    model_id: identity.model_id,
+    model_version_id: identity.model_version_id,
+    model_deployment_id: identity.model_deployment_id,
+    model_deployment_digest: identity.model_deployment_digest,
+    model_artifact_id: identity.model_artifact_id,
+    source_mutability_snapshot: identity.source_mutability_snapshot,
+    verification_level_snapshot: identity.verification_level_snapshot,
+    source_evidence_digest: identity.source_evidence_digest,
+    evalscope_commit: identity.evalscope_commit,
+  })
+}
+
+export function hashV2EvaluationRunCreateWithModelVersionDeploymentAndMetrics<
+  const Identity extends EvaluationRunCreateIdentityV6,
+>(identity: NoExtraKeys<EvaluationRunCreateIdentityV6, Identity>): string {
+  return hashDomain(DOMAIN.evaluationRunCreateV6, {
+    evaluation_run_create_profile: identity.evaluation_run_create_profile,
+    provider: identity.provider,
+    provider_task_id: identity.provider_task_id,
+    dataset_version: identity.dataset_version,
+    source_ref: identity.source_ref,
+    converter: identity.converter,
+    converter_version: identity.converter_version,
+    normalized_options: identity.normalized_options,
+    fidelity_digest: identity.fidelity_digest,
+    benchmark: identity.benchmark,
+    model_name: identity.model_name,
+    model_id: identity.model_id,
+    model_version_id: identity.model_version_id,
+    model_deployment_id: identity.model_deployment_id,
+    model_deployment_digest: identity.model_deployment_digest,
+    model_artifact_id: identity.model_artifact_id,
+    source_mutability_snapshot: identity.source_mutability_snapshot,
+    verification_level_snapshot: identity.verification_level_snapshot,
+    source_evidence_digest: identity.source_evidence_digest,
     evalscope_commit: identity.evalscope_commit,
     scoring_config: identity.scoring_config,
     primary_metric_id: identity.primary_metric_id,

@@ -179,6 +179,37 @@ export interface EvaluationRunCreateIdentityV4
   readonly model_deployment_digest: string
 }
 
+export const V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE =
+  'evaluation-run-create-v5' as const
+
+export interface EvaluationRunCreateIdentityV5
+  extends Omit<EvaluationRunCreateIdentityV1, 'evaluation_run_create_profile'> {
+  readonly evaluation_run_create_profile: typeof V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE
+  readonly model_id: string
+  readonly model_version_id: string
+  readonly model_deployment_id: string
+  readonly model_deployment_digest: string
+  readonly model_artifact_id: string | null
+  readonly source_mutability_snapshot: 'immutable' | 'mutable' | 'unknown'
+  readonly verification_level_snapshot:
+    | 'content_verified'
+    | 'provider_verified'
+    | 'operator_attested'
+    | 'unverified'
+  readonly source_evidence_digest: string | null
+}
+
+export const V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE =
+  'evaluation-run-create-v6' as const
+
+export interface EvaluationRunCreateIdentityV6
+  extends Omit<EvaluationRunCreateIdentityV5, 'evaluation_run_create_profile'> {
+  readonly evaluation_run_create_profile: typeof V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE
+  readonly scoring_config: CanonicalJsonObject
+  readonly primary_metric_id: string
+  readonly primary_output_key: string
+}
+
 export const V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE = 'swift-studio-session-create-v1' as const
 
 export interface SwiftStudioSessionCreateIdentityV1 {

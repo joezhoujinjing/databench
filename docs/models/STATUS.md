@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- model-registry-status
-current_step: MR6
-last_completed_step: MR5
+current_step: MR7
+last_completed_step: MR6
 capability_enabled: false
 runtime_implemented: true
 public_network_activation: false
@@ -14,15 +14,16 @@ gpu_gate: deferred
 
 ## 当前检查点
 
-- **工作分支:** `feat/model-registry-mr5`
-- **代码基线:** `feat/model-registry-mr4@73f364e`
-- **当前 Step:** MR6——Evaluation v5/v6 与 EvalScope 执行边界
+- **工作分支:** `feat/model-registry-mr6`
+- **代码基线:** `feat/model-registry-mr5@30afdeb`
+- **当前 Step:** MR7——完整 Model 产品面
 - **Owner 范围:** MR2 candidate Alias；MR3 ModelScope + operator-managed；CLI MR2 read/MR8 write；
   一级导航“数据集 / 训练 / 模型 / 测评”
-- **Runtime:** MR5 已完成 Existing Service、version-bound Deployment 注册/激活/health/disable、nested REST、
-  internal v2 resolver 和 EvalScope strict parser；Evaluation 执行仍固定使用 legacy internal v1，v5/v6 尚未实现
-- **Capability:** 整体 Model Registry capability 仍未启用；MR5 不开放 Evaluation selector，也不能据此宣称
-  Evaluation v5/v6、完整 Model 产品面或 Model Registry final gate 已完成
+- **Runtime:** MR6 已完成 Evaluation v5/v6 exact Registry lineage、三来源 source snapshot、internal v2 单次
+  resolve、atomic claim 后的 endpoint/credential admission、typed terminal 与 anonymous FD spawn-child secret
+  handoff；legacy Evaluation v1-v4 保持不变
+- **Capability:** 整体 Model Registry capability 仍未启用；MR6 不开放完整 Evaluation selector，也不能据此
+  宣称完整 Model 产品面或 Model Registry final gate 已完成
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
 - **GPU/V16/V17:** 状态不变，Model Registry 的实施不自动完成 V16/V17，也不打开 GPU gate
 
@@ -36,7 +37,7 @@ gpu_gate: deferred
 | MR3 | Repository reference 与 evidence | ✅ | `feat/model-registry-mr3` | GMR3 green | ModelScope + operator-managed |
 | MR4 | Endpoint/secret 安全底座 | ✅ | `feat/model-registry-mr4` | GMR4 green | legacy network hardening + offline projection |
 | MR5 | Existing Service 与 Deployment v2 | ✅ | `feat/model-registry-mr5` | GMR5 green | internal v1/v2 隔离 |
-| MR6 | Evaluation v5/v6 | ⬜ | | GMR6 | 不改历史 identity |
+| MR6 | Evaluation v5/v6 | ✅ | `feat/model-registry-mr6` | GMR6 green | v1-v4 identity/read 保持 |
 | MR7 | 完整 Model 产品面 | ⬜ | | GMR7 | 浏览器与 selector gate |
 | MR8 | CLI、离线与 Final Gate | ⬜ | | GMR8 | 不自动完成 V16/V17 |
 
@@ -230,3 +231,41 @@ V16/V17、GE9、GPU 或 production readiness。
 GMR5 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不实现
 Evaluation v5/v6、不接线 Model selector、不启用 Hugging Face adapter或 hosted secret backend，也不自动完成
 V16/V17、GE9、GPU 或 production readiness。
+
+## GMR6 完成证据
+
+- [x] `evaluation-run-create-v5/v6` 独立 domain/profile、RFC 8785/BLAKE3 fixed vectors，分别绑定 benchmark
+  default metrics 与 explicit canonical metrics；
+- [x] additive `0019_model_version_evaluations_v2` migration 增加 Model/Version/Deployment digest、nullable
+  Artifact、source mutability/verification/evidence snapshot 与 DB observation time；三组新 composite FK、复用
+  Artifact↔Deployment exact FK、profile CHECK 和 deferred source-binding trigger 均由 fresh/forward PostgreSQL
+  验证；
+- [x] Workspace public request 只接受 opaque Deployment ID，并补齐 Artifact、Repository、Service 三来源 exact
+  identity；Artifact 强制 immutable/content_verified，Repository/Service 强制 nullable Artifact 与有时间的
+  observation；provider_verified 保存 exact evidence digest；
+- [x] PostgreSQL 负测拒绝 Model↔Version、Version↔Deployment↔digest、Artifact↔Deployment 和 source snapshot
+  任一错配；v1-v4 row、FK、identity 与 read projection 不改写；
+- [x] EvalScope live admission 固定为 validate/digest → atomic claim → replay → capacity/drain → internal v2
+  resolve once → endpoint policy → credential JIT resolve → provider；claim 后失败写 typed terminal，terminal replay
+  不读取当前 Registry、Deployment lifecycle、capacity、endpoint 或 credential；
+- [x] bearer secret 只经 anonymous FD 与 `multiprocessing.reduction.DupFd` 进入 spawn child memory；
+  `auth_profile=none` 不发送 FD header，argv/environment/task claim/manifest/response/archive 均不含 secret；
+- [x] public REST/OpenAPI/generated Web client 发布 v5/v6 response lineage；browser create request不发布 endpoint、
+  served model、credential ref 或 secret；internal v2仍不进入OpenAPI；
+- [x] disabled 后 exact provider task replay成功，新 admission拒绝；source-less Benchmark + Deployment继续
+  expert/untracked，不伪造Databench Run。
+
+本次实际通过：
+
+- `pnpm exec prisma format`、`pnpm exec prisma validate`；
+- `pnpm lint`、`pnpm build`（initial JS 949955 bytes）、`pnpm typecheck`、`pnpm test`；
+- `pnpm openapi:check`、`pnpm models:status:test`、`pnpm models:status:check`、
+  `pnpm v2:status:check`；
+- `pnpm peers check`、`pnpm models:migration:check`、`pnpm offline:check`；
+- `RUN_MINIO_STORE_TESTS=true pnpm --filter @databench/workspace test`（201 passed / 10 skipped）；
+- `pnpm test:evalscope:python`、`pnpm evalscope:parity:check`、upstream patch dry-run；
+- `git diff --check`。
+
+GMR6 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不实现
+MR7完整Model详情/lineage/comparable Evaluation summary/selector/browser gate，不启用Hugging Face adapter或
+hosted secret backend，也不自动完成V16/V17、GE9、GPU或production readiness。

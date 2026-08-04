@@ -208,7 +208,7 @@
       "path": "packages/hashing/test/fixtures/evaluation-run-create-v5.json",
       "assertion": "Binds Model/Version/Deployment/Artifact nullable lineage and default benchmark metrics.",
       "source": "ADR 0019 section 10",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr6-evaluation-run-create-v6",
@@ -219,7 +219,7 @@
       "path": "packages/hashing/test/fixtures/evaluation-run-create-v6.json",
       "assertion": "Binds Model/Version/Deployment/Artifact nullable lineage and explicit canonical metrics.",
       "source": "ADR 0019 section 10",
-      "status": "planned"
+      "status": "verified"
     }
   ]
 }

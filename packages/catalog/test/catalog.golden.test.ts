@@ -280,10 +280,50 @@ function evaluationRunInput(namespaceId: string, providerTaskId: string) {
     modelDeploymentId: null,
     modelArtifactId: null,
     modelDeploymentDigest: null,
+    modelId: null,
+    modelVersionId: null,
+    sourceMutabilitySnapshot: null,
+    verificationLevelSnapshot: null,
+    sourceEvidenceDigest: null,
     evalscopeCommit: 'a'.repeat(40),
     scoringConfig: null,
     primaryMetricId: null,
     primaryOutputKey: null,
+  }
+}
+
+function versionDeploymentEvaluationRunInput(
+  namespaceId: string,
+  binding: {
+    readonly modelId: string
+    readonly modelVersionId: string
+    readonly deploymentId: string
+    readonly deploymentDigest: string
+    readonly artifactId: string | null
+    readonly servedModelName: string
+    readonly sourceMutability: 'immutable' | 'mutable' | 'unknown'
+    readonly verificationLevel:
+      | 'content_verified'
+      | 'provider_verified'
+      | 'operator_attested'
+      | 'unverified'
+    readonly evidenceDigest: string | null
+  },
+  providerTaskId: string,
+) {
+  return {
+    ...evaluationRunInput(namespaceId, providerTaskId),
+    createProfile: 'evaluation-run-create-v5' as const,
+    createRequestDigest: '6'.repeat(64),
+    modelName: binding.servedModelName,
+    modelDeploymentId: binding.deploymentId,
+    modelArtifactId: binding.artifactId,
+    modelDeploymentDigest: binding.deploymentDigest,
+    modelId: binding.modelId,
+    modelVersionId: binding.modelVersionId,
+    sourceMutabilitySnapshot: binding.sourceMutability,
+    verificationLevelSnapshot: binding.verificationLevel,
+    sourceEvidenceDigest: binding.evidenceDigest,
   }
 }
 
@@ -1702,6 +1742,427 @@ describe('V2Catalog evaluation runs', () => {
         data: { primaryMetricId: null },
       }),
     ).rejects.toThrow()
+  })
+
+  test('database-enforces version-bound source snapshots and preserves legacy run shapes', async () => {
+    const { namespaceId, artifact } = await finalizedModelArtifact()
+    const versionDeployment = (
+      id: string,
+      digest: string,
+      modelVersionId: string,
+      artifactId: string | null,
+      servedModelName: string,
+    ) => ({
+      id,
+      namespaceId,
+      deploymentProfile: 'model-version-v1' as const,
+      createDigest: digest,
+      modelVersionId,
+      artifactId,
+      provider: 'openai_compatible' as const,
+      displayName: servedModelName,
+      servedModelName,
+      endpointBaseUrl: 'http://model-service:8000/v1',
+      connectivityScope: 'private_network' as const,
+      authProfile: 'none' as const,
+      credentialRef: null,
+      declaredCapabilities: {
+        interfaces: ['chat_completions' as const],
+        contextLimit: 32_768,
+      },
+    })
+
+    const artifactInput = artifactModelRegistrationInput(namespaceId, artifact)
+    const artifactDeployment = versionDeployment(
+      '40000000-0000-8000-8000-000000000001',
+      'd'.repeat(64),
+      artifactInput.version.id,
+      artifact.id,
+      'artifact-route',
+    )
+    const artifactRegistration = await v2Catalog.registerModelVersion({
+      ...artifactInput,
+      deployment: artifactDeployment,
+    })
+
+    const repositoryModelId = '10000000-0000-8000-8000-000000000002'
+    const repositoryVersionId = '20000000-0000-8000-8000-000000000002'
+    const repositoryEvidence = {
+      id: '30000000-0000-8000-8000-000000000002',
+      namespaceId,
+      modelVersionId: repositoryVersionId,
+      evidenceProfile: 'model-source-evidence-v1' as const,
+      evidenceDigest: 'a'.repeat(64),
+      evidenceKind: 'provider_resolution' as const,
+      adapter: 'modelscope',
+      adapterVersion: '1',
+      observedRevision: 'abc123',
+      observedAt: new Date('2026-08-04T12:00:00.000Z'),
+      result: 'verified' as const,
+      responseDigest: 'c'.repeat(64),
+      license: 'apache-2.0',
+      cacheStatus: 'not_cached' as const,
+    }
+    const repositoryDeployment = versionDeployment(
+      '40000000-0000-8000-8000-000000000002',
+      'e'.repeat(64),
+      repositoryVersionId,
+      null,
+      'repository-route',
+    )
+    const repositoryRegistration = await v2Catalog.registerModelVersion(
+      modelRegistrationInput(namespaceId, {
+        registrationDigest: '5'.repeat(64),
+        normalizedRequest: { source: 'repository-evaluation' },
+        target: {
+          kind: 'create_model',
+          model: {
+            id: repositoryModelId,
+            namespaceId,
+            key: 'repository-evaluation',
+            createProfile: 'model-create-v1',
+            createDigest: '5'.repeat(64),
+            displayName: 'Repository Evaluation',
+            description: '',
+            taskFamily: 'chat',
+            tags: [],
+          },
+        },
+        version: {
+          id: repositoryVersionId,
+          modelId: repositoryModelId,
+          createDigest: '5'.repeat(64),
+          sourceFingerprint: '5'.repeat(64),
+        },
+        source: {
+          kind: 'repository_reference',
+          provider: 'modelscope',
+          repositoryId: 'Qwen/Qwen3-0.6B',
+          revision: 'abc123',
+          revisionKind: 'commit',
+        },
+        initialEvidence: repositoryEvidence,
+        deployment: repositoryDeployment,
+      }),
+    )
+
+    const serviceModelId = '10000000-0000-8000-8000-000000000003'
+    const serviceVersionId = '20000000-0000-8000-8000-000000000003'
+    const serviceDeployment = versionDeployment(
+      '40000000-0000-8000-8000-000000000003',
+      'f'.repeat(64),
+      serviceVersionId,
+      null,
+      'service-route',
+    )
+    const serviceRegistration = await v2Catalog.registerModelVersion({
+      ...modelRegistrationInput(namespaceId, {
+        registrationDigest: '7'.repeat(64),
+        normalizedRequest: { source: 'service-evaluation' },
+        target: {
+          kind: 'create_model',
+          model: {
+            id: serviceModelId,
+            namespaceId,
+            key: 'service-evaluation',
+            createProfile: 'model-create-v1',
+            createDigest: '7'.repeat(64),
+            displayName: 'Service Evaluation',
+            description: '',
+            taskFamily: 'chat',
+            tags: [],
+          },
+        },
+        version: {
+          id: serviceVersionId,
+          modelId: serviceModelId,
+          sourceKind: 'existing_service',
+          createProfile: 'model-version-create-service-v1',
+          createDigest: '7'.repeat(64),
+          sourceFingerprint: '7'.repeat(64),
+        },
+        source: {
+          kind: 'existing_service',
+          provider: 'openai_compatible',
+          externalModelRef: 'service-model',
+          externalVersionRef: 'release-1',
+          declaredReferenceKind: 'immutable_version',
+        },
+        deployment: serviceDeployment,
+      }),
+      planProfile: 'model-registration-plan-service-v1',
+    })
+
+    const activeArtifact = await v2Catalog.activateModelVersionDeployment({
+      namespaceId,
+      modelVersionId: artifactRegistration.version.id,
+      deploymentId: artifactRegistration.deployment?.id ?? '',
+      policyGeneration: 1n,
+      credentialGeneration: null,
+    })
+    const activeRepository = await v2Catalog.activateModelVersionDeployment({
+      namespaceId,
+      modelVersionId: repositoryRegistration.version.id,
+      deploymentId: repositoryRegistration.deployment?.id ?? '',
+      policyGeneration: 1n,
+      credentialGeneration: null,
+    })
+    const activeService = await v2Catalog.activateModelVersionDeployment({
+      namespaceId,
+      modelVersionId: serviceRegistration.version.id,
+      deploymentId: serviceRegistration.deployment?.id ?? '',
+      policyGeneration: 1n,
+      credentialGeneration: null,
+    })
+    if (activeArtifact === null || activeRepository === null || activeService === null) {
+      throw new Error('Model Version Deployment activation failed')
+    }
+
+    const artifactRunInput = versionDeploymentEvaluationRunInput(
+      namespaceId,
+      {
+        modelId: artifactRegistration.model.id,
+        modelVersionId: artifactRegistration.version.id,
+        deploymentId: activeArtifact.id,
+        deploymentDigest: activeArtifact.createDigest,
+        artifactId: artifact.id,
+        servedModelName: activeArtifact.servedModelName,
+        sourceMutability: 'immutable',
+        verificationLevel: 'content_verified',
+        evidenceDigest: null,
+      },
+      'task-version-artifact',
+    )
+    const repositoryRunInput = versionDeploymentEvaluationRunInput(
+      namespaceId,
+      {
+        modelId: repositoryRegistration.model.id,
+        modelVersionId: repositoryRegistration.version.id,
+        deploymentId: activeRepository.id,
+        deploymentDigest: activeRepository.createDigest,
+        artifactId: null,
+        servedModelName: activeRepository.servedModelName,
+        sourceMutability: 'immutable',
+        verificationLevel: 'provider_verified',
+        evidenceDigest: repositoryEvidence.evidenceDigest,
+      },
+      'task-version-repository',
+    )
+    const serviceRunInput = versionDeploymentEvaluationRunInput(
+      namespaceId,
+      {
+        modelId: serviceRegistration.model.id,
+        modelVersionId: serviceRegistration.version.id,
+        deploymentId: activeService.id,
+        deploymentDigest: activeService.createDigest,
+        artifactId: null,
+        servedModelName: activeService.servedModelName,
+        sourceMutability: 'unknown',
+        verificationLevel: 'operator_attested',
+        evidenceDigest: null,
+      },
+      'task-version-service',
+    )
+    const artifactRun = await v2Catalog.createOrReadEvaluationRun(artifactRunInput)
+    const repositoryRun = await v2Catalog.createOrReadEvaluationRun(repositoryRunInput)
+    const serviceRun = await v2Catalog.createOrReadEvaluationRun(serviceRunInput)
+    expect(artifactRun).toMatchObject({
+      modelId: artifactRegistration.model.id,
+      modelVersionId: artifactRegistration.version.id,
+      modelArtifactId: artifact.id,
+      sourceMutabilitySnapshot: 'immutable',
+      verificationLevelSnapshot: 'content_verified',
+      sourceEvidenceDigest: null,
+      sourceObservedAt: expect.any(Date),
+    })
+    expect(repositoryRun).toMatchObject({
+      modelArtifactId: null,
+      verificationLevelSnapshot: 'provider_verified',
+      sourceEvidenceDigest: repositoryEvidence.evidenceDigest,
+      sourceObservedAt: expect.any(Date),
+    })
+    expect(serviceRun).toMatchObject({
+      modelArtifactId: null,
+      sourceMutabilitySnapshot: 'unknown',
+      verificationLevelSnapshot: 'operator_attested',
+      sourceObservedAt: expect.any(Date),
+    })
+
+    const scoringConfig = {
+      schema_version: 1,
+      mode: 'explicit',
+      evalscope_commit: 'a'.repeat(40),
+      benchmark: 'general_qa',
+      metrics: [
+        {
+          id: 'exact_match',
+          implementation_digest: 'd'.repeat(64),
+          parameters: {},
+          output_keys: ['exact_match'],
+        },
+      ],
+      primary_metric_id: 'exact_match',
+      primary_output_key: 'exact_match',
+    }
+    const metricRun = await v2Catalog.createOrReadEvaluationRun({
+      ...artifactRunInput,
+      providerTaskId: 'task-version-artifact-metrics',
+      createProfile: 'evaluation-run-create-v6',
+      createRequestDigest: '5'.repeat(64),
+      scoringConfig,
+      primaryMetricId: 'exact_match',
+      primaryOutputKey: 'exact_match',
+    })
+    expect(metricRun).toMatchObject({
+      createProfile: 'evaluation-run-create-v6',
+      modelVersionId: artifactRegistration.version.id,
+      scoringConfig,
+    })
+
+    const legacyDeployment = await v2Catalog.createOrReadModelDeployment(
+      modelDeploymentInput(namespaceId, artifact.id, '0'.repeat(64)),
+    )
+    const legacyInputs = [
+      evaluationRunInput(namespaceId, 'task-legacy-v1'),
+      deploymentEvaluationRunInput(namespaceId, legacyDeployment, 'task-legacy-v2'),
+      {
+        ...evaluationRunInput(namespaceId, 'task-legacy-v3'),
+        createProfile: 'evaluation-run-create-v3' as const,
+        scoringConfig,
+        primaryMetricId: 'exact_match',
+        primaryOutputKey: 'exact_match',
+      },
+      {
+        ...deploymentEvaluationRunInput(namespaceId, legacyDeployment, 'task-legacy-v4'),
+        createProfile: 'evaluation-run-create-v4' as const,
+        scoringConfig,
+        primaryMetricId: 'exact_match',
+        primaryOutputKey: 'exact_match',
+      },
+    ]
+    const legacyRuns = []
+    for (const input of legacyInputs) {
+      legacyRuns.push(await v2Catalog.createOrReadEvaluationRun(input))
+    }
+    for (const run of legacyRuns) {
+      expect(run).toMatchObject({
+        modelId: null,
+        modelVersionId: null,
+        sourceMutabilitySnapshot: null,
+        verificationLevelSnapshot: null,
+        sourceEvidenceDigest: null,
+        sourceObservedAt: null,
+      })
+    }
+
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: { modelId: repositoryRegistration.model.id },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: {
+          modelId: repositoryRegistration.model.id,
+          modelVersionId: repositoryRegistration.version.id,
+        },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: { modelDeploymentDigest: '9'.repeat(64) },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: { modelArtifactId: '99999999-9999-4999-8999-999999999999' },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: { modelArtifactId: null },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: repositoryRun.id },
+        data: { modelArtifactId: artifact.id },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: { sourceMutabilitySnapshot: 'mutable' },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: { verificationLevelSnapshot: 'operator_attested' },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: { sourceObservedAt: null },
+      }),
+    ).rejects.toThrow()
+
+    const artifactEvidence = await v2Catalog.appendModelSourceEvidence({
+      id: '30000000-0000-8000-8000-000000000001',
+      namespaceId,
+      modelVersionId: artifactRegistration.version.id,
+      evidenceProfile: 'model-source-evidence-v1',
+      evidenceDigest: 'b'.repeat(64),
+      evidenceKind: 'operator_attestation',
+      adapter: 'databench-artifact',
+      adapterVersion: '1',
+      observedRevision: artifact.archiveDigest,
+      observedAt: new Date('2026-08-04T12:01:00.000Z'),
+      result: 'verified',
+      responseDigest: 'd'.repeat(64),
+      license: null,
+      cacheStatus: 'not_cached',
+    })
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: artifactRun.id },
+        data: { sourceEvidenceDigest: artifactEvidence.evidenceDigest },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: repositoryRun.id },
+        data: { verificationLevelSnapshot: 'content_verified' },
+      }),
+    ).rejects.toThrow()
+    await expect(
+      prisma.v2EvaluationRun.update({
+        where: { id: repositoryRun.id },
+        data: { sourceEvidenceDigest: artifactEvidence.evidenceDigest },
+      }),
+    ).rejects.toThrow()
+
+    await v2Catalog.disableModelVersionDeployment(
+      namespaceId,
+      artifactRegistration.version.id,
+      activeArtifact.id,
+    )
+    await expect(v2Catalog.createOrReadEvaluationRun(artifactRunInput)).resolves.toMatchObject({
+      id: artifactRun.id,
+      modelVersionId: artifactRegistration.version.id,
+    })
+    await expect(
+      v2Catalog.createOrReadEvaluationRun({
+        ...artifactRunInput,
+        providerTaskId: 'task-version-artifact-after-disable',
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogModelDeploymentAdmissionError)
   })
 
   test('serializes archive attempts and replays concurrent finalize without changing the locator', async () => {

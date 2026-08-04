@@ -415,6 +415,10 @@ const requiredEvaluationForeignKeys = [
     columns: ['namespace_id', 'model_version_id', 'model_deployment_id', 'model_deployment_digest'],
     references: ['model_deployments_v2', 'namespace_id', 'model_version_id', 'id', 'create_digest'],
   },
+  {
+    columns: ['namespace_id', 'model_version_id', 'source_evidence_digest'],
+    references: ['model_source_evidence_v2', 'namespace_id', 'model_version_id', 'evidence_digest'],
+  },
 ]
 if (
   !Array.isArray(databaseShape.evaluation_v5_v6_foreign_keys) ||
@@ -431,6 +435,17 @@ if (
   )
 ) {
   fail('database shape is missing a required Evaluation v5/v6 foreign key')
+}
+if (
+  databaseShape.status !== 'implemented-through-mr6' ||
+  databaseShape.last_implemented_migration !== '0019_model_version_evaluations_v2' ||
+  databaseShape.evaluation_v5_v6_status !== 'implemented-mr6' ||
+  databaseShape.evaluation_v5_v6_source_binding?.mechanism !== 'deferred_constraint_trigger' ||
+  databaseShape.evaluation_v5_v6_source_binding?.artifact_source?.artifact_id !==
+    'exact_primary_artifact' ||
+  databaseShape.evaluation_v5_v6_source_binding?.source_observed_at !== 'database_clock_required'
+) {
+  fail('database shape does not record the implemented MR6 Evaluation binding')
 }
 if (
   databaseShape.migration_rules?.additive !== true ||
@@ -539,6 +554,9 @@ for (const requiredFence of [
   'install_pinned_socket_transport_v1',
   'follow_redirects=False',
   'trust_env=False',
+  'Databench-Credential-Fd',
+  'DupFd',
+  'read_anonymous_credential_fd_v1',
 ]) {
   if (!evalscopePatchSource.includes(requiredFence)) {
     fail(`EvalScope runtime boundary patch is missing ${requiredFence}`)

@@ -1574,7 +1574,9 @@
               "evaluation-run-create-v1",
               "evaluation-run-create-v2",
               "evaluation-run-create-v3",
-              "evaluation-run-create-v4"
+              "evaluation-run-create-v4",
+              "evaluation-run-create-v5",
+              "evaluation-run-create-v6"
             ],
             "type": "string"
           },
@@ -1622,15 +1624,27 @@
             "nullable": true,
             "type": "string"
           },
+          "model_deployment_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
           "model_deployment_id": {
             "format": "uuid",
             "nullable": true,
+            "type": "string"
+          },
+          "model_id": {
+            "format": "uuid",
             "type": "string"
           },
           "model_name": {
             "maxLength": 512,
             "minLength": 1,
             "nullable": true,
+            "type": "string"
+          },
+          "model_version_id": {
+            "format": "uuid",
             "type": "string"
           },
           "primary_metric_id": {
@@ -1682,6 +1696,22 @@
           "scoring_config": {
             "$ref": "#/components/schemas/EvaluationScoringConfigV2"
           },
+          "source_evidence_digest": {
+            "nullable": true,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "source_mutability_snapshot": {
+            "enum": [
+              "immutable",
+              "mutable",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "source_observed_at": {
+            "type": "string"
+          },
           "source_ref": {
             "nullable": true,
             "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$",
@@ -1702,6 +1732,15 @@
             "type": "string"
           },
           "updated_at": {
+            "type": "string"
+          },
+          "verification_level_snapshot": {
+            "enum": [
+              "content_verified",
+              "provider_verified",
+              "operator_attested",
+              "unverified"
+            ],
             "type": "string"
           }
         },

@@ -29,7 +29,11 @@ from .documents import (
 )
 from .errors import RuntimePolicyError, UpstreamProtocolError
 from .metrics import MetricCatalogue, ResolvedMetricSelection
-from .model_credentials import ModelCredentialRegistryV1
+from .model_credentials import (
+    AnonymousCredentialFdHandoffV1,
+    ModelCredentialRegistryV1,
+    ModelCredentialSnapshotV1,
+)
 from .model_endpoint_policy import ModelEndpointPolicyV1, load_model_endpoint_policy_v1
 from .security import validate_dataset_args, validate_task_id
 from .storage import TaskManifestStore, config_digest
@@ -300,6 +304,7 @@ def create_app(
             manifests,
             databench,
             endpoint_policy,
+            model_credentials,
             upstream,
             deployment_endpoints,
             deployment_endpoint_lock,
@@ -316,6 +321,7 @@ def create_app(
             manifests,
             databench,
             endpoint_policy,
+            model_credentials,
             upstream,
             deployment_endpoints,
             deployment_endpoint_lock,
@@ -526,6 +532,7 @@ def _invoke(
     manifests: TaskManifestStore,
     databench: DatabenchClient,
     endpoint_policy: ModelEndpointPolicyV1,
+    model_credentials: ModelCredentialRegistryV1 | None,
     upstream: Flask,
     deployment_endpoints: dict[str, str],
     deployment_endpoint_lock: threading.Lock,
@@ -567,11 +574,10 @@ def _invoke(
         metric_selection = None
     else:
         benchmark = _evaluation_benchmark(payload, source)
-        has_existing_claim = manifests.has_claim(task_id)
         execution_payload, metric_selection = metric_catalogue.apply(
             payload,
             benchmark,
-            enforce_availability=not has_existing_claim,
+            enforce_availability=False,
         )
     endpoint_field = 'api_url' if kind == 'evaluation' else 'url'
     endpoint = payload.get(endpoint_field)
@@ -591,51 +597,104 @@ def _invoke(
         },
         runtime.task_hmac_key,
     )
-    deployment = None
-    if not manifests.has_claim(task_id):
-        if deployment_id is None:
+    claim = manifests.claim(task_id, kind, digest)
+    if claim.disposition == 'already_running':
+        return jsonify({
+            'error': {'code': 'already_running', 'message': 'Task is already active'},
+            'task_id': task_id,
+        }), 409
+    if claim.disposition == 'terminal_replay':
+        integration = manifests.read_integration(task_id)
+        if integration is not None and not claim.manifest['callback_confirmed']:
+            if databench.callback(claim.manifest, integration):
+                manifests.confirm_callback(task_id)
+        return jsonify({
+            'status': 'terminal_replay',
+            'task_id': task_id,
+            'terminal': claim.manifest['terminal'],
+        })
+
+    admitted = False
+    slot_acquired = False
+    failure_phase = 'task_capacity'
+    try:
+        if kind == 'evaluation':
+            execution_payload, admitted_metric_selection = metric_catalogue.apply(
+                payload,
+                benchmark,
+                enforce_availability=True,
+            )
+            if (
+                metric_selection is not None
+                and admitted_metric_selection is not None
+                and admitted_metric_selection.scoring_config != metric_selection.scoring_config
+            ):
+                raise RuntimePolicyError(
+                    'metric_registry_changed',
+                    'Metric registry changed during task admission',
+                    503,
+                )
+            metric_selection = admitted_metric_selection
+
+        capacity_payload = execution_payload
+        if kind == 'evaluation' and source is not None and 'datasets' not in execution_payload:
+            capacity_payload = {**execution_payload, 'datasets': ['general_qa']}
+        _validate_task_capacity(
+            kind,
+            capacity_payload,
+            runtime,
+            opaque_model=deployment_id is not None,
+        )
+        _assert_disk_capacity(runtime)
+        if not slots.acquire(blocking=False):
+            raise RuntimePolicyError(
+                'task_concurrency_exceeded',
+                'EvalScope task concurrency is exhausted',
+                503,
+            )
+        slot_acquired = True
+        admission.begin_task()
+        admitted = True
+
+        deployment = None
+        credential_snapshot = None
+        if deployment_id is not None:
+            failure_phase = 'model_resolve'
+            deployment = databench.resolve_model_version_deployment(deployment_id)
+            if 'chat_completions' not in deployment.declared_capabilities.interfaces:
+                raise RuntimePolicyError(
+                    'model_capability_mismatch',
+                    'Model Deployment does not declare chat completions capability',
+                    409,
+                )
+
+        failure_phase = 'endpoint_policy'
+        if deployment is None:
             endpoint_policy.authorize_connection(endpoint)
         else:
-            deployment = databench.resolve_model_deployment(deployment_id)
             endpoint_policy.authorize_connection(deployment.endpoint_base_url)
+
+        failure_phase = 'credential_resolve'
+        if deployment is not None and deployment.auth_profile == 'bearer_ref':
+            if model_credentials is None or deployment.credential_ref is None:
+                raise RuntimePolicyError(
+                    'credential_registry_not_loaded',
+                    'Model credential operation failed',
+                    503,
+                )
+            credential_snapshot = model_credentials.resolve(
+                deployment.credential_ref,
+                deployment.deployment_id,
+            )
+
+        if deployment is not None:
             with deployment_endpoint_lock:
                 deployment_endpoints[task_id] = deployment.endpoint_base_url
             execution_payload.pop('databench_deployment_id', None)
             execution_payload['api_url'] = deployment.endpoint_base_url
             execution_payload['model'] = deployment.served_model_name
-        capacity_payload = execution_payload
-        if kind == 'evaluation' and source is not None and 'datasets' not in execution_payload:
-            capacity_payload = {**execution_payload, 'datasets': ['general_qa']}
-        _validate_task_capacity(kind, capacity_payload, runtime)
-        _assert_disk_capacity(runtime)
-    if not slots.acquire(blocking=False):
-        raise RuntimePolicyError(
-            'task_concurrency_exceeded',
-            'EvalScope task concurrency is exhausted',
-            503,
-        )
-    admitted = False
-    owns_claim = False
-    try:
-        admission.begin_task()
-        admitted = True
-        claim = manifests.claim(task_id, kind, digest)
-        if claim.disposition == 'already_running':
-            return jsonify({
-                'error': {'code': 'already_running', 'message': 'Task is already active'},
-                'task_id': task_id,
-            }), 409
-        if claim.disposition == 'terminal_replay':
-            integration = manifests.read_integration(task_id)
-            if integration is not None and not claim.manifest['callback_confirmed']:
-                if databench.callback(claim.manifest, integration):
-                    manifests.confirm_callback(task_id)
-            return jsonify({
-                'status': 'terminal_replay',
-                'task_id': task_id,
-                'terminal': claim.manifest['terminal'],
-            })
-        owns_claim = True
+
+        failure_phase = 'provider_prepare'
         if source is not None:
             prepared = databench.prepare_evaluation(
                 task_id,
@@ -652,6 +711,7 @@ def _invoke(
             if integration is None or not isinstance(integration.get('run_id'), str) or not databench.start(integration['run_id']):
                 raise RuntimePolicyError('databench_callback_unavailable', 'Databench run could not start', 503)
         _cancel_if_requested(manifests, task_id)
+        failure_phase = 'provider_run'
         response = _dispatch_task_upstream(
             upstream,
             path,
@@ -659,6 +719,7 @@ def _invoke(
             runtime.task_runtime_seconds,
             body=execution_payload,
             headers={'EvalScope-Task-Id': task_id},
+            credential_snapshot=credential_snapshot,
         )
         payload_response, status = _bounded_json_response(response, runtime.response_max_bytes)
         if payload_response.get('task_id') != task_id:
@@ -696,8 +757,6 @@ def _invoke(
         safe['terminal'] = manifest['terminal']
         return jsonify(safe), 200
     except RuntimePolicyError as error:
-        if not owns_claim:
-            raise error
         try:
             current = manifests.read(task_id)
         except RuntimePolicyError:
@@ -706,9 +765,7 @@ def _invoke(
             phase = (
                 'metric'
                 if error.code == 'metric_execution_failed'
-                else 'provider_run'
-                if current['phase'] == 'running'
-                else 'provider_prepare'
+                else 'provider_run' if current['phase'] == 'running' else failure_phase
             )
             manifest = manifests.record_terminal(
                 task_id,
@@ -736,7 +793,7 @@ def _invoke(
                 task_id,
                 'failed',
                 error={
-                    'phase': 'provider_run',
+                    'phase': failure_phase,
                     'code': 'provider_failed',
                     'message': 'EvalScope task failed',
                 },
@@ -753,7 +810,8 @@ def _invoke(
     finally:
         if admitted:
             admission.finish_task()
-        slots.release()
+        if slot_acquired:
+            slots.release()
 
 
 def _evaluation_benchmark(
@@ -956,9 +1014,17 @@ def _reject_request_body() -> None:
         )
 
 
-def _validate_task_capacity(kind: str, payload: dict[str, Any], runtime: RuntimeConfig) -> None:
+def _validate_task_capacity(
+    kind: str,
+    payload: dict[str, Any],
+    runtime: RuntimeConfig,
+    *,
+    opaque_model: bool = False,
+) -> None:
     model = payload.get('model')
-    if not isinstance(model, str) or not model.strip() or len(model.encode('utf-8')) > 512:
+    if not opaque_model and (
+        not isinstance(model, str) or not model.strip() or len(model.encode('utf-8')) > 512
+    ):
         raise RuntimePolicyError(
             'task_capacity_invalid',
             'Model identifier is missing or exceeds its byte limit',
@@ -1201,6 +1267,7 @@ def _dispatch_task_upstream(
     *,
     body: dict[str, Any],
     headers: Mapping[str, str],
+    credential_snapshot: ModelCredentialSnapshotV1 | None = None,
 ) -> WerkzeugResponse:
     timed_out = threading.Event()
 
@@ -1219,13 +1286,26 @@ def _dispatch_task_upstream(
     timer.daemon = True
     timer.start()
     try:
-        response = _dispatch_upstream(
-            app,
-            'POST',
-            path,
-            body=body,
-            headers=headers,
-        )
+        if credential_snapshot is None:
+            response = _dispatch_upstream(
+                app,
+                'POST',
+                path,
+                body=body,
+                headers=headers,
+            )
+        else:
+            with AnonymousCredentialFdHandoffV1(credential_snapshot) as handoff:
+                response = _dispatch_upstream(
+                    app,
+                    'POST',
+                    path,
+                    body=body,
+                    headers={
+                        **headers,
+                        'Databench-Credential-Fd': str(handoff.read_fd),
+                    },
+                )
     finally:
         timer.cancel()
     if timed_out.is_set():

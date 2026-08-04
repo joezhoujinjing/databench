@@ -1262,6 +1262,12 @@ Deployment create 使用 `evaluation-run-create-v2`；Workspace 在一个 admiss
 Deployment 仍为 active，并以复合 FK 保存 exact Deployment/Artifact/create digest。列表 cursor 同时绑定
 Dataset、Deployment 和 status filter，避免翻页时切换 lineage 范围。
 
+ADR 0019 MR6 的 Model Version Deployment 使用 `evaluation-run-create-v5/v6`；Workspace 只接受 opaque
+Deployment ID 并补齐 Model/Version/Deployment digest、nullable Artifact、source mutability/verification、
+evidence digest 和 DB observation time。Artifact source 强制 exact Artifact + immutable/content_verified；
+Repository/Service source 强制 Artifact null 且不能伪装 content_verified。v1-v4 row、identity、FK 与 read
+shape 不回填、不改写。
+
 Complete 接受 bounded metrics 和 provider report IDs，不接受 URL、filesystem path、完整 result 或日志。
 E10 Complete 还要求 scoring config、`primary_metric_id`、`primary_output_key` 与 metric outputs 完全对应；
 主输出缺失或冲突时拒绝 complete 并由 Provider 走 metric failure callback。Fail/cancel 只接受 bounded
@@ -1278,6 +1284,9 @@ POST /v2/model-deployments/{deployment_id}:disable operator Bearer
 
 GET  /internal/v1/model-deployments/{deployment_id}:resolve
      service credential；不登记 OpenAPI
+
+GET  /internal/v2/model-deployments/{deployment_id}:resolve
+     service credential；Model Version Deployment strict 三来源 union；不登记 OpenAPI
 ```
 
 首个 contract 只支持 `openai_compatible + operator_attested + auth_mode=none`。public projection 不包含
@@ -1457,11 +1466,12 @@ endpoint 执行同一 policy。resolved URL 不写入 task integration manifest�
   manifest 和 manual reconcile 都必须有 fault-injection test；
 - reconciliation 只确定性终结或重放，不重新运行模型调用，不构成 lease/scheduler/recovery engine。
 
-live admission 顺序固定为：先验证 payload 和 canonical config digest；若 task claim 已存在，直接进入
-`already_running`/terminal replay，不执行当前 disk、endpoint、Deployment resolve 或 lifecycle check；若为
-新 task，manual endpoint 在 claim 前完成 endpoint policy 与容量检查，Deployment 模式在容量检查和原子
-claim 后只 resolve 一次并执行 endpoint policy。resolve 或 provider 失败写入同一 typed terminal，不能留下
-无终态 claim。这样磁盘已满或 Deployment 后续 disable 不会破坏已完成 task 的幂等重放。
+live admission 顺序固定为：payload 基础校验和 canonical config digest → atomic claim →
+terminal/already-running replay → capacity/drain → internal v2 resolve 一次 → endpoint policy → credential JIT
+resolve → provider prepare/run。claim 前不执行 capacity、endpoint、Registry、credential 或 provider I/O；
+claim 后的 capacity/drain/resolve/policy/credential/provider 失败都写入同一 typed terminal，不能留下无终态
+claim。terminal replay 不读取当前 disk capacity、Registry、Deployment lifecycle、endpoint policy 或 secret，
+因此后续 disable/ref 撤销不破坏原终态。
 
 ### 12.6 Blocking invoke 和资源
 
@@ -1520,6 +1530,11 @@ asset bytes 进入 image/offline manifest。ADR 0019 MR4 已以 strict `model-en
 consumer-minimal `model-credentials-v1` projection 取代本节最初的逗号 allowlist；缺少 policy 时所有用户
 提交的 model URL fail closed。旧 `EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST` 与
 `EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST` 不再是当前 runtime 配置，不能重新接回。
+
+MR6 的 Deployment bearer secret 只在 claim 后解析，并经 anonymous FD 移交 patched upstream spawn
+child：parent TaskConfig 保持无 secret，child 读取 FD 后只在内存中设置 `SecretStr`。FD header 不含 secret；
+`auth_profile=none` 完全不发送该 header。argv、environment、task claim、integration manifest、response 和
+归档均不得出现 secret。
 
 不再需要 `EVALSCOPE_PUBLIC_BASE_URL` 或 frame origin。
 
@@ -1803,7 +1818,8 @@ upstream patch/vendor 和 gateway manifest。实际落点变化必须同步更�
 - prepared/running restart、callback loss、`provider_interrupted`、startup/manual reconcile；
 - model endpoint scheme/host/port/IP allowlist、dual-stack DNS rebinding、redirect 和 metadata negative tests；
 - opaque Deployment payload、operator/service credential separation、一次 internal resolve、disabled admission、
-  terminal replay 不依赖当前容量/endpoint、endpoint/report/log redaction；
+  claim 前零外部 resolve、anonymous FD spawn-child secret、terminal replay 不依赖当前容量/Registry/
+  credential、endpoint/report/log redaction；
 - malicious Markdown/HTML/Plotly spec corpus；raw active HTML 永不到浏览器；
 - WSGI concurrent invoke + polling。
 

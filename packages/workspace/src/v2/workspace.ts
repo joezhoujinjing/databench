@@ -101,6 +101,8 @@ import {
   hashV2EvaluationRunCreateWithDeployment,
   hashV2EvaluationRunCreateWithDeploymentAndMetrics,
   hashV2EvaluationRunCreateWithMetrics,
+  hashV2EvaluationRunCreateWithModelVersionDeployment,
+  hashV2EvaluationRunCreateWithModelVersionDeploymentAndMetrics,
   hashV2ModelArtifactImportCreate,
   hashV2ModelDeploymentAdoption,
   hashV2ModelDeploymentCreate,
@@ -113,6 +115,8 @@ import {
   V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
   V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
   V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE,
+  V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE,
   V2_EXPORT_FIDELITY_PROFILE,
   V2_IDENTITY_PROFILE,
   V2_MODEL_ARTIFACT_IMPORT_CREATE_PROFILE,
@@ -397,6 +401,7 @@ import {
   transformJobFromCatalog,
 } from './mappings.js'
 import {
+  classifyCatalogModelSourceV2,
   modelAliasFromCatalogV2,
   modelDeploymentAdoptionFromCatalogV2,
   modelFromCatalogV2,
@@ -1861,31 +1866,83 @@ export class V2Workspace {
       })
     }
     const namespaceId = await this.#namespace(context.signal)
+    let modelVersionDeployment: CatalogModelVersionDeploymentRowV2 | null = null
+    if (request.model_deployment_id !== null) {
+      try {
+        modelVersionDeployment = await waitWithAbort(
+          this.#catalog.getModelVersionDeployment(namespaceId, request.model_deployment_id),
+          context.signal,
+        )
+      } catch (error) {
+        if (context.signal?.aborted) throw error
+        throw mapModelRegistryCatalogError(error)
+      }
+    }
     const modelDeployment =
-      request.model_deployment_id === null
+      request.model_deployment_id === null || modelVersionDeployment !== null
         ? null
         : await this.#readModelDeploymentRow(
             namespaceId,
             request.model_deployment_id,
             context.signal,
           )
-    if (request.model_deployment_id !== null && modelDeployment === null) {
+    if (
+      request.model_deployment_id !== null &&
+      modelDeployment === null &&
+      modelVersionDeployment === null
+    ) {
       throw new NotFoundError(`Model Deployment was not found: ${request.model_deployment_id}`, {
         deployment_id: request.model_deployment_id,
       })
     }
+    let modelVersion: CatalogModelVersionRowV2 | null = null
+    let sourceMutabilitySnapshot: 'immutable' | 'mutable' | 'unknown' | null = null
+    let verificationLevelSnapshot:
+      | 'content_verified'
+      | 'provider_verified'
+      | 'operator_attested'
+      | 'unverified'
+      | null = null
+    let sourceEvidenceDigest: string | null = null
+    if (modelVersionDeployment !== null) {
+      const stored = await this.#catalog.getModelVersion(
+        namespaceId,
+        modelVersionDeployment.modelVersionId,
+      )
+      if (stored === null) {
+        throw new IntegrityError('Model Deployment Version disappeared', {
+          reason: 'model_deployment_version_missing',
+          deployment_id: modelVersionDeployment.id,
+        })
+      }
+      modelVersion = stored.version
+      const evidence = await this.#catalog.listModelSourceEvidence(namespaceId, stored.version.id)
+      const classification = classifyCatalogModelSourceV2(stored.source, evidence)
+      sourceMutabilitySnapshot = classification.source_mutability
+      verificationLevelSnapshot = classification.verification_level
+      sourceEvidenceDigest = classification.evidence_digest
+    }
     const createProfile =
-      modelDeployment === null
+      modelVersionDeployment !== null
         ? request.scoring_config === null
-          ? V2_EVALUATION_RUN_CREATE_PROFILE
-          : V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE
-        : request.scoring_config === null
-          ? V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE
-          : V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE
-    const modelName = modelDeployment?.servedModelName ?? request.model_name
-    const modelDeploymentId = modelDeployment?.id ?? null
-    const modelArtifactId = modelDeployment?.artifactId ?? null
-    const modelDeploymentDigest = modelDeployment?.createDigest ?? null
+          ? V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE
+          : V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE
+        : modelDeployment === null
+          ? request.scoring_config === null
+            ? V2_EVALUATION_RUN_CREATE_PROFILE
+            : V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE
+          : request.scoring_config === null
+            ? V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE
+            : V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE
+    const modelName =
+      modelVersionDeployment?.servedModelName ??
+      modelDeployment?.servedModelName ??
+      request.model_name
+    const modelDeploymentId = modelVersionDeployment?.id ?? modelDeployment?.id ?? null
+    const modelArtifactId =
+      modelVersionDeployment?.artifactId ?? modelDeployment?.artifactId ?? null
+    const modelDeploymentDigest =
+      modelVersionDeployment?.createDigest ?? modelDeployment?.createDigest ?? null
     const baseIdentity = {
       provider: request.provider,
       provider_task_id: request.provider_task_id,
@@ -1908,34 +1965,66 @@ export class V2Workspace {
             primary_output_key: request.scoring_config.primary_output_key,
           }
     const createRequestDigest =
-      modelDeployment === null
+      modelVersionDeployment !== null &&
+      modelVersion !== null &&
+      sourceMutabilitySnapshot !== null &&
+      verificationLevelSnapshot !== null
         ? scoringIdentity === null
-          ? hashV2EvaluationRunCreate({
-              evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
-              ...baseIdentity,
-            })
-          : hashV2EvaluationRunCreateWithMetrics({
-              evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
-              ...baseIdentity,
-              ...scoringIdentity,
-            })
-        : scoringIdentity === null
-          ? hashV2EvaluationRunCreateWithDeployment({
-              evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
-              ...baseIdentity,
-              model_deployment_id: modelDeployment.id,
-              model_artifact_id: modelDeployment.artifactId,
-              model_deployment_digest: modelDeployment.createDigest,
-            })
-          : hashV2EvaluationRunCreateWithDeploymentAndMetrics({
+          ? hashV2EvaluationRunCreateWithModelVersionDeployment({
               evaluation_run_create_profile:
-                V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
+                V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_PROFILE,
               ...baseIdentity,
-              model_deployment_id: modelDeployment.id,
-              model_artifact_id: modelDeployment.artifactId,
-              model_deployment_digest: modelDeployment.createDigest,
+              model_id: modelVersion.modelId,
+              model_version_id: modelVersion.id,
+              model_deployment_id: modelVersionDeployment.id,
+              model_deployment_digest: modelVersionDeployment.createDigest,
+              model_artifact_id: modelVersionDeployment.artifactId,
+              source_mutability_snapshot: sourceMutabilitySnapshot,
+              verification_level_snapshot: verificationLevelSnapshot,
+              source_evidence_digest: sourceEvidenceDigest,
+            })
+          : hashV2EvaluationRunCreateWithModelVersionDeploymentAndMetrics({
+              evaluation_run_create_profile:
+                V2_EVALUATION_RUN_CREATE_WITH_MODEL_VERSION_DEPLOYMENT_AND_METRICS_PROFILE,
+              ...baseIdentity,
+              model_id: modelVersion.modelId,
+              model_version_id: modelVersion.id,
+              model_deployment_id: modelVersionDeployment.id,
+              model_deployment_digest: modelVersionDeployment.createDigest,
+              model_artifact_id: modelVersionDeployment.artifactId,
+              source_mutability_snapshot: sourceMutabilitySnapshot,
+              verification_level_snapshot: verificationLevelSnapshot,
+              source_evidence_digest: sourceEvidenceDigest,
               ...scoringIdentity,
             })
+        : modelDeployment === null
+          ? scoringIdentity === null
+            ? hashV2EvaluationRunCreate({
+                evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_PROFILE,
+                ...baseIdentity,
+              })
+            : hashV2EvaluationRunCreateWithMetrics({
+                evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_METRICS_PROFILE,
+                ...baseIdentity,
+                ...scoringIdentity,
+              })
+          : scoringIdentity === null
+            ? hashV2EvaluationRunCreateWithDeployment({
+                evaluation_run_create_profile: V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_PROFILE,
+                ...baseIdentity,
+                model_deployment_id: modelDeployment.id,
+                model_artifact_id: modelDeployment.artifactId,
+                model_deployment_digest: modelDeployment.createDigest,
+              })
+            : hashV2EvaluationRunCreateWithDeploymentAndMetrics({
+                evaluation_run_create_profile:
+                  V2_EVALUATION_RUN_CREATE_WITH_DEPLOYMENT_AND_METRICS_PROFILE,
+                ...baseIdentity,
+                model_deployment_id: modelDeployment.id,
+                model_artifact_id: modelDeployment.artifactId,
+                model_deployment_digest: modelDeployment.createDigest,
+                ...scoringIdentity,
+              })
     let row: CatalogEvaluationRunRowV2
     try {
       row = await waitWithAbort(
@@ -1956,6 +2045,11 @@ export class V2Workspace {
           modelDeploymentId,
           modelArtifactId,
           modelDeploymentDigest,
+          modelId: modelVersion?.modelId ?? null,
+          modelVersionId: modelVersion?.id ?? null,
+          sourceMutabilitySnapshot,
+          verificationLevelSnapshot,
+          sourceEvidenceDigest,
           evalscopeCommit: request.evalscope_commit,
           scoringConfig: request.scoring_config,
           primaryMetricId: request.scoring_config?.primary_metric_id ?? null,

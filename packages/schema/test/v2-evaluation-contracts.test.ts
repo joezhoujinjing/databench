@@ -28,6 +28,63 @@ function createRequest() {
   }
 }
 
+function preparedRun() {
+  return {
+    id: '11111111-1111-4111-8111-111111111111',
+    provider: 'evalscope',
+    provider_task_id: 'task-1',
+    create_request_digest: DIGEST,
+    provider_report_ids: null,
+    dataset_version: VERSION,
+    source_ref: null,
+    converter: 'evalscope-general-qa',
+    converter_version: '1.0.0',
+    converter_options: { target_source: 'none' },
+    fidelity_digest: 'd'.repeat(64),
+    benchmark: 'general_qa',
+    model_name: null,
+    create_profile: 'evaluation-run-create-v1',
+    model_deployment_id: null,
+    model_artifact_id: null,
+    evalscope_commit: null,
+    scoring_config: null,
+    primary_metric_id: null,
+    primary_output_key: null,
+    status: 'prepared',
+    metrics: null,
+    error: null,
+    archive_status: 'not_requested',
+    archive_attempt: 0,
+    result_artifact_key: null,
+    result_artifact_digest: null,
+    result_artifact_size_bytes: null,
+    archive_error: null,
+    created_at: '2026-07-27T00:00:00.000Z',
+    started_at: null,
+    finished_at: null,
+    updated_at: '2026-07-27T00:00:00.000Z',
+  }
+}
+
+function scoringConfigFixture() {
+  return {
+    schema_version: 1 as const,
+    mode: 'explicit' as const,
+    evalscope_commit: 'c'.repeat(40),
+    benchmark: 'general_qa',
+    metrics: [
+      {
+        id: 'exact_match',
+        implementation_digest: 'e'.repeat(64),
+        parameters: {},
+        output_keys: ['exact_match'],
+      },
+    ],
+    primary_metric_id: 'exact_match',
+    primary_output_key: 'exact_match',
+  }
+}
+
 describe('V2 evaluation contracts', () => {
   test('accepts only an exact Dataset-bound EvalScope create request', () => {
     expect(CreateEvaluationRunRequestV2Schema.parse(createRequest())).toEqual({
@@ -130,41 +187,7 @@ describe('V2 evaluation contracts', () => {
   })
 
   test('enforces execution and archive shapes on stored run responses', () => {
-    const prepared = {
-      id: '11111111-1111-4111-8111-111111111111',
-      provider: 'evalscope',
-      provider_task_id: 'task-1',
-      create_request_digest: DIGEST,
-      provider_report_ids: null,
-      dataset_version: VERSION,
-      source_ref: null,
-      converter: 'evalscope-general-qa',
-      converter_version: '1.0.0',
-      converter_options: { target_source: 'none' },
-      fidelity_digest: 'd'.repeat(64),
-      benchmark: 'general_qa',
-      model_name: null,
-      create_profile: 'evaluation-run-create-v1',
-      model_deployment_id: null,
-      model_artifact_id: null,
-      evalscope_commit: null,
-      scoring_config: null,
-      primary_metric_id: null,
-      primary_output_key: null,
-      status: 'prepared',
-      metrics: null,
-      error: null,
-      archive_status: 'not_requested',
-      archive_attempt: 0,
-      result_artifact_key: null,
-      result_artifact_digest: null,
-      result_artifact_size_bytes: null,
-      archive_error: null,
-      created_at: '2026-07-27T00:00:00.000Z',
-      started_at: null,
-      finished_at: null,
-      updated_at: '2026-07-27T00:00:00.000Z',
-    }
+    const prepared = preparedRun()
     expect(EvaluationRunV2Schema.parse(prepared)).toEqual(prepared)
     expect(
       EvaluationRunV2Schema.safeParse({
@@ -177,6 +200,66 @@ describe('V2 evaluation contracts', () => {
       EvaluationRunV2Schema.safeParse({
         ...prepared,
         result_artifact_key: 'objects/result.tar.zst',
+      }).success,
+    ).toBe(false)
+  })
+
+  test('keeps legacy response shape exact and validates v5/v6 Registry snapshots', () => {
+    const legacy = preparedRun()
+    expect(EvaluationRunV2Schema.parse(legacy)).toEqual(legacy)
+    expect(
+      EvaluationRunV2Schema.safeParse({ ...legacy, source_evidence_digest: null }).success,
+    ).toBe(false)
+
+    const versionBound = {
+      ...legacy,
+      create_profile: 'evaluation-run-create-v5',
+      model_name: 'registry-route',
+      model_deployment_id: '22222222-2222-4222-8222-222222222222',
+      model_artifact_id: null,
+      model_deployment_digest: 'e'.repeat(64),
+      model_id: '33333333-3333-4333-8333-333333333333',
+      model_version_id: '44444444-4444-4444-8444-444444444444',
+      source_mutability_snapshot: 'unknown',
+      verification_level_snapshot: 'operator_attested',
+      source_evidence_digest: null,
+      source_observed_at: '2026-08-05T12:34:56.789Z',
+    }
+    expect(EvaluationRunV2Schema.parse(versionBound)).toEqual(versionBound)
+    for (const field of [
+      'model_deployment_digest',
+      'model_id',
+      'model_version_id',
+      'source_mutability_snapshot',
+      'verification_level_snapshot',
+      'source_evidence_digest',
+      'source_observed_at',
+    ] as const) {
+      const invalid: Record<string, unknown> = { ...versionBound }
+      delete invalid[field]
+      expect(EvaluationRunV2Schema.safeParse(invalid).success).toBe(false)
+    }
+    expect(
+      EvaluationRunV2Schema.safeParse({
+        ...versionBound,
+        verification_level_snapshot: 'provider_verified',
+      }).success,
+    ).toBe(false)
+
+    const scoring = scoringConfigFixture()
+    const metricVersionBound = {
+      ...versionBound,
+      create_profile: 'evaluation-run-create-v6',
+      evalscope_commit: scoring.evalscope_commit,
+      scoring_config: scoring,
+      primary_metric_id: scoring.primary_metric_id,
+      primary_output_key: scoring.primary_output_key,
+    }
+    expect(EvaluationRunV2Schema.parse(metricVersionBound)).toEqual(metricVersionBound)
+    expect(
+      EvaluationRunV2Schema.safeParse({
+        ...metricVersionBound,
+        create_profile: 'evaluation-run-create-v5',
       }).success,
     ).toBe(false)
   })

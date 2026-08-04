@@ -14,11 +14,11 @@
 > unvalidated。S2 exact Dataset 与单 active Studio Session bridge、S3 LoRA immutable Model Artifact
 > import 均已完成 non-GPU gate；S4 operator-attested Deployment + EvalScope opaque resolve/lineage 已完成
 > non-GPU contract，GPU 训练、推理部署与真实模型评测证据继续 deferred。
-> Model Registry ADR 0019 的 MR0-MR5 已按 Gate 完成：逻辑 Model/不可变 Version、Artifact 来源注册、
+> Model Registry ADR 0019 的 MR0-MR6 已按 Gate 完成：逻辑 Model/不可变 Version、Artifact 来源注册、
 > candidate Alias、显式 legacy adoption、基础 REST/Web/CLI read，以及 ModelScope/operator-managed
 > Repository evidence、MR4 endpoint/secret 安全底座和 legacy network hardening，以及 Existing Service、
-> version-bound Deployment、internal v2 resolver 已落地。Evaluation v5/v6 仍按 MR6 实施，整体 capability
-> 保持 false。
+> version-bound Deployment、internal v2 resolver、Evaluation v5/v6 exact lineage 与 EvalScope claim/JIT secret
+> 执行边界已落地。完整 Model 产品面与 selector 仍属于 MR7，整体 capability 保持 false。
 
 ## 顶层目录
 
@@ -152,6 +152,13 @@ canonical result output；EvalScope 不持有长期 object-store credential。UI
 generated client；EvalScope client 只能访问
 `deploy/evalscope/api-routes.json` 明确允许的方法与精确路径，不能成为通用反向代理。
 
+Model Registry MR6 沿同一边界加入 `evaluation-run-create-v5/v6`。浏览器仍只提交 opaque Deployment ID；
+Workspace 补齐 Model/Version/Deployment digest、nullable Artifact 和有时间的 source classification/evidence
+snapshot。EvalScope 在 atomic claim 后只调用一次 internal v2 resolver，再执行 endpoint policy 与 credential
+JIT resolve；secret 只通过 anonymous FD 进入 spawn child memory，不进入 argv、environment、task claim、
+manifest、response 或归档。terminal/already-running replay 不重新读取 Registry、Deployment lifecycle、
+capacity 或 secret。
+
 MCP runtime 内嵌 `apps/api`；依赖关系仍是 `apps/api → workspace, schema`。不得为了
 MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访问层。
 
@@ -238,6 +245,10 @@ S4 沿既有 `schema → hashing/catalog/workspace → API/OpenAPI/generated Web
 EvalScope 通过固定 internal REST + service credential resolve opaque Deployment ID，不直连 Catalog，也不把
 endpoint 写进浏览器、OpenAPI public projection 或 task integration manifest。只有 exact Databench Dataset
 与 Deployment 的组合进入 `evaluation_runs_v2` 并固定 Artifact/Deployment digest lineage。
+
+Model Registry MR6 不改写上述 legacy v1-v4 identity；version-bound Deployment 改用 Evaluation v5/v6，
+并额外固定 Model/Version、nullable Artifact、source mutability/verification/evidence snapshot 和 DB
+observation time。
 
 ## 当前发布边界
 

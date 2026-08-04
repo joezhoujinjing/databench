@@ -637,6 +637,7 @@ def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
         'model_deployment_digest',
     }
     scoring_fields = {'scoring_config'}
+    model_version_fields = deployment_fields | {'model_id', 'model_version_id'}
     expected = (
         common
         if version == 1
@@ -646,6 +647,10 @@ def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
         if version == 3
         else common | deployment_fields | scoring_fields
         if version == 4
+        else common | model_version_fields
+        if version == 5
+        else common | model_version_fields | scoring_fields
+        if version == 6
         else set()
     )
     if set(value) != expected:
@@ -700,7 +705,40 @@ def _validate_integration(value: dict[str, Any]) -> dict[str, Any]:
                 'Task integration served model is invalid',
                 500,
             )
-    if version in {3, 4}:
+    if version in {5, 6}:
+        for field in ('model_id', 'model_version_id', 'model_deployment_id'):
+            item = value.get(field)
+            if not isinstance(item, str) or not _RUN_ID.fullmatch(item):
+                raise RuntimePolicyError(
+                    'task_integration_invalid',
+                    f'Task integration {field} is invalid',
+                    500,
+                )
+        artifact_id = value.get('model_artifact_id')
+        if artifact_id is not None and (
+            not isinstance(artifact_id, str) or not _RUN_ID.fullmatch(artifact_id)
+        ):
+            raise RuntimePolicyError(
+                'task_integration_invalid',
+                'Task integration model_artifact_id is invalid',
+                500,
+            )
+        deployment_digest = value.get('model_deployment_digest')
+        if not isinstance(deployment_digest, str) or not _EXACT_VERSION.fullmatch(
+            deployment_digest
+        ):
+            raise RuntimePolicyError(
+                'task_integration_invalid',
+                'Task integration Model Deployment digest is invalid',
+                500,
+            )
+        if value.get('model_name') is None:
+            raise RuntimePolicyError(
+                'task_integration_invalid',
+                'Task integration served model is invalid',
+                500,
+            )
+    if version in {3, 4, 6}:
         _validate_scoring_config(value.get('scoring_config'))
     return copy.deepcopy(value)
 

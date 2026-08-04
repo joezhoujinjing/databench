@@ -1,0 +1,29 @@
+{
+  "profile": "evaluation-run-create-v5",
+  "domain_utf8_hex": "6461746162656e63682e6576616c756174696f6e2d72756e2d6372656174652e6576616c756174696f6e2d72756e2d6372656174652d763500",
+  "input": {
+    "evaluation_run_create_profile": "evaluation-run-create-v5",
+    "provider": "evalscope",
+    "provider_task_id": "eval_123e4567-e89b-42d3-a456-426614174000",
+    "dataset_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "source_ref": "main",
+    "converter": "evalscope-general-qa",
+    "converter_version": "1.0.0",
+    "normalized_options": { "target_source": "selected-candidate" },
+    "fidelity_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "benchmark": "general_qa",
+    "model_name": "qwen-service",
+    "model_id": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "model_version_id": "02f5b312-6f70-860c-9c20-455974fd0831",
+    "model_deployment_id": "03f5b312-6f70-860c-9c20-455974fd0832",
+    "model_deployment_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "model_artifact_id": "04f5b312-6f70-860c-9c20-455974fd0833",
+    "source_mutability_snapshot": "immutable",
+    "verification_level_snapshot": "content_verified",
+    "source_evidence_digest": null,
+    "evalscope_commit": "dddddddddddddddddddddddddddddddddddddddd"
+  },
+  "canonical": "{\"benchmark\":\"general_qa\",\"converter\":\"evalscope-general-qa\",\"converter_version\":\"1.0.0\",\"dataset_version\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"evalscope_commit\":\"dddddddddddddddddddddddddddddddddddddddd\",\"evaluation_run_create_profile\":\"evaluation-run-create-v5\",\"fidelity_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"model_artifact_id\":\"04f5b312-6f70-860c-9c20-455974fd0833\",\"model_deployment_digest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"model_deployment_id\":\"03f5b312-6f70-860c-9c20-455974fd0832\",\"model_id\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"model_name\":\"qwen-service\",\"model_version_id\":\"02f5b312-6f70-860c-9c20-455974fd0831\",\"normalized_options\":{\"target_source\":\"selected-candidate\"},\"provider\":\"evalscope\",\"provider_task_id\":\"eval_123e4567-e89b-42d3-a456-426614174000\",\"source_evidence_digest\":null,\"source_mutability_snapshot\":\"immutable\",\"source_ref\":\"main\",\"verification_level_snapshot\":\"content_verified\"}",
+  "digest": "a4a71798b34ea9e9df7ca532e1228d7c217de8d446ca7750bff028532e3dd4fd",
+  "independent_digest": "a4a71798b34ea9e9df7ca532e1228d7c217de8d446ca7750bff028532e3dd4fd"
+}

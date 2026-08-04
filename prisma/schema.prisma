@@ -206,41 +206,47 @@ model V2TransformJob {
 }
 
 model V2EvaluationRun {
-  id                      String    @id @db.Uuid
-  namespaceId             String    @map("namespace_id") @db.Uuid
-  provider                String
-  providerTaskId          String    @map("provider_task_id")
-  createProfile           String    @default("evaluation-run-create-v1") @map("create_profile")
-  createRequestDigest     String    @map("create_request_digest") @db.Char(64)
-  providerReportIds       Json?     @map("provider_report_ids_json")
-  datasetVersion          String    @map("dataset_version") @db.Char(64)
-  sourceRef               String?   @map("source_ref")
-  converter               String
-  converterVersion        String    @map("converter_version")
-  converterOptions        Json      @map("converter_options_json")
-  fidelityDigest          String    @map("fidelity_digest") @db.Char(64)
-  benchmark               String
-  modelName               String?   @map("model_name")
-  modelDeploymentId       String?   @map("model_deployment_id") @db.Uuid
-  modelArtifactId         String?   @map("model_artifact_id") @db.Uuid
-  modelDeploymentDigest   String?   @map("model_deployment_digest") @db.Char(64)
-  evalscopeCommit         String?   @map("evalscope_commit")
-  scoringConfig           Json?     @map("scoring_config_json")
-  primaryMetricId         String?   @map("primary_metric_id")
-  primaryOutputKey        String?   @map("primary_output_key")
-  status                  String
-  metrics                 Json?     @map("metrics_json")
-  error                   Json?     @map("error_json")
-  archiveStatus           String    @default("not_requested") @map("archive_status")
-  archiveAttempt          Int       @default(0) @map("archive_attempt")
-  resultArtifactKey       String?   @map("result_artifact_key")
-  resultArtifactDigest    String?   @map("result_artifact_digest") @db.Char(64)
-  resultArtifactSizeBytes BigInt?   @map("result_artifact_size_bytes")
-  archiveError            Json?     @map("archive_error_json")
-  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  startedAt               DateTime? @map("started_at") @db.Timestamptz(6)
-  finishedAt              DateTime? @map("finished_at") @db.Timestamptz(6)
-  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                        String    @id @db.Uuid
+  namespaceId               String    @map("namespace_id") @db.Uuid
+  provider                  String
+  providerTaskId            String    @map("provider_task_id")
+  createProfile             String    @default("evaluation-run-create-v1") @map("create_profile")
+  createRequestDigest       String    @map("create_request_digest") @db.Char(64)
+  providerReportIds         Json?     @map("provider_report_ids_json")
+  datasetVersion            String    @map("dataset_version") @db.Char(64)
+  sourceRef                 String?   @map("source_ref")
+  converter                 String
+  converterVersion          String    @map("converter_version")
+  converterOptions          Json      @map("converter_options_json")
+  fidelityDigest            String    @map("fidelity_digest") @db.Char(64)
+  benchmark                 String
+  modelName                 String?   @map("model_name")
+  modelDeploymentId         String?   @map("model_deployment_id") @db.Uuid
+  modelArtifactId           String?   @map("model_artifact_id") @db.Uuid
+  modelDeploymentDigest     String?   @map("model_deployment_digest") @db.Char(64)
+  modelId                   String?   @map("model_id") @db.Uuid
+  modelVersionId            String?   @map("model_version_id") @db.Uuid
+  sourceMutabilitySnapshot  String?   @map("source_mutability_snapshot")
+  verificationLevelSnapshot String?   @map("verification_level_snapshot")
+  sourceEvidenceDigest      String?   @map("source_evidence_digest") @db.Char(64)
+  sourceObservedAt          DateTime? @map("source_observed_at") @db.Timestamptz(6)
+  evalscopeCommit           String?   @map("evalscope_commit")
+  scoringConfig             Json?     @map("scoring_config_json")
+  primaryMetricId           String?   @map("primary_metric_id")
+  primaryOutputKey          String?   @map("primary_output_key")
+  status                    String
+  metrics                   Json?     @map("metrics_json")
+  error                     Json?     @map("error_json")
+  archiveStatus             String    @default("not_requested") @map("archive_status")
+  archiveAttempt            Int       @default(0) @map("archive_attempt")
+  resultArtifactKey         String?   @map("result_artifact_key")
+  resultArtifactDigest      String?   @map("result_artifact_digest") @db.Char(64)
+  resultArtifactSizeBytes   BigInt?   @map("result_artifact_size_bytes")
+  archiveError              Json?     @map("archive_error_json")
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt                 DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt                DateTime? @map("finished_at") @db.Timestamptz(6)
+  updatedAt                 DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   namespace       V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   dataset         V2DatasetSnapshot   @relation(fields: [datasetVersion], references: [version], onDelete: Restrict, onUpdate: Restrict)

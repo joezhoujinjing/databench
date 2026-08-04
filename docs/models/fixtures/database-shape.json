@@ -1,8 +1,8 @@
 {
   "fixture_version": 2,
   "decision": "ADR-0019",
-  "status": "implemented-through-mr5",
-  "last_implemented_migration": "0018_model_version_deployments_v2",
+  "status": "implemented-through-mr6",
+  "last_implemented_migration": "0019_model_version_evaluations_v2",
   "core_tables": [
     "models_v2",
     "model_versions_v2",
@@ -123,9 +123,33 @@
         "model_deployment_digest"
       ],
       "references": ["model_deployments_v2", "namespace_id", "id", "artifact_id", "create_digest"]
+    },
+    {
+      "condition": "source_evidence_digest_is_not_null",
+      "columns": ["namespace_id", "model_version_id", "source_evidence_digest"],
+      "references": [
+        "model_source_evidence_v2",
+        "namespace_id",
+        "model_version_id",
+        "evidence_digest"
+      ]
     }
   ],
-  "evaluation_v5_v6_status": "planned-mr6",
+  "evaluation_v5_v6_source_binding": {
+    "mechanism": "deferred_constraint_trigger",
+    "artifact_source": {
+      "artifact_id": "exact_primary_artifact",
+      "source_mutability_snapshot": "immutable",
+      "verification_level_snapshot": "content_verified",
+      "source_evidence_digest": "null"
+    },
+    "repository_service_source": {
+      "artifact_id": "null",
+      "content_verified": false
+    },
+    "source_observed_at": "database_clock_required"
+  },
+  "evaluation_v5_v6_status": "implemented-mr6",
   "migration_rules": {
     "additive": true,
     "foreign_key_action": "RESTRICT",

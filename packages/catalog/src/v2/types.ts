@@ -302,6 +302,8 @@ export interface CreateEvaluationRunV2 {
     | 'evaluation-run-create-v2'
     | 'evaluation-run-create-v3'
     | 'evaluation-run-create-v4'
+    | 'evaluation-run-create-v5'
+    | 'evaluation-run-create-v6'
   readonly createRequestDigest: string
   readonly datasetVersion: string
   readonly sourceRef: string | null
@@ -314,6 +316,16 @@ export interface CreateEvaluationRunV2 {
   readonly modelDeploymentId: string | null
   readonly modelArtifactId: string | null
   readonly modelDeploymentDigest: string | null
+  readonly modelId: string | null
+  readonly modelVersionId: string | null
+  readonly sourceMutabilitySnapshot: 'immutable' | 'mutable' | 'unknown' | null
+  readonly verificationLevelSnapshot:
+    | 'content_verified'
+    | 'provider_verified'
+    | 'operator_attested'
+    | 'unverified'
+    | null
+  readonly sourceEvidenceDigest: string | null
   readonly evalscopeCommit: string | null
   readonly scoringConfig: Readonly<Record<string, CatalogJsonValueV2>> | null
   readonly primaryMetricId: string | null
@@ -324,6 +336,7 @@ export interface CatalogEvaluationRunRowV2 extends CreateEvaluationRunV2 {
   readonly id: string
   readonly providerReportIds: readonly string[] | null
   readonly status: CatalogEvaluationRunStatusV2
+  readonly sourceObservedAt: Date | null
   readonly metrics: readonly CatalogEvaluationMetricV2[] | null
   readonly error: CatalogEvaluationRunErrorV2 | null
   readonly archiveStatus: CatalogEvaluationArchiveStatusV2
