@@ -19,6 +19,7 @@ import {
   SurfaceHeader,
   SurfaceTitle,
 } from '@/components/ui/surface.js'
+import { Tabs } from '@/components/ui/tabs.js'
 import { ellipsizeMiddle, formatInteger } from '@/lib/format.js'
 import { cn } from '@/lib/utils.js'
 import {
@@ -36,6 +37,38 @@ import { V2MutationError } from '../../components/V2MutationError.js'
 
 export function V2TransformsPageView() {
   const { t } = useTranslation()
+  const [mode, setMode] = useState<'basic-clean' | 'built-in'>('basic-clean')
+
+  return (
+    <PageShell>
+      <PageHeader
+        className="[&_h1]:text-[1.75rem] [&_p]:text-sm [&_p]:leading-6"
+        description={t('v2.transforms.description')}
+        title={t('v2.transforms.title')}
+      />
+      <Tabs
+        ariaLabel={t('v2.transforms.modeLabel')}
+        items={[
+          {
+            label: t('v2.transforms.jobs.title'),
+            panel: <BasicCleanJobs />,
+            value: 'basic-clean',
+          },
+          {
+            label: t('v2.transforms.builtIn'),
+            panel: <BuiltInTransforms />,
+            value: 'built-in',
+          },
+        ]}
+        onChange={setMode}
+        value={mode}
+      />
+    </PageShell>
+  )
+}
+
+function BuiltInTransforms() {
+  const { t } = useTranslation()
   const transforms = useV2Transforms()
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const selected = useMemo(
@@ -47,55 +80,51 @@ export function V2TransformsPageView() {
   )
 
   return (
-    <PageShell>
-      <PageHeader description={t('v2.transforms.description')} title={t('v2.transforms.title')} />
-      <BasicCleanJobs />
-      <div className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
-        <Surface className="h-fit overflow-hidden">
-          <SurfaceHeader>
-            <SurfaceTitle>{t('v2.transforms.registry')}</SurfaceTitle>
-          </SurfaceHeader>
-          {transforms.isLoading ? <Spinner /> : null}
-          {transforms.isError ? <ErrorState error={transforms.error} /> : null}
-          {transforms.data?.items.length === 0 ? (
-            <SurfaceBody>
-              <EmptyState>{t('v2.transforms.empty')}</EmptyState>
-            </SurfaceBody>
-          ) : null}
-          {transforms.data?.items.map((item) => (
-            <button
-              aria-pressed={item.name === selected?.name}
-              className={cn(
-                'grid w-full gap-2 border-border border-b px-5 py-4 text-left last:border-b-0 hover:bg-surface-hover',
-                item.name === selected?.name && 'border-l-2 border-l-primary bg-surface-soft',
-              )}
-              key={item.name}
-              onClick={() => setSelectedName(item.name)}
-              type="button"
-            >
-              <span className="font-medium">{item.name}</span>
-              <span className="flex items-center gap-2 text-muted-foreground text-xs">
-                <span>{t('v2.transforms.version', { version: item.version })}</span>
-                <Badge>
-                  {item.identity_mode === 'preserve'
-                    ? t('v2.transforms.preserve')
-                    : t('v2.transforms.derive')}
-                </Badge>
-              </span>
-            </button>
-          ))}
+    <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <Surface className="h-fit overflow-hidden">
+        <SurfaceHeader className="py-3.5">
+          <SurfaceTitle>{t('v2.transforms.registry')}</SurfaceTitle>
+        </SurfaceHeader>
+        {transforms.isLoading ? <Spinner /> : null}
+        {transforms.isError ? <ErrorState error={transforms.error} /> : null}
+        {transforms.data?.items.length === 0 ? (
+          <SurfaceBody>
+            <EmptyState>{t('v2.transforms.empty')}</EmptyState>
+          </SurfaceBody>
+        ) : null}
+        {transforms.data?.items.map((item) => (
+          <button
+            aria-pressed={item.name === selected?.name}
+            className={cn(
+              'grid w-full gap-1 border-border border-b px-4 py-2.5 text-left last:border-b-0 hover:bg-surface-hover',
+              item.name === selected?.name && 'border-l-2 border-l-primary bg-surface-soft',
+            )}
+            key={item.name}
+            onClick={() => setSelectedName(item.name)}
+            type="button"
+          >
+            <span className="font-medium text-sm">{item.name}</span>
+            <span className="flex items-center gap-2 text-muted-foreground text-xs">
+              <span>{t('v2.transforms.version', { version: item.version })}</span>
+              <Badge>
+                {item.identity_mode === 'preserve'
+                  ? t('v2.transforms.preserve')
+                  : t('v2.transforms.derive')}
+              </Badge>
+            </span>
+          </button>
+        ))}
+      </Surface>
+      {selected ? (
+        <RunTransformPanel key={selected.name} transform={selected} />
+      ) : (
+        <Surface>
+          <SurfaceBody>
+            <EmptyState>{t('v2.transforms.select')}</EmptyState>
+          </SurfaceBody>
         </Surface>
-        {selected ? (
-          <RunTransformPanel key={selected.name} transform={selected} />
-        ) : (
-          <Surface>
-            <SurfaceBody>
-              <EmptyState>{t('v2.transforms.select')}</EmptyState>
-            </SurfaceBody>
-          </Surface>
-        )}
-      </div>
-    </PageShell>
+      )}
+    </div>
   )
 }
 
@@ -108,6 +137,14 @@ function BasicCleanJobs() {
   const [input, setInput] = useState('')
   const [resultRef, setResultRef] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const items = jobs.data?.items ?? []
+  const pageCount = getTransformJobPageCount(items.length)
+  const visibleJobs = paginateTransformJobs(items, page)
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount))
+  }, [pageCount])
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -122,77 +159,77 @@ function BasicCleanJobs() {
       return
     }
     setFormError(null)
-    create.mutate({ input: value, resultRef: normalizedResultRef })
+    create.mutate({ input: value, resultRef: normalizedResultRef }, { onSuccess: () => setPage(1) })
   }
 
   return (
-    <Surface className="overflow-hidden">
-      <SurfaceHeader>
-        <SurfaceTitle>{t('v2.transforms.jobs.title')}</SurfaceTitle>
-        <SurfaceDescription>{t('v2.transforms.jobs.description')}</SurfaceDescription>
-      </SurfaceHeader>
-      <SurfaceBody>
-        <form
-          className="grid items-end gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
-          onSubmit={submit}
-        >
-          <Field hint={t('v2.transforms.jobs.inputHint')} label={t('v2.transforms.jobs.input')}>
-            <TextInput
-              aria-label={t('v2.transforms.jobs.input')}
-              onChange={(event) => setInput(event.currentTarget.value)}
-              placeholder={t('v2.transforms.inputPlaceholder')}
-              value={input}
-            />
-          </Field>
-          <Field
-            hint={t('v2.transforms.jobs.resultRefHint')}
-            label={t('v2.transforms.jobs.resultRef')}
-          >
-            <TextInput
-              aria-label={t('v2.transforms.jobs.resultRef')}
-              onChange={(event) => setResultRef(event.currentTarget.value)}
-              placeholder={t('v2.transforms.jobs.resultRefPlaceholder')}
-              value={resultRef}
-            />
-          </Field>
-          <Button disabled={create.isPending} type="submit">
-            {create.isPending ? t('v2.transforms.jobs.submitting') : t('v2.transforms.jobs.submit')}
-          </Button>
-        </form>
-        {formError ? (
-          <div className="mt-3">
-            <FormError>{formError}</FormError>
-          </div>
-        ) : null}
-        {create.isError ? (
-          <div className="mt-4">
-            <V2MutationError
-              error={create.error}
-              message={
-                isTransformJobIdentityConflict(create.error)
-                  ? t('v2.transforms.jobs.identityConflict')
-                  : undefined
-              }
-            />
-          </div>
-        ) : null}
-      </SurfaceBody>
-      <BasicCleanPipeline />
-      <div className="border-border border-t">
-        <div className="flex items-center justify-between gap-3 px-5 py-3">
-          <h3 className="font-medium text-sm">{t('v2.transforms.jobs.recent')}</h3>
+    <div className="space-y-5">
+      <Surface className="overflow-hidden">
+        <SurfaceHeader>
+          <SurfaceTitle>{t('v2.transforms.jobs.title')}</SurfaceTitle>
+          <SurfaceDescription>{t('v2.transforms.jobs.description')}</SurfaceDescription>
+        </SurfaceHeader>
+        <div className="grid lg:grid-cols-[minmax(0,1.08fr)_minmax(21rem,0.92fr)]">
+          <form className="space-y-4 px-5 py-5" onSubmit={submit}>
+            <div className="grid gap-4">
+              <Field hint={t('v2.transforms.jobs.inputHint')} label={t('v2.transforms.jobs.input')}>
+                <TextInput
+                  aria-label={t('v2.transforms.jobs.input')}
+                  onChange={(event) => setInput(event.currentTarget.value)}
+                  placeholder={t('v2.transforms.inputPlaceholder')}
+                  value={input}
+                />
+              </Field>
+              <Field
+                hint={t('v2.transforms.jobs.resultRefHint')}
+                label={t('v2.transforms.jobs.resultRef')}
+              >
+                <TextInput
+                  aria-label={t('v2.transforms.jobs.resultRef')}
+                  onChange={(event) => setResultRef(event.currentTarget.value)}
+                  placeholder={t('v2.transforms.jobs.resultRefPlaceholder')}
+                  value={resultRef}
+                />
+              </Field>
+            </div>
+            {formError ? <FormError>{formError}</FormError> : null}
+            {create.isError ? (
+              <V2MutationError
+                error={create.error}
+                message={
+                  isTransformJobIdentityConflict(create.error)
+                    ? t('v2.transforms.jobs.identityConflict')
+                    : undefined
+                }
+              />
+            ) : null}
+            <div className="flex justify-end">
+              <Button disabled={create.isPending} type="submit">
+                {create.isPending
+                  ? t('v2.transforms.jobs.submitting')
+                  : t('v2.transforms.jobs.submit')}
+              </Button>
+            </div>
+          </form>
+          <BasicCleanPipeline />
+        </div>
+      </Surface>
+
+      <Surface className="overflow-hidden">
+        <SurfaceHeader className="flex items-center justify-between gap-3">
+          <SurfaceTitle>{t('v2.transforms.jobs.recent')}</SurfaceTitle>
           {jobs.isFetching ? (
             <span className="text-dim-foreground text-xs">{t('common.loading')}</span>
           ) : null}
-        </div>
+        </SurfaceHeader>
         {jobs.isLoading ? <Spinner /> : null}
         {jobs.isError ? <ErrorState error={jobs.error} /> : null}
         {jobs.data?.items.length === 0 ? (
-          <SurfaceBody className="border-border border-t">
+          <SurfaceBody>
             <EmptyState>{t('v2.transforms.jobs.empty')}</EmptyState>
           </SurfaceBody>
         ) : null}
-        {jobs.data?.items.map((job) => (
+        {visibleJobs.map((job) => (
           <TransformJobRow
             cancelling={cancel.isPending && cancel.variables === job.id}
             job={job}
@@ -212,9 +249,44 @@ function BasicCleanJobs() {
             <V2MutationError error={retry.error} />
           </SurfaceBody>
         ) : null}
-      </div>
-    </Surface>
+        {items.length > TRANSFORM_JOB_PAGE_SIZE ? (
+          <div className="flex items-center justify-end gap-2 border-border border-t px-5 py-2.5">
+            <span className="mr-1 text-muted-foreground text-xs tabular-nums">
+              {t('v2.datasets.pageStatus', { current: page, total: pageCount })}
+            </span>
+            <Button
+              disabled={page === 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              size="sm"
+              variant="outline"
+            >
+              {t('v2.datasets.previousPage')}
+            </Button>
+            <Button
+              disabled={page === pageCount}
+              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+              size="sm"
+              variant="outline"
+            >
+              {t('v2.datasets.nextPage')}
+            </Button>
+          </div>
+        ) : null}
+      </Surface>
+    </div>
   )
+}
+
+export const TRANSFORM_JOB_PAGE_SIZE = 5
+
+export function getTransformJobPageCount(totalItems: number): number {
+  return Math.max(1, Math.ceil(Math.max(0, totalItems) / TRANSFORM_JOB_PAGE_SIZE))
+}
+
+export function paginateTransformJobs<T>(items: readonly T[], page: number): readonly T[] {
+  const normalizedPage = Math.min(Math.max(1, page), getTransformJobPageCount(items.length))
+  const start = (normalizedPage - 1) * TRANSFORM_JOB_PAGE_SIZE
+  return items.slice(start, start + TRANSFORM_JOB_PAGE_SIZE)
 }
 
 function TransformJobRow({
@@ -242,8 +314,8 @@ function TransformJobRow({
       ? job.result_ref.name
       : (job.output_dataset_version ?? null)
   return (
-    <article className="grid gap-4 border-border border-t px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-      <div className="min-w-0 space-y-3">
+    <article className="border-border border-t px-5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={transformJobTone(job.status)}>
             {t(`v2.transforms.jobs.status.${job.status}`)}
@@ -254,7 +326,36 @@ function TransformJobRow({
           </code>
           {job.cache_hit ? <Badge tone="accent">{t('v2.transforms.jobs.cacheHit')}</Badge> : null}
         </div>
-        <div className="flex flex-wrap gap-x-5 gap-y-1 text-muted-foreground text-xs">
+        <div className="flex flex-wrap gap-2 lg:justify-end">
+          {active ? (
+            <Button disabled={cancelling} onClick={onCancel} size="sm" variant="outline">
+              {cancelling ? t('v2.transforms.jobs.cancelling') : t('common.cancel')}
+            </Button>
+          ) : null}
+          {canRetry ? (
+            <Button disabled={retrying} onClick={onRetry} size="sm" variant="outline">
+              {retrying ? t('v2.transforms.jobs.retrying') : t('v2.transforms.jobs.retry')}
+            </Button>
+          ) : null}
+          {resultTarget ? (
+            <>
+              <Button asChild size="sm">
+                <Link params={{ ref: resultTarget }} to="/datasets/$ref">
+                  {t('v2.transforms.jobs.openDataset')}
+                </Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link params={{ ref: resultTarget }} to="/lineage/$ref">
+                  {t('v2.transforms.jobs.openLineage')}
+                </Link>
+              </Button>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-x-8 gap-y-2 text-xs lg:grid-cols-[minmax(0,1.2fr)_minmax(17rem,0.8fr)]">
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-muted-foreground">
           <span>{t('v2.transforms.jobs.attempt', { count: job.attempt })}</span>
           <span>
             {t('v2.transforms.jobs.inputCount', { count: formatInteger(job.input_count) })}
@@ -273,7 +374,7 @@ function TransformJobRow({
             })}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
           {job.result_ref === null ? (
             <span className="text-dim-foreground">{t('v2.transforms.jobs.noResultRef')}</span>
           ) : (
@@ -287,57 +388,31 @@ function TransformJobRow({
           )}
           {unchanged ? <Badge tone="accent">{t('v2.transforms.jobs.unchanged')}</Badge> : null}
         </div>
-        {job.result_ref?.status === 'conflict' ? (
-          <p className="text-danger text-sm">
-            {t('v2.transforms.jobs.resultRefConflict', {
-              version: ellipsizeMiddle(job.result_ref.version ?? '', 8),
-            })}
-          </p>
-        ) : null}
-        {job.progress === null ? null : (
-          <div className="max-w-xl">
-            <div className="mb-1 flex justify-between text-dim-foreground text-xs">
-              <span>{job.progress.phase}</span>
-              <span>
-                {progress === null ? formatInteger(job.progress.completed_units) : `${progress}%`}
-              </span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-surface-soft">
-              <div
-                className="h-full bg-primary transition-[width] duration-300"
-                style={{ width: `${progress ?? 8}%` }}
-              />
-            </div>
+      </div>
+      {job.result_ref?.status === 'conflict' ? (
+        <p className="mt-3 text-danger text-sm">
+          {t('v2.transforms.jobs.resultRefConflict', {
+            version: ellipsizeMiddle(job.result_ref.version ?? '', 8),
+          })}
+        </p>
+      ) : null}
+      {job.progress === null ? null : (
+        <div className="mt-4">
+          <div className="mb-1.5 flex justify-between text-dim-foreground text-xs">
+            <span>{job.progress.phase}</span>
+            <span>
+              {progress === null ? formatInteger(job.progress.completed_units) : `${progress}%`}
+            </span>
           </div>
-        )}
-        {job.error ? <p className="text-danger text-sm">{job.error.message}</p> : null}
-      </div>
-      <div className="flex flex-wrap gap-2 lg:justify-end">
-        {active ? (
-          <Button disabled={cancelling} onClick={onCancel} size="sm" variant="outline">
-            {cancelling ? t('v2.transforms.jobs.cancelling') : t('common.cancel')}
-          </Button>
-        ) : null}
-        {canRetry ? (
-          <Button disabled={retrying} onClick={onRetry} size="sm" variant="outline">
-            {retrying ? t('v2.transforms.jobs.retrying') : t('v2.transforms.jobs.retry')}
-          </Button>
-        ) : null}
-        {resultTarget ? (
-          <>
-            <Button asChild size="sm">
-              <Link params={{ ref: resultTarget }} to="/datasets/$ref">
-                {t('v2.transforms.jobs.openDataset')}
-              </Link>
-            </Button>
-            <Button asChild size="sm" variant="outline">
-              <Link params={{ ref: resultTarget }} to="/lineage/$ref">
-                {t('v2.transforms.jobs.openLineage')}
-              </Link>
-            </Button>
-          </>
-        ) : null}
-      </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-surface-soft">
+            <div
+              className="h-full bg-primary transition-[width] duration-300"
+              style={{ width: `${progress ?? 8}%` }}
+            />
+          </div>
+        </div>
+      )}
+      {job.error ? <p className="mt-3 text-danger text-sm">{job.error.message}</p> : null}
     </article>
   )
 }
@@ -362,7 +437,7 @@ function BasicCleanPipeline() {
     },
   ]
   return (
-    <section className="border-border border-t bg-surface-soft/40 px-5 py-5">
+    <section className="border-border border-t bg-surface-soft/40 px-5 py-5 lg:border-t-0 lg:border-l">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-medium text-sm">{t('v2.transforms.jobs.pipeline.title')}</h3>
@@ -372,12 +447,9 @@ function BasicCleanPipeline() {
         </div>
         <Badge>{t('v2.transforms.jobs.pipeline.version')}</Badge>
       </div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+      <ol className="mt-4 grid divide-y divide-border border-border border-y xl:grid-cols-3 xl:divide-x xl:divide-y-0">
         {steps.map((step, index) => (
-          <div
-            className="rounded-[6px] border border-border bg-background/70 p-4"
-            key={step.operator}
-          >
+          <li className="min-w-0 py-3 xl:px-3 xl:first:pl-0 xl:last:pr-0" key={step.operator}>
             <div className="flex items-center gap-2">
               <span className="font-mono text-dim-foreground text-xs">
                 {String(index + 1).padStart(2, '0')}
@@ -386,9 +458,9 @@ function BasicCleanPipeline() {
             </div>
             <code className="mt-2 block break-all text-primary text-xs">{step.operator}</code>
             <p className="mt-2 text-muted-foreground text-xs leading-5">{step.detail}</p>
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
       <p className="mt-3 text-dim-foreground text-xs leading-5">
         {t('v2.transforms.jobs.pipeline.publication')}
       </p>
@@ -493,7 +565,7 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
 
   return (
     <Surface className="overflow-hidden">
-      <SurfaceHeader>
+      <SurfaceHeader className="py-3">
         <div className="flex flex-wrap items-center gap-3">
           <SurfaceTitle>{transform.name}</SurfaceTitle>
           <Badge>{t('v2.transforms.version', { version: transform.version })}</Badge>
@@ -504,15 +576,15 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
           </Badge>
         </div>
       </SurfaceHeader>
-      <div className="grid lg:grid-cols-[minmax(16rem,0.78fr)_minmax(0,1.65fr)]">
-        <aside className="space-y-6 border-border border-b px-5 py-5 lg:border-r lg:border-b-0">
+      <div className="grid xl:grid-cols-[minmax(13rem,0.62fr)_minmax(0,2fr)]">
+        <aside className="space-y-3 border-border border-b px-4 py-4 xl:border-r xl:border-b-0">
           <div>
-            <h3 className="font-semibold text-base">
+            <h3 className="font-semibold text-[0.95rem]">
               {t(`v2.transforms.guidance.${transform.name}.title`, {
                 defaultValue: transform.name,
               })}
             </h3>
-            <p className="mt-2 text-muted-foreground text-sm leading-6">
+            <p className="mt-1.5 text-muted-foreground text-xs leading-5">
               {t(`v2.transforms.guidance.${transform.name}.description`, {
                 defaultValue:
                   transform.identity_mode === 'preserve'
@@ -539,115 +611,103 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
                   : t('v2.transforms.identityDerive'),
             })}
           />
-          {hasParams ? (
-            <div>
-              <h3 className="font-medium text-muted-foreground text-sm">
-                {t('v2.transforms.parameterExample')}
-              </h3>
-              <div className="mt-3">
-                <JsonBlock value={transform.params_example} />
-              </div>
-              <p className="mt-2 text-dim-foreground text-xs leading-5">
-                {t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
-                  defaultValue: t('v2.transforms.paramsHint'),
-                })}
-              </p>
-            </div>
-          ) : (
-            <TransformFact
-              label={t('v2.transforms.parameters')}
-              value={t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
-                defaultValue: t('v2.transforms.noParamsBody'),
-              })}
-            />
-          )}
+          <TransformFact
+            label={t('v2.transforms.parameters')}
+            value={t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
+              defaultValue: hasParams
+                ? t('v2.transforms.paramsHint')
+                : t('v2.transforms.noParamsBody'),
+            })}
+          />
         </aside>
 
-        <form className="space-y-5 px-5 py-5" onSubmit={submit}>
-          <div className="space-y-4">
-            {inputs.map((input, index) => (
-              <Field
-                hint={t(`v2.transforms.guidance.${transform.name}.roles.${input.role}.hint`, {
-                  defaultValue: t('v2.transforms.inputRoleHint'),
-                })}
-                key={input.id}
-                label={t(`v2.transforms.guidance.${transform.name}.roles.${input.role}.label`, {
-                  defaultValue: input.role,
-                })}
-              >
-                <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] overflow-hidden rounded-[4px] border border-border bg-background/70 focus-within:border-primary focus-within:shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_72%,transparent)]">
-                  <span className="flex items-center justify-center border-border border-r text-dim-foreground text-sm">
-                    {index + 1}
-                  </span>
-                  <TextInput
-                    className="rounded-none border-0 bg-transparent focus:shadow-none"
-                    aria-label={t('v2.transforms.inputNumber', { number: index + 1 })}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value
-                      setInputs((current) =>
-                        current.map((value, itemIndex) =>
-                          itemIndex === index ? { ...value, value: nextValue } : value,
-                        ),
-                      )
-                    }}
-                    placeholder={t('v2.transforms.inputPlaceholder')}
-                    value={input.value}
-                  />
-                </div>
-              </Field>
-            ))}
-          </div>
-          {hasParams ? (
-            <>
-              <Field
-                hint={t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
-                  defaultValue: t('v2.transforms.paramsHint'),
-                })}
-                label={t('v2.transforms.params')}
-              >
-                <CodeEditor
-                  aria-label={t('v2.transforms.params')}
-                  header={
-                    <Button
-                      onClick={() => setParamsText(paramsExample)}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <RotateCcw aria-hidden="true" size={14} />
-                      {t('v2.transforms.resetExample')}
-                    </Button>
-                  }
-                  language="JSON"
-                  minRows={7}
-                  onChange={(event) => setParamsText(event.currentTarget.value)}
-                  value={paramsText}
-                />
-              </Field>
-              <details>
-                <summary className="cursor-pointer text-muted-foreground text-sm">
-                  {t('v2.transforms.schema')}
-                </summary>
-                <div className="mt-3">
-                  <JsonBlock value={transform.params_schema} />
-                </div>
-              </details>
-            </>
-          ) : (
-            <div className="rounded-[5px] border border-border bg-surface-soft px-4 py-5">
-              <div className="font-medium text-sm">{t('v2.transforms.noParams')}</div>
-              <p className="mt-2 text-dim-foreground text-xs leading-5">
-                {t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
-                  defaultValue: t('v2.transforms.noParamsBody'),
-                })}
-              </p>
+        <form
+          className="grid gap-4 px-4 py-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(16rem,0.85fr)]"
+          onSubmit={submit}
+        >
+          <div className="min-w-0 space-y-3">
+            <div className="grid gap-3">
+              {inputs.map((input, index) => (
+                <Field
+                  hint={t(`v2.transforms.guidance.${transform.name}.roles.${input.role}.hint`, {
+                    defaultValue: t('v2.transforms.inputRoleHint'),
+                  })}
+                  key={input.id}
+                  label={t(`v2.transforms.guidance.${transform.name}.roles.${input.role}.label`, {
+                    defaultValue: input.role,
+                  })}
+                >
+                  <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] overflow-hidden rounded-[4px] border border-border bg-background/70 focus-within:border-primary focus-within:shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_72%,transparent)]">
+                    <span className="flex items-center justify-center border-border border-r text-dim-foreground text-sm">
+                      {index + 1}
+                    </span>
+                    <TextInput
+                      className="rounded-none border-0 bg-transparent focus:shadow-none"
+                      aria-label={t('v2.transforms.inputNumber', { number: index + 1 })}
+                      onChange={(event) => {
+                        const nextValue = event.currentTarget.value
+                        setInputs((current) =>
+                          current.map((value, itemIndex) =>
+                            itemIndex === index ? { ...value, value: nextValue } : value,
+                          ),
+                        )
+                      }}
+                      placeholder={t('v2.transforms.inputPlaceholder')}
+                      value={input.value}
+                    />
+                  </div>
+                </Field>
+              ))}
             </div>
-          )}
-          <div className="space-y-4 border-border border-t pt-5">
-            <h3 className="font-medium text-muted-foreground text-sm">
-              {t('v2.transforms.resultOptions')}
-            </h3>
-            <div className="grid gap-4 md:grid-cols-2">
+            {hasParams ? (
+              <>
+                <Field label={t('v2.transforms.params')}>
+                  <CodeEditor
+                    aria-label={t('v2.transforms.params')}
+                    header={
+                      <Button
+                        onClick={() => setParamsText(paramsExample)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <RotateCcw aria-hidden="true" size={14} />
+                        {t('v2.transforms.resetExample')}
+                      </Button>
+                    }
+                    language="JSON"
+                    maxRows={3}
+                    minRows={2}
+                    onChange={(event) => setParamsText(event.currentTarget.value)}
+                    value={paramsText}
+                  />
+                </Field>
+                <details>
+                  <summary className="cursor-pointer text-muted-foreground text-sm">
+                    {t('v2.transforms.schema')}
+                  </summary>
+                  <div className="mt-3">
+                    <JsonBlock value={transform.params_schema} />
+                  </div>
+                </details>
+              </>
+            ) : (
+              <div className="rounded-[5px] border border-border bg-surface-soft px-3 py-2.5">
+                <div className="font-medium text-sm">{t('v2.transforms.noParams')}</div>
+                <p className="mt-1 text-dim-foreground text-xs leading-5">
+                  {t(`v2.transforms.guidance.${transform.name}.paramsNote`, {
+                    defaultValue: t('v2.transforms.noParamsBody'),
+                  })}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex min-w-0 flex-col border-border border-t pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
+            <div className="space-y-3">
+              <h3 className="font-medium text-muted-foreground text-sm">
+                {t('v2.transforms.resultOptions')}
+              </h3>
               <Field label={t('v2.transforms.outputRef')}>
                 <TextInput
                   aria-label={t('v2.transforms.outputRef')}
@@ -663,39 +723,39 @@ function RunTransformPanel({ transform }: { transform: TransformDescriptorV2 }) 
                   value={expectedVersion}
                 />
               </Field>
+              <Field label={t('v2.transforms.message')}>
+                <TextInput
+                  aria-label={t('v2.transforms.message')}
+                  disabled={ref.trim() === ''}
+                  onChange={(event) => setMessage(event.currentTarget.value)}
+                  value={message}
+                />
+              </Field>
+              {deferredOutputRef === '' ? null : (
+                <CurrentOutputRef
+                  error={outputResolution.error}
+                  isError={outputResolution.isError}
+                  isFetching={outputResolution.isFetching}
+                  onUse={(version) => setExpectedVersion(version)}
+                  version={outputResolution.data?.dataset_version ?? null}
+                />
+              )}
+              {formError ? <FormError>{formError}</FormError> : null}
             </div>
-            {deferredOutputRef === '' ? null : (
-              <CurrentOutputRef
-                error={outputResolution.error}
-                isError={outputResolution.isError}
-                isFetching={outputResolution.isFetching}
-                onUse={(version) => setExpectedVersion(version)}
-                version={outputResolution.data?.dataset_version ?? null}
-              />
-            )}
-            <Field label={t('v2.transforms.message')}>
-              <TextInput
-                aria-label={t('v2.transforms.message')}
-                disabled={ref.trim() === ''}
-                onChange={(event) => setMessage(event.currentTarget.value)}
-                value={message}
-              />
-            </Field>
-          </div>
-          {formError ? <FormError>{formError}</FormError> : null}
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button disabled={run.isPending} type="submit">
-              {run.isPending ? t('v2.transforms.running') : t('v2.transforms.run')}
-            </Button>
-            {run.isPending ? (
-              <Button
-                onClick={() => controllerRef.current?.abort()}
-                type="button"
-                variant="outline"
-              >
-                {t('v2.transforms.cancel')}
+            <div className="mt-auto flex flex-wrap justify-end gap-2 pt-3">
+              <Button disabled={run.isPending} type="submit">
+                {run.isPending ? t('v2.transforms.running') : t('v2.transforms.run')}
               </Button>
-            ) : null}
+              {run.isPending ? (
+                <Button
+                  onClick={() => controllerRef.current?.abort()}
+                  type="button"
+                  variant="outline"
+                >
+                  {t('v2.transforms.cancel')}
+                </Button>
+              ) : null}
+            </div>
           </div>
         </form>
       </div>
@@ -725,9 +785,9 @@ interface OrderedInput {
 
 function TransformFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-border border-t pt-5">
-      <h3 className="font-medium text-muted-foreground text-sm">{label}</h3>
-      <p className="mt-2 text-sm leading-6">{value}</p>
+    <div className="border-border border-t pt-3">
+      <h3 className="font-medium text-muted-foreground text-xs">{label}</h3>
+      <p className="mt-1 text-xs leading-5">{value}</p>
     </div>
   )
 }
@@ -757,9 +817,9 @@ function CurrentOutputRef({
   }
   if (version === null) return null
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[5px] border border-border bg-surface-soft p-3 text-sm">
-      <span>
-        {t('v2.transforms.currentRef')} <code className="break-all text-xs">{version}</code>
+    <div className="flex items-center justify-between gap-2 rounded-[5px] border border-border bg-surface-soft px-3 py-2 text-xs">
+      <span className="min-w-0 truncate">
+        {t('v2.transforms.currentRef')} <code title={version}>{ellipsizeMiddle(version, 12)}</code>
       </span>
       <Button onClick={() => onUse(version)} size="sm" type="button" variant="outline">
         {t('v2.transforms.useCurrent')}

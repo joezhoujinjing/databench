@@ -311,6 +311,8 @@
     "transforms": {
       "title": "Transforms",
       "description": "Run fixed batch-cleaning jobs or built-in deterministic transforms.",
+      "modeLabel": "Transform mode",
+      "builtIn": "Built-in transforms",
       "jobs": {
         "title": "Basic clean",
         "description": "Create an asynchronous cleaning job from one dataset. The fixed, reproducible result is published as a new canonical dataset.",

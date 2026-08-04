@@ -311,6 +311,8 @@
     "transforms": {
       "title": "转换",
       "description": "运行固定的批量清洗任务，或使用内置的确定性转换。",
+      "modeLabel": "转换模式",
+      "builtIn": "内置转换",
       "jobs": {
         "title": "基础清洗",
         "description": "从一个数据集创建异步清洗任务。规则固定、结果可复现，完成后会生成新的标准数据集。",

@@ -3,8 +3,10 @@ import { ApiError } from '@/api/errors.js'
 import {
   createOrderedInputs,
   formatParamsExample,
+  getTransformJobPageCount,
   hasTransformParams,
   isTransformJobIdentityConflict,
+  paginateTransformJobs,
   parseJsonObject,
   transformJobProgressPercent,
 } from './TransformsPageView.js'
@@ -55,6 +57,14 @@ describe('V2 transform form helpers', () => {
     expect(
       transformJobProgressPercent({ ...job, progress: { ...job.progress, total_units: null } }),
     ).toBeNull()
+  })
+
+  test('paginates recent jobs in fixed groups of five and clamps the page', () => {
+    const jobs = Array.from({ length: 12 }, (_, index) => `job-${index + 1}`)
+    expect(getTransformJobPageCount(jobs.length)).toBe(3)
+    expect(getTransformJobPageCount(0)).toBe(1)
+    expect(paginateTransformJobs(jobs, 2)).toEqual(['job-6', 'job-7', 'job-8', 'job-9', 'job-10'])
+    expect(paginateTransformJobs(jobs, 99)).toEqual(['job-11', 'job-12'])
   })
 
   test('recognizes a repeated basic-clean job with a different result name', () => {
