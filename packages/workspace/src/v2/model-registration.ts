@@ -14,6 +14,7 @@ import {
   canonicalJsonV2,
   deriveV2ModelIdFromCreateDigest,
   deriveV2ModelSourceEvidenceIdFromDigest,
+  deriveV2ModelVersionDeploymentIdFromCreateDigest,
   deriveV2ModelVersionIdFromCreateDigest,
   hashV2ModelCreate,
   hashV2ModelRegistrationPlanArtifact,
@@ -26,6 +27,7 @@ import {
   hashV2ModelVersionCreateArtifact,
   hashV2ModelVersionCreateRepository,
   hashV2ModelVersionCreateService,
+  hashV2ModelVersionDeploymentCreate,
   V2_MODEL_CREATE_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE,
@@ -37,6 +39,7 @@ import {
   V2_MODEL_VERSION_CREATE_ARTIFACT_PROFILE,
   V2_MODEL_VERSION_CREATE_REPOSITORY_PROFILE,
   V2_MODEL_VERSION_CREATE_SERVICE_PROFILE,
+  V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE,
 } from '@databench/hashing'
 import {
   type CommitModelRegistrationRequestV2,
@@ -60,6 +63,11 @@ import {
   UnsupportedProfileError,
   ValidationError,
 } from '@databench/schema'
+import {
+  modelVersionDeploymentRuntimeRequestV2,
+  type V2ModelVersionDeploymentRuntime,
+  V2ModelVersionDeploymentRuntimeError,
+} from './model-deployment.js'
 import type { V2ModelRepositoryRuntime } from './model-repository.js'
 
 export interface V2ModelRegistrationCatalog {
@@ -82,6 +90,8 @@ export interface ModelRegistrationCommitResultV2 {
   readonly model_id: string
   readonly model_version_id: string
   readonly source_fingerprint: string
+  readonly deployment_id: string | null
+  readonly deployment_digest: string | null
   readonly alias: 'candidate' | 'staging' | 'production' | null
   readonly replayed: boolean
 }
@@ -96,10 +106,19 @@ export async function inspectModelRegistrationV2(
   namespaceId: string,
   requestInput: ModelRegistrationInspectRequestV2,
   repositoryRuntime?: V2ModelRepositoryRuntime,
+  deploymentRuntime?: V2ModelVersionDeploymentRuntime,
   signal?: AbortSignal,
 ): Promise<ModelRegistrationPlanV2> {
-  return (await inspectRegistration(catalog, namespaceId, requestInput, repositoryRuntime, signal))
-    .plan
+  return (
+    await inspectRegistration(
+      catalog,
+      namespaceId,
+      requestInput,
+      repositoryRuntime,
+      deploymentRuntime,
+      signal,
+    )
+  ).plan
 }
 
 export async function commitModelRegistrationV2(
@@ -107,6 +126,7 @@ export async function commitModelRegistrationV2(
   namespaceId: string,
   requestInput: CommitModelRegistrationRequestV2,
   repositoryRuntime?: V2ModelRepositoryRuntime,
+  deploymentRuntime?: V2ModelVersionDeploymentRuntime,
   signal?: AbortSignal,
 ): Promise<ModelRegistrationCommitResultV2> {
   signal?.throwIfAborted()
@@ -123,6 +143,7 @@ export async function commitModelRegistrationV2(
     namespaceId,
     request.request,
     repositoryRuntime,
+    deploymentRuntime,
     signal,
   )
   if (request.expected_registration_digest !== inspected.plan.registration_digest) {
@@ -131,13 +152,6 @@ export async function commitModelRegistrationV2(
       expected_registration_digest: request.expected_registration_digest,
       current_registration_digest: inspected.plan.registration_digest,
     })
-  }
-  const source = inspected.plan.normalized_request.source
-  if (source.kind === 'existing_service' || source.deployment !== undefined) {
-    throw new UnsupportedProfileError(
-      'Version-bound Model Deployment registration is not enabled in this implementation step',
-      { reason: 'model_deployment_v2_not_enabled' },
-    )
   }
   if (
     inspected.plan.normalized_request.alias !== undefined &&
@@ -171,6 +185,7 @@ async function inspectRegistration(
   namespaceId: string,
   requestInput: ModelRegistrationInspectRequestV2,
   repositoryRuntime?: V2ModelRepositoryRuntime,
+  deploymentRuntime?: V2ModelVersionDeploymentRuntime,
   signal?: AbortSignal,
 ): Promise<InspectedModelRegistrationV2> {
   signal?.throwIfAborted()
@@ -189,6 +204,7 @@ async function inspectRegistration(
       namespaceId,
       ModelArtifactRegistrationRequestV2Schema.parse(normalizedRequest),
       model,
+      deploymentRuntime,
       signal,
     )
   }
@@ -198,13 +214,16 @@ async function inspectRegistration(
       ModelRepositoryRegistrationRequestV2Schema.parse(normalizedRequest),
       model,
       repositoryRuntime,
+      deploymentRuntime,
       signal,
     )
   }
-  return inspectServiceRegistration(
+  return await inspectServiceRegistration(
     namespaceId,
     ModelServiceRegistrationRequestV2Schema.parse(normalizedRequest),
     model,
+    deploymentRuntime,
+    signal,
   )
 }
 
@@ -272,6 +291,7 @@ async function inspectArtifactRegistration(
   namespaceId: string,
   request: ModelArtifactRegistrationRequestV2,
   model: InspectedModelTargetV2,
+  deploymentRuntime?: V2ModelVersionDeploymentRuntime,
   signal?: AbortSignal,
 ): Promise<InspectedModelRegistrationV2> {
   const artifact = await catalog.getModelArtifact(namespaceId, request.source.artifact_id)
@@ -319,30 +339,33 @@ async function inspectArtifactRegistration(
       message: 'The Artifact does not provide verified Dataset training lineage',
     })
   }
-  appendDeploymentDeferredWarning(request, warnings)
-  return finalizeInspection({
-    namespaceId,
-    request,
-    model,
-    planProfile: V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE,
-    versionProfile: V2_MODEL_VERSION_CREATE_ARTIFACT_PROFILE,
-    versionCreateDigest,
-    sourceFingerprint,
-    classification,
-    warnings,
-    registrationDigest,
-    baseModelReference: artifact.baseModelReference,
-    baseModelRevision: artifact.baseModelRevision,
-    baseModelBindingStatus: artifact.baseModelBindingStatus,
-    source: {
-      kind: 'databench_artifact',
-      artifactId: artifact.id,
-      artifactKind: artifact.artifactKind,
-      artifactFormat: artifact.artifactFormat,
-      archiveDigest: artifact.archiveDigest,
-      manifestDigest: artifact.manifestDigest,
+  return await finalizeInspection(
+    {
+      namespaceId,
+      request,
+      model,
+      planProfile: V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE,
+      versionProfile: V2_MODEL_VERSION_CREATE_ARTIFACT_PROFILE,
+      versionCreateDigest,
+      sourceFingerprint,
+      classification,
+      warnings,
+      registrationDigest,
+      baseModelReference: artifact.baseModelReference,
+      baseModelRevision: artifact.baseModelRevision,
+      baseModelBindingStatus: artifact.baseModelBindingStatus,
+      source: {
+        kind: 'databench_artifact',
+        artifactId: artifact.id,
+        artifactKind: artifact.artifactKind,
+        artifactFormat: artifact.artifactFormat,
+        archiveDigest: artifact.archiveDigest,
+        manifestDigest: artifact.manifestDigest,
+      },
     },
-  })
+    deploymentRuntime,
+    signal,
+  )
 }
 
 async function inspectRepositoryRegistration(
@@ -350,6 +373,7 @@ async function inspectRepositoryRegistration(
   request: ModelRepositoryRegistrationRequestV2,
   model: InspectedModelTargetV2,
   repositoryRuntime?: V2ModelRepositoryRuntime,
+  deploymentRuntime?: V2ModelVersionDeploymentRuntime,
   signal?: AbortSignal,
 ): Promise<InspectedModelRegistrationV2> {
   const sourceFingerprint = hashV2ModelSourceFingerprintRepository({
@@ -432,37 +456,42 @@ async function inspectRepositoryRegistration(
         'Repository metadata could not verify the declared revision; registration remains allowed',
     })
   }
-  appendDeploymentDeferredWarning(request, warnings)
-  return finalizeInspection({
-    namespaceId,
-    request,
-    model,
-    planProfile: V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE,
-    versionProfile: V2_MODEL_VERSION_CREATE_REPOSITORY_PROFILE,
-    versionCreateDigest,
-    sourceFingerprint,
-    classification,
-    warnings,
-    registrationDigest,
-    baseModelReference: request.source.base_model?.reference ?? null,
-    baseModelRevision: request.source.base_model?.revision ?? null,
-    baseModelBindingStatus: null,
-    source: {
-      kind: 'repository_reference',
-      provider: request.source.provider,
-      repositoryId: request.source.repository_id,
-      revision: request.source.revision,
-      revisionKind: request.source.revision_kind,
+  return await finalizeInspection(
+    {
+      namespaceId,
+      request,
+      model,
+      planProfile: V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE,
+      versionProfile: V2_MODEL_VERSION_CREATE_REPOSITORY_PROFILE,
+      versionCreateDigest,
+      sourceFingerprint,
+      classification,
+      warnings,
+      registrationDigest,
+      baseModelReference: request.source.base_model?.reference ?? null,
+      baseModelRevision: request.source.base_model?.revision ?? null,
+      baseModelBindingStatus: null,
+      source: {
+        kind: 'repository_reference',
+        provider: request.source.provider,
+        repositoryId: request.source.repository_id,
+        revision: request.source.revision,
+        revisionKind: request.source.revision_kind,
+      },
+      initialEvidence,
     },
-    initialEvidence,
-  })
+    deploymentRuntime,
+    signal,
+  )
 }
 
-function inspectServiceRegistration(
+async function inspectServiceRegistration(
   namespaceId: string,
   request: ModelServiceRegistrationRequestV2,
   model: InspectedModelTargetV2,
-): InspectedModelRegistrationV2 {
+  deploymentRuntime?: V2ModelVersionDeploymentRuntime,
+  signal?: AbortSignal,
+): Promise<InspectedModelRegistrationV2> {
   const sourceFingerprint = hashV2ModelSourceFingerprintService({
     source_fingerprint_profile: V2_MODEL_SOURCE_FINGERPRINT_SERVICE_PROFILE,
     provider: request.source.provider,
@@ -490,65 +519,77 @@ function inspectServiceRegistration(
     version_create_digest: versionCreateDigest,
     classification,
   })
-  return finalizeInspection({
-    namespaceId,
-    request,
-    model,
-    planProfile: V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE,
-    versionProfile: V2_MODEL_VERSION_CREATE_SERVICE_PROFILE,
-    versionCreateDigest,
-    sourceFingerprint,
-    classification,
-    warnings: [
-      {
-        code:
-          classification.source_mutability === 'mutable'
-            ? 'service_reference_mutable'
-            : 'service_reference_unverified',
-        path: '/source/external_version_ref',
-        message:
-          classification.source_mutability === 'mutable'
-            ? 'The declared service version reference is mutable'
-            : 'The service version reference is operator-attested and not content verified',
+  return await finalizeInspection(
+    {
+      namespaceId,
+      request,
+      model,
+      planProfile: V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE,
+      versionProfile: V2_MODEL_VERSION_CREATE_SERVICE_PROFILE,
+      versionCreateDigest,
+      sourceFingerprint,
+      classification,
+      warnings: [
+        {
+          code:
+            classification.source_mutability === 'mutable'
+              ? 'service_reference_mutable'
+              : 'service_reference_unverified',
+          path: '/source/external_version_ref',
+          message:
+            classification.source_mutability === 'mutable'
+              ? 'The declared service version reference is mutable'
+              : 'The service version reference is operator-attested and not content verified',
+        },
+      ],
+      registrationDigest,
+      baseModelReference: request.source.base_model?.reference ?? null,
+      baseModelRevision: request.source.base_model?.revision ?? null,
+      baseModelBindingStatus: null,
+      source: {
+        kind: 'existing_service',
+        provider: request.source.provider,
+        externalModelRef: request.source.external_model_ref,
+        externalVersionRef: request.source.external_version_ref,
+        declaredReferenceKind: request.source.declared_reference_kind,
       },
-      {
-        code: 'model_deployment_deferred',
-        path: '/source/deployment',
-        message: 'Version-bound Model Deployment creation is deferred to its implementation step',
-      },
-    ],
-    registrationDigest,
-    baseModelReference: request.source.base_model?.reference ?? null,
-    baseModelRevision: request.source.base_model?.revision ?? null,
-    baseModelBindingStatus: null,
-    source: {
-      kind: 'existing_service',
-      provider: request.source.provider,
-      externalModelRef: request.source.external_model_ref,
-      externalVersionRef: request.source.external_version_ref,
-      declaredReferenceKind: request.source.declared_reference_kind,
     },
-  })
+    deploymentRuntime,
+    signal,
+  )
 }
 
-function finalizeInspection(input: {
-  readonly namespaceId: string
-  readonly request: ModelRegistrationInspectRequestV2
-  readonly model: InspectedModelTargetV2
-  readonly planProfile: CreateModelRegistrationV2['planProfile']
-  readonly versionProfile: CreateModelRegistrationV2['version']['createProfile']
-  readonly versionCreateDigest: string
-  readonly sourceFingerprint: string
-  readonly classification: ModelRegistrationPlanV2['classification']
-  readonly warnings: readonly ModelRegistrationWarningV2[]
-  readonly registrationDigest: string
-  readonly baseModelReference: string | null
-  readonly baseModelRevision: string | null
-  readonly baseModelBindingStatus: CreateModelRegistrationV2['version']['baseModelBindingStatus']
-  readonly source: CatalogModelVersionSourceV2
-  readonly initialEvidence?: CreateModelRegistrationV2['initialEvidence']
-}): InspectedModelRegistrationV2 {
+async function finalizeInspection(
+  input: {
+    readonly namespaceId: string
+    readonly request: ModelRegistrationInspectRequestV2
+    readonly model: InspectedModelTargetV2
+    readonly planProfile: CreateModelRegistrationV2['planProfile']
+    readonly versionProfile: CreateModelRegistrationV2['version']['createProfile']
+    readonly versionCreateDigest: string
+    readonly sourceFingerprint: string
+    readonly classification: ModelRegistrationPlanV2['classification']
+    readonly warnings: readonly ModelRegistrationWarningV2[]
+    readonly registrationDigest: string
+    readonly baseModelReference: string | null
+    readonly baseModelRevision: string | null
+    readonly baseModelBindingStatus: CreateModelRegistrationV2['version']['baseModelBindingStatus']
+    readonly source: CatalogModelVersionSourceV2
+    readonly initialEvidence?: CreateModelRegistrationV2['initialEvidence']
+  },
+  deploymentRuntime?: V2ModelVersionDeploymentRuntime,
+  signal?: AbortSignal,
+): Promise<InspectedModelRegistrationV2> {
   const versionId = deriveV2ModelVersionIdFromCreateDigest(input.versionCreateDigest)
+  const deployment = deploymentCatalogInput(
+    input.namespaceId,
+    versionId,
+    input.sourceFingerprint,
+    input.request.source,
+  )
+  if (deployment !== null) {
+    await assertRegistrationDeploymentConfiguration(deployment, deploymentRuntime, signal)
+  }
   const plan = ModelRegistrationPlanV2Schema.parse({
     plan_profile: input.planProfile,
     normalized_request: input.request,
@@ -559,6 +600,8 @@ function finalizeInspection(input: {
     classification: input.classification,
     warnings: input.warnings,
     registration_digest: input.registrationDigest,
+    deployment:
+      deployment === null ? null : { id: deployment.id, create_digest: deployment.createDigest },
   })
   return Object.freeze({
     plan: Object.freeze(plan),
@@ -583,6 +626,7 @@ function finalizeInspection(input: {
       },
       source: input.source,
       initialEvidence: input.initialEvidence ?? null,
+      deployment,
       alias:
         input.request.alias === undefined
           ? null
@@ -648,21 +692,115 @@ function registrationResult(
     model_id: result.model.id,
     model_version_id: result.version.id,
     source_fingerprint: result.version.sourceFingerprint,
+    deployment_id: result.deployment?.id ?? null,
+    deployment_digest: result.deployment?.createDigest ?? null,
     alias: result.alias?.alias ?? null,
     replayed: result.replayed,
   })
 }
 
-function appendDeploymentDeferredWarning(
-  request: ModelArtifactRegistrationRequestV2 | ModelRepositoryRegistrationRequestV2,
-  warnings: ModelRegistrationWarningV2[],
-): void {
-  if (request.source.deployment === undefined) return
-  warnings.push({
-    code: 'model_deployment_deferred',
-    path: '/source/deployment',
-    message: 'Version-bound Model Deployment creation is deferred to its implementation step',
+function deploymentCatalogInput(
+  namespaceId: string,
+  modelVersionId: string,
+  sourceFingerprint: string,
+  source: ModelRegistrationInspectRequestV2['source'],
+): CreateModelRegistrationV2['deployment'] {
+  const draft = source.deployment
+  if (draft === undefined) return null
+  const createDigest = hashV2ModelVersionDeploymentCreate({
+    model_deployment_create_profile: V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE,
+    namespace: namespaceId,
+    model_version_id: modelVersionId,
+    source_fingerprint: sourceFingerprint,
+    provider: 'openai_compatible',
+    display_name: draft.display_name,
+    served_model_name: draft.served_model_name,
+    endpoint_base_url: draft.endpoint_base_url,
+    connectivity_scope: draft.connectivity_scope,
+    auth_profile: draft.auth_profile,
+    credential_ref: draft.credential_ref,
+    declared_capabilities: draft.declared_capabilities,
   })
+  return Object.freeze({
+    id: deriveV2ModelVersionDeploymentIdFromCreateDigest(createDigest),
+    namespaceId,
+    deploymentProfile: 'model-version-v1',
+    createDigest,
+    modelVersionId,
+    artifactId: source.kind === 'databench_artifact' ? source.artifact_id : null,
+    provider: 'openai_compatible',
+    displayName: draft.display_name,
+    servedModelName: draft.served_model_name,
+    endpointBaseUrl: draft.endpoint_base_url,
+    connectivityScope: draft.connectivity_scope,
+    authProfile: draft.auth_profile,
+    credentialRef: draft.credential_ref,
+    declaredCapabilities: {
+      interfaces: draft.declared_capabilities.interfaces,
+      contextLimit: draft.declared_capabilities.context_limit,
+    },
+  })
+}
+
+async function assertRegistrationDeploymentConfiguration(
+  deployment: NonNullable<CreateModelRegistrationV2['deployment']>,
+  runtime: V2ModelVersionDeploymentRuntime | undefined,
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted()
+  if (runtime === undefined) {
+    throw new ValidationError('Model Deployment configuration runtime is unavailable', {
+      issues: [
+        {
+          path: '/source/deployment',
+          line: null,
+          code: 'model_deployment_runtime_unavailable',
+          message: 'Endpoint policy and credential configuration could not be validated',
+        },
+      ],
+    })
+  }
+  try {
+    await runtime.configuration(
+      modelVersionDeploymentRuntimeRequestV2({
+        ...deployment,
+        lifecycle: 'registered',
+        policyGeneration: null,
+        credentialGeneration: null,
+        healthStatus: 'unknown',
+        healthCheckedAt: null,
+        healthError: null,
+        createdAt: new Date(0),
+        activatedAt: null,
+        disabledAt: null,
+        updatedAt: new Date(0),
+      }),
+    )
+  } catch (error) {
+    if (
+      error instanceof V2ModelVersionDeploymentRuntimeError &&
+      error.code === 'public_network_disabled' &&
+      deployment.connectivityScope === 'public_network'
+    ) {
+      return
+    }
+    const code =
+      error instanceof V2ModelVersionDeploymentRuntimeError ? error.code : 'runtime_unavailable'
+    throw new ValidationError('Model Deployment configuration was rejected', {
+      issues: [
+        {
+          path:
+            code === 'credential_unavailable'
+              ? '/source/deployment/credential_ref'
+              : '/source/deployment/endpoint_base_url',
+          line: null,
+          code: `model_deployment_${code}`,
+          message: 'Endpoint policy or credential configuration does not admit this Deployment',
+        },
+      ],
+    })
+  }
+  signal?.throwIfAborted()
 }
 
 function catalogJsonObject(value: object): { readonly [key: string]: CatalogJsonValueV2 } {

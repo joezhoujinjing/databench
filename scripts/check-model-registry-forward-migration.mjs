@@ -217,6 +217,78 @@ try {
     throw new Error('0017 did not preserve and extend Model source evidence as designed')
   }
 
+  await seedLegacyModelDeployment()
+  const legacyDeploymentBefore = await legacyModelDeployment()
+  await applyMigration('0018_model_version_deployments_v2')
+  const legacyDeploymentAfter = await legacyModelDeployment()
+  if (JSON.stringify(legacyDeploymentAfter) !== JSON.stringify(legacyDeploymentBefore)) {
+    throw new Error('0018 changed pre-existing artifact-bound Deployment fields')
+  }
+
+  const deploymentProfile = await client.query(`
+    SELECT
+      "deployment_profile", "model_version_id", "connectivity_scope",
+      "credential_ref", "declared_capabilities_json", "policy_generation",
+      "credential_generation", "activated_at"
+    FROM "model_deployments_v2"
+    WHERE "id" = '40000000-0000-8000-8000-000000000001'::uuid
+  `)
+  const deploymentConstraints = await client.query(`
+    SELECT "conname", pg_get_constraintdef("oid") AS "definition"
+    FROM "pg_constraint"
+    WHERE
+      "connamespace" = current_schema()::regnamespace AND
+      "conname" IN (
+        'model_deployments_v2_profile_shape_check',
+        'model_deployments_v2_lifecycle_check',
+        'model_deployments_v2_model_version_fkey',
+        'model_deployments_v2_version_artifact_fkey',
+        'model_registration_claims_v2_deployment_fkey'
+      )
+    ORDER BY "conname" COLLATE "C"
+  `)
+  const deploymentTriggers = await client.query(`
+    SELECT "tgname"
+    FROM "pg_trigger"
+    WHERE
+      NOT "tgisinternal" AND
+      "tgrelid" = 'model_deployments_v2'::regclass AND
+      "tgname" = 'model_deployments_v2_source_binding_check'
+  `)
+  if (
+    JSON.stringify(deploymentProfile.rows) !==
+      JSON.stringify([
+        {
+          deployment_profile: 'artifact-bound-v1',
+          model_version_id: null,
+          connectivity_scope: null,
+          credential_ref: null,
+          declared_capabilities_json: null,
+          policy_generation: null,
+          credential_generation: null,
+          activated_at: null,
+        },
+      ]) ||
+    deploymentConstraints.rows.length !== 5 ||
+    deploymentTriggers.rows.length !== 1
+  ) {
+    throw new Error('0018 did not preserve legacy rows and install the MR5 Deployment shape')
+  }
+  const deploymentDefinitions = deploymentConstraints.rows.map(({ definition }) => definition)
+  if (
+    !deploymentDefinitions.some((definition) =>
+      definition.includes('FOREIGN KEY (namespace_id, model_version_id)'),
+    ) ||
+    !deploymentDefinitions.some((definition) =>
+      definition.includes('FOREIGN KEY (namespace_id, model_version_id, artifact_id)'),
+    ) ||
+    !deploymentDefinitions.some((definition) =>
+      definition.includes('FOREIGN KEY (namespace_id, deployment_id, deployment_digest)'),
+    )
+  ) {
+    throw new Error('0018 Deployment and registration-claim exact FK columns have drifted')
+  }
+
   console.log(
     JSON.stringify({
       status: 'ok',
@@ -230,6 +302,8 @@ try {
         ...adoptionConstraints.rows.map(({ conname }) => conname),
         ...adoptionTriggers.rows.map(({ tgname }) => tgname),
         ...evidenceShape.rows.map(() => 'model_source_evidence_v2_shape_check'),
+        ...deploymentConstraints.rows.map(({ conname }) => conname),
+        ...deploymentTriggers.rows.map(({ tgname }) => tgname),
       ],
     }),
   )
@@ -355,6 +429,132 @@ async function seedMr2Evidence() {
     await client.query('ROLLBACK')
     throw error
   }
+}
+
+async function seedLegacyModelDeployment() {
+  const namespaceId = '11111111-1111-4111-8111-111111111111'
+  const sessionId = '50000000-0000-8000-8000-000000000001'
+  const importId = '60000000-0000-8000-8000-000000000001'
+  const artifactId = '70000000-0000-8000-8000-000000000001'
+  const archiveDigest = '6'.repeat(64)
+  const manifest = {
+    manifest_version: 'model-artifact-manifest-v1',
+    artifact_kind: 'lora_adapter',
+    artifact_format: 'swift-lora-adapter-v1',
+    archive_format: 'deterministic-tar-zst-v1',
+    archive_digest: archiveDigest,
+    archive_size_bytes: 1,
+    output_snapshot_digest: '7'.repeat(64),
+    source: { studio_session_id: sessionId },
+    dataset_lineage: {
+      status: 'not_applicable',
+      dataset_version: null,
+      dataset_export_digest: null,
+    },
+    base_model: {
+      reference: 'Qwen/Qwen3-0.6B',
+      revision: 'abc123',
+      binding_status: 'verified',
+    },
+  }
+  await client.query('BEGIN')
+  try {
+    await client.query(
+      `
+        INSERT INTO "swift_studio_sessions_v2" (
+          "id", "namespace_id", "create_digest", "status", "dataset_version",
+          "display_ref", "converter", "converter_version", "normalized_options_json",
+          "fidelity_digest", "export_output_count", "provider", "provider_session_id",
+          "upstream_commit", "image_digest", "runtime_capability_digest",
+          "preparation_owner_token"
+        ) VALUES (
+          $1::uuid, $2::uuid, $3, 'preparing', $4, 'main', 'ms-swift', '1.0.0',
+          '{}'::jsonb, $5, 1, 'swift-studio', 'forward-session', $6, $7, $8,
+          '80000000-0000-8000-8000-000000000001'::uuid
+        )
+      `,
+      [
+        sessionId,
+        namespaceId,
+        '8'.repeat(64),
+        'a'.repeat(64),
+        '9'.repeat(64),
+        'a'.repeat(40),
+        'b'.repeat(64),
+        'c'.repeat(64),
+      ],
+    )
+    await client.query(
+      `
+        INSERT INTO "model_artifact_imports_v2" (
+          "id", "namespace_id", "create_digest", "status", "studio_session_id",
+          "output_handle_digest", "artifact_kind", "display_name", "base_model_reference"
+        ) VALUES (
+          $1::uuid, $2::uuid, $3, 'requested', $4::uuid, $5, 'lora_adapter',
+          'Forward Artifact', 'Qwen/Qwen3-0.6B'
+        )
+      `,
+      [importId, namespaceId, 'd'.repeat(64), sessionId, 'e'.repeat(64)],
+    )
+    await client.query(
+      `
+        INSERT INTO "model_artifacts_v2" (
+          "id", "namespace_id", "display_name", "artifact_kind", "artifact_format",
+          "archive_format", "archive_digest", "archive_size_bytes", "object_locator",
+          "manifest_digest", "manifest_json", "source_kind", "source_session_id",
+          "source_import_id", "dataset_lineage_status", "base_model_reference",
+          "base_model_revision", "base_model_binding_status", "upstream_commit", "image_digest"
+        ) VALUES (
+          $1::uuid, $2::uuid, 'Forward Artifact', 'lora_adapter',
+          'swift-lora-adapter-v1', 'deterministic-tar-zst-v1', $3, 1,
+          $4, $5, $6::jsonb, 'swift_studio_session', $7::uuid, $8::uuid,
+          'not_applicable', 'Qwen/Qwen3-0.6B', 'abc123', 'verified', $9, $10
+        )
+      `,
+      [
+        artifactId,
+        namespaceId,
+        archiveDigest,
+        `objects/v2/model-artifact-v1/${archiveDigest.slice(0, 2)}/${archiveDigest}.tar.zst`,
+        'f'.repeat(64),
+        JSON.stringify(manifest),
+        sessionId,
+        importId,
+        'a'.repeat(40),
+        'b'.repeat(64),
+      ],
+    )
+    await client.query(
+      `
+        INSERT INTO "model_deployments_v2" (
+          "id", "namespace_id", "create_digest", "artifact_id", "provider",
+          "display_name", "served_model_name", "endpoint_base_url", "auth_mode", "status"
+        ) VALUES (
+          '40000000-0000-8000-8000-000000000001'::uuid, $1::uuid, $2, $3::uuid,
+          'openai_compatible', 'Forward Legacy Deployment', 'forward-model',
+          'http://model-service:8000/v1', 'none', 'active'
+        )
+      `,
+      [namespaceId, '1'.repeat(64), artifactId],
+    )
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  }
+}
+
+async function legacyModelDeployment() {
+  const result = await client.query(`
+    SELECT
+      "id"::text, "namespace_id"::text, "create_digest", "artifact_id"::text,
+      "provider", "display_name", "served_model_name", "endpoint_base_url",
+      "auth_mode", "status", "health_status", "health_checked_at", "health_error",
+      "created_at", "disabled_at", "updated_at"
+    FROM "model_deployments_v2"
+    WHERE "id" = '40000000-0000-8000-8000-000000000001'::uuid
+  `)
+  return result.rows
 }
 
 async function legacyRows() {

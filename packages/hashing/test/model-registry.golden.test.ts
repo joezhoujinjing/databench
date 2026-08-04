@@ -16,6 +16,7 @@ import {
   hashV2ModelVersionCreateArtifact,
   hashV2ModelVersionCreateRepository,
   hashV2ModelVersionCreateService,
+  hashV2ModelVersionDeploymentCreate,
 } from '../src/index.js'
 
 interface Fixture {
@@ -30,6 +31,7 @@ interface Fixture {
 const hashByProfile: Record<string, (input: never) => string> = {
   'model-create-v1': hashV2ModelCreate,
   'model-deployment-adoption-v1': hashV2ModelDeploymentAdoption,
+  'model-deployment-create-v2': hashV2ModelVersionDeploymentCreate,
   'model-source-fingerprint-artifact-v1': hashV2ModelSourceFingerprintArtifact,
   'model-source-fingerprint-repository-v1': hashV2ModelSourceFingerprintRepository,
   'model-source-fingerprint-service-v1': hashV2ModelSourceFingerprintService,

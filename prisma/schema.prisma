@@ -376,32 +376,47 @@ model V2ModelArtifact {
 }
 
 model V2ModelDeployment {
-  id              String    @id @db.Uuid
-  namespaceId     String    @map("namespace_id") @db.Uuid
-  createDigest    String    @map("create_digest") @db.Char(64)
-  artifactId      String    @map("artifact_id") @db.Uuid
-  provider        String
-  displayName     String    @map("display_name")
-  servedModelName String    @map("served_model_name")
-  endpointBaseUrl String    @map("endpoint_base_url")
-  authMode        String    @map("auth_mode")
-  status          String
-  healthStatus    String    @default("unknown") @map("health_status")
-  healthCheckedAt DateTime? @map("health_checked_at") @db.Timestamptz(6)
-  healthError     String?   @map("health_error")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  disabledAt      DateTime? @map("disabled_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String    @id @db.Uuid
+  namespaceId          String    @map("namespace_id") @db.Uuid
+  deploymentProfile    String    @map("deployment_profile")
+  createDigest         String    @map("create_digest") @db.Char(64)
+  artifactId           String?   @map("artifact_id") @db.Uuid
+  modelVersionId       String?   @map("model_version_id") @db.Uuid
+  provider             String
+  displayName          String    @map("display_name")
+  servedModelName      String    @map("served_model_name")
+  endpointBaseUrl      String    @map("endpoint_base_url")
+  connectivityScope    String?   @map("connectivity_scope")
+  authMode             String    @map("auth_mode")
+  credentialRef        String?   @map("credential_ref")
+  declaredCapabilities Json?     @map("declared_capabilities_json")
+  status               String
+  policyGeneration     BigInt?   @map("policy_generation")
+  credentialGeneration BigInt?   @map("credential_generation")
+  healthStatus         String    @default("unknown") @map("health_status")
+  healthCheckedAt      DateTime? @map("health_checked_at") @db.Timestamptz(6)
+  healthError          String?   @map("health_error")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  activatedAt          DateTime? @map("activated_at") @db.Timestamptz(6)
+  disabledAt           DateTime? @map("disabled_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  namespace            V2IdentityNamespace               @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  artifact             V2ModelArtifact                   @relation(fields: [namespaceId, artifactId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
-  evaluationRuns       V2EvaluationRun[]                 @relation("V2EvaluationRunDeployment")
-  modelVersionAdoption V2ModelVersionDeploymentAdoption?
+  namespace               V2IdentityNamespace               @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  artifact                V2ModelArtifact?                  @relation(fields: [namespaceId, artifactId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+  modelVersion            V2ModelVersion?                   @relation(fields: [namespaceId, modelVersionId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
+  modelVersionArtifact    V2ModelVersionArtifactSource?     @relation(fields: [namespaceId, modelVersionId, artifactId], references: [namespaceId, modelVersionId, artifactId], onDelete: Restrict, onUpdate: Restrict)
+  evaluationRuns          V2EvaluationRun[]                 @relation("V2EvaluationRunDeployment")
+  modelVersionAdoption    V2ModelVersionDeploymentAdoption?
+  modelRegistrationClaims V2ModelRegistrationClaim[]
 
   @@unique([namespaceId, createDigest], map: "uq_model_deployments_v2_create_digest")
+  @@unique([namespaceId, id], map: "uq_model_deployments_v2_namespace_id")
+  @@unique([namespaceId, id, createDigest], map: "uq_model_deployments_v2_namespace_id_digest")
   @@unique([namespaceId, id, artifactId, createDigest], map: "uq_model_deployments_v2_namespace_id_artifact_digest")
+  @@unique([namespaceId, modelVersionId, id, createDigest], map: "uq_model_deployments_v2_version_id_digest")
   @@index([namespaceId, status, createdAt, id], map: "idx_model_deployments_v2_status")
   @@index([namespaceId, artifactId, createdAt, id], map: "idx_model_deployments_v2_artifact")
+  @@index([namespaceId, modelVersionId, status, createdAt, id], map: "idx_model_deployments_v2_version")
   @@map("model_deployments_v2")
 }
 
@@ -455,6 +470,7 @@ model V2ModelVersion {
   aliases             V2ModelAlias[]
   registrationClaims  V2ModelRegistrationClaim[]
   deploymentAdoptions V2ModelVersionDeploymentAdoption[]
+  deployments         V2ModelDeployment[]
 
   @@unique([namespaceId, id], map: "uq_model_versions_v2_namespace_id")
   @@unique([namespaceId, modelId, id], map: "uq_model_versions_v2_model_id")
@@ -477,6 +493,7 @@ model V2ModelVersionArtifactSource {
   modelVersion        V2ModelVersion                     @relation(fields: [namespaceId, modelVersionId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
   artifact            V2ModelArtifact                    @relation(fields: [namespaceId, artifactId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
   deploymentAdoptions V2ModelVersionDeploymentAdoption[]
+  deployments         V2ModelDeployment[]
 
   @@id([namespaceId, modelVersionId])
   @@unique([namespaceId, modelVersionId, artifactId], map: "uq_model_version_artifact_sources_v2_binding")
@@ -562,12 +579,15 @@ model V2ModelRegistrationClaim {
   normalizedRequest  Json     @map("normalized_request_json")
   modelId            String   @map("model_id") @db.Uuid
   modelVersionId     String   @map("model_version_id") @db.Uuid
+  deploymentId       String?  @map("deployment_id") @db.Uuid
+  deploymentDigest   String?  @map("deployment_digest") @db.Char(64)
   aliasName          String?  @map("alias_name")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   namespace    V2IdentityNamespace @relation(fields: [namespaceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   model        V2Model             @relation(fields: [namespaceId, modelId], references: [namespaceId, id], onDelete: Restrict, onUpdate: Restrict)
   modelVersion V2ModelVersion      @relation(fields: [namespaceId, modelId, modelVersionId], references: [namespaceId, modelId, id], onDelete: Restrict, onUpdate: Restrict)
+  deployment   V2ModelDeployment?  @relation(fields: [namespaceId, deploymentId, deploymentDigest], references: [namespaceId, id, createDigest], onDelete: Restrict, onUpdate: Restrict)
   alias        V2ModelAlias?       @relation(fields: [namespaceId, modelId, aliasName], references: [namespaceId, modelId, alias], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([namespaceId, registrationDigest])

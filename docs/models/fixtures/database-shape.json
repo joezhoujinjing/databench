@@ -1,7 +1,8 @@
 {
-  "fixture_version": 1,
+  "fixture_version": 2,
   "decision": "ADR-0019",
-  "status": "verified-design",
+  "status": "implemented-through-mr5",
+  "last_implemented_migration": "0018_model_version_deployments_v2",
   "core_tables": [
     "models_v2",
     "model_versions_v2",
@@ -62,6 +63,31 @@
       "internal_resolver": "/internal/v2/model-deployments/{deployment_id}:resolve"
     }
   },
+  "deployment_unique_keys": [
+    ["namespace_id", "create_digest"],
+    ["namespace_id", "id"],
+    ["namespace_id", "id", "create_digest"],
+    ["namespace_id", "id", "artifact_id", "create_digest"],
+    ["namespace_id", "model_version_id", "id", "create_digest"]
+  ],
+  "deployment_source_binding": {
+    "mechanism": "deferred_constraint_trigger",
+    "artifact_source": "exact_primary_artifact",
+    "repository_service_source": "artifact_id_null"
+  },
+  "deployment_activation_snapshots": {
+    "policy_generation": "nullable_positive_safe_integer",
+    "credential_generation": "nullable_positive_safe_integer",
+    "registered_requires_generations_null": true,
+    "active_requires_policy_generation": true,
+    "bearer_active_requires_credential_generation": true
+  },
+  "registration_claim_deployment_locator": {
+    "columns": ["deployment_id", "deployment_digest"],
+    "nullability": "both_or_neither",
+    "foreign_key": ["namespace_id", "deployment_id", "deployment_digest"],
+    "references": ["model_deployments_v2", "namespace_id", "id", "create_digest"]
+  },
   "legacy_adoption": {
     "table": "model_version_deployment_adoptions_v2",
     "primary_key": ["namespace_id", "deployment_id"],
@@ -99,6 +125,7 @@
       "references": ["model_deployments_v2", "namespace_id", "id", "artifact_id", "create_digest"]
     }
   ],
+  "evaluation_v5_v6_status": "planned-mr6",
   "migration_rules": {
     "additive": true,
     "foreign_key_action": "RESTRICT",

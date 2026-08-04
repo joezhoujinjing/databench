@@ -10,6 +10,7 @@ import {
   type ModelVersionCreateArtifactIdentityV1,
   type ModelVersionCreateRepositoryIdentityV1,
   type ModelVersionCreateServiceIdentityV1,
+  type ModelVersionDeploymentCreateIdentityV2,
   V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE,
@@ -21,6 +22,7 @@ import {
   V2_MODEL_VERSION_CREATE_ARTIFACT_PROFILE,
   V2_MODEL_VERSION_CREATE_REPOSITORY_PROFILE,
   V2_MODEL_VERSION_CREATE_SERVICE_PROFILE,
+  V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE,
 } from '@databench/hashing'
 import { z } from 'zod'
 import { DigestHexSchema, Rfc3339UtcSchema } from './common.js'
@@ -53,6 +55,8 @@ export const V2_MODEL_REGISTRATION_WARNING_MAX_ITEMS = 32
 export const V2_MODEL_DECLARED_INTERFACE_MAX_ITEMS = 4
 export const V2_MODEL_VERSION_PAGE_DEFAULT_LIMIT = 20
 export const V2_MODEL_VERSION_PAGE_MAX_LIMIT = 100
+export const V2_MODEL_VERSION_DEPLOYMENT_PAGE_DEFAULT_LIMIT = 20
+export const V2_MODEL_VERSION_DEPLOYMENT_PAGE_MAX_LIMIT = 100
 
 const SAFE_TOKEN = /^[a-z][a-z0-9._-]{0,127}$/
 const REPOSITORY_REVISION = /^[A-Za-z0-9][A-Za-z0-9._+:/-]{0,255}$/
@@ -145,6 +149,166 @@ export const ModelDeploymentDraftV2Schema = z
       })
     }
   })
+
+export const ModelVersionDeploymentCreateIdentityV2Schema: z.ZodType<ModelVersionDeploymentCreateIdentityV2> =
+  z.strictObject({
+    model_deployment_create_profile: z.literal(V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE),
+    namespace: IdentityNamespaceV2Schema,
+    model_version_id: ModelVersionIdV2Schema,
+    source_fingerprint: DigestHexSchema,
+    provider: z.literal('openai_compatible'),
+    display_name: ModelDeploymentDisplayNameV2Schema,
+    served_model_name: ModelDeploymentServedModelNameV2Schema,
+    endpoint_base_url: ModelDeploymentEndpointBaseUrlV2Schema,
+    connectivity_scope: ModelConnectivityScopeV2Schema,
+    auth_profile: ModelAuthProfileV2Schema,
+    credential_ref: ModelCredentialRefV2Schema.nullable(),
+    declared_capabilities: ModelDeclaredCapabilitiesV2Schema,
+  })
+
+export const ModelVersionDeploymentLifecycleV2Schema = z.enum(['registered', 'active', 'disabled'])
+export const ModelVersionDeploymentAvailabilityV2Schema = z.enum(['available', 'unavailable'])
+export const ModelVersionDeploymentUnavailableReasonV2Schema = z.enum([
+  'not_active',
+  'public_network_disabled',
+  'policy_generation_changed',
+  'credential_generation_changed',
+  'credential_unavailable',
+  'runtime_unavailable',
+])
+export const ModelVersionDeploymentHealthStatusV2Schema = z.enum([
+  'unknown',
+  'healthy',
+  'unhealthy',
+])
+export const ModelVersionDeploymentHealthErrorCodeV2Schema = z.enum([
+  'timeout',
+  'network_error',
+  'http_error',
+  'invalid_response',
+  'served_model_missing',
+  'policy_rejected',
+  'credential_rejected',
+  'configuration_changed',
+  'unhealthy',
+])
+
+export const ModelVersionDeploymentParamsV2Schema = z
+  .strictObject({
+    version_id: ModelVersionIdV2Schema,
+    deployment_id: z.uuid(),
+  })
+  .meta({ id: 'ModelVersionDeploymentParamsV2' })
+
+export const CreateModelVersionDeploymentRequestV2Schema = ModelDeploymentDraftV2Schema.meta({
+  id: 'CreateModelVersionDeploymentRequestV2',
+})
+export type CreateModelVersionDeploymentRequestV2 = z.infer<
+  typeof CreateModelVersionDeploymentRequestV2Schema
+>
+
+export const ActivateModelVersionDeploymentRequestV2Schema = z
+  .strictObject({})
+  .meta({ id: 'ActivateModelVersionDeploymentRequestV2' })
+export const CheckModelVersionDeploymentRequestV2Schema = z
+  .strictObject({})
+  .meta({ id: 'CheckModelVersionDeploymentRequestV2' })
+export const DisableModelVersionDeploymentRequestV2Schema = z
+  .strictObject({})
+  .meta({ id: 'DisableModelVersionDeploymentRequestV2' })
+
+export const ModelVersionDeploymentPageRequestV2Schema = z
+  .strictObject({
+    lifecycle: ModelVersionDeploymentLifecycleV2Schema.optional(),
+    cursor: OpaqueCursorQueryV2Schema,
+    limit: z.coerce
+      .number()
+      .int()
+      .safe()
+      .min(1)
+      .max(V2_MODEL_VERSION_DEPLOYMENT_PAGE_MAX_LIMIT)
+      .default(V2_MODEL_VERSION_DEPLOYMENT_PAGE_DEFAULT_LIMIT),
+  })
+  .meta({ id: 'ModelVersionDeploymentPageRequestV2' })
+export type ModelVersionDeploymentPageRequestV2 = z.infer<
+  typeof ModelVersionDeploymentPageRequestV2Schema
+>
+
+export const ModelVersionDeploymentV2Schema = z
+  .strictObject({
+    id: z.uuid(),
+    model_version_id: ModelVersionIdV2Schema,
+    display_name: ModelDeploymentDisplayNameV2Schema,
+    provider: z.literal('openai_compatible'),
+    served_model_name: ModelDeploymentServedModelNameV2Schema,
+    connectivity_scope: ModelConnectivityScopeV2Schema,
+    auth_profile: ModelAuthProfileV2Schema,
+    declared_capabilities: ModelDeclaredCapabilitiesV2Schema,
+    lifecycle: ModelVersionDeploymentLifecycleV2Schema,
+    availability: ModelVersionDeploymentAvailabilityV2Schema,
+    unavailable_reason: ModelVersionDeploymentUnavailableReasonV2Schema.nullable(),
+    health_status: ModelVersionDeploymentHealthStatusV2Schema,
+    health_checked_at: Rfc3339UtcSchema.nullable(),
+    health_error_code: ModelVersionDeploymentHealthErrorCodeV2Schema.nullable(),
+    created_at: Rfc3339UtcSchema,
+    activated_at: Rfc3339UtcSchema.nullable(),
+    disabled_at: Rfc3339UtcSchema.nullable(),
+    updated_at: Rfc3339UtcSchema,
+  })
+  .superRefine((deployment, context) => {
+    if ((deployment.availability === 'unavailable') !== (deployment.unavailable_reason !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['unavailable_reason'],
+        message: 'Unavailable deployments require one unavailable reason',
+      })
+    }
+    if ((deployment.health_status === 'unknown') !== (deployment.health_checked_at === null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['health_checked_at'],
+        message: 'Known health observations require health_checked_at',
+      })
+    }
+    if ((deployment.health_status === 'unhealthy') !== (deployment.health_error_code !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['health_error_code'],
+        message: 'Only unhealthy deployments expose a health error code',
+      })
+    }
+    if ((deployment.lifecycle === 'disabled') !== (deployment.disabled_at !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['disabled_at'],
+        message: 'Only disabled deployments expose disabled_at',
+      })
+    }
+    if (deployment.lifecycle === 'active' && deployment.activated_at === null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['activated_at'],
+        message: 'Active deployments require activated_at',
+      })
+    }
+    if (deployment.lifecycle === 'registered' && deployment.activated_at !== null) {
+      context.addIssue({
+        code: 'custom',
+        path: ['activated_at'],
+        message: 'Registered deployments cannot expose activated_at',
+      })
+    }
+  })
+  .meta({ id: 'ModelVersionDeploymentV2' })
+export type ModelVersionDeploymentV2 = z.infer<typeof ModelVersionDeploymentV2Schema>
+
+export const ModelVersionDeploymentPageV2Schema = z
+  .strictObject({
+    items: z.array(ModelVersionDeploymentV2Schema).max(V2_MODEL_VERSION_DEPLOYMENT_PAGE_MAX_LIMIT),
+    next_cursor: z.string().min(1).max(1_536).nullable(),
+  })
+  .meta({ id: 'ModelVersionDeploymentPageV2' })
+export type ModelVersionDeploymentPageV2 = z.infer<typeof ModelVersionDeploymentPageV2Schema>
 
 export const ModelArtifactRegistrationSourceV2Schema = z.strictObject({
   kind: z.literal('databench_artifact'),
@@ -257,6 +421,7 @@ const registrationPlanCommonShape = {
   classification: ModelSourceClassificationV2Schema,
   warnings: z.array(ModelRegistrationWarningV2Schema).max(V2_MODEL_REGISTRATION_WARNING_MAX_ITEMS),
   registration_digest: DigestHexSchema,
+  deployment: z.strictObject({ id: z.uuid(), create_digest: DigestHexSchema }).nullable(),
 }
 export const ModelRegistrationPlanArtifactV2Schema = z.strictObject({
   plan_profile: z.literal(V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE),
@@ -299,7 +464,11 @@ export type CommitArtifactModelRegistrationRequestV2 = z.infer<
 >
 
 export const ModelRegistryRegistrationRequestV2Schema = z
-  .union([ModelArtifactRegistrationRequestV2Schema, ModelRepositoryRegistrationRequestV2Schema])
+  .union([
+    ModelArtifactRegistrationRequestV2Schema,
+    ModelRepositoryRegistrationRequestV2Schema,
+    ModelServiceRegistrationRequestV2Schema,
+  ])
   .meta({ id: 'ModelRegistryRegistrationRequestV2' })
 export type ModelRegistryRegistrationRequestV2 = z.infer<
   typeof ModelRegistryRegistrationRequestV2Schema
@@ -316,7 +485,11 @@ export type CommitModelRegistryRegistrationRequestV2 = z.infer<
 >
 
 export const ModelRegistryRegistrationPlanV2Schema = z
-  .union([ModelRegistrationPlanArtifactV2Schema, ModelRegistrationPlanRepositoryV2Schema])
+  .union([
+    ModelRegistrationPlanArtifactV2Schema,
+    ModelRegistrationPlanRepositoryV2Schema,
+    ModelRegistrationPlanServiceV2Schema,
+  ])
   .meta({ id: 'ModelRegistryRegistrationPlanV2' })
 
 export const ModelRegistrationCommitResultV2Schema = z
@@ -325,8 +498,19 @@ export const ModelRegistrationCommitResultV2Schema = z
     model_id: ModelIdV2Schema,
     model_version_id: ModelVersionIdV2Schema,
     source_fingerprint: DigestHexSchema,
+    deployment_id: z.uuid().nullable(),
+    deployment_digest: DigestHexSchema.nullable(),
     alias: ModelAliasNameV2Schema.nullable(),
     replayed: z.boolean(),
+  })
+  .superRefine((result, context) => {
+    if ((result.deployment_id === null) !== (result.deployment_digest === null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['deployment_id'],
+        message: 'Deployment ID and digest must both be present or absent',
+      })
+    }
   })
   .meta({ id: 'ModelRegistrationCommitResultV2' })
 export type ModelRegistrationCommitResultV2 = z.infer<typeof ModelRegistrationCommitResultV2Schema>
@@ -415,6 +599,47 @@ export const ModelVersionSourceV2Schema = z.discriminatedUnion('kind', [
   }),
 ])
 export type ModelVersionSourceV2 = z.infer<typeof ModelVersionSourceV2Schema>
+
+const resolvedModelVersionDeploymentCommonShape = {
+  id: z.uuid(),
+  model_id: ModelIdV2Schema,
+  model_version_id: ModelVersionIdV2Schema,
+  create_digest: DigestHexSchema,
+  source_fingerprint: DigestHexSchema,
+  provider: z.literal('openai_compatible'),
+  served_model_name: ModelDeploymentServedModelNameV2Schema,
+  endpoint_base_url: ModelDeploymentEndpointBaseUrlV2Schema,
+  connectivity_scope: ModelConnectivityScopeV2Schema,
+  auth_profile: ModelAuthProfileV2Schema,
+  credential_ref: ModelCredentialRefV2Schema.nullable(),
+  declared_capabilities: ModelDeclaredCapabilitiesV2Schema,
+}
+
+export const ResolvedModelVersionDeploymentV2Schema = z
+  .discriminatedUnion('source_kind', [
+    z.strictObject({
+      ...resolvedModelVersionDeploymentCommonShape,
+      source_kind: z.literal('databench_artifact'),
+      artifact_id: ModelArtifactIdV2Schema,
+      source: ModelVersionSourceV2Schema.options[0],
+    }),
+    z.strictObject({
+      ...resolvedModelVersionDeploymentCommonShape,
+      source_kind: z.literal('repository_reference'),
+      artifact_id: z.null(),
+      source: ModelVersionSourceV2Schema.options[1],
+    }),
+    z.strictObject({
+      ...resolvedModelVersionDeploymentCommonShape,
+      source_kind: z.literal('existing_service'),
+      artifact_id: z.null(),
+      source: ModelVersionSourceV2Schema.options[2],
+    }),
+  ])
+  .meta({ id: 'ResolvedModelVersionDeploymentV2' })
+export type ResolvedModelVersionDeploymentV2 = z.infer<
+  typeof ResolvedModelVersionDeploymentV2Schema
+>
 
 export const ModelVersionV2Schema = z
   .strictObject({

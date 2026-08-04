@@ -42,6 +42,7 @@ export {
   type V2ModelCursorState,
   type V2ModelDeploymentCursorState,
   type V2ModelVersionCursorState,
+  type V2ModelVersionDeploymentCursorState,
   type V2SwiftStudioSessionCursorState,
 } from './cursor.js'
 export { evaluationBenchmarkFromPlanV2, evaluationRunFromCatalogV2 } from './evaluation.js'
@@ -65,10 +66,20 @@ export {
 } from './model-artifact.js'
 export {
   DENY_ALL_MODEL_DEPLOYMENT_HEALTH_CLIENT_V2,
+  DENY_ALL_MODEL_VERSION_DEPLOYMENT_RUNTIME_V2,
   modelDeploymentFromCatalogV2,
+  modelVersionDeploymentFromCatalogV2,
+  modelVersionDeploymentRuntimeRequestV2,
   resolvedModelDeploymentFromCatalogV2,
+  resolvedModelVersionDeploymentFromCatalogV2,
   type V2ModelDeploymentHealthClient,
   type V2ModelDeploymentHealthRequest,
+  type V2ModelVersionDeploymentConfigurationV2,
+  type V2ModelVersionDeploymentRuntime,
+  V2ModelVersionDeploymentRuntimeError,
+  type V2ModelVersionDeploymentRuntimeErrorCode,
+  type V2ModelVersionDeploymentRuntimeRequest,
+  type V2ModelVersionDeploymentUnavailableReason,
 } from './model-deployment.js'
 export {
   commitModelRegistrationV2,

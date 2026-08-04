@@ -620,6 +620,38 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v2/model-versions/{version_id}/deployments': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get: operations['listModelVersionDeploymentsV2']
+    put?: never
+    post: operations['createModelVersionDeploymentV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/model-versions/{version_id}/deployments/{deployment_id}:activate': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['activateModelVersionDeploymentV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v2/model-versions/{version_id}/deployments/{deployment_id}:adopt': {
     parameters: {
       query?: never
@@ -630,6 +662,38 @@ export interface paths {
     get?: never
     put?: never
     post: operations['adoptModelDeploymentV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/model-versions/{version_id}/deployments/{deployment_id}:check': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['checkModelVersionDeploymentV2']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v2/model-versions/{version_id}/deployments/{deployment_id}:disable': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post: operations['disableModelVersionDeploymentV2']
     delete?: never
     options?: never
     head?: never
@@ -1052,6 +1116,7 @@ export interface paths {
 export type webhooks = Record<string, never>
 export interface components {
   schemas: {
+    ActivateModelVersionDeploymentRequestV2: Record<string, never>
     AdoptModelDeploymentRequestV2: {
       /** Format: uuid */
       expected_artifact_id: string
@@ -1123,6 +1188,7 @@ export interface components {
       }
     }
     CheckModelDeploymentRequestV2: Record<string, never>
+    CheckModelVersionDeploymentRequestV2: Record<string, never>
     CloseSwiftStudioSessionRequestV2: Record<string, never>
     CommitModelRegistryRegistrationRequestV2: {
       expected_registration_digest: string
@@ -1203,6 +1269,20 @@ export interface components {
       endpoint_base_url: string
       /** @enum {string} */
       provider: 'openai_compatible'
+      served_model_name: string
+    }
+    CreateModelVersionDeploymentRequestV2: {
+      /** @enum {string} */
+      auth_profile: 'none' | 'bearer_ref'
+      /** @enum {string} */
+      connectivity_scope: 'private_network' | 'public_network'
+      credential_ref: string | null
+      declared_capabilities: {
+        context_limit: number | null
+        interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+      }
+      display_name: string
+      endpoint_base_url: string
       served_model_name: string
     }
     CreateSwiftStudioSessionRequestV2: {
@@ -1293,6 +1373,7 @@ export interface components {
       }
     }
     DisableModelDeploymentRequestV2: Record<string, never>
+    DisableModelVersionDeploymentRequestV2: Record<string, never>
     /** @enum {string} */
     EligibilityReasonCodeV2:
       | 'selected_candidate_missing'
@@ -1848,6 +1929,9 @@ export interface components {
     ModelRegistrationCommitResultV2: {
       /** @enum {string|null} */
       alias: 'candidate' | 'staging' | 'production' | null
+      deployment_digest: string | null
+      /** Format: uuid */
+      deployment_id: string | null
       /** Format: uuid */
       model_id: string
       /** Format: uuid */
@@ -1869,6 +1953,11 @@ export interface components {
               | 'operator_attested'
               | 'unverified'
           }
+          deployment: {
+            create_digest: string
+            /** Format: uuid */
+            id: string
+          } | null
           model_create_digest: string | null
           /** Format: uuid */
           model_id: string
@@ -1940,6 +2029,11 @@ export interface components {
               | 'operator_attested'
               | 'unverified'
           }
+          deployment: {
+            create_digest: string
+            /** Format: uuid */
+            id: string
+          } | null
           model_create_digest: string | null
           /** Format: uuid */
           model_id: string
@@ -1998,6 +2092,90 @@ export interface components {
           }
           /** @enum {string} */
           plan_profile: 'model-registration-plan-repository-v1'
+          registration_digest: string
+          source_fingerprint: string
+          version_create_digest: string
+          warnings: {
+            code: string
+            message: string
+            path: string
+          }[]
+        }
+      | {
+          classification: {
+            evidence_digest: string | null
+            /** @enum {string} */
+            source_mutability: 'immutable' | 'mutable' | 'unknown'
+            /** @enum {string} */
+            verification_level:
+              | 'content_verified'
+              | 'provider_verified'
+              | 'operator_attested'
+              | 'unverified'
+          }
+          deployment: {
+            create_digest: string
+            /** Format: uuid */
+            id: string
+          } | null
+          model_create_digest: string | null
+          /** Format: uuid */
+          model_id: string
+          normalized_request: {
+            alias?: {
+              /** @enum {string} */
+              alias: 'candidate' | 'staging' | 'production'
+              /** Format: uuid */
+              expected_version_id: string | null
+            }
+            source: {
+              base_model: {
+                reference: string
+                revision: string | null
+              } | null
+              /** @enum {string} */
+              declared_reference_kind: 'immutable_version' | 'mutable_alias' | 'opaque'
+              deployment: {
+                /** @enum {string} */
+                auth_profile: 'none' | 'bearer_ref'
+                /** @enum {string} */
+                connectivity_scope: 'private_network' | 'public_network'
+                credential_ref: string | null
+                declared_capabilities: {
+                  context_limit: number | null
+                  interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+                }
+                display_name: string
+                endpoint_base_url: string
+                served_model_name: string
+              }
+              external_model_ref: string
+              external_version_ref: string
+              /** @enum {string} */
+              kind: 'existing_service'
+              /** @enum {string} */
+              provider: 'openai_compatible'
+            }
+            target:
+              | {
+                  description: string
+                  display_name: string
+                  key: string
+                  /** @enum {string} */
+                  kind: 'create_model'
+                  tags: string[]
+                  task_family: string | null
+                }
+              | {
+                  /** @enum {string} */
+                  kind: 'existing_model'
+                  /** Format: uuid */
+                  model_id: string
+                }
+            version_label: string
+          }
+          /** @enum {string} */
+          plan_profile: 'model-registration-plan-service-v1'
           registration_digest: string
           source_fingerprint: string
           version_create_digest: string
@@ -2106,6 +2284,59 @@ export interface components {
               }
           version_label: string
         }
+      | {
+          alias?: {
+            /** @enum {string} */
+            alias: 'candidate' | 'staging' | 'production'
+            /** Format: uuid */
+            expected_version_id: string | null
+          }
+          source: {
+            base_model: {
+              reference: string
+              revision: string | null
+            } | null
+            /** @enum {string} */
+            declared_reference_kind: 'immutable_version' | 'mutable_alias' | 'opaque'
+            deployment: {
+              /** @enum {string} */
+              auth_profile: 'none' | 'bearer_ref'
+              /** @enum {string} */
+              connectivity_scope: 'private_network' | 'public_network'
+              credential_ref: string | null
+              declared_capabilities: {
+                context_limit: number | null
+                interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+              }
+              display_name: string
+              endpoint_base_url: string
+              served_model_name: string
+            }
+            external_model_ref: string
+            external_version_ref: string
+            /** @enum {string} */
+            kind: 'existing_service'
+            /** @enum {string} */
+            provider: 'openai_compatible'
+          }
+          target:
+            | {
+                description: string
+                display_name: string
+                key: string
+                /** @enum {string} */
+                kind: 'create_model'
+                tags: string[]
+                task_family: string | null
+              }
+            | {
+                /** @enum {string} */
+                kind: 'existing_model'
+                /** Format: uuid */
+                model_id: string
+              }
+          version_label: string
+        }
     ModelSourceEvidenceRecordV2: {
       adapter: string
       adapter_version: string
@@ -2136,6 +2367,60 @@ export interface components {
       metadata_revision: number
       tags: string[]
       task_family: string | null
+      updated_at: string
+    }
+    ModelVersionDeploymentPageV2: {
+      items: components['schemas']['ModelVersionDeploymentV2'][]
+      next_cursor: string | null
+    }
+    ModelVersionDeploymentV2: {
+      activated_at: string | null
+      /** @enum {string} */
+      auth_profile: 'none' | 'bearer_ref'
+      /** @enum {string} */
+      availability: 'available' | 'unavailable'
+      /** @enum {string} */
+      connectivity_scope: 'private_network' | 'public_network'
+      created_at: string
+      declared_capabilities: {
+        context_limit: number | null
+        interfaces: ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+      }
+      disabled_at: string | null
+      display_name: string
+      health_checked_at: string | null
+      /** @enum {string|null} */
+      health_error_code:
+        | 'timeout'
+        | 'network_error'
+        | 'http_error'
+        | 'invalid_response'
+        | 'served_model_missing'
+        | 'policy_rejected'
+        | 'credential_rejected'
+        | 'configuration_changed'
+        | 'unhealthy'
+        | null
+      /** @enum {string} */
+      health_status: 'unknown' | 'healthy' | 'unhealthy'
+      /** Format: uuid */
+      id: string
+      /** @enum {string} */
+      lifecycle: 'registered' | 'active' | 'disabled'
+      /** Format: uuid */
+      model_version_id: string
+      /** @enum {string} */
+      provider: 'openai_compatible'
+      served_model_name: string
+      /** @enum {string|null} */
+      unavailable_reason:
+        | 'not_active'
+        | 'public_network_disabled'
+        | 'policy_generation_changed'
+        | 'credential_generation_changed'
+        | 'credential_unavailable'
+        | 'runtime_unavailable'
+        | null
       updated_at: string
     }
     ModelVersionPageV2: {
@@ -7393,6 +7678,406 @@ export interface operations {
       }
     }
   }
+  listModelVersionDeploymentsV2: {
+    parameters: {
+      query?: {
+        lifecycle?: 'registered' | 'active' | 'disabled'
+        cursor?: string | null
+        limit?: number
+      }
+      header?: never
+      path: {
+        version_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Model Version Deployments */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ModelVersionDeploymentPageV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Invalid Model Deployment page request */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  createModelVersionDeploymentV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        version_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateModelVersionDeploymentRequestV2']
+      }
+    }
+    responses: {
+      /** @description Created or replayed Model Version Deployment */
+      201: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ModelVersionDeploymentV2']
+        }
+      }
+      /** @description Malformed Model Deployment request */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Model Artifact was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Model Deployment create conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description Model Deployment request is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Model Artifact is not deployable */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  activateModelVersionDeploymentV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        version_id: string
+        deployment_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ActivateModelVersionDeploymentRequestV2']
+      }
+    }
+    responses: {
+      /** @description activate Model Deployment */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ModelVersionDeploymentV2']
+        }
+      }
+      /** @description Malformed Model Deployment action */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Model Deployment was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Model Deployment state conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description Model Deployment action is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid Model Deployment identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
   adoptModelDeploymentV2: {
     parameters: {
       query?: never
@@ -7494,6 +8179,306 @@ export interface operations {
         }
       }
       /** @description Invalid Model identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  checkModelVersionDeploymentV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        version_id: string
+        deployment_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CheckModelVersionDeploymentRequestV2']
+      }
+    }
+    responses: {
+      /** @description check Model Deployment */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ModelVersionDeploymentV2']
+        }
+      }
+      /** @description Malformed Model Deployment action */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Model Deployment was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Model Deployment state conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description Model Deployment action is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid Model Deployment identifier */
+      422: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ValidationErrorResponseV2']
+        }
+      }
+      /** @description Request rate limit exceeded */
+      429: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TooManyRequestsErrorResponseV2']
+        }
+      }
+      /** @description V2 integrity or internal failure */
+      500: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse500V2']
+        }
+      }
+      /** @description V2 capacity or dependency is unavailable */
+      503: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse503V2']
+        }
+      }
+    }
+  }
+  disableModelVersionDeploymentV2: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        version_id: string
+        deployment_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DisableModelVersionDeploymentRequestV2']
+      }
+    }
+    responses: {
+      /** @description disable Model Deployment */
+      200: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ModelVersionDeploymentV2']
+        }
+      }
+      /** @description Malformed Model Deployment action */
+      400: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['BadRequestErrorResponseV2']
+        }
+      }
+      /** @description Authentication is required */
+      401: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['UnauthorizedErrorResponseV2']
+        }
+      }
+      /** @description Workspace access is forbidden */
+      403: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ForbiddenErrorResponseV2']
+        }
+      }
+      /** @description Model Deployment was not found */
+      404: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NotFoundErrorResponseV2']
+        }
+      }
+      /** @description Model Deployment state conflict */
+      409: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse409V2']
+        }
+      }
+      /** @description Model Deployment action is too large */
+      413: {
+        headers: {
+          'Cache-Control': 'private, no-store'
+          'X-Content-Type-Options': 'nosniff'
+          'X-Request-ID': string
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResourceLimitErrorResponseV2']
+        }
+      }
+      /** @description Invalid Model Deployment identifier */
       422: {
         headers: {
           'Cache-Control': 'private, no-store'

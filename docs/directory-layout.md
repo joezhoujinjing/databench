@@ -10,6 +10,8 @@
 > ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
 > deferred GPU gate。S2 exact Dataset 与单 active Session bridge、S3 immutable LoRA Artifact 已完成
 > non-GPU gate；S4 Deployment + EvalScope opaque resolve/lineage 已完成 non-GPU contract，GPU gate deferred。
+> Model Registry ADR 0019 的 MR0-MR5 已完成；Existing Service、version-bound Deployment、nested REST、
+> internal v2 resolver 和 EvalScope strict parser已落地。Evaluation v5/v6 与执行切换仍属于 MR6。
 
 ## `third_party/ms-swift`
 
@@ -87,7 +89,8 @@ apps/api/
 │  ├─ model-endpoint-policy/
 │  │  ├─ config.ts             strict policy parser、file boundary 与 deny-all default
 │  │  ├─ policy.ts             DNS 全量复核、地址分类与 offline public-network fence
-│  │  └─ transport.ts          Undici approved-IP connector、Host/SNI/TLS 与 bounded response
+│  │  ├─ transport.ts          Undici approved-IP connector、Host/SNI/TLS 与 bounded response
+│  │  └─ runtime.ts            version-bound Deployment configuration/discovery 与 credential snapshot
 │  ├─ model-credentials/
 │  │  ├─ registry.ts           authority/projection、ACL、generation、atomic writer 与 redaction
 │  │  └─ index.ts              私有 app 内 barrel
@@ -127,6 +130,7 @@ apps/api/
 │  │     ├─ swift-studio-sessions.ts exact Dataset Studio Session create/list/show/close
 │  │     ├─ model-artifacts.ts   output/import 与 immutable Artifact list/show/download
 │  │     ├─ model-deployments.ts public list/show、operator actions 与 internal resolve
+│  │     ├─ model-version-deployments.ts nested lifecycle actions 与 private internal v2 resolve
 │  │     ├─ models.ts            Model/Version/Artifact registration、Alias 与 adoption
 │  │     ├─ openapi.ts          route schema helpers
 │  │     └─ transport.ts        streaming/error transport helpers
@@ -306,7 +310,7 @@ src/
    ├─ swift-studio.ts           S2 exact Dataset Studio Session wire contract
    ├─ model-artifact.ts         S3 output/import/immutable Artifact wire contract
    ├─ model-deployment.ts       S4 public/internal Deployment wire contract
-   ├─ model.ts · model-version.ts Model Registry wire/source/registration contracts
+   ├─ model.ts · model-version.ts Model Registry wire/source/registration/Deployment v2 contracts
    ├─ mcp.ts                    MCP tool/result contracts
    ├─ reader/raw-json/json-value verification
    ├─ contracts.type-test.ts
@@ -428,9 +432,9 @@ src/
 这是应用访问数据的唯一可信编排边界，拥有 ingest、canonical/draft no-write preview、draft
 deterministic identity/materialize/import、persist、transform、CAS ref、record/dataset lineage、
 audit、converter inspect/export、evaluation run exact binding/状态机与取消语义，以及 Swift Studio Session、
-Model Artifact import/finalize/download、Artifact/Repository-source Model registration、append-only source
-evidence/refresh、candidate Alias、legacy Deployment adoption、Model Deployment registry/health/resolve 与
-Deployment-bound Evaluation lineage 编排。
+Model Artifact import/finalize/download、三来源 Model registration、append-only source evidence/refresh、
+candidate Alias、legacy Deployment adoption、version-bound Model Deployment registry/activation/health/resolve
+与 legacy Deployment-bound Evaluation lineage 编排。
 
 ## Tooling 与根目录
 
@@ -465,7 +469,8 @@ prisma/
    ├─ 0014_evaluation_metric_selection_v2/
    ├─ 0015_model_registry_v2/
    ├─ 0016_model_registry_artifact_product_v2/
-   └─ 0017_model_repository_evidence_v2/
+   ├─ 0017_model_repository_evidence_v2/
+   └─ 0018_model_version_deployments_v2/
 ```
 
 EvalScope E0 另有：
@@ -500,7 +505,8 @@ workers/evalscope/
 ├─ .python-version · pyproject.toml · uv.lock
 ├─ src/databench_evalscope/
 │  ├─ app.py · wsgi.py · config.py
-│  ├─ databench.py · archive.py · storage.py
+│  ├─ databench.py              Dataset/Evaluation callbacks、legacy internal v1执行与MR5 internal v2 strict parser
+│  ├─ archive.py · storage.py
 │  ├─ metrics.py · metric-descriptors.json
 │  ├─ model_endpoint_policy.py strict shared policy + pinned-address socket guard
 │  ├─ model_credentials.py     consumer ACL、JIT snapshot、redaction 与 anonymous FD handoff

@@ -37,6 +37,7 @@ const registrationPlan = {
   },
   warnings: [],
   registration_digest: '4'.repeat(64),
+  deployment: null,
 }
 
 const repositoryRegistration = {
@@ -121,6 +122,8 @@ function workspace(): ApiV2Workspace {
       model_id: MODEL_ID,
       model_version_id: VERSION_ID,
       source_fingerprint: registrationPlan.source_fingerprint,
+      deployment_id: null,
+      deployment_digest: null,
       alias: 'candidate',
       replayed: false,
     })),

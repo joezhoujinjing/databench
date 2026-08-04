@@ -136,6 +136,7 @@ function modelRegistrationInput(
     readonly version?: Partial<CreateModelRegistrationV2['version']>
     readonly source?: CreateModelRegistrationV2['source']
     readonly initialEvidence?: CreateModelRegistrationV2['initialEvidence']
+    readonly deployment?: CreateModelRegistrationV2['deployment']
     readonly alias?: CreateModelRegistrationV2['alias']
   } = {},
 ): CreateModelRegistrationV2 {
@@ -190,6 +191,7 @@ function modelRegistrationInput(
     ...(overrides.initialEvidence === undefined
       ? {}
       : { initialEvidence: overrides.initialEvidence }),
+    deployment: overrides.deployment ?? null,
     alias: overrides.alias ?? null,
   }
 }
@@ -255,6 +257,7 @@ function artifactModelRegistrationInput(
       archiveDigest: artifact.archiveDigest,
       manifestDigest: artifact.manifestDigest,
     },
+    deployment: null,
     alias: { alias: 'candidate', expectedVersionId: null },
   }
 }
@@ -3238,6 +3241,206 @@ describe('V2Catalog transform jobs', () => {
       reason: 'request_mismatch',
     })
     expect(await prisma.v2ModelRegistrationClaim.count()).toBe(1)
+  })
+
+  test('atomically registers version-bound Service Deployments, isolates legacy reads, and preserves lifecycle snapshots', async () => {
+    const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const source = {
+      kind: 'existing_service' as const,
+      provider: 'openai_compatible' as const,
+      externalModelRef: 'support-model',
+      externalVersionRef: 'release-1',
+      declaredReferenceKind: 'immutable_version' as const,
+    }
+    const registration = (
+      suffix: '1' | '2',
+      registrationDigit: '1' | '5',
+      deploymentDigit: 'd' | 'e',
+    ): CreateModelRegistrationV2 => {
+      const modelId = `10000000-0000-8000-8000-00000000000${suffix}`
+      const versionId = `20000000-0000-8000-8000-00000000000${suffix}`
+      const deploymentId = `40000000-0000-8000-8000-00000000000${suffix}`
+      return {
+        ...modelRegistrationInput(namespaceId, {
+          registrationDigest: registrationDigit.repeat(64),
+          normalizedRequest: { model: suffix, source: 'same-service' },
+          target: {
+            kind: 'create_model',
+            model: {
+              id: modelId,
+              namespaceId,
+              key: `service-model-${suffix}`,
+              createProfile: 'model-create-v1',
+              createDigest: registrationDigit.repeat(64),
+              displayName: `Service Model ${suffix}`,
+              description: '',
+              taskFamily: 'chat',
+              tags: [],
+            },
+          },
+          version: {
+            id: versionId,
+            modelId,
+            sourceKind: 'existing_service',
+            createProfile: 'model-version-create-service-v1',
+            createDigest: `${suffix}`.repeat(64),
+            sourceFingerprint: '3'.repeat(64),
+          },
+          source,
+          deployment: {
+            id: deploymentId,
+            namespaceId,
+            deploymentProfile: 'model-version-v1',
+            createDigest: deploymentDigit.repeat(64),
+            modelVersionId: versionId,
+            artifactId: null,
+            provider: 'openai_compatible',
+            displayName: 'Shared endpoint',
+            servedModelName: 'support-model',
+            endpointBaseUrl: 'http://model-service:8000/v1',
+            connectivityScope: 'private_network',
+            authProfile: 'none',
+            credentialRef: null,
+            declaredCapabilities: {
+              interfaces: ['chat_completions'],
+              contextLimit: 8192,
+            },
+          },
+        }),
+        planProfile: 'model-registration-plan-service-v1',
+      }
+    }
+    const firstInput = registration('1', '1', 'd')
+    const secondInput = registration('2', '5', 'e')
+    const [first, second] = await Promise.all([
+      v2Catalog.registerModelVersion(firstInput),
+      v2Catalog.registerModelVersion(secondInput),
+    ])
+    expect(first.deployment).toMatchObject({
+      id: firstInput.deployment?.id,
+      lifecycle: 'registered',
+      artifactId: null,
+    })
+    expect(second.deployment?.id).not.toBe(first.deployment?.id)
+    expect(first.version.sourceFingerprint).toBe(second.version.sourceFingerprint)
+    expect(first.claim).toMatchObject({
+      deploymentId: first.deployment?.id,
+      deploymentDigest: first.deployment?.createDigest,
+    })
+
+    await expect(
+      v2Catalog.getModelDeployment(namespaceId, first.deployment?.id ?? ''),
+    ).resolves.toBeNull()
+    await expect(
+      v2Catalog.getModelVersionDeployment(namespaceId, first.deployment?.id ?? ''),
+    ).resolves.toMatchObject({ deploymentProfile: 'model-version-v1' })
+    await expect(
+      v2Catalog.listModelVersionDeployments(namespaceId, first.version.id, 'registered', null, 20),
+    ).resolves.toMatchObject({ rows: [{ id: first.deployment?.id }], nextCursor: null })
+
+    const healthy = await v2Catalog.updateModelVersionDeploymentHealth(
+      namespaceId,
+      first.version.id,
+      first.deployment?.id ?? '',
+      { status: 'healthy', error: null },
+    )
+    expect(healthy).toMatchObject({ healthStatus: 'healthy' })
+    const active = await v2Catalog.activateModelVersionDeployment({
+      namespaceId,
+      modelVersionId: first.version.id,
+      deploymentId: first.deployment?.id ?? '',
+      policyGeneration: 7n,
+      credentialGeneration: null,
+    })
+    expect(active).toMatchObject({ lifecycle: 'active', policyGeneration: 7n })
+    const disabled = await v2Catalog.disableModelVersionDeployment(
+      namespaceId,
+      first.version.id,
+      first.deployment?.id ?? '',
+    )
+    expect(disabled).toMatchObject({ lifecycle: 'disabled' })
+    await expect(
+      v2Catalog.replayModelRegistration(
+        namespaceId,
+        firstInput.registrationDigest,
+        firstInput.planProfile,
+        firstInput.normalizedRequest,
+      ),
+    ).resolves.toMatchObject({
+      replayed: true,
+      deployment: { id: first.deployment?.id, lifecycle: 'disabled' },
+    })
+  })
+
+  test('database-enforces exact Artifact binding and null Repository or Service binding for new Deployments', async () => {
+    const { namespaceId, artifact } = await finalizedModelArtifact()
+    const artifactInput = artifactModelRegistrationInput(namespaceId, artifact)
+    const artifactDeployment = {
+      id: '40000000-0000-8000-8000-000000000001',
+      namespaceId,
+      deploymentProfile: 'model-version-v1' as const,
+      createDigest: 'd'.repeat(64),
+      modelVersionId: artifactInput.version.id,
+      artifactId: artifact.id,
+      provider: 'openai_compatible' as const,
+      displayName: 'Artifact endpoint',
+      servedModelName: 'artifact-model',
+      endpointBaseUrl: 'http://model-service:8000/v1',
+      connectivityScope: 'private_network' as const,
+      authProfile: 'none' as const,
+      credentialRef: null,
+      declaredCapabilities: { interfaces: ['chat_completions' as const], contextLimit: null },
+    }
+    const registered = await v2Catalog.registerModelVersion({
+      ...artifactInput,
+      deployment: artifactDeployment,
+    })
+    expect(registered.deployment).toMatchObject({ artifactId: artifact.id })
+
+    await expect(
+      v2Catalog.createOrReadModelVersionDeployment({
+        ...artifactDeployment,
+        id: '40000000-0000-8000-8000-000000000002',
+        createDigest: 'e'.repeat(64),
+        artifactId: null,
+      }),
+    ).rejects.toThrow()
+
+    const repository = await v2Catalog.registerModelVersion(
+      modelRegistrationInput(namespaceId, {
+        registrationDigest: '5'.repeat(64),
+        normalizedRequest: { source: 'repository-two' },
+        target: {
+          kind: 'create_model',
+          model: {
+            id: '10000000-0000-8000-8000-000000000002',
+            namespaceId,
+            key: 'repository-two',
+            createProfile: 'model-create-v1',
+            createDigest: '5'.repeat(64),
+            displayName: 'Repository Two',
+            description: '',
+            taskFamily: null,
+            tags: [],
+          },
+        },
+        version: {
+          id: '20000000-0000-8000-8000-000000000002',
+          modelId: '10000000-0000-8000-8000-000000000002',
+          createDigest: '5'.repeat(64),
+          sourceFingerprint: '5'.repeat(64),
+        },
+      }),
+    )
+    await expect(
+      v2Catalog.createOrReadModelVersionDeployment({
+        ...artifactDeployment,
+        id: '40000000-0000-8000-8000-000000000003',
+        createDigest: 'f'.repeat(64),
+        modelVersionId: repository.version.id,
+        artifactId: artifact.id,
+      }),
+    ).rejects.toThrow()
   })
 
   test('serializes same-digest request collisions before creating any second result', async () => {

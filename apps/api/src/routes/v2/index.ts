@@ -4,6 +4,7 @@ import { registerV2DatasetRoutes } from './datasets.js'
 import { registerV2EvaluationRunRoutes } from './evaluations.js'
 import { registerV2ModelArtifactRoutes } from './model-artifacts.js'
 import { registerV2ModelDeploymentRoutes } from './model-deployments.js'
+import { registerV2ModelVersionDeploymentRoutes } from './model-version-deployments.js'
 import { registerV2ModelRoutes } from './models.js'
 import { registerV2RefRoutes } from './refs.js'
 import { registerV2RegistryRoutes } from './registries.js'
@@ -22,6 +23,7 @@ export function registerV2Routes(app: OpenAPIHono<ApiEnv>, options: RegisterV2Ro
   registerV2SwiftStudioSessionRoutes(app)
   registerV2ModelArtifactRoutes(app)
   registerV2ModelDeploymentRoutes(app, options)
+  registerV2ModelVersionDeploymentRoutes(app, options)
   registerV2ModelRoutes(app, options)
   registerV2RegistryRoutes(app)
   registerV2RefRoutes(app)

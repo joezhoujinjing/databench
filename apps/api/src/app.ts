@@ -1,6 +1,7 @@
 import type {
   V2ModelDeploymentHealthClient,
   V2ModelRepositoryOpenOptions,
+  V2ModelVersionDeploymentRuntime,
   V2WorkspaceOpenOptions,
 } from '@databench/workspace'
 import { OpenAPIHono } from '@hono/zod-openapi'
@@ -43,6 +44,7 @@ export interface CreateAppOptions {
   readonly modelDeploymentOperatorToken?: string
   readonly modelDeploymentServiceCredential?: string
   readonly modelDeploymentHealthClient?: V2ModelDeploymentHealthClient
+  readonly modelVersionDeploymentRuntime?: V2ModelVersionDeploymentRuntime
   readonly modelRepository?: V2ModelRepositoryOpenOptions
   readonly openApiServerUrl?: string
   readonly storeConfig?: V2WorkspaceOpenOptions['storeConfig']
@@ -100,10 +102,12 @@ function createRoutedApp(
   app.use('*', createCorsMiddleware({ origins: options.corsOrigins ?? [] }))
   app.use('/v2/*', createV2PrivateResponseMiddleware())
   app.use('/internal/v1/*', createV2PrivateResponseMiddleware())
+  app.use('/internal/v2/*', createV2PrivateResponseMiddleware())
   if (v2Runtime !== undefined) {
     const workspaceMiddleware = createV2WorkspaceMiddleware(v2Runtime)
     app.use('/v2/*', workspaceMiddleware)
     app.use('/internal/v1/*', workspaceMiddleware)
+    app.use('/internal/v2/*', workspaceMiddleware)
     if (mcpRuntime !== undefined) {
       app.use('/mcp', async (context, next) => {
         if (context.req.method !== 'POST') return next()
@@ -170,6 +174,9 @@ function v2RuntimeOptions(options: CreateAppOptions): V2WorkspaceMiddlewareOptio
       ...(options.modelDeploymentHealthClient === undefined
         ? {}
         : { modelDeploymentHealthClient: options.modelDeploymentHealthClient }),
+      ...(options.modelVersionDeploymentRuntime === undefined
+        ? {}
+        : { modelVersionDeploymentRuntime: options.modelVersionDeploymentRuntime }),
       ...(options.evaluationArchiveMaxBytes === undefined
         ? {}
         : { evaluationArchiveMaxBytes: options.evaluationArchiveMaxBytes }),

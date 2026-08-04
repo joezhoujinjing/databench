@@ -8,6 +8,7 @@ import {
   V2CatalogModelRegistrationConflictError,
 } from './errors.js'
 import type {
+  ActivateCatalogModelVersionDeploymentV2,
   AppendModelSourceEvidenceV2,
   ArchiveCatalogModelV2,
   CatalogJsonValueV2,
@@ -23,6 +24,11 @@ import type {
   CatalogModelRowV2,
   CatalogModelSourceEvidenceRowV2,
   CatalogModelVersionCursorV2,
+  CatalogModelVersionDeploymentCapabilitiesV2,
+  CatalogModelVersionDeploymentCursorV2,
+  CatalogModelVersionDeploymentLifecycleV2,
+  CatalogModelVersionDeploymentPageV2,
+  CatalogModelVersionDeploymentRowV2,
   CatalogModelVersionListItemV2,
   CatalogModelVersionPageV2,
   CatalogModelVersionRowV2,
@@ -30,6 +36,7 @@ import type {
   CompareAndSetModelAliasV2,
   CreateModelDeploymentAdoptionV2,
   CreateModelRegistrationV2,
+  CreateModelVersionDeploymentV2,
   UpdateCatalogModelMetadataV2,
 } from './types.js'
 
@@ -37,9 +44,64 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const HEX_64 = /^[0-9a-f]{64}$/
 const MODEL_KEY = /^[a-z][a-z0-9-]{0,127}$/
 const SAFE_TOKEN = /^[a-z][a-z0-9._-]{0,127}$/
+const CREDENTIAL_REF = /^[a-z0-9][a-z0-9._-]{0,127}$/
 const MAX_SAFE_BIGINT = 9_007_199_254_740_991n
 
 type TransactionClient = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
+
+interface ModelVersionDeploymentSqlRow {
+  readonly id: string
+  readonly namespaceId: string
+  readonly deploymentProfile: string
+  readonly createDigest: string
+  readonly artifactId: string | null
+  readonly modelVersionId: string | null
+  readonly provider: string
+  readonly displayName: string
+  readonly servedModelName: string
+  readonly endpointBaseUrl: string
+  readonly connectivityScope: string | null
+  readonly authMode: string
+  readonly credentialRef: string | null
+  readonly declaredCapabilities: Prisma.JsonValue | null
+  readonly status: string
+  readonly policyGeneration: bigint | null
+  readonly credentialGeneration: bigint | null
+  readonly healthStatus: string
+  readonly healthCheckedAt: Date | null
+  readonly healthError: string | null
+  readonly createdAt: Date
+  readonly activatedAt: Date | null
+  readonly disabledAt: Date | null
+  readonly updatedAt: Date
+}
+
+const MODEL_VERSION_DEPLOYMENT_COLUMNS = Prisma.sql`
+  "id" AS "id",
+  "namespace_id" AS "namespaceId",
+  "deployment_profile" AS "deploymentProfile",
+  "create_digest" AS "createDigest",
+  "artifact_id" AS "artifactId",
+  "model_version_id" AS "modelVersionId",
+  "provider" AS "provider",
+  "display_name" AS "displayName",
+  "served_model_name" AS "servedModelName",
+  "endpoint_base_url" AS "endpointBaseUrl",
+  "connectivity_scope" AS "connectivityScope",
+  "auth_mode" AS "authMode",
+  "credential_ref" AS "credentialRef",
+  "declared_capabilities_json" AS "declaredCapabilities",
+  "status" AS "status",
+  "policy_generation" AS "policyGeneration",
+  "credential_generation" AS "credentialGeneration",
+  "health_status" AS "healthStatus",
+  "health_checked_at" AS "healthCheckedAt",
+  "health_error" AS "healthError",
+  "created_at" AS "createdAt",
+  "activated_at" AS "activatedAt",
+  "disabled_at" AS "disabledAt",
+  "updated_at" AS "updatedAt"
+`
 
 export async function registerModelVersionV2(
   client: PrismaClient,
@@ -75,6 +137,10 @@ export async function registerModelVersionV2(
       if (input.initialEvidence !== undefined && input.initialEvidence !== null) {
         await appendModelSourceEvidenceWithClient(transaction, input.initialEvidence)
       }
+      const deployment =
+        input.deployment === null
+          ? null
+          : await createOrReadModelVersionDeploymentWithClient(transaction, input.deployment)
       const alias =
         input.alias === null
           ? null
@@ -94,6 +160,8 @@ export async function registerModelVersionV2(
           normalizedRequest: input.normalizedRequest as Prisma.InputJsonObject,
           modelId: model.id,
           modelVersionId: version.id,
+          deploymentId: deployment?.id ?? null,
+          deploymentDigest: deployment?.createDigest ?? null,
           aliasName: alias?.alias ?? null,
         },
       })
@@ -112,6 +180,7 @@ export async function registerModelVersionV2(
         model,
         version,
         source,
+        deployment,
         alias,
         claim: modelRegistrationClaimRow(claim),
         replayed: false,
@@ -144,6 +213,210 @@ export async function replayModelRegistrationV2(
     throw new V2CatalogModelRegistrationConflictError('request_mismatch', registrationDigest)
   }
   return await loadRegistrationResult(client, claim, true)
+}
+
+export async function createOrReadModelVersionDeploymentV2(
+  client: PrismaClient,
+  input: CreateModelVersionDeploymentV2,
+): Promise<CatalogModelVersionDeploymentRowV2> {
+  validateModelVersionDeploymentCreate(input)
+  return await client.$transaction(async (transaction) =>
+    createOrReadModelVersionDeploymentWithClient(transaction, input),
+  )
+}
+
+export async function getModelVersionDeploymentV2(
+  client: PrismaClient,
+  namespaceId: string,
+  deploymentId: string,
+  modelVersionId?: string,
+): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateUuid(deploymentId, 'Model Deployment ID')
+  if (modelVersionId !== undefined) validateUuid(modelVersionId, 'Model Version ID')
+  const row = await client.v2ModelDeployment.findFirst({
+    where: {
+      namespaceId,
+      id: deploymentId,
+      deploymentProfile: 'model-version-v1',
+      ...(modelVersionId === undefined ? {} : { modelVersionId }),
+    },
+  })
+  return row === null ? null : modelVersionDeploymentRow(row)
+}
+
+export async function listModelVersionDeploymentsV2(
+  client: PrismaClient,
+  namespaceId: string,
+  modelVersionId: string,
+  lifecycle: CatalogModelVersionDeploymentLifecycleV2 | null,
+  before: CatalogModelVersionDeploymentCursorV2 | null,
+  limit: number,
+): Promise<CatalogModelVersionDeploymentPageV2> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateUuid(modelVersionId, 'Model Version ID')
+  if (lifecycle !== null && !['registered', 'active', 'disabled'].includes(lifecycle)) {
+    throw new V2CatalogInputError('Model Version Deployment lifecycle filter is invalid')
+  }
+  if (before !== null) {
+    validateMillisecondDate(before.createdAt, 'Model Version Deployment cursor timestamp')
+    validateUuid(before.id, 'Model Version Deployment cursor ID')
+  }
+  validatePageLimit(limit)
+  const rows = await client.$queryRaw<ModelVersionDeploymentSqlRow[]>(Prisma.sql`
+    SELECT ${MODEL_VERSION_DEPLOYMENT_COLUMNS}
+    FROM "model_deployments_v2"
+    WHERE
+      "namespace_id" = ${namespaceId}::uuid AND
+      "deployment_profile" = 'model-version-v1' AND
+      "model_version_id" = ${modelVersionId}::uuid AND
+      (${lifecycle}::text IS NULL OR "status" = ${lifecycle}) AND
+      ${
+        before === null
+          ? Prisma.sql`TRUE`
+          : Prisma.sql`(
+              date_trunc('milliseconds', "created_at") < ${before.createdAt} OR
+              (
+                date_trunc('milliseconds', "created_at") = ${before.createdAt} AND
+                "id"::text COLLATE "C" < ${before.id}
+              )
+            )`
+      }
+    ORDER BY date_trunc('milliseconds', "created_at") DESC, "id"::text COLLATE "C" DESC
+    LIMIT ${limit + 1}
+  `)
+  const hasMore = rows.length > limit
+  const pageRows = rows.slice(0, limit).map(modelVersionDeploymentRow)
+  const last = hasMore ? pageRows.at(-1) : undefined
+  return Object.freeze({
+    rows: Object.freeze(pageRows),
+    nextCursor:
+      last === undefined
+        ? null
+        : Object.freeze({ createdAt: truncateMilliseconds(last.createdAt), id: last.id }),
+  })
+}
+
+export async function activateModelVersionDeploymentV2(
+  client: PrismaClient,
+  input: ActivateCatalogModelVersionDeploymentV2,
+): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+  validateUuid(input.namespaceId, 'namespace ID')
+  validateUuid(input.modelVersionId, 'Model Version ID')
+  validateUuid(input.deploymentId, 'Model Deployment ID')
+  validatePositiveGeneration(input.policyGeneration, 'policy generation')
+  if (input.credentialGeneration !== null) {
+    validatePositiveGeneration(input.credentialGeneration, 'credential generation')
+  }
+  return await client.$transaction(async (transaction) => {
+    const current = await transaction.v2ModelDeployment.findFirst({
+      where: {
+        namespaceId: input.namespaceId,
+        id: input.deploymentId,
+        modelVersionId: input.modelVersionId,
+        deploymentProfile: 'model-version-v1',
+      },
+    })
+    if (current === null) return null
+    const parsed = modelVersionDeploymentRow(current)
+    if (parsed.lifecycle === 'disabled') return parsed
+    const updated = await transaction.$queryRaw<ModelVersionDeploymentSqlRow[]>(Prisma.sql`
+      UPDATE "model_deployments_v2"
+      SET
+        "status" = 'active',
+        "policy_generation" = ${input.policyGeneration},
+        "credential_generation" = ${input.credentialGeneration},
+        "activated_at" = COALESCE("activated_at", clock_timestamp()),
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "id" = ${input.deploymentId}::uuid AND
+        "model_version_id" = ${input.modelVersionId}::uuid AND
+        "deployment_profile" = 'model-version-v1' AND
+        "status" <> 'disabled'
+      RETURNING ${MODEL_VERSION_DEPLOYMENT_COLUMNS}
+    `)
+    if (updated.length !== 1) {
+      throw new V2CatalogConsistencyError('Model Version Deployment activation lost its row')
+    }
+    return modelVersionDeploymentRow(updated[0] as ModelVersionDeploymentSqlRow)
+  })
+}
+
+export async function disableModelVersionDeploymentV2(
+  client: PrismaClient,
+  namespaceId: string,
+  modelVersionId: string,
+  deploymentId: string,
+): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateUuid(modelVersionId, 'Model Version ID')
+  validateUuid(deploymentId, 'Model Deployment ID')
+  return await client.$transaction(async (transaction) => {
+    const current = await transaction.v2ModelDeployment.findFirst({
+      where: {
+        namespaceId,
+        id: deploymentId,
+        modelVersionId,
+        deploymentProfile: 'model-version-v1',
+      },
+    })
+    if (current === null) return null
+    if (current.status === 'disabled') return modelVersionDeploymentRow(current)
+    const updated = await transaction.$queryRaw<ModelVersionDeploymentSqlRow[]>(Prisma.sql`
+      UPDATE "model_deployments_v2"
+      SET
+        "status" = 'disabled',
+        "disabled_at" = clock_timestamp(),
+        "updated_at" = clock_timestamp()
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        "id" = ${deploymentId}::uuid AND
+        "model_version_id" = ${modelVersionId}::uuid AND
+        "deployment_profile" = 'model-version-v1' AND
+        "status" <> 'disabled'
+      RETURNING ${MODEL_VERSION_DEPLOYMENT_COLUMNS}
+    `)
+    if (updated.length !== 1) {
+      throw new V2CatalogConsistencyError('Model Version Deployment disable lost its row')
+    }
+    return modelVersionDeploymentRow(updated[0] as ModelVersionDeploymentSqlRow)
+  })
+}
+
+export async function updateModelVersionDeploymentHealthV2(
+  client: PrismaClient,
+  namespaceId: string,
+  modelVersionId: string,
+  deploymentId: string,
+  health: {
+    readonly status: 'healthy' | 'unhealthy'
+    readonly error: string | null
+  },
+): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+  validateUuid(namespaceId, 'namespace ID')
+  validateUuid(modelVersionId, 'Model Version ID')
+  validateUuid(deploymentId, 'Model Deployment ID')
+  validateModelVersionDeploymentHealth(health)
+  const updated = await client.$queryRaw<ModelVersionDeploymentSqlRow[]>(Prisma.sql`
+    UPDATE "model_deployments_v2"
+    SET
+      "health_status" = ${health.status},
+      "health_checked_at" = clock_timestamp(),
+      "health_error" = ${health.error},
+      "updated_at" = clock_timestamp()
+    WHERE
+      "namespace_id" = ${namespaceId}::uuid AND
+      "id" = ${deploymentId}::uuid AND
+      "model_version_id" = ${modelVersionId}::uuid AND
+      "deployment_profile" = 'model-version-v1'
+    RETURNING ${MODEL_VERSION_DEPLOYMENT_COLUMNS}
+  `)
+  if (updated.length === 0) return null
+  if (updated.length !== 1) {
+    throw new V2CatalogConsistencyError('Model Version Deployment health updated multiple rows')
+  }
+  return modelVersionDeploymentRow(updated[0] as ModelVersionDeploymentSqlRow)
 }
 
 export async function getModelV2(
@@ -761,6 +1034,52 @@ async function createOrReadVersionSource(
   return stored
 }
 
+async function createOrReadModelVersionDeploymentWithClient(
+  transaction: TransactionClient,
+  input: CreateModelVersionDeploymentV2,
+): Promise<CatalogModelVersionDeploymentRowV2> {
+  validateModelVersionDeploymentCreate(input)
+  await transaction.v2ModelDeployment.createMany({
+    data: [
+      {
+        id: input.id,
+        namespaceId: input.namespaceId,
+        deploymentProfile: input.deploymentProfile,
+        createDigest: input.createDigest,
+        artifactId: input.artifactId,
+        modelVersionId: input.modelVersionId,
+        provider: input.provider,
+        displayName: input.displayName,
+        servedModelName: input.servedModelName,
+        endpointBaseUrl: input.endpointBaseUrl,
+        connectivityScope: input.connectivityScope,
+        authMode: input.authProfile,
+        credentialRef: input.credentialRef,
+        declaredCapabilities: capabilitiesJson(input.declaredCapabilities),
+        status: 'registered',
+      },
+    ],
+    skipDuplicates: true,
+  })
+  const stored = await transaction.v2ModelDeployment.findFirst({
+    where: { namespaceId: input.namespaceId, id: input.id },
+  })
+  if (stored === null) {
+    throw new V2CatalogModelRegistrationConflictError(
+      'source_fingerprint_conflict',
+      input.createDigest,
+    )
+  }
+  const row = modelVersionDeploymentRow(stored)
+  if (!sameModelVersionDeploymentCreate(row, input)) {
+    throw new V2CatalogModelRegistrationConflictError(
+      'source_fingerprint_conflict',
+      input.createDigest,
+    )
+  }
+  return row
+}
+
 async function compareAndSetAliasInTransaction(
   transaction: TransactionClient,
   input: CompareAndSetModelAliasV2,
@@ -825,18 +1144,30 @@ async function loadRegistrationResult(
     readonly normalizedRequest: Prisma.JsonValue
     readonly modelId: string
     readonly modelVersionId: string
+    readonly deploymentId: string | null
+    readonly deploymentDigest: string | null
     readonly aliasName: string | null
     readonly createdAt: Date
   },
   replayed: boolean,
 ): Promise<CatalogModelRegistrationResultV2> {
-  const [model, version, alias] = await Promise.all([
+  const [model, version, deployment, alias] = await Promise.all([
     transaction.v2Model.findFirst({
       where: { namespaceId: claim.namespaceId, id: claim.modelId },
     }),
     transaction.v2ModelVersion.findFirst({
       where: { namespaceId: claim.namespaceId, id: claim.modelVersionId },
     }),
+    claim.deploymentId === null
+      ? Promise.resolve(null)
+      : transaction.v2ModelDeployment.findFirst({
+          where: {
+            namespaceId: claim.namespaceId,
+            id: claim.deploymentId,
+            createDigest: claim.deploymentDigest ?? '',
+            deploymentProfile: 'model-version-v1',
+          },
+        }),
     claim.aliasName === null
       ? Promise.resolve(null)
       : transaction.v2ModelAlias.findFirst({
@@ -847,7 +1178,12 @@ async function loadRegistrationResult(
           },
         }),
   ])
-  if (!model || !version || (claim.aliasName !== null && !alias)) {
+  if (
+    !model ||
+    !version ||
+    (claim.deploymentId !== null && !deployment) ||
+    (claim.aliasName !== null && !alias)
+  ) {
     throw new V2CatalogConsistencyError('Model registration claim result locator is incomplete')
   }
   const versionResult = modelVersionRow(version)
@@ -855,6 +1191,7 @@ async function loadRegistrationResult(
     model: modelRow(model),
     version: versionResult,
     source: await readVersionSource(transaction, versionResult),
+    deployment: deployment === null ? null : modelVersionDeploymentRow(deployment),
     alias: alias ? modelAliasRow(alias) : null,
     claim: modelRegistrationClaimRow(claim),
     replayed,
@@ -1119,6 +1456,8 @@ function modelRegistrationClaimRow(row: {
   readonly normalizedRequest: Prisma.JsonValue
   readonly modelId: string
   readonly modelVersionId: string
+  readonly deploymentId: string | null
+  readonly deploymentDigest: string | null
   readonly aliasName: string | null
   readonly createdAt: Date
 }): CatalogModelRegistrationClaimRowV2 {
@@ -1134,9 +1473,165 @@ function modelRegistrationClaimRow(row: {
     },
     modelId: row.modelId,
     modelVersionId: row.modelVersionId,
+    deploymentId: row.deploymentId,
+    deploymentDigest: row.deploymentDigest,
     aliasName: row.aliasName as CatalogModelRegistrationClaimRowV2['aliasName'],
     createdAt: row.createdAt,
   }
+}
+
+function modelVersionDeploymentRow(
+  row:
+    | ModelVersionDeploymentSqlRow
+    | {
+        readonly id: string
+        readonly namespaceId: string
+        readonly deploymentProfile: string
+        readonly createDigest: string
+        readonly artifactId: string | null
+        readonly modelVersionId: string | null
+        readonly provider: string
+        readonly displayName: string
+        readonly servedModelName: string
+        readonly endpointBaseUrl: string
+        readonly connectivityScope: string | null
+        readonly authMode: string
+        readonly credentialRef: string | null
+        readonly declaredCapabilities: Prisma.JsonValue | null
+        readonly status: string
+        readonly policyGeneration: bigint | null
+        readonly credentialGeneration: bigint | null
+        readonly healthStatus: string
+        readonly healthCheckedAt: Date | null
+        readonly healthError: string | null
+        readonly createdAt: Date
+        readonly activatedAt: Date | null
+        readonly disabledAt: Date | null
+        readonly updatedAt: Date
+      },
+): CatalogModelVersionDeploymentRowV2 {
+  if (
+    row.deploymentProfile !== 'model-version-v1' ||
+    row.modelVersionId === null ||
+    row.connectivityScope === null
+  ) {
+    throw new V2CatalogConsistencyError('Stored Model Version Deployment profile is invalid')
+  }
+  const result: CatalogModelVersionDeploymentRowV2 = {
+    id: row.id,
+    namespaceId: row.namespaceId,
+    deploymentProfile: 'model-version-v1',
+    createDigest: row.createDigest,
+    artifactId: row.artifactId,
+    modelVersionId: row.modelVersionId,
+    provider: parseModelVersionDeploymentProvider(row.provider),
+    displayName: row.displayName,
+    servedModelName: row.servedModelName,
+    endpointBaseUrl: row.endpointBaseUrl,
+    connectivityScope: parseModelVersionDeploymentScope(row.connectivityScope),
+    authProfile: parseModelVersionDeploymentAuth(row.authMode),
+    credentialRef: row.credentialRef,
+    declaredCapabilities: parseModelVersionDeploymentCapabilities(row.declaredCapabilities),
+    lifecycle: parseModelVersionDeploymentLifecycle(row.status),
+    policyGeneration: row.policyGeneration,
+    credentialGeneration: row.credentialGeneration,
+    healthStatus: parseModelVersionDeploymentHealthStatus(row.healthStatus),
+    healthCheckedAt: row.healthCheckedAt,
+    healthError: row.healthError,
+    createdAt: row.createdAt,
+    activatedAt: row.activatedAt,
+    disabledAt: row.disabledAt,
+    updatedAt: row.updatedAt,
+  }
+  try {
+    validateModelVersionDeploymentCreate(result)
+    validateModelVersionDeploymentStoredState(result)
+  } catch (cause) {
+    throw new V2CatalogConsistencyError('Stored Model Version Deployment is invalid', { cause })
+  }
+  return Object.freeze(result)
+}
+
+function parseModelVersionDeploymentCapabilities(
+  value: Prisma.JsonValue | null,
+): CatalogModelVersionDeploymentCapabilitiesV2 {
+  if (
+    value === null ||
+    Array.isArray(value) ||
+    typeof value !== 'object' ||
+    Object.keys(value).length !== 2 ||
+    !Array.isArray(value.interfaces) ||
+    !('context_limit' in value)
+  ) {
+    throw new V2CatalogConsistencyError('Stored Deployment capabilities are invalid')
+  }
+  const interfaces = value.interfaces
+  const contextLimit = value.context_limit
+  if (
+    interfaces.some(
+      (entry) =>
+        typeof entry !== 'string' ||
+        !['chat_completions', 'embeddings', 'vision', 'tools'].includes(entry),
+    ) ||
+    (contextLimit !== null &&
+      (typeof contextLimit !== 'number' ||
+        !Number.isSafeInteger(contextLimit) ||
+        contextLimit < 1 ||
+        contextLimit > 10_000_000))
+  ) {
+    throw new V2CatalogConsistencyError('Stored Deployment capabilities are invalid')
+  }
+  return Object.freeze({
+    interfaces: Object.freeze(
+      interfaces as CatalogModelVersionDeploymentCapabilitiesV2['interfaces'],
+    ),
+    contextLimit,
+  })
+}
+
+function parseModelVersionDeploymentProvider(
+  value: string,
+): CatalogModelVersionDeploymentRowV2['provider'] {
+  if (value !== 'openai_compatible') {
+    throw new V2CatalogConsistencyError('Stored Deployment provider is invalid')
+  }
+  return value
+}
+
+function parseModelVersionDeploymentScope(
+  value: string,
+): CatalogModelVersionDeploymentRowV2['connectivityScope'] {
+  if (value !== 'private_network' && value !== 'public_network') {
+    throw new V2CatalogConsistencyError('Stored Deployment connectivity scope is invalid')
+  }
+  return value
+}
+
+function parseModelVersionDeploymentAuth(
+  value: string,
+): CatalogModelVersionDeploymentRowV2['authProfile'] {
+  if (value !== 'none' && value !== 'bearer_ref') {
+    throw new V2CatalogConsistencyError('Stored Deployment auth profile is invalid')
+  }
+  return value
+}
+
+function parseModelVersionDeploymentLifecycle(
+  value: string,
+): CatalogModelVersionDeploymentLifecycleV2 {
+  if (value !== 'registered' && value !== 'active' && value !== 'disabled') {
+    throw new V2CatalogConsistencyError('Stored Deployment lifecycle is invalid')
+  }
+  return value
+}
+
+function parseModelVersionDeploymentHealthStatus(
+  value: string,
+): CatalogModelVersionDeploymentRowV2['healthStatus'] {
+  if (value !== 'unknown' && value !== 'healthy' && value !== 'unhealthy') {
+    throw new V2CatalogConsistencyError('Stored Deployment health status is invalid')
+  }
+  return value
 }
 
 function modelSourceEvidenceRow(row: {
@@ -1283,6 +1778,32 @@ function sameModelDeploymentAdoption(
   )
 }
 
+function sameModelVersionDeploymentCreate(
+  stored: CatalogModelVersionDeploymentRowV2,
+  expected: CreateModelVersionDeploymentV2,
+): boolean {
+  return (
+    stored.id === expected.id &&
+    stored.namespaceId === expected.namespaceId &&
+    stored.deploymentProfile === expected.deploymentProfile &&
+    stored.createDigest === expected.createDigest &&
+    stored.artifactId === expected.artifactId &&
+    stored.modelVersionId === expected.modelVersionId &&
+    stored.provider === expected.provider &&
+    stored.displayName === expected.displayName &&
+    stored.servedModelName === expected.servedModelName &&
+    stored.endpointBaseUrl === expected.endpointBaseUrl &&
+    stored.connectivityScope === expected.connectivityScope &&
+    stored.authProfile === expected.authProfile &&
+    stored.credentialRef === expected.credentialRef &&
+    sameStringArray(
+      stored.declaredCapabilities.interfaces,
+      expected.declaredCapabilities.interfaces,
+    ) &&
+    stored.declaredCapabilities.contextLimit === expected.declaredCapabilities.contextLimit
+  )
+}
+
 function sameJsonValue(stored: Prisma.JsonValue, expected: CatalogJsonValueV2): boolean {
   if (stored === null || expected === null) return stored === expected
   if (Array.isArray(stored)) {
@@ -1380,6 +1901,203 @@ function validateRegistration(input: CreateModelRegistrationV2): void {
       )
     }
   }
+  if (input.deployment !== null) {
+    validateModelVersionDeploymentCreate(input.deployment)
+    if (
+      input.deployment.namespaceId !== input.namespaceId ||
+      input.deployment.modelVersionId !== input.version.id ||
+      (input.source.kind === 'databench_artifact'
+        ? input.deployment.artifactId !== input.source.artifactId
+        : input.deployment.artifactId !== null)
+    ) {
+      throw new V2CatalogInputError(
+        'Model registration Deployment does not match its Version source',
+      )
+    }
+  }
+  if (input.source.kind === 'existing_service' && input.deployment === null) {
+    throw new V2CatalogInputError(
+      'Existing Service registration requires exactly one registered Deployment',
+    )
+  }
+}
+
+function validateModelVersionDeploymentCreate(input: CreateModelVersionDeploymentV2): void {
+  validateUuid(input.id, 'Model Deployment ID')
+  validateUuid(input.namespaceId, 'namespace ID')
+  validateUuid(input.modelVersionId, 'Model Version ID')
+  if (input.artifactId !== null) validateUuid(input.artifactId, 'Model Artifact ID')
+  validateDigest(input.createDigest, 'Model Deployment create digest')
+  if (
+    input.deploymentProfile !== 'model-version-v1' ||
+    input.provider !== 'openai_compatible' ||
+    !['private_network', 'public_network'].includes(input.connectivityScope) ||
+    !['none', 'bearer_ref'].includes(input.authProfile) ||
+    (input.authProfile === 'bearer_ref') !== (input.credentialRef !== null)
+  ) {
+    throw new V2CatalogInputError('Model Version Deployment profile is invalid')
+  }
+  validateDeploymentText(input.displayName, 256, 'Deployment display name')
+  validateDeploymentText(input.servedModelName, 512, 'Deployment served model name')
+  if (normalizeDeploymentEndpoint(input.endpointBaseUrl) !== input.endpointBaseUrl) {
+    throw new V2CatalogInputError('Model Version Deployment endpoint is invalid')
+  }
+  if (
+    input.credentialRef !== null &&
+    (!CREDENTIAL_REF.test(input.credentialRef) || input.credentialRef.includes('..'))
+  ) {
+    throw new V2CatalogInputError('Model Version Deployment credential ref is invalid')
+  }
+  validateDeploymentCapabilities(input.declaredCapabilities)
+}
+
+function validateModelVersionDeploymentStoredState(row: CatalogModelVersionDeploymentRowV2): void {
+  if (
+    !Number.isFinite(row.createdAt.getTime()) ||
+    !Number.isFinite(row.updatedAt.getTime()) ||
+    row.updatedAt < row.createdAt ||
+    (row.activatedAt !== null &&
+      (!Number.isFinite(row.activatedAt.getTime()) || row.activatedAt < row.createdAt)) ||
+    (row.disabledAt !== null &&
+      (!Number.isFinite(row.disabledAt.getTime()) ||
+        row.disabledAt < (row.activatedAt ?? row.createdAt))) ||
+    (row.lifecycle === 'disabled') !== (row.disabledAt !== null) ||
+    (row.lifecycle === 'registered' && row.activatedAt !== null) ||
+    (row.lifecycle === 'active' && row.activatedAt === null) ||
+    (row.lifecycle === 'registered' &&
+      (row.policyGeneration !== null || row.credentialGeneration !== null)) ||
+    (row.lifecycle === 'active' && row.policyGeneration === null) ||
+    (row.authProfile === 'none' && row.credentialGeneration !== null) ||
+    (row.lifecycle === 'active' &&
+      row.authProfile === 'bearer_ref' &&
+      row.credentialGeneration === null) ||
+    (row.healthStatus === 'unknown') !== (row.healthCheckedAt === null) ||
+    (row.healthStatus === 'unhealthy') !== (row.healthError !== null)
+  ) {
+    throw new V2CatalogInputError('Model Version Deployment stored lifecycle is invalid')
+  }
+  if (row.policyGeneration !== null) {
+    validatePositiveGeneration(row.policyGeneration, 'policy generation')
+  }
+  if (row.credentialGeneration !== null) {
+    validatePositiveGeneration(row.credentialGeneration, 'credential generation')
+  }
+}
+
+function validateModelVersionDeploymentHealth(health: {
+  readonly status: 'healthy' | 'unhealthy'
+  readonly error: string | null
+}): void {
+  const errorCodes = [
+    'timeout',
+    'network_error',
+    'http_error',
+    'invalid_response',
+    'served_model_missing',
+    'policy_rejected',
+    'credential_rejected',
+    'configuration_changed',
+    'unhealthy',
+  ]
+  if (
+    !['healthy', 'unhealthy'].includes(health.status) ||
+    (health.status === 'unhealthy') !== (health.error !== null) ||
+    (health.error !== null && !errorCodes.includes(health.error))
+  ) {
+    throw new V2CatalogInputError('Model Version Deployment health observation is invalid')
+  }
+}
+
+function validateDeploymentCapabilities(
+  capabilities: CatalogModelVersionDeploymentCapabilitiesV2,
+): void {
+  const sorted = [...capabilities.interfaces].sort()
+  if (
+    capabilities.interfaces.length < 1 ||
+    capabilities.interfaces.length > 4 ||
+    new Set(capabilities.interfaces).size !== capabilities.interfaces.length ||
+    !sameStringArray(capabilities.interfaces, sorted) ||
+    capabilities.interfaces.some(
+      (entry) => !['chat_completions', 'embeddings', 'vision', 'tools'].includes(entry),
+    ) ||
+    (capabilities.contextLimit !== null &&
+      (!Number.isSafeInteger(capabilities.contextLimit) ||
+        capabilities.contextLimit < 1 ||
+        capabilities.contextLimit > 10_000_000))
+  ) {
+    throw new V2CatalogInputError('Model Version Deployment capabilities are invalid')
+  }
+}
+
+function validateDeploymentText(value: string, maxBytes: number, label: string): void {
+  const bytes = new TextEncoder().encode(value).byteLength
+  if (bytes < 1 || bytes > maxBytes || hasDeploymentControlCharacter(value)) {
+    throw new V2CatalogInputError(`${label} is invalid`)
+  }
+}
+
+function normalizeDeploymentEndpoint(value: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    return null
+  }
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    parsed.hostname === '' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== '' ||
+    hasDeploymentEndpointForbiddenCharacter(value)
+  ) {
+    return null
+  }
+  const pathname = parsed.pathname.replace(/\/+$/u, '')
+  parsed.pathname = pathname === '' ? '/' : pathname
+  const normalized = parsed.toString().replace(/\/$/u, '')
+  return normalized === parsed.origin ? parsed.origin : normalized
+}
+
+function hasDeploymentControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)
+    if (codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)) return true
+  }
+  return false
+}
+
+function hasDeploymentEndpointForbiddenCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)
+    if (
+      character === '\\' ||
+      (codePoint !== undefined && (codePoint <= 0x20 || codePoint === 0x7f))
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function capabilitiesJson(
+  capabilities: CatalogModelVersionDeploymentCapabilitiesV2,
+): Prisma.InputJsonObject {
+  return {
+    interfaces: [...capabilities.interfaces],
+    context_limit: capabilities.contextLimit,
+  }
+}
+
+function validatePositiveGeneration(value: bigint, label: string): void {
+  if (value < 1n || value > MAX_SAFE_BIGINT) {
+    throw new V2CatalogInputError(`${label} is invalid`)
+  }
+}
+
+function truncateMilliseconds(value: Date): Date {
+  return new Date(value.getTime())
 }
 
 function validateMetadataUpdate(input: UpdateCatalogModelMetadataV2): void {

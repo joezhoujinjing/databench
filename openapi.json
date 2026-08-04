@@ -2,6 +2,11 @@
   "components": {
     "parameters": {},
     "schemas": {
+      "ActivateModelVersionDeploymentRequestV2": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
       "AdoptModelDeploymentRequestV2": {
         "additionalProperties": false,
         "properties": {
@@ -318,6 +323,11 @@
         "type": "object"
       },
       "CheckModelDeploymentRequestV2": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "CheckModelVersionDeploymentRequestV2": {
         "additionalProperties": false,
         "properties": {},
         "type": "object"
@@ -647,6 +657,84 @@
           "served_model_name",
           "endpoint_base_url",
           "auth_mode"
+        ],
+        "type": "object"
+      },
+      "CreateModelVersionDeploymentRequestV2": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_profile": {
+            "enum": [
+              "none",
+              "bearer_ref"
+            ],
+            "type": "string"
+          },
+          "connectivity_scope": {
+            "enum": [
+              "private_network",
+              "public_network"
+            ],
+            "type": "string"
+          },
+          "credential_ref": {
+            "nullable": true,
+            "type": "string"
+          },
+          "declared_capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "context_limit": {
+                "maximum": 10000000,
+                "minimum": 1,
+                "nullable": true,
+                "type": "integer"
+              },
+              "interfaces": {
+                "items": {
+                  "enum": [
+                    "chat_completions",
+                    "embeddings",
+                    "vision",
+                    "tools"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "interfaces",
+              "context_limit"
+            ],
+            "type": "object"
+          },
+          "display_name": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "endpoint_base_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "served_model_name": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "served_model_name",
+          "connectivity_scope",
+          "endpoint_base_url",
+          "auth_profile",
+          "credential_ref",
+          "declared_capabilities"
         ],
         "type": "object"
       },
@@ -1066,6 +1154,11 @@
         "type": "object"
       },
       "DisableModelDeploymentRequestV2": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "DisableModelVersionDeploymentRequestV2": {
         "additionalProperties": false,
         "properties": {},
         "type": "object"
@@ -3374,6 +3467,16 @@
             "nullable": true,
             "type": "string"
           },
+          "deployment_digest": {
+            "nullable": true,
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "deployment_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "model_id": {
             "format": "uuid",
             "type": "string"
@@ -3399,6 +3502,8 @@
           "model_id",
           "model_version_id",
           "source_fingerprint",
+          "deployment_id",
+          "deployment_digest",
           "alias",
           "replayed"
         ],
@@ -3439,6 +3544,25 @@
                   "source_mutability",
                   "verification_level",
                   "evidence_digest"
+                ],
+                "type": "object"
+              },
+              "deployment": {
+                "additionalProperties": false,
+                "nullable": true,
+                "properties": {
+                  "create_digest": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "create_digest"
                 ],
                 "type": "object"
               },
@@ -3705,7 +3829,8 @@
               "version_create_digest",
               "classification",
               "warnings",
-              "registration_digest"
+              "registration_digest",
+              "deployment"
             ],
             "type": "object"
           },
@@ -3742,6 +3867,25 @@
                   "source_mutability",
                   "verification_level",
                   "evidence_digest"
+                ],
+                "type": "object"
+              },
+              "deployment": {
+                "additionalProperties": false,
+                "nullable": true,
+                "properties": {
+                  "create_digest": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "create_digest"
                 ],
                 "type": "object"
               },
@@ -4052,7 +4196,373 @@
               "version_create_digest",
               "classification",
               "warnings",
-              "registration_digest"
+              "registration_digest",
+              "deployment"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "classification": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidence_digest": {
+                    "nullable": true,
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "source_mutability": {
+                    "enum": [
+                      "immutable",
+                      "mutable",
+                      "unknown"
+                    ],
+                    "type": "string"
+                  },
+                  "verification_level": {
+                    "enum": [
+                      "content_verified",
+                      "provider_verified",
+                      "operator_attested",
+                      "unverified"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source_mutability",
+                  "verification_level",
+                  "evidence_digest"
+                ],
+                "type": "object"
+              },
+              "deployment": {
+                "additionalProperties": false,
+                "nullable": true,
+                "properties": {
+                  "create_digest": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "create_digest"
+                ],
+                "type": "object"
+              },
+              "model_create_digest": {
+                "nullable": true,
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "model_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "normalized_request": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alias": {
+                        "enum": [
+                          "candidate",
+                          "staging",
+                          "production"
+                        ],
+                        "type": "string"
+                      },
+                      "expected_version_id": {
+                        "format": "uuid",
+                        "nullable": true,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "alias",
+                      "expected_version_id"
+                    ],
+                    "type": "object"
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "base_model": {
+                        "additionalProperties": false,
+                        "nullable": true,
+                        "properties": {
+                          "reference": {
+                            "maxLength": 512,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "revision": {
+                            "nullable": true,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "reference",
+                          "revision"
+                        ],
+                        "type": "object"
+                      },
+                      "declared_reference_kind": {
+                        "enum": [
+                          "immutable_version",
+                          "mutable_alias",
+                          "opaque"
+                        ],
+                        "type": "string"
+                      },
+                      "deployment": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "auth_profile": {
+                            "enum": [
+                              "none",
+                              "bearer_ref"
+                            ],
+                            "type": "string"
+                          },
+                          "connectivity_scope": {
+                            "enum": [
+                              "private_network",
+                              "public_network"
+                            ],
+                            "type": "string"
+                          },
+                          "credential_ref": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "declared_capabilities": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "context_limit": {
+                                "maximum": 10000000,
+                                "minimum": 1,
+                                "nullable": true,
+                                "type": "integer"
+                              },
+                              "interfaces": {
+                                "items": {
+                                  "enum": [
+                                    "chat_completions",
+                                    "embeddings",
+                                    "vision",
+                                    "tools"
+                                  ],
+                                  "type": "string"
+                                },
+                                "maxItems": 4,
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "interfaces",
+                              "context_limit"
+                            ],
+                            "type": "object"
+                          },
+                          "display_name": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "endpoint_base_url": {
+                            "maxLength": 2048,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "served_model_name": {
+                            "maxLength": 512,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "display_name",
+                          "served_model_name",
+                          "connectivity_scope",
+                          "endpoint_base_url",
+                          "auth_profile",
+                          "credential_ref",
+                          "declared_capabilities"
+                        ],
+                        "type": "object"
+                      },
+                      "external_model_ref": {
+                        "type": "string"
+                      },
+                      "external_version_ref": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "existing_service"
+                        ],
+                        "type": "string"
+                      },
+                      "provider": {
+                        "enum": [
+                          "openai_compatible"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "provider",
+                      "external_model_ref",
+                      "external_version_ref",
+                      "declared_reference_kind",
+                      "base_model",
+                      "deployment"
+                    ],
+                    "type": "object"
+                  },
+                  "target": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "display_name": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "create_model"
+                            ],
+                            "type": "string"
+                          },
+                          "tags": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "maxItems": 32,
+                            "type": "array"
+                          },
+                          "task_family": {
+                            "nullable": true,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "key",
+                          "display_name",
+                          "description",
+                          "task_family",
+                          "tags"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "existing_model"
+                            ],
+                            "type": "string"
+                          },
+                          "model_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "model_id"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "version_label": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target",
+                  "version_label",
+                  "source"
+                ],
+                "type": "object"
+              },
+              "plan_profile": {
+                "enum": [
+                  "model-registration-plan-service-v1"
+                ],
+                "type": "string"
+              },
+              "registration_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "source_fingerprint": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "version_create_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "warnings": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "pattern": "^[a-z][a-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "maxLength": 512,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "path",
+                    "message"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 32,
+                "type": "array"
+              }
+            },
+            "required": [
+              "plan_profile",
+              "normalized_request",
+              "model_id",
+              "model_create_digest",
+              "source_fingerprint",
+              "version_create_digest",
+              "classification",
+              "warnings",
+              "registration_digest",
+              "deployment"
             ],
             "type": "object"
           }
@@ -4501,6 +5011,247 @@
               "source"
             ],
             "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "alias": {
+                "additionalProperties": false,
+                "properties": {
+                  "alias": {
+                    "enum": [
+                      "candidate",
+                      "staging",
+                      "production"
+                    ],
+                    "type": "string"
+                  },
+                  "expected_version_id": {
+                    "format": "uuid",
+                    "nullable": true,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "alias",
+                  "expected_version_id"
+                ],
+                "type": "object"
+              },
+              "source": {
+                "additionalProperties": false,
+                "properties": {
+                  "base_model": {
+                    "additionalProperties": false,
+                    "nullable": true,
+                    "properties": {
+                      "reference": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "revision": {
+                        "nullable": true,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "reference",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
+                  "declared_reference_kind": {
+                    "enum": [
+                      "immutable_version",
+                      "mutable_alias",
+                      "opaque"
+                    ],
+                    "type": "string"
+                  },
+                  "deployment": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "auth_profile": {
+                        "enum": [
+                          "none",
+                          "bearer_ref"
+                        ],
+                        "type": "string"
+                      },
+                      "connectivity_scope": {
+                        "enum": [
+                          "private_network",
+                          "public_network"
+                        ],
+                        "type": "string"
+                      },
+                      "credential_ref": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "declared_capabilities": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "context_limit": {
+                            "maximum": 10000000,
+                            "minimum": 1,
+                            "nullable": true,
+                            "type": "integer"
+                          },
+                          "interfaces": {
+                            "items": {
+                              "enum": [
+                                "chat_completions",
+                                "embeddings",
+                                "vision",
+                                "tools"
+                              ],
+                              "type": "string"
+                            },
+                            "maxItems": 4,
+                            "minItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "interfaces",
+                          "context_limit"
+                        ],
+                        "type": "object"
+                      },
+                      "display_name": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "endpoint_base_url": {
+                        "maxLength": 2048,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "served_model_name": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "display_name",
+                      "served_model_name",
+                      "connectivity_scope",
+                      "endpoint_base_url",
+                      "auth_profile",
+                      "credential_ref",
+                      "declared_capabilities"
+                    ],
+                    "type": "object"
+                  },
+                  "external_model_ref": {
+                    "type": "string"
+                  },
+                  "external_version_ref": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "existing_service"
+                    ],
+                    "type": "string"
+                  },
+                  "provider": {
+                    "enum": [
+                      "openai_compatible"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "provider",
+                  "external_model_ref",
+                  "external_version_ref",
+                  "declared_reference_kind",
+                  "base_model",
+                  "deployment"
+                ],
+                "type": "object"
+              },
+              "target": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "display_name": {
+                        "type": "string"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "create_model"
+                        ],
+                        "type": "string"
+                      },
+                      "tags": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 32,
+                        "type": "array"
+                      },
+                      "task_family": {
+                        "nullable": true,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "key",
+                      "display_name",
+                      "description",
+                      "task_family",
+                      "tags"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "existing_model"
+                        ],
+                        "type": "string"
+                      },
+                      "model_id": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "model_id"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "version_label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "version_label",
+              "source"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -4628,6 +5379,193 @@
           "metadata_revision",
           "archived_at",
           "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ModelVersionDeploymentPageV2": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ModelVersionDeploymentV2"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "next_cursor": {
+            "maxLength": 1536,
+            "minLength": 1,
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "ModelVersionDeploymentV2": {
+        "additionalProperties": false,
+        "properties": {
+          "activated_at": {
+            "nullable": true,
+            "type": "string"
+          },
+          "auth_profile": {
+            "enum": [
+              "none",
+              "bearer_ref"
+            ],
+            "type": "string"
+          },
+          "availability": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "type": "string"
+          },
+          "connectivity_scope": {
+            "enum": [
+              "private_network",
+              "public_network"
+            ],
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "declared_capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "context_limit": {
+                "maximum": 10000000,
+                "minimum": 1,
+                "nullable": true,
+                "type": "integer"
+              },
+              "interfaces": {
+                "items": {
+                  "enum": [
+                    "chat_completions",
+                    "embeddings",
+                    "vision",
+                    "tools"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "interfaces",
+              "context_limit"
+            ],
+            "type": "object"
+          },
+          "disabled_at": {
+            "nullable": true,
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "health_checked_at": {
+            "nullable": true,
+            "type": "string"
+          },
+          "health_error_code": {
+            "enum": [
+              "timeout",
+              "network_error",
+              "http_error",
+              "invalid_response",
+              "served_model_missing",
+              "policy_rejected",
+              "credential_rejected",
+              "configuration_changed",
+              "unhealthy",
+              null
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "health_status": {
+            "enum": [
+              "unknown",
+              "healthy",
+              "unhealthy"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lifecycle": {
+            "enum": [
+              "registered",
+              "active",
+              "disabled"
+            ],
+            "type": "string"
+          },
+          "model_version_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "openai_compatible"
+            ],
+            "type": "string"
+          },
+          "served_model_name": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "unavailable_reason": {
+            "enum": [
+              "not_active",
+              "public_network_disabled",
+              "policy_generation_changed",
+              "credential_generation_changed",
+              "credential_unavailable",
+              "runtime_unavailable",
+              null
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "model_version_id",
+          "display_name",
+          "provider",
+          "served_model_name",
+          "connectivity_scope",
+          "auth_profile",
+          "declared_capabilities",
+          "lifecycle",
+          "availability",
+          "unavailable_reason",
+          "health_status",
+          "health_checked_at",
+          "health_error_code",
+          "created_at",
+          "activated_at",
+          "disabled_at",
           "updated_at"
         ],
         "type": "object"
@@ -21335,6 +22273,1214 @@
         ]
       }
     },
+    "/v2/model-versions/{version_id}/deployments": {
+      "get": {
+        "operationId": "listModelVersionDeploymentsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lifecycle",
+            "required": false,
+            "schema": {
+              "enum": [
+                "registered",
+                "active",
+                "disabled"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": null,
+              "maxLength": 1536,
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionDeploymentPageV2"
+                }
+              }
+            },
+            "description": "Model Version Deployments",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorResponseV2"
+                }
+              }
+            },
+            "description": "Authentication is required",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenErrorResponseV2"
+                }
+              }
+            },
+            "description": "Workspace access is forbidden",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponseV2"
+                }
+              }
+            },
+            "description": "Invalid Model Deployment page request",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooManyRequestsErrorResponseV2"
+                }
+              }
+            },
+            "description": "Request rate limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse500V2"
+                }
+              }
+            },
+            "description": "V2 integrity or internal failure",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse503V2"
+                }
+              }
+            },
+            "description": "V2 capacity or dependency is unavailable",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "v2 Model Version Deployments"
+        ]
+      },
+      "post": {
+        "operationId": "createModelVersionDeploymentV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModelVersionDeploymentRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionDeploymentV2"
+                }
+              }
+            },
+            "description": "Created or replayed Model Version Deployment",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestErrorResponseV2"
+                }
+              }
+            },
+            "description": "Malformed Model Deployment request",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorResponseV2"
+                }
+              }
+            },
+            "description": "Authentication is required",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenErrorResponseV2"
+                }
+              }
+            },
+            "description": "Workspace access is forbidden",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Artifact was not found",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse409V2"
+                }
+              }
+            },
+            "description": "Model Deployment create conflict",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLimitErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Deployment request is too large",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Artifact is not deployable",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooManyRequestsErrorResponseV2"
+                }
+              }
+            },
+            "description": "Request rate limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse500V2"
+                }
+              }
+            },
+            "description": "V2 integrity or internal failure",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse503V2"
+                }
+              }
+            },
+            "description": "V2 capacity or dependency is unavailable",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ModelDeploymentOperatorBearer": []
+          }
+        ],
+        "tags": [
+          "v2 Model Version Deployments"
+        ]
+      }
+    },
+    "/v2/model-versions/{version_id}/deployments/{deployment_id}:activate": {
+      "post": {
+        "operationId": "activateModelVersionDeploymentV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateModelVersionDeploymentRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionDeploymentV2"
+                }
+              }
+            },
+            "description": "activate Model Deployment",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestErrorResponseV2"
+                }
+              }
+            },
+            "description": "Malformed Model Deployment action",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorResponseV2"
+                }
+              }
+            },
+            "description": "Authentication is required",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenErrorResponseV2"
+                }
+              }
+            },
+            "description": "Workspace access is forbidden",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Deployment was not found",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse409V2"
+                }
+              }
+            },
+            "description": "Model Deployment state conflict",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLimitErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Deployment action is too large",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponseV2"
+                }
+              }
+            },
+            "description": "Invalid Model Deployment identifier",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooManyRequestsErrorResponseV2"
+                }
+              }
+            },
+            "description": "Request rate limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse500V2"
+                }
+              }
+            },
+            "description": "V2 integrity or internal failure",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse503V2"
+                }
+              }
+            },
+            "description": "V2 capacity or dependency is unavailable",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ModelDeploymentOperatorBearer": []
+          }
+        ],
+        "tags": [
+          "v2 Model Version Deployments"
+        ]
+      }
+    },
     "/v2/model-versions/{version_id}/deployments/{deployment_id}:adopt": {
       "post": {
         "operationId": "adoptModelDeploymentV2",
@@ -21784,6 +23930,910 @@
         ],
         "tags": [
           "v2 Models"
+        ]
+      }
+    },
+    "/v2/model-versions/{version_id}/deployments/{deployment_id}:check": {
+      "post": {
+        "operationId": "checkModelVersionDeploymentV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckModelVersionDeploymentRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionDeploymentV2"
+                }
+              }
+            },
+            "description": "check Model Deployment",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestErrorResponseV2"
+                }
+              }
+            },
+            "description": "Malformed Model Deployment action",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorResponseV2"
+                }
+              }
+            },
+            "description": "Authentication is required",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenErrorResponseV2"
+                }
+              }
+            },
+            "description": "Workspace access is forbidden",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Deployment was not found",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse409V2"
+                }
+              }
+            },
+            "description": "Model Deployment state conflict",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLimitErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Deployment action is too large",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponseV2"
+                }
+              }
+            },
+            "description": "Invalid Model Deployment identifier",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooManyRequestsErrorResponseV2"
+                }
+              }
+            },
+            "description": "Request rate limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse500V2"
+                }
+              }
+            },
+            "description": "V2 integrity or internal failure",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse503V2"
+                }
+              }
+            },
+            "description": "V2 capacity or dependency is unavailable",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ModelDeploymentOperatorBearer": []
+          }
+        ],
+        "tags": [
+          "v2 Model Version Deployments"
+        ]
+      }
+    },
+    "/v2/model-versions/{version_id}/deployments/{deployment_id}:disable": {
+      "post": {
+        "operationId": "disableModelVersionDeploymentV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableModelVersionDeploymentRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionDeploymentV2"
+                }
+              }
+            },
+            "description": "disable Model Deployment",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestErrorResponseV2"
+                }
+              }
+            },
+            "description": "Malformed Model Deployment action",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorResponseV2"
+                }
+              }
+            },
+            "description": "Authentication is required",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenErrorResponseV2"
+                }
+              }
+            },
+            "description": "Workspace access is forbidden",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Deployment was not found",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse409V2"
+                }
+              }
+            },
+            "description": "Model Deployment state conflict",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceLimitErrorResponseV2"
+                }
+              }
+            },
+            "description": "Model Deployment action is too large",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponseV2"
+                }
+              }
+            },
+            "description": "Invalid Model Deployment identifier",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooManyRequestsErrorResponseV2"
+                }
+              }
+            },
+            "description": "Request rate limit exceeded",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse500V2"
+                }
+              }
+            },
+            "description": "V2 integrity or internal failure",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse503V2"
+                }
+              }
+            },
+            "description": "V2 capacity or dependency is unavailable",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "private, no-store"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "required": true,
+                "schema": {
+                  "enum": [
+                    "nosniff"
+                  ],
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ModelDeploymentOperatorBearer": []
+          }
+        ],
+        "tags": [
+          "v2 Model Version Deployments"
         ]
       }
     },

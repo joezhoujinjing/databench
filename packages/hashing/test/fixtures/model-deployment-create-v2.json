@@ -1,0 +1,24 @@
+{
+  "profile": "model-deployment-create-v2",
+  "domain_utf8_hex": "6461746162656e63682e6d6f64656c2d6465706c6f796d656e742d6372656174652e6d6f64656c2d6465706c6f796d656e742d6372656174652d763200",
+  "input": {
+    "model_deployment_create_profile": "model-deployment-create-v2",
+    "namespace": "018f1d8e-7a2b-8c3d-9e4f-1234567890ab",
+    "model_version_id": "02f5b312-6f70-860c-9c20-455974fd0831",
+    "source_fingerprint": "67f42bcad29a82a385d0475890df577bf9658c6a85e5dee787af94c4578d65d4",
+    "provider": "openai_compatible",
+    "display_name": "内网服务",
+    "served_model_name": "qwen",
+    "endpoint_base_url": "https://m.example/v1",
+    "connectivity_scope": "private_network",
+    "auth_profile": "none",
+    "credential_ref": null,
+    "declared_capabilities": {
+      "interfaces": ["chat_completions"],
+      "context_limit": null
+    }
+  },
+  "canonical": "{\"auth_profile\":\"none\",\"connectivity_scope\":\"private_network\",\"credential_ref\":null,\"declared_capabilities\":{\"context_limit\":null,\"interfaces\":[\"chat_completions\"]},\"display_name\":\"内网服务\",\"endpoint_base_url\":\"https://m.example/v1\",\"model_deployment_create_profile\":\"model-deployment-create-v2\",\"model_version_id\":\"02f5b312-6f70-860c-9c20-455974fd0831\",\"namespace\":\"018f1d8e-7a2b-8c3d-9e4f-1234567890ab\",\"provider\":\"openai_compatible\",\"served_model_name\":\"qwen\",\"source_fingerprint\":\"67f42bcad29a82a385d0475890df577bf9658c6a85e5dee787af94c4578d65d4\"}",
+  "digest": "18c8b97161f3b34fec291875f8815505f18e00abeb2a108984b5f0faf4e855a4",
+  "independent_digest": "18c8b97161f3b34fec291875f8815505f18e00abeb2a108984b5f0faf4e855a4"
+}

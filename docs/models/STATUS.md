@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- model-registry-status
-current_step: MR5
-last_completed_step: MR4
+current_step: MR6
+last_completed_step: MR5
 capability_enabled: false
 runtime_implemented: true
 public_network_activation: false
@@ -14,16 +14,15 @@ gpu_gate: deferred
 
 ## 当前检查点
 
-- **工作分支:** `feat/model-registry-mr4`
-- **代码基线:** `feat/model-registry-mr3@db93fed`
-- **当前 Step:** MR5——Existing Service 与 version-bound Deployment
+- **工作分支:** `feat/model-registry-mr5`
+- **代码基线:** `feat/model-registry-mr4@73f364e`
+- **当前 Step:** MR6——Evaluation v5/v6 与 EvalScope 执行边界
 - **Owner 范围:** MR2 candidate Alias；MR3 ModelScope + operator-managed；CLI MR2 read/MR8 write；
   一级导航“数据集 / 训练 / 模型 / 测评”
-- **Runtime:** MR4 已完成跨语言 endpoint policy、approved-IP transport、legacy health/inference hardening、
-  offline credential authority/projection 与匿名 FD handoff；Service、Deployment v2 与 Evaluation v5/v6
-  尚未实现
-- **Capability:** 整体 Model Registry capability 仍未启用；MR4 只交付共享安全底座，不能据此宣称三来源、
-  version-bound Deployment 或新 Evaluation 已完成
+- **Runtime:** MR5 已完成 Existing Service、version-bound Deployment 注册/激活/health/disable、nested REST、
+  internal v2 resolver 和 EvalScope strict parser；Evaluation 执行仍固定使用 legacy internal v1，v5/v6 尚未实现
+- **Capability:** 整体 Model Registry capability 仍未启用；MR5 不开放 Evaluation selector，也不能据此宣称
+  Evaluation v5/v6、完整 Model 产品面或 Model Registry final gate 已完成
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
 - **GPU/V16/V17:** 状态不变，Model Registry 的实施不自动完成 V16/V17，也不打开 GPU gate
 
@@ -36,7 +35,7 @@ gpu_gate: deferred
 | MR2 | Artifact 注册与基础产品面 | ✅ | `feat/model-registry-mr2` | GMR2 green | candidate Alias + CLI read；capability false |
 | MR3 | Repository reference 与 evidence | ✅ | `feat/model-registry-mr3` | GMR3 green | ModelScope + operator-managed |
 | MR4 | Endpoint/secret 安全底座 | ✅ | `feat/model-registry-mr4` | GMR4 green | legacy network hardening + offline projection |
-| MR5 | Existing Service 与 Deployment v2 | ⬜ | | GMR5 | internal v1/v2 隔离 |
+| MR5 | Existing Service 与 Deployment v2 | ✅ | `feat/model-registry-mr5` | GMR5 green | internal v1/v2 隔离 |
 | MR6 | Evaluation v5/v6 | ⬜ | | GMR6 | 不改历史 identity |
 | MR7 | 完整 Model 产品面 | ⬜ | | GMR7 | 浏览器与 selector gate |
 | MR8 | CLI、离线与 Final Gate | ⬜ | | GMR8 | 不自动完成 V16/V17 |
@@ -194,4 +193,40 @@ backend；MR4 必须先完成 endpoint/secret 安全底座与 legacy network har
 
 GMR4 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不下载
 权重、不创建 Artifact，不实现 Existing Service、Deployment v2 或 Evaluation v5/v6，也不自动完成
+V16/V17、GE9、GPU 或 production readiness。
+
+## GMR5 完成证据
+
+- [x] Existing Service external model/version reference、declared reference kind 与首个 registered Deployment
+  在 registration transaction 中原子提交，durable claim 保存 Deployment locator 并支持 response-loss replay；
+- [x] `model-deployment-create-v2` 独立 domain、UUID v8 与 BLAKE3 fixed vector绑定 Version ID、source
+  fingerprint、serving route、endpoint scope、credential ref 名和 declared capabilities；
+- [x] additive `0018_model_version_deployments_v2` migration保留 `artifact-bound-v1`，增加
+  `model-version-v1`、nullable Artifact、Version/source composite FK、profile CHECK、deferred source binding、
+  generation snapshot 和 claim locator；fresh/forward PostgreSQL 均通过且 legacy row未改写；
+- [x] Artifact source Deployment强制 exact primary Artifact，Repository/Service强制 Artifact null；同 source
+  进入两个 Model、相同 endpoint进入不同 Deployment identity不碰撞；
+- [x] registered→active双读 generation fence、受控 `/models` discovery、policy/ref撤销 fail-closed、DB-clock
+  health/disable 与 offline public-network `registered + unavailable`；healthy discovery不声明 inference compatible；
+- [x] nested create/list/activate/check/disable REST 与 public projection不暴露 endpoint、credential ref 或 digest；
+  legacy顶层 public/internal v1只读 `artifact-bound-v1`，新 ID稳定404；
+- [x] `/internal/v2/model-deployments/{id}:resolve` 使用 service credential、private response、strict三来源 union，
+  不进入 OpenAPI且不返回 secret；EvalScope增加对应 strict parser/client，但 Evaluation execution未提前从
+  internal v1切换；
+- [x] 真实 PostgreSQL + MinIO、受控 fake OpenAI-compatible endpoint、API/OpenAPI、EvalScope Python、offline、
+  full workspace与全仓 gates通过。
+
+2026-08-05 实际通过：
+
+- `pnpm exec prisma format`、`pnpm exec prisma validate`；
+- `pnpm lint`、`pnpm build`、`pnpm typecheck`、`pnpm test`；
+- `pnpm openapi:check`、`pnpm models:status:test`、`pnpm models:status:check`、
+  `pnpm v2:status:check`；
+- `pnpm peers check`、`pnpm models:migration:check`、`pnpm offline:check`；
+- `RUN_MINIO_STORE_TESTS=true pnpm --filter @databench/workspace test`（200 passed / 10 skipped）；
+- `pnpm test:evalscope:python`、`pnpm evalscope:parity:check`；
+- `git diff --check`。
+
+GMR5 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不实现
+Evaluation v5/v6、不接线 Model selector、不启用 Hugging Face adapter或 hosted secret backend，也不自动完成
 V16/V17、GE9、GPU 或 production readiness。

@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { tmpdir } from 'node:os'
@@ -7,8 +7,13 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { createGzip } from 'node:zlib'
 import { afterEach, describe, expect, test } from 'vitest'
-import { ModelCredentialSnapshotV1 } from '../src/model-credentials/index.js'
 import {
+  ModelCredentialRegistryV1,
+  ModelCredentialSnapshotV1,
+  writeModelCredentialsAtomicV1,
+} from '../src/model-credentials/index.js'
+import {
+  createPinnedModelVersionDeploymentRuntimeV2,
   isApprovedModelEndpointRemoteAddressV1,
   loadModelEndpointPolicyV1,
   ModelEndpointPolicyError,
@@ -116,6 +121,93 @@ describe('model-endpoint-policy-v1', () => {
 })
 
 describe('pinned Model endpoint transport', () => {
+  test('version-bound runtime reads local generations without DNS and injects bearer only in pinned discovery', async () => {
+    const deploymentId = '123e4567-e89b-42d3-a456-426614174000'
+    let authorization: string | undefined
+    const server = await listen((request, response) => {
+      authorization = request.headers.authorization
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{"data":[{"id":"secured-model"}]}')
+    })
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('port missing')
+    let dnsCalls = 0
+    const policy = new ModelEndpointPolicyV1Runtime(
+      {
+        profile: 'model-endpoint-policy-v1',
+        generation: 7,
+        private_network: [
+          {
+            hostname: 'localhost',
+            cidrs: ['127.0.0.0/8'],
+            schemes: ['http'],
+            ports: [address.port],
+          },
+        ],
+        public_network: [],
+      },
+      {
+        releaseProfile: 'offline',
+        resolver: async () => {
+          dnsCalls += 1
+          return ['127.0.0.1']
+        },
+      },
+    )
+    const transport = new PinnedModelEndpointTransportV1({ policy })
+    const root = mkdtempSync(join(tmpdir(), 'databench-version-deployment-runtime-'))
+    const credentialPath = join(root, 'api-model-credentials.json')
+    writeModelCredentialsAtomicV1(credentialPath, {
+      profile: 'model-credentials-v1',
+      generation: 3,
+      projection_for: 'api-health',
+      credentials: {
+        secured: {
+          kind: 'bearer',
+          secret: 'runtime-secret',
+          allowed_consumers: ['api-health'],
+          allowed_deployments: [deploymentId],
+        },
+      },
+    })
+    chmodSync(credentialPath, 0o440)
+    const credentials = new ModelCredentialRegistryV1(credentialPath, 'api-health', {
+      requireRootOwner: false,
+    })
+    const runtime = createPinnedModelVersionDeploymentRuntimeV2({
+      policy,
+      transport,
+      credentials,
+    })
+    const runtimeRequest = {
+      deploymentId,
+      endpointBaseUrl: `http://localhost:${address.port}/v1`,
+      servedModelName: 'secured-model',
+      connectivityScope: 'private_network' as const,
+      authProfile: 'bearer_ref' as const,
+      credentialRef: 'secured',
+    }
+    await expect(runtime.configuration(runtimeRequest)).resolves.toEqual({
+      policyGeneration: 7,
+      credentialGeneration: 3,
+    })
+    expect(dnsCalls).toBe(0)
+    await expect(runtime.observe(runtimeRequest)).resolves.toEqual({
+      status: 'healthy',
+      error: null,
+    })
+    expect(dnsCalls).toBe(1)
+    expect(authorization).toBe('Bearer runtime-secret')
+
+    await expect(
+      runtime.configuration({
+        ...runtimeRequest,
+        connectivityScope: 'public_network',
+        endpointBaseUrl: 'https://models.example.test/v1',
+      }),
+    ).rejects.toMatchObject({ code: 'public_network_disabled' })
+  })
+
   test('connects to the approved IP, preserves Host, ignores proxies, and parses bounded JSON', async () => {
     let observedHost = ''
     const server = await listen((request, response) => {

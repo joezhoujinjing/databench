@@ -681,6 +681,7 @@ export interface CreateModelDeploymentV2 {
 }
 
 export interface CatalogModelDeploymentRowV2 extends CreateModelDeploymentV2 {
+  readonly deploymentProfile: 'artifact-bound-v1'
   readonly id: string
   readonly status: CatalogModelDeploymentStatusV2
   readonly healthStatus: CatalogModelDeploymentHealthStatusV2
@@ -689,6 +690,68 @@ export interface CatalogModelDeploymentRowV2 extends CreateModelDeploymentV2 {
   readonly createdAt: Date
   readonly disabledAt: Date | null
   readonly updatedAt: Date
+}
+
+export type CatalogModelVersionDeploymentAuthProfileV2 = 'none' | 'bearer_ref'
+export type CatalogModelVersionDeploymentLifecycleV2 = 'registered' | 'active' | 'disabled'
+export type CatalogModelVersionDeploymentConnectivityScopeV2 = 'private_network' | 'public_network'
+export type CatalogModelVersionDeploymentInterfaceV2 =
+  | 'chat_completions'
+  | 'embeddings'
+  | 'vision'
+  | 'tools'
+
+export interface CatalogModelVersionDeploymentCapabilitiesV2 {
+  readonly interfaces: readonly CatalogModelVersionDeploymentInterfaceV2[]
+  readonly contextLimit: number | null
+}
+
+export interface CreateModelVersionDeploymentV2 {
+  readonly id: string
+  readonly namespaceId: string
+  readonly deploymentProfile: 'model-version-v1'
+  readonly createDigest: string
+  readonly modelVersionId: string
+  readonly artifactId: string | null
+  readonly provider: CatalogModelDeploymentProviderV2
+  readonly displayName: string
+  readonly servedModelName: string
+  readonly endpointBaseUrl: string
+  readonly connectivityScope: CatalogModelVersionDeploymentConnectivityScopeV2
+  readonly authProfile: CatalogModelVersionDeploymentAuthProfileV2
+  readonly credentialRef: string | null
+  readonly declaredCapabilities: CatalogModelVersionDeploymentCapabilitiesV2
+}
+
+export interface CatalogModelVersionDeploymentRowV2 extends CreateModelVersionDeploymentV2 {
+  readonly lifecycle: CatalogModelVersionDeploymentLifecycleV2
+  readonly policyGeneration: bigint | null
+  readonly credentialGeneration: bigint | null
+  readonly healthStatus: CatalogModelDeploymentHealthStatusV2
+  readonly healthCheckedAt: Date | null
+  readonly healthError: string | null
+  readonly createdAt: Date
+  readonly activatedAt: Date | null
+  readonly disabledAt: Date | null
+  readonly updatedAt: Date
+}
+
+export interface CatalogModelVersionDeploymentCursorV2 {
+  readonly createdAt: Date
+  readonly id: string
+}
+
+export interface CatalogModelVersionDeploymentPageV2 {
+  readonly rows: readonly CatalogModelVersionDeploymentRowV2[]
+  readonly nextCursor: CatalogModelVersionDeploymentCursorV2 | null
+}
+
+export interface ActivateCatalogModelVersionDeploymentV2 {
+  readonly namespaceId: string
+  readonly modelVersionId: string
+  readonly deploymentId: string
+  readonly policyGeneration: bigint
+  readonly credentialGeneration: bigint | null
 }
 
 export interface CatalogModelDeploymentCursorV2 {
@@ -805,6 +868,7 @@ export interface CreateModelRegistrationV2 {
   readonly version: Omit<CatalogModelVersionRowV2, 'createdAt'>
   readonly source: CatalogModelVersionSourceV2
   readonly initialEvidence?: AppendModelSourceEvidenceV2 | null
+  readonly deployment: CreateModelVersionDeploymentV2 | null
   readonly alias: {
     readonly alias: CatalogModelAliasRowV2['alias']
     readonly expectedVersionId: string | null
@@ -818,6 +882,8 @@ export interface CatalogModelRegistrationClaimRowV2 {
   readonly normalizedRequest: { readonly [key: string]: CatalogJsonValueV2 }
   readonly modelId: string
   readonly modelVersionId: string
+  readonly deploymentId: string | null
+  readonly deploymentDigest: string | null
   readonly aliasName: CatalogModelAliasRowV2['alias'] | null
   readonly createdAt: Date
 }
@@ -826,6 +892,7 @@ export interface CatalogModelRegistrationResultV2 {
   readonly model: CatalogModelRowV2
   readonly version: CatalogModelVersionRowV2
   readonly source: CatalogModelVersionSourceV2
+  readonly deployment: CatalogModelVersionDeploymentRowV2 | null
   readonly alias: CatalogModelAliasRowV2 | null
   readonly claim: CatalogModelRegistrationClaimRowV2
   readonly replayed: boolean

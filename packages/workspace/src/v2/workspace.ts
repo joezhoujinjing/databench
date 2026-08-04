@@ -1,5 +1,6 @@
 import { parse as parsePath, resolve as resolvePath } from 'node:path'
 import {
+  type ActivateCatalogModelVersionDeploymentV2,
   type AppendModelSourceEvidenceV2,
   type DeleteRefResultV2 as CatalogDeleteRefResultV2,
   type CatalogEvaluationRunCursorV2,
@@ -32,6 +33,10 @@ import {
   type CatalogModelRowV2,
   type CatalogModelSourceEvidenceRowV2,
   type CatalogModelVersionCursorV2,
+  type CatalogModelVersionDeploymentCursorV2,
+  type CatalogModelVersionDeploymentLifecycleV2,
+  type CatalogModelVersionDeploymentPageV2,
+  type CatalogModelVersionDeploymentRowV2,
   type CatalogModelVersionPageV2,
   type CatalogModelVersionRowV2,
   type CatalogModelVersionSourceV2,
@@ -58,6 +63,7 @@ import {
   type CreateModelDeploymentAdoptionV2,
   type CreateModelDeploymentV2,
   type CreateModelRegistrationV2,
+  type CreateModelVersionDeploymentV2,
   type CreateSwiftStudioSessionV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
@@ -90,6 +96,7 @@ import {
   canonicalJsonV2,
   createArtifactHasher,
   deriveV2ModelSourceEvidenceIdFromDigest,
+  deriveV2ModelVersionDeploymentIdFromCreateDigest,
   hashV2EvaluationRunCreate,
   hashV2EvaluationRunCreateWithDeployment,
   hashV2EvaluationRunCreateWithDeploymentAndMetrics,
@@ -98,6 +105,7 @@ import {
   hashV2ModelDeploymentAdoption,
   hashV2ModelDeploymentCreate,
   hashV2ModelSourceEvidence,
+  hashV2ModelVersionDeploymentCreate,
   hashV2SwiftStudioOutputHandle,
   hashV2SwiftStudioSessionCreate,
   hashV2TransformCache,
@@ -111,6 +119,7 @@ import {
   V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE,
   V2_MODEL_DEPLOYMENT_CREATE_PROFILE,
   V2_MODEL_SOURCE_EVIDENCE_PROFILE,
+  V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE,
   V2_SWIFT_STUDIO_SESSION_CREATE_PROFILE,
 } from '@databench/hashing'
 import {
@@ -157,6 +166,8 @@ import {
   CreateModelArtifactImportRequestV2Schema,
   type CreateModelDeploymentRequestV2,
   CreateModelDeploymentRequestV2Schema,
+  type CreateModelVersionDeploymentRequestV2,
+  CreateModelVersionDeploymentRequestV2Schema,
   type CreateSwiftStudioSessionRequestV2,
   CreateSwiftStudioSessionRequestV2Schema,
   type CursorPageRequestV2,
@@ -245,6 +256,11 @@ import {
   type ModelRegistrationPlanV2,
   type ModelSourceEvidenceV2,
   type ModelV2,
+  type ModelVersionDeploymentPageRequestV2,
+  ModelVersionDeploymentPageRequestV2Schema,
+  type ModelVersionDeploymentPageV2,
+  ModelVersionDeploymentPageV2Schema,
+  type ModelVersionDeploymentV2,
   ModelVersionIdV2Schema,
   type ModelVersionPageRequestV2,
   ModelVersionPageRequestV2Schema,
@@ -279,6 +295,7 @@ import {
   type RefPageV2,
   RefPageV2Schema,
   type ResolvedModelDeploymentV2,
+  type ResolvedModelVersionDeploymentV2,
   ResourceLimitError,
   type RestoreRefRequestV2,
   RestoreRefRequestV2Schema,
@@ -394,9 +411,16 @@ import {
 } from './model-artifact.js'
 import {
   DENY_ALL_MODEL_DEPLOYMENT_HEALTH_CLIENT_V2,
+  DENY_ALL_MODEL_VERSION_DEPLOYMENT_RUNTIME_V2,
   modelDeploymentFromCatalogV2,
+  modelVersionDeploymentFromCatalogV2,
+  modelVersionDeploymentRuntimeRequestV2,
   resolvedModelDeploymentFromCatalogV2,
+  resolvedModelVersionDeploymentFromCatalogV2,
   type V2ModelDeploymentHealthClient,
+  type V2ModelVersionDeploymentRuntime,
+  V2ModelVersionDeploymentRuntimeError,
+  type V2ModelVersionDeploymentUnavailableReason,
 } from './model-deployment.js'
 import {
   commitModelRegistrationV2,
@@ -575,6 +599,35 @@ export interface V2WorkspaceCatalog {
     id: string,
     health: CatalogModelDeploymentHealthV2,
   ): Promise<CatalogModelDeploymentRowV2 | null>
+  createOrReadModelVersionDeployment(
+    input: CreateModelVersionDeploymentV2,
+  ): Promise<CatalogModelVersionDeploymentRowV2>
+  getModelVersionDeployment(
+    namespaceId: string,
+    deploymentId: string,
+    modelVersionId?: string,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null>
+  listModelVersionDeployments(
+    namespaceId: string,
+    modelVersionId: string,
+    lifecycle: CatalogModelVersionDeploymentLifecycleV2 | null,
+    before: CatalogModelVersionDeploymentCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelVersionDeploymentPageV2>
+  activateModelVersionDeployment(
+    input: ActivateCatalogModelVersionDeploymentV2,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null>
+  disableModelVersionDeployment(
+    namespaceId: string,
+    modelVersionId: string,
+    deploymentId: string,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null>
+  updateModelVersionDeploymentHealth(
+    namespaceId: string,
+    modelVersionId: string,
+    deploymentId: string,
+    health: CatalogModelDeploymentHealthV2,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null>
   prepareEvaluationRunArchive(
     input: PrepareEvaluationRunArchiveV2,
   ): Promise<CatalogEvaluationRunRowV2 | null>
@@ -705,6 +758,7 @@ export interface V2WorkspaceOptions {
   readonly onCleanupError?: (error: unknown, primaryError: unknown | null) => void
   readonly swiftStudio?: V2SwiftStudioWorkspaceOptions
   readonly modelDeploymentHealthClient?: V2ModelDeploymentHealthClient
+  readonly modelVersionDeploymentRuntime?: V2ModelVersionDeploymentRuntime
   readonly modelRepository?: V2ModelRepositoryRuntime
   readonly evaluationArtifactStore?: EvaluationArtifactStoreV1
 }
@@ -752,6 +806,7 @@ export interface V2WorkspaceOpenOptions {
   readonly evaluationArchiveSignedUrlTtlMs?: number
   readonly modelRepository?: V2ModelRepositoryOpenOptions
   readonly modelDeploymentHealthClient?: V2ModelDeploymentHealthClient
+  readonly modelVersionDeploymentRuntime?: V2ModelVersionDeploymentRuntime
 }
 
 interface ResolvedLayoutV2 {
@@ -797,6 +852,7 @@ export class V2Workspace {
   readonly #onCleanupError: ((error: unknown, primaryError: unknown | null) => void) | undefined
   readonly #swiftStudio: Readonly<ResolvedV2SwiftStudioWorkspaceOptions> | null
   readonly #modelDeploymentHealthClient: V2ModelDeploymentHealthClient
+  readonly #modelVersionDeploymentRuntime: V2ModelVersionDeploymentRuntime
   readonly #evaluationArtifacts: EvaluationArtifactStoreV1 | undefined
   readonly #modelRepository: V2ModelRepositoryRuntime
   #namespacePromise: Promise<string> | undefined
@@ -835,6 +891,9 @@ export class V2Workspace {
         ...(options.modelDeploymentHealthClient === undefined
           ? {}
           : { modelDeploymentHealthClient: options.modelDeploymentHealthClient }),
+        ...(options.modelVersionDeploymentRuntime === undefined
+          ? {}
+          : { modelVersionDeploymentRuntime: options.modelVersionDeploymentRuntime }),
         ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
         ...(options.transformLimits === undefined
           ? {}
@@ -949,6 +1008,8 @@ export class V2Workspace {
         : snapshotSwiftStudioWorkspaceOptions(options.swiftStudio)
     this.#modelDeploymentHealthClient =
       options.modelDeploymentHealthClient ?? DENY_ALL_MODEL_DEPLOYMENT_HEALTH_CLIENT_V2
+    this.#modelVersionDeploymentRuntime =
+      options.modelVersionDeploymentRuntime ?? DENY_ALL_MODEL_VERSION_DEPLOYMENT_RUNTIME_V2
     this.#evaluationArtifacts = options.evaluationArtifactStore
     this.#modelRepository = options.modelRepository ?? DECLARED_ONLY_MODEL_REPOSITORY_RUNTIME_V2
     this.#runtimeCapability = postTrainingV2Capability({
@@ -989,6 +1050,7 @@ export class V2Workspace {
       namespaceId,
       request,
       this.#modelRepository,
+      this.#modelVersionDeploymentRuntime,
       context.signal,
     )
   }
@@ -1003,6 +1065,7 @@ export class V2Workspace {
       namespaceId,
       request,
       this.#modelRepository,
+      this.#modelVersionDeploymentRuntime,
       context.signal,
     )
   }
@@ -2972,6 +3035,325 @@ export class V2Workspace {
     })
   }
 
+  async createModelVersionDeployment(
+    versionIdInput: string,
+    requestInput: CreateModelVersionDeploymentRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const request = CreateModelVersionDeploymentRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const stored = await this.#catalog.getModelVersion(namespaceId, versionId)
+    if (stored === null) {
+      throw new NotFoundError('Model Version was not found', { model_version_id: versionId })
+    }
+    const createDigest = hashV2ModelVersionDeploymentCreate({
+      model_deployment_create_profile: V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE,
+      namespace: namespaceId,
+      model_version_id: versionId,
+      source_fingerprint: stored.version.sourceFingerprint,
+      provider: 'openai_compatible',
+      display_name: request.display_name,
+      served_model_name: request.served_model_name,
+      endpoint_base_url: request.endpoint_base_url,
+      connectivity_scope: request.connectivity_scope,
+      auth_profile: request.auth_profile,
+      credential_ref: request.credential_ref,
+      declared_capabilities: request.declared_capabilities,
+    })
+    const input: CreateModelVersionDeploymentV2 = {
+      id: deriveV2ModelVersionDeploymentIdFromCreateDigest(createDigest),
+      namespaceId,
+      deploymentProfile: 'model-version-v1',
+      createDigest,
+      modelVersionId: versionId,
+      artifactId: stored.source.kind === 'databench_artifact' ? stored.source.artifactId : null,
+      provider: 'openai_compatible',
+      displayName: request.display_name,
+      servedModelName: request.served_model_name,
+      endpointBaseUrl: request.endpoint_base_url,
+      connectivityScope: request.connectivity_scope,
+      authProfile: request.auth_profile,
+      credentialRef: request.credential_ref,
+      declaredCapabilities: {
+        interfaces: request.declared_capabilities.interfaces,
+        contextLimit: request.declared_capabilities.context_limit,
+      },
+    }
+    await this.#admitModelVersionDeploymentRegistration(input, context.signal)
+    let row: CatalogModelVersionDeploymentRowV2
+    try {
+      row = await waitWithAbort(
+        this.#catalog.createOrReadModelVersionDeployment(input),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+    this.#assertModelVersionDeploymentBinding(row, namespaceId, versionId, createDigest)
+    return await this.#projectModelVersionDeployment(row)
+  }
+
+  async getModelVersionDeployment(
+    versionIdInput: string,
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionDeploymentV2 | null> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const version = await this.#catalog.getModelVersion(namespaceId, versionId)
+    if (version === null) {
+      throw new NotFoundError('Model Version was not found', { model_version_id: versionId })
+    }
+    const row = await this.#readModelVersionDeploymentRow(
+      namespaceId,
+      versionId,
+      deploymentId,
+      context.signal,
+    )
+    return row === null ? null : await this.#projectModelVersionDeployment(row)
+  }
+
+  async listModelVersionDeployments(
+    versionIdInput: string,
+    requestInput: ModelVersionDeploymentPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionDeploymentPageV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const request = ModelVersionDeploymentPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const version = await this.#catalog.getModelVersion(namespaceId, versionId)
+    if (version === null) {
+      throw new NotFoundError('Model Version was not found', { model_version_id: versionId })
+    }
+    const lifecycle = request.lifecycle ?? null
+    const state =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeModelVersionDeployment(
+            request.cursor,
+            namespaceId,
+            versionId,
+            lifecycle,
+          )
+    let page: CatalogModelVersionDeploymentPageV2
+    try {
+      page = await waitWithAbort(
+        this.#catalog.listModelVersionDeployments(
+          namespaceId,
+          versionId,
+          lifecycle,
+          state === null ? null : { createdAt: new Date(state.created_at), id: state.id },
+          request.limit,
+        ),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+    for (const row of page.rows) {
+      this.#assertModelVersionDeploymentBinding(row, namespaceId, versionId)
+    }
+    return ModelVersionDeploymentPageV2Schema.parse({
+      items: await Promise.all(page.rows.map((row) => this.#projectModelVersionDeployment(row))),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeModelVersionDeployment(namespaceId, {
+              created_at: page.nextCursor.createdAt.toISOString(),
+              id: page.nextCursor.id,
+              model_version_id: versionId,
+              lifecycle,
+            }),
+    })
+  }
+
+  async activateModelVersionDeployment(
+    versionIdInput: string,
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row = await this.#requireModelVersionDeploymentRow(
+      namespaceId,
+      versionId,
+      deploymentId,
+      context.signal,
+    )
+    if (row.lifecycle === 'disabled') {
+      throw new ConflictError('Disabled Model Deployment cannot be activated', {
+        reason: 'model_deployment_disabled',
+        model_version_id: versionId,
+        deployment_id: deploymentId,
+      })
+    }
+    const runtimeRequest = modelVersionDeploymentRuntimeRequestV2(row)
+    let generation0: Awaited<ReturnType<V2ModelVersionDeploymentRuntime['configuration']>>
+    try {
+      generation0 = await this.#modelVersionDeploymentRuntime.configuration(runtimeRequest)
+    } catch (error) {
+      row = await this.#recordModelVersionDeploymentConfigurationFailure(row, error, context.signal)
+      return await this.#projectModelVersionDeployment(row)
+    }
+    this.#assertModelVersionDeploymentConfiguration(row, generation0)
+    const observation = await this.#observeModelVersionDeployment(row, context.signal)
+    row = await this.#updateModelVersionDeploymentHealth(row, observation, context.signal)
+    if (observation.status !== 'healthy') {
+      return await this.#projectModelVersionDeployment(row)
+    }
+    let generation1: Awaited<ReturnType<V2ModelVersionDeploymentRuntime['configuration']>>
+    try {
+      generation1 = await this.#modelVersionDeploymentRuntime.configuration(runtimeRequest)
+    } catch (error) {
+      row = await this.#recordModelVersionDeploymentConfigurationFailure(row, error, context.signal)
+      return await this.#projectModelVersionDeployment(row)
+    }
+    this.#assertModelVersionDeploymentConfiguration(row, generation1)
+    if (
+      generation0.policyGeneration !== generation1.policyGeneration ||
+      generation0.credentialGeneration !== generation1.credentialGeneration
+    ) {
+      row = await this.#updateModelVersionDeploymentHealth(
+        row,
+        { status: 'unhealthy', error: 'configuration_changed' },
+        context.signal,
+      )
+      return await this.#projectModelVersionDeployment(row)
+    }
+    let activated: CatalogModelVersionDeploymentRowV2 | null
+    try {
+      activated = await waitWithAbort(
+        this.#catalog.activateModelVersionDeployment({
+          namespaceId,
+          modelVersionId: versionId,
+          deploymentId,
+          policyGeneration: BigInt(generation1.policyGeneration),
+          credentialGeneration:
+            generation1.credentialGeneration === null
+              ? null
+              : BigInt(generation1.credentialGeneration),
+        }),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+    if (activated === null) {
+      throw new NotFoundError('Model Deployment was not found', {
+        model_version_id: versionId,
+        deployment_id: deploymentId,
+      })
+    }
+    this.#assertModelVersionDeploymentBinding(activated, namespaceId, versionId)
+    return await this.#projectModelVersionDeployment(activated)
+  }
+
+  async checkModelVersionDeployment(
+    versionIdInput: string,
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row = await this.#requireModelVersionDeploymentRow(
+      namespaceId,
+      versionId,
+      deploymentId,
+      context.signal,
+    )
+    let observation: CatalogModelDeploymentHealthV2
+    try {
+      const configuration = await this.#modelVersionDeploymentRuntime.configuration(
+        modelVersionDeploymentRuntimeRequestV2(row),
+      )
+      this.#assertModelVersionDeploymentConfiguration(row, configuration)
+      observation = await this.#observeModelVersionDeployment(row, context.signal)
+    } catch (error) {
+      observation = this.#modelVersionDeploymentConfigurationFailureObservation(error)
+    }
+    row = await this.#updateModelVersionDeploymentHealth(row, observation, context.signal)
+    return await this.#projectModelVersionDeployment(row)
+  }
+
+  async disableModelVersionDeployment(
+    versionIdInput: string,
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelVersionDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogModelVersionDeploymentRowV2 | null
+    try {
+      row = await waitWithAbort(
+        this.#catalog.disableModelVersionDeployment(namespaceId, versionId, deploymentId),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+    if (row === null) {
+      throw new NotFoundError('Model Deployment was not found', {
+        model_version_id: versionId,
+        deployment_id: deploymentId,
+      })
+    }
+    this.#assertModelVersionDeploymentBinding(row, namespaceId, versionId)
+    return await this.#projectModelVersionDeployment(row)
+  }
+
+  async resolveModelVersionDeployment(
+    deploymentIdInput: string,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ResolvedModelVersionDeploymentV2> {
+    context.signal?.throwIfAborted()
+    const deploymentId = ModelDeploymentIdV2Schema.parse(deploymentIdInput)
+    const namespaceId = await this.#namespace(context.signal)
+    let row: CatalogModelVersionDeploymentRowV2 | null
+    try {
+      row = await waitWithAbort(
+        this.#catalog.getModelVersionDeployment(namespaceId, deploymentId),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+    if (row === null) {
+      throw new NotFoundError('Model Deployment was not found', { deployment_id: deploymentId })
+    }
+    const availability = await this.#modelVersionDeploymentAvailability(row)
+    if (row.lifecycle !== 'active' || availability.availability !== 'available') {
+      throw new ConflictError('Model Deployment is not active and available', {
+        reason: availability.unavailableReason ?? 'not_active',
+        deployment_id: deploymentId,
+        lifecycle: row.lifecycle,
+      })
+    }
+    const stored = await this.#catalog.getModelVersion(namespaceId, row.modelVersionId)
+    if (stored === null) {
+      throw new IntegrityError('Model Deployment Version disappeared', {
+        reason: 'model_deployment_version_missing',
+        deployment_id: deploymentId,
+      })
+    }
+    return resolvedModelVersionDeploymentFromCatalogV2(row, stored.version, stored.source)
+  }
+
   async createModelDeployment(
     requestInput: CreateModelDeploymentRequestV2,
     context: V2WorkspaceOperationOptions = {},
@@ -3880,6 +4262,267 @@ export class V2Workspace {
     } catch (abandonError) {
       attachSuppressed(primaryError, abandonError)
       return null
+    }
+  }
+
+  async #admitModelVersionDeploymentRegistration(
+    input: CreateModelVersionDeploymentV2,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    signal?.throwIfAborted()
+    try {
+      const configuration = await this.#modelVersionDeploymentRuntime.configuration({
+        deploymentId: input.id,
+        endpointBaseUrl: input.endpointBaseUrl,
+        servedModelName: input.servedModelName,
+        connectivityScope: input.connectivityScope,
+        authProfile: input.authProfile,
+        credentialRef: input.credentialRef,
+      })
+      this.#assertModelVersionDeploymentConfiguration(input, configuration)
+    } catch (error) {
+      if (
+        error instanceof V2ModelVersionDeploymentRuntimeError &&
+        error.code === 'public_network_disabled' &&
+        input.connectivityScope === 'public_network'
+      ) {
+        return
+      }
+      const code =
+        error instanceof V2ModelVersionDeploymentRuntimeError ? error.code : 'runtime_unavailable'
+      throw new ValidationError('Model Deployment configuration was rejected', {
+        issues: [
+          {
+            path: code === 'credential_unavailable' ? '/credential_ref' : '/endpoint_base_url',
+            line: null,
+            code: `model_deployment_${code}`,
+            message: 'Endpoint policy or credential configuration does not admit this Deployment',
+          },
+        ],
+      })
+    } finally {
+      signal?.throwIfAborted()
+    }
+  }
+
+  #assertModelVersionDeploymentConfiguration(
+    row: Pick<CatalogModelVersionDeploymentRowV2, 'authProfile'>,
+    configuration: Readonly<{
+      readonly policyGeneration: number
+      readonly credentialGeneration: number | null
+    }>,
+  ): void {
+    if (
+      !Number.isSafeInteger(configuration.policyGeneration) ||
+      configuration.policyGeneration <= 0 ||
+      (configuration.credentialGeneration !== null &&
+        (!Number.isSafeInteger(configuration.credentialGeneration) ||
+          configuration.credentialGeneration <= 0)) ||
+      (row.authProfile === 'none') !== (configuration.credentialGeneration === null)
+    ) {
+      throw new IntegrityError('Model Deployment runtime returned an invalid generation', {
+        reason: 'model_deployment_runtime_generation_invalid',
+      })
+    }
+  }
+
+  async #projectModelVersionDeployment(
+    row: CatalogModelVersionDeploymentRowV2,
+  ): Promise<ModelVersionDeploymentV2> {
+    return modelVersionDeploymentFromCatalogV2(
+      row,
+      await this.#modelVersionDeploymentAvailability(row),
+    )
+  }
+
+  async #modelVersionDeploymentAvailability(row: CatalogModelVersionDeploymentRowV2): Promise<{
+    readonly availability: 'available' | 'unavailable'
+    readonly unavailableReason: V2ModelVersionDeploymentUnavailableReason | null
+  }> {
+    if (row.lifecycle !== 'active') {
+      return Object.freeze({
+        availability: 'unavailable',
+        unavailableReason:
+          row.lifecycle === 'registered' && row.connectivityScope === 'public_network'
+            ? 'public_network_disabled'
+            : 'not_active',
+      })
+    }
+    let current: Readonly<{
+      readonly policyGeneration: number
+      readonly credentialGeneration: number | null
+    }>
+    try {
+      current = await this.#modelVersionDeploymentRuntime.configuration(
+        modelVersionDeploymentRuntimeRequestV2(row),
+      )
+      this.#assertModelVersionDeploymentConfiguration(row, current)
+    } catch (error) {
+      const unavailableReason: V2ModelVersionDeploymentUnavailableReason =
+        error instanceof V2ModelVersionDeploymentRuntimeError
+          ? error.code === 'public_network_disabled'
+            ? 'public_network_disabled'
+            : error.code === 'credential_unavailable'
+              ? 'credential_unavailable'
+              : error.code === 'policy_rejected'
+                ? 'policy_generation_changed'
+                : 'runtime_unavailable'
+          : 'runtime_unavailable'
+      return Object.freeze({ availability: 'unavailable', unavailableReason })
+    }
+    if (row.policyGeneration !== BigInt(current.policyGeneration)) {
+      return Object.freeze({
+        availability: 'unavailable',
+        unavailableReason: 'policy_generation_changed',
+      })
+    }
+    if (
+      row.credentialGeneration !==
+      (current.credentialGeneration === null ? null : BigInt(current.credentialGeneration))
+    ) {
+      return Object.freeze({
+        availability: 'unavailable',
+        unavailableReason: 'credential_generation_changed',
+      })
+    }
+    return Object.freeze({ availability: 'available', unavailableReason: null })
+  }
+
+  #modelVersionDeploymentConfigurationFailureObservation(
+    error: unknown,
+  ): CatalogModelDeploymentHealthV2 {
+    if (error instanceof V2ModelVersionDeploymentRuntimeError) {
+      return Object.freeze({
+        status: 'unhealthy',
+        error: error.code === 'credential_unavailable' ? 'credential_rejected' : 'policy_rejected',
+      })
+    }
+    if (error instanceof IntegrityError) {
+      return Object.freeze({ status: 'unhealthy', error: 'configuration_changed' })
+    }
+    return Object.freeze({ status: 'unhealthy', error: 'unhealthy' })
+  }
+
+  async #recordModelVersionDeploymentConfigurationFailure(
+    row: CatalogModelVersionDeploymentRowV2,
+    error: unknown,
+    signal?: AbortSignal,
+  ): Promise<CatalogModelVersionDeploymentRowV2> {
+    return await this.#updateModelVersionDeploymentHealth(
+      row,
+      this.#modelVersionDeploymentConfigurationFailureObservation(error),
+      signal,
+    )
+  }
+
+  async #observeModelVersionDeployment(
+    row: CatalogModelVersionDeploymentRowV2,
+    signal?: AbortSignal,
+  ): Promise<CatalogModelDeploymentHealthV2> {
+    try {
+      return await this.#modelVersionDeploymentRuntime.observe(
+        modelVersionDeploymentRuntimeRequestV2(row),
+        { ...(signal === undefined ? {} : { signal }) },
+      )
+    } catch (error) {
+      if (signal?.aborted) throw error
+      return Object.freeze({ status: 'unhealthy', error: 'network_error' })
+    }
+  }
+
+  async #updateModelVersionDeploymentHealth(
+    row: CatalogModelVersionDeploymentRowV2,
+    observation: CatalogModelDeploymentHealthV2,
+    signal?: AbortSignal,
+  ): Promise<CatalogModelVersionDeploymentRowV2> {
+    let updated: CatalogModelVersionDeploymentRowV2 | null
+    try {
+      updated = await waitWithAbort(
+        this.#catalog.updateModelVersionDeploymentHealth(
+          row.namespaceId,
+          row.modelVersionId,
+          row.id,
+          observation,
+        ),
+        signal,
+      )
+    } catch (error) {
+      if (signal?.aborted) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+    if (updated === null) {
+      throw new NotFoundError('Model Deployment was not found', {
+        model_version_id: row.modelVersionId,
+        deployment_id: row.id,
+      })
+    }
+    this.#assertModelVersionDeploymentBinding(
+      updated,
+      row.namespaceId,
+      row.modelVersionId,
+      row.createDigest,
+    )
+    return updated
+  }
+
+  async #requireModelVersionDeploymentRow(
+    namespaceId: string,
+    versionId: string,
+    deploymentId: string,
+    signal?: AbortSignal,
+  ): Promise<CatalogModelVersionDeploymentRowV2> {
+    const row = await this.#readModelVersionDeploymentRow(
+      namespaceId,
+      versionId,
+      deploymentId,
+      signal,
+    )
+    if (row === null) {
+      throw new NotFoundError('Model Deployment was not found', {
+        model_version_id: versionId,
+        deployment_id: deploymentId,
+      })
+    }
+    return row
+  }
+
+  async #readModelVersionDeploymentRow(
+    namespaceId: string,
+    versionId: string,
+    deploymentId: string,
+    signal?: AbortSignal,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+    let row: CatalogModelVersionDeploymentRowV2 | null
+    try {
+      row = await waitWithAbort(
+        this.#catalog.getModelVersionDeployment(namespaceId, deploymentId, versionId),
+        signal,
+      )
+    } catch (error) {
+      if (signal?.aborted) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+    if (row !== null) this.#assertModelVersionDeploymentBinding(row, namespaceId, versionId)
+    return row
+  }
+
+  #assertModelVersionDeploymentBinding(
+    row: CatalogModelVersionDeploymentRowV2,
+    namespaceId: string,
+    versionId: string,
+    createDigest?: string,
+  ): void {
+    if (
+      row.namespaceId !== namespaceId ||
+      row.modelVersionId !== versionId ||
+      row.deploymentProfile !== 'model-version-v1' ||
+      (createDigest !== undefined && row.createDigest !== createDigest)
+    ) {
+      throw new IntegrityError('Catalog returned an inconsistent Model Version Deployment', {
+        reason: 'model_version_deployment_binding_mismatch',
+        deployment_id: row.id,
+        model_version_id: versionId,
+      })
     }
   }
 
@@ -6318,6 +6961,12 @@ function snapshotV2WorkspaceOpenOptions(
     ...(input.modelRepository === undefined
       ? {}
       : { modelRepository: Object.freeze({ ...input.modelRepository }) }),
+    ...(input.modelDeploymentHealthClient === undefined
+      ? {}
+      : { modelDeploymentHealthClient: input.modelDeploymentHealthClient }),
+    ...(input.modelVersionDeploymentRuntime === undefined
+      ? {}
+      : { modelVersionDeploymentRuntime: input.modelVersionDeploymentRuntime }),
     ...(input.evaluationArchiveMaxBytes === undefined
       ? {}
       : { evaluationArchiveMaxBytes: input.evaluationArchiveMaxBytes }),

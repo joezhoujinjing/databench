@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Writable } from 'node:stream'
 import {
+  type ActivateCatalogModelVersionDeploymentV2,
   type DeleteRefResultV2 as CatalogDeleteRefResultV2,
   type CatalogEvaluationRunCursorV2,
   type CatalogEvaluationRunListFilterV2,
@@ -32,6 +33,10 @@ import {
   type CatalogModelRowV2,
   type CatalogModelSourceEvidenceRowV2,
   type CatalogModelVersionCursorV2,
+  type CatalogModelVersionDeploymentCursorV2,
+  type CatalogModelVersionDeploymentLifecycleV2,
+  type CatalogModelVersionDeploymentPageV2,
+  type CatalogModelVersionDeploymentRowV2,
   type CatalogModelVersionPageV2,
   type CatalogModelVersionRowV2,
   type CatalogModelVersionSourceV2,
@@ -51,6 +56,7 @@ import {
   type CreateModelDeploymentAdoptionV2,
   type CreateModelDeploymentV2,
   type CreateModelRegistrationV2,
+  type CreateModelVersionDeploymentV2,
   type CreateTransformJobV2,
   type DeleteRefV2,
   type FailEvaluationRunArchiveV2,
@@ -123,6 +129,8 @@ import {
   postTrainingV2Capability,
   registrationFromCommittedDataset,
   V2DatasetCache,
+  type V2ModelVersionDeploymentRuntime,
+  V2ModelVersionDeploymentRuntimeError,
   type V2TransformLimits,
   V2Workspace,
   type V2WorkspaceCatalog,
@@ -3145,8 +3153,12 @@ describe('V2Workspace Model Registry', () => {
     ).resolves.toMatchObject({ replayed: true })
   })
 
-  test('fails before writes on digest drift, mutable Alias, and deferred Deployment profiles', async () => {
-    const rig = createRig()
+  test('fails before writes on digest drift and mutable Alias, then registers and activates an Existing Service Deployment', async () => {
+    const runtime: V2ModelVersionDeploymentRuntime = {
+      configuration: vi.fn(async () => ({ policyGeneration: 1, credentialGeneration: null })),
+      observe: vi.fn(async () => ({ status: 'healthy', error: null })),
+    }
+    const rig = createRig({}, undefined, undefined, undefined, undefined, undefined, runtime)
     const repositoryRequest = {
       target: {
         kind: 'create_model' as const,
@@ -3213,16 +3225,80 @@ describe('V2Workspace Model Registry', () => {
     expect(servicePlan.normalized_request.source).toMatchObject({
       deployment: { endpoint_base_url: 'https://models.example.test/v1' },
     })
+    expect(servicePlan.deployment).toEqual({
+      id: expect.any(String),
+      create_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    })
+    const created = await rig.workspace.commitModelRegistration({
+      request: serviceRequest,
+      expected_registration_digest: servicePlan.registration_digest,
+    })
+    expect(created).toMatchObject({
+      deployment_id: servicePlan.deployment?.id,
+      deployment_digest: servicePlan.deployment?.create_digest,
+      replayed: false,
+    })
+    expect(rig.catalog.registerModelVersion).toHaveBeenCalledTimes(1)
+
+    vi.mocked(runtime.configuration).mockRejectedValueOnce(
+      new V2ModelVersionDeploymentRuntimeError('policy_rejected'),
+    )
     await expect(
       rig.workspace.commitModelRegistration({
         request: serviceRequest,
         expected_registration_digest: servicePlan.registration_digest,
       }),
-    ).rejects.toMatchObject({
-      code: 'unsupported_profile',
-      detail: { reason: 'model_deployment_v2_not_enabled' },
+    ).resolves.toMatchObject({ deployment_id: created.deployment_id, replayed: true })
+    expect(runtime.configuration).toHaveBeenCalledTimes(2)
+
+    const deploymentId = created.deployment_id
+    if (deploymentId === null) throw new Error('service registration did not create a Deployment')
+    await expect(
+      rig.workspace.listModelVersionDeployments(created.model_version_id, {
+        cursor: null,
+        limit: 20,
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: deploymentId,
+          lifecycle: 'registered',
+          availability: 'unavailable',
+          unavailable_reason: 'not_active',
+        }),
+      ],
     })
-    expect(rig.catalog.registerModelVersion).toHaveBeenCalledTimes(0)
+
+    vi.mocked(runtime.configuration)
+      .mockReset()
+      .mockResolvedValueOnce({ policyGeneration: 1, credentialGeneration: null })
+      .mockResolvedValueOnce({ policyGeneration: 2, credentialGeneration: null })
+      .mockResolvedValue({ policyGeneration: 2, credentialGeneration: null })
+    await expect(
+      rig.workspace.activateModelVersionDeployment(created.model_version_id, deploymentId),
+    ).resolves.toMatchObject({
+      lifecycle: 'registered',
+      health_status: 'unhealthy',
+      health_error_code: 'configuration_changed',
+    })
+
+    await expect(
+      rig.workspace.activateModelVersionDeployment(created.model_version_id, deploymentId),
+    ).resolves.toMatchObject({
+      lifecycle: 'active',
+      availability: 'available',
+      health_status: 'healthy',
+    })
+    await expect(rig.workspace.resolveModelVersionDeployment(deploymentId)).resolves.toMatchObject({
+      id: deploymentId,
+      model_version_id: created.model_version_id,
+      source_kind: 'existing_service',
+      artifact_id: null,
+      endpoint_base_url: 'https://models.example.test/v1',
+    })
+    await expect(
+      rig.workspace.disableModelVersionDeployment(created.model_version_id, deploymentId),
+    ).resolves.toMatchObject({ lifecycle: 'disabled', availability: 'unavailable' })
   })
 
   test('lists, searches, filters, paginates, and reads Models with filter-bound cursors', async () => {
@@ -3797,6 +3873,7 @@ class FakeCatalog implements V2WorkspaceCatalog {
   readonly evaluationRuns = new Map<string, CatalogEvaluationRunRowV2>()
   readonly modelArtifacts = new Map<string, CatalogModelArtifactRowV2>()
   readonly modelDeployments = new Map<string, CatalogModelDeploymentRowV2>()
+  readonly modelVersionDeployments = new Map<string, CatalogModelVersionDeploymentRowV2>()
   readonly models = new Map<string, CatalogModelRowV2>()
   readonly modelVersions = new Map<
     string,
@@ -4521,10 +4598,27 @@ class FakeCatalog implements V2WorkspaceCatalog {
               createdAt: NOW,
               updatedAt: NOW,
             }
+      const deployment: CatalogModelVersionDeploymentRowV2 | null =
+        input.deployment === null
+          ? null
+          : {
+              ...input.deployment,
+              lifecycle: 'registered',
+              policyGeneration: null,
+              credentialGeneration: null,
+              healthStatus: 'unknown',
+              healthCheckedAt: null,
+              healthError: null,
+              createdAt: NOW,
+              activatedAt: null,
+              disabledAt: null,
+              updatedAt: NOW,
+            }
       const result: CatalogModelRegistrationResultV2 = {
         model,
         version,
         source: input.source,
+        deployment,
         alias,
         claim: {
           namespaceId: input.namespaceId,
@@ -4533,6 +4627,8 @@ class FakeCatalog implements V2WorkspaceCatalog {
           normalizedRequest: input.normalizedRequest,
           modelId: model.id,
           modelVersionId: version.id,
+          deploymentId: deployment?.id ?? null,
+          deploymentDigest: deployment?.createDigest ?? null,
           aliasName: alias?.alias ?? null,
           createdAt: NOW,
         },
@@ -4540,6 +4636,7 @@ class FakeCatalog implements V2WorkspaceCatalog {
       }
       this.models.set(model.id, model)
       this.modelVersions.set(version.id, { version, source: input.source })
+      if (deployment !== null) this.modelVersionDeployments.set(deployment.id, deployment)
       if (input.initialEvidence !== undefined && input.initialEvidence !== null) {
         const row = { ...input.initialEvidence, createdAt: NOW }
         this.modelSourceEvidence.set(version.id, [row])
@@ -4663,6 +4760,149 @@ class FakeCatalog implements V2WorkspaceCatalog {
         updatedAt: NOW,
       }
       this.modelDeployments.set(id, updated)
+      return updated
+    },
+  )
+
+  readonly createOrReadModelVersionDeployment = vi.fn(
+    async (input: CreateModelVersionDeploymentV2): Promise<CatalogModelVersionDeploymentRowV2> => {
+      const existing = this.modelVersionDeployments.get(input.id)
+      if (existing !== undefined) return existing
+      const row: CatalogModelVersionDeploymentRowV2 = {
+        ...input,
+        lifecycle: 'registered',
+        policyGeneration: null,
+        credentialGeneration: null,
+        healthStatus: 'unknown',
+        healthCheckedAt: null,
+        healthError: null,
+        createdAt: NOW,
+        activatedAt: null,
+        disabledAt: null,
+        updatedAt: NOW,
+      }
+      this.modelVersionDeployments.set(row.id, row)
+      return row
+    },
+  )
+
+  readonly getModelVersionDeployment = vi.fn(
+    async (
+      namespaceId: string,
+      deploymentId: string,
+      modelVersionId?: string,
+    ): Promise<CatalogModelVersionDeploymentRowV2 | null> => {
+      const row = this.modelVersionDeployments.get(deploymentId)
+      return row?.namespaceId === namespaceId &&
+        (modelVersionId === undefined || row.modelVersionId === modelVersionId)
+        ? row
+        : null
+    },
+  )
+
+  readonly listModelVersionDeployments = vi.fn(
+    async (
+      namespaceId: string,
+      modelVersionId: string,
+      lifecycle: CatalogModelVersionDeploymentLifecycleV2 | null,
+      before: CatalogModelVersionDeploymentCursorV2 | null,
+      limit: number,
+    ): Promise<CatalogModelVersionDeploymentPageV2> => {
+      const rows = [...this.modelVersionDeployments.values()]
+        .filter(
+          (row) =>
+            row.namespaceId === namespaceId &&
+            row.modelVersionId === modelVersionId &&
+            (lifecycle === null || row.lifecycle === lifecycle) &&
+            (before === null ||
+              row.createdAt < before.createdAt ||
+              (row.createdAt.getTime() === before.createdAt.getTime() && row.id < before.id)),
+        )
+        .sort((left, right) => right.id.localeCompare(left.id))
+      const visible = rows.slice(0, limit)
+      const last = rows.length > limit ? visible.at(-1) : undefined
+      return {
+        rows: visible,
+        nextCursor: last === undefined ? null : { createdAt: last.createdAt, id: last.id },
+      }
+    },
+  )
+
+  readonly activateModelVersionDeployment = vi.fn(
+    async (
+      input: ActivateCatalogModelVersionDeploymentV2,
+    ): Promise<CatalogModelVersionDeploymentRowV2 | null> => {
+      const row = this.modelVersionDeployments.get(input.deploymentId)
+      if (
+        row === undefined ||
+        row.namespaceId !== input.namespaceId ||
+        row.modelVersionId !== input.modelVersionId
+      ) {
+        return null
+      }
+      if (row.lifecycle === 'disabled') return row
+      const updated: CatalogModelVersionDeploymentRowV2 = {
+        ...row,
+        lifecycle: 'active',
+        policyGeneration: input.policyGeneration,
+        credentialGeneration: input.credentialGeneration,
+        activatedAt: NOW,
+        updatedAt: NOW,
+      }
+      this.modelVersionDeployments.set(updated.id, updated)
+      return updated
+    },
+  )
+
+  readonly disableModelVersionDeployment = vi.fn(
+    async (
+      namespaceId: string,
+      modelVersionId: string,
+      deploymentId: string,
+    ): Promise<CatalogModelVersionDeploymentRowV2 | null> => {
+      const row = this.modelVersionDeployments.get(deploymentId)
+      if (
+        row === undefined ||
+        row.namespaceId !== namespaceId ||
+        row.modelVersionId !== modelVersionId
+      ) {
+        return null
+      }
+      if (row.lifecycle === 'disabled') return row
+      const updated: CatalogModelVersionDeploymentRowV2 = {
+        ...row,
+        lifecycle: 'disabled',
+        disabledAt: NOW,
+        updatedAt: NOW,
+      }
+      this.modelVersionDeployments.set(updated.id, updated)
+      return updated
+    },
+  )
+
+  readonly updateModelVersionDeploymentHealth = vi.fn(
+    async (
+      namespaceId: string,
+      modelVersionId: string,
+      deploymentId: string,
+      health: CatalogModelDeploymentHealthV2,
+    ): Promise<CatalogModelVersionDeploymentRowV2 | null> => {
+      const row = this.modelVersionDeployments.get(deploymentId)
+      if (
+        row === undefined ||
+        row.namespaceId !== namespaceId ||
+        row.modelVersionId !== modelVersionId
+      ) {
+        return null
+      }
+      const updated: CatalogModelVersionDeploymentRowV2 = {
+        ...row,
+        healthStatus: health.status,
+        healthCheckedAt: NOW,
+        healthError: health.error,
+        updatedAt: NOW,
+      }
+      this.modelVersionDeployments.set(updated.id, updated)
       return updated
     },
   )
@@ -4904,6 +5144,7 @@ function createRig(
   cache?: V2DatasetCache,
   tempStore?: V2TempStore,
   evaluationArtifactStore?: EvaluationArtifactStoreV1,
+  modelVersionDeploymentRuntime?: V2ModelVersionDeploymentRuntime,
 ): TestRig {
   const events: string[] = []
   const store = new FakeStore(events)
@@ -4917,6 +5158,7 @@ function createRig(
     transformLimits,
     ...(tempStore === undefined ? {} : { tempStore }),
     ...(evaluationArtifactStore === undefined ? {} : { evaluationArtifactStore }),
+    ...(modelVersionDeploymentRuntime === undefined ? {} : { modelVersionDeploymentRuntime }),
     ...(transformRegistry === undefined ? {} : { transformRegistry }),
     ...(converterRegistry === undefined ? {} : { converterRegistry }),
     ...(cache === undefined ? {} : { cache }),

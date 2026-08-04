@@ -10,6 +10,7 @@ import {
   ModelDeploymentStatusV2Schema,
   ModelIdV2Schema,
   ModelSourceKindV2Schema,
+  ModelVersionDeploymentLifecycleV2Schema,
   ModelVersionIdV2Schema,
   parseRawJsonV2,
   RefNameV2Schema,
@@ -154,6 +155,20 @@ export interface V2ModelDeploymentCursorState {
 interface ModelDeploymentCursorPayloadV2 extends V2ModelDeploymentCursorState {
   readonly v: typeof CURSOR_VERSION
   readonly kind: 'model_deployments'
+  readonly scope: string
+  readonly expires_at: number
+}
+
+export interface V2ModelVersionDeploymentCursorState {
+  readonly created_at: string
+  readonly id: string
+  readonly model_version_id: string
+  readonly lifecycle: string | null
+}
+
+interface ModelVersionDeploymentCursorPayloadV2 extends V2ModelVersionDeploymentCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'model_version_deployments'
   readonly scope: string
   readonly expires_at: number
 }
@@ -545,6 +560,45 @@ export class V2CursorCodec {
     }
   }
 
+  encodeModelVersionDeployment(
+    namespace: string,
+    stateInput: V2ModelVersionDeploymentCursorState,
+  ): string {
+    const state = validateModelVersionDeploymentState(stateInput)
+    const payload: ModelVersionDeploymentCursorPayloadV2 = {
+      v: CURSOR_VERSION,
+      kind: 'model_version_deployments',
+      scope: this.#scope(namespace, 'model_version_deployments'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    }
+    const bytes = encoder.encode(canonicalJsonV2(payload))
+    return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
+  }
+
+  decodeModelVersionDeployment(
+    cursor: string,
+    namespace: string,
+    modelVersionId: string,
+    lifecycle: string | null,
+  ): Readonly<V2ModelVersionDeploymentCursorState> {
+    try {
+      const value = this.#decode(cursor)
+      if (
+        !isModelVersionDeploymentCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'model_version_deployments') ||
+        value.model_version_id !== modelVersionId ||
+        value.lifecycle !== lifecycle ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateModelVersionDeploymentState(value)
+    } catch {
+      throw invalidCursor('Model Version Deployment')
+    }
+  }
+
   #decodeRef(cursor: string, namespace: string, kind: RefCursorKindV2): string {
     try {
       if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
@@ -684,7 +738,8 @@ export class V2CursorCodec {
       | 'models'
       | 'model_versions'
       | 'model_artifacts'
-      | 'model_deployments',
+      | 'model_deployments'
+      | 'model_version_deployments',
   ): string {
     return createHmac('sha256', this.#key)
       .update(canonicalJsonV2({ kind: `databench-v2-${kind}-cursor-scope`, namespace }))
@@ -871,6 +926,26 @@ function isModelDeploymentCursorPayload(value: unknown): value is ModelDeploymen
   )
 }
 
+function isModelVersionDeploymentCursorPayload(
+  value: unknown,
+): value is ModelVersionDeploymentCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 8 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'model_version_deployments' &&
+    typeof record.scope === 'string' &&
+    typeof record.created_at === 'string' &&
+    typeof record.id === 'string' &&
+    typeof record.model_version_id === 'string' &&
+    (record.lifecycle === null || typeof record.lifecycle === 'string') &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
 function validateTransformJobState(
   input: V2TransformJobCursorState,
 ): Readonly<V2TransformJobCursorState> {
@@ -1019,6 +1094,24 @@ function validateModelDeploymentState(
     artifact_id:
       input.artifact_id === null ? null : ModelArtifactIdV2Schema.parse(input.artifact_id),
     status: input.status === null ? null : ModelDeploymentStatusV2Schema.parse(input.status),
+  })
+}
+
+function validateModelVersionDeploymentState(
+  input: V2ModelVersionDeploymentCursorState,
+): Readonly<V2ModelVersionDeploymentCursorState> {
+  const timestamp = new Date(input.created_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.created_at) {
+    throw new TypeError('V2 Model Version Deployment cursor timestamp is invalid')
+  }
+  return Object.freeze({
+    created_at: timestamp.toISOString(),
+    id: ModelDeploymentIdV2Schema.parse(input.id),
+    model_version_id: ModelVersionIdV2Schema.parse(input.model_version_id),
+    lifecycle:
+      input.lifecycle === null
+        ? null
+        : ModelVersionDeploymentLifecycleV2Schema.parse(input.lifecycle),
   })
 }
 

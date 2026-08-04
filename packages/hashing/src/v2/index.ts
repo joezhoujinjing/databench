@@ -28,6 +28,7 @@ export {
 export {
   deriveV2ModelIdFromCreateDigest,
   deriveV2ModelSourceEvidenceIdFromDigest,
+  deriveV2ModelVersionDeploymentIdFromCreateDigest,
   deriveV2ModelVersionIdFromCreateDigest,
   hashV2ModelCreate,
   hashV2ModelDeploymentAdoption,
@@ -41,6 +42,7 @@ export {
   hashV2ModelVersionCreateArtifact,
   hashV2ModelVersionCreateRepository,
   hashV2ModelVersionCreateService,
+  hashV2ModelVersionDeploymentCreate,
   type ModelCreateIdentityV1,
   type ModelDeploymentAdoptionIdentityV1,
   type ModelRegistrationPlanArtifactIdentityV1,
@@ -55,6 +57,7 @@ export {
   type ModelVersionCreateArtifactIdentityV1,
   type ModelVersionCreateRepositoryIdentityV1,
   type ModelVersionCreateServiceIdentityV1,
+  type ModelVersionDeploymentCreateIdentityV2,
   V2_MODEL_CREATE_PROFILE,
   V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE,
   V2_MODEL_REGISTRATION_PLAN_ARTIFACT_PROFILE,
@@ -67,6 +70,7 @@ export {
   V2_MODEL_VERSION_CREATE_ARTIFACT_PROFILE,
   V2_MODEL_VERSION_CREATE_REPOSITORY_PROFILE,
   V2_MODEL_VERSION_CREATE_SERVICE_PROFILE,
+  V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE,
 } from './model-registry.js'
 export {
   type ArtifactRowSeedV1,

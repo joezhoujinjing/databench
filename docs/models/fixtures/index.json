@@ -197,7 +197,7 @@
       "path": "packages/hashing/test/fixtures/model-deployment-create-v2.json",
       "assertion": "Binds Model Version ID, source fingerprint, serving route, endpoint policy, credential ref name, and declared capabilities.",
       "source": "ADR 0019 section 6",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr6-evaluation-run-create-v5",

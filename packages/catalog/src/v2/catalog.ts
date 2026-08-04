@@ -16,22 +16,29 @@ import {
   V2CatalogTransformJobLeaseError,
 } from './errors.js'
 import {
+  activateModelVersionDeploymentV2,
   appendModelSourceEvidenceV2,
   archiveModelV2,
   compareAndSetModelAliasV2,
   createOrReadModelDeploymentAdoptionV2,
+  createOrReadModelVersionDeploymentV2,
+  disableModelVersionDeploymentV2,
   getModelV2,
+  getModelVersionDeploymentV2,
   getModelVersionV2,
   listModelAliasesV2,
   listModelDeploymentAdoptionsV2,
   listModelSourceEvidenceV2,
   listModelsV2,
+  listModelVersionDeploymentsV2,
   listModelVersionsV2,
   registerModelVersionV2,
   replayModelRegistrationV2,
   updateModelMetadataV2,
+  updateModelVersionDeploymentHealthV2,
 } from './model-registry.js'
 import type {
+  ActivateCatalogModelVersionDeploymentV2,
   AppendModelSourceEvidenceV2,
   ArchiveCatalogModelV2,
   CatalogEvaluationMetricV2,
@@ -72,6 +79,10 @@ import type {
   CatalogModelRowV2,
   CatalogModelSourceEvidenceRowV2,
   CatalogModelVersionCursorV2,
+  CatalogModelVersionDeploymentCursorV2,
+  CatalogModelVersionDeploymentLifecycleV2,
+  CatalogModelVersionDeploymentPageV2,
+  CatalogModelVersionDeploymentRowV2,
   CatalogModelVersionPageV2,
   CatalogModelVersionRowV2,
   CatalogModelVersionSourceV2,
@@ -109,6 +120,7 @@ import type {
   CreateModelDeploymentAdoptionV2,
   CreateModelDeploymentV2,
   CreateModelRegistrationV2,
+  CreateModelVersionDeploymentV2,
   CreateSwiftStudioSessionV2,
   CreateTransformJobV2,
   DeleteRefResultV2,
@@ -385,6 +397,7 @@ interface ModelArtifactSqlRow {
 interface ModelDeploymentSqlRow {
   readonly id: string
   readonly namespace_id: string
+  readonly deployment_profile: string
   readonly create_digest: string
   readonly artifact_id: string
   readonly provider: string
@@ -453,7 +466,7 @@ const MODEL_ARTIFACT_COLUMNS = Prisma.sql`
 `
 
 const MODEL_DEPLOYMENT_COLUMNS = Prisma.sql`
-  "id", "namespace_id", "create_digest", "artifact_id", "provider", "display_name",
+  "id", "namespace_id", "deployment_profile", "create_digest", "artifact_id", "provider", "display_name",
   "served_model_name", "endpoint_base_url", "auth_mode", "status", "health_status",
   "health_checked_at", "health_error", "created_at", "disabled_at", "updated_at"
 `
@@ -729,6 +742,7 @@ export class V2Catalog {
           FROM "model_deployments_v2"
           WHERE
             "namespace_id" = ${input.namespaceId}::uuid AND
+            "deployment_profile" = 'artifact-bound-v1' AND
             "id" = ${input.modelDeploymentId}::uuid AND
             "artifact_id" = ${input.modelArtifactId}::uuid AND
             "create_digest" = ${input.modelDeploymentDigest}
@@ -1996,6 +2010,76 @@ export class V2Catalog {
     return await listModelDeploymentAdoptionsV2(this.#client, namespaceId, modelVersionId)
   }
 
+  async createOrReadModelVersionDeployment(
+    input: CreateModelVersionDeploymentV2,
+  ): Promise<CatalogModelVersionDeploymentRowV2> {
+    return await createOrReadModelVersionDeploymentV2(this.#client, input)
+  }
+
+  async getModelVersionDeployment(
+    namespaceId: string,
+    deploymentId: string,
+    modelVersionId?: string,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+    return await getModelVersionDeploymentV2(
+      this.#client,
+      namespaceId,
+      deploymentId,
+      modelVersionId,
+    )
+  }
+
+  async listModelVersionDeployments(
+    namespaceId: string,
+    modelVersionId: string,
+    lifecycle: CatalogModelVersionDeploymentLifecycleV2 | null,
+    before: CatalogModelVersionDeploymentCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelVersionDeploymentPageV2> {
+    return await listModelVersionDeploymentsV2(
+      this.#client,
+      namespaceId,
+      modelVersionId,
+      lifecycle,
+      before,
+      limit,
+    )
+  }
+
+  async activateModelVersionDeployment(
+    input: ActivateCatalogModelVersionDeploymentV2,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+    return await activateModelVersionDeploymentV2(this.#client, input)
+  }
+
+  async disableModelVersionDeployment(
+    namespaceId: string,
+    modelVersionId: string,
+    deploymentId: string,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+    return await disableModelVersionDeploymentV2(
+      this.#client,
+      namespaceId,
+      modelVersionId,
+      deploymentId,
+    )
+  }
+
+  async updateModelVersionDeploymentHealth(
+    namespaceId: string,
+    modelVersionId: string,
+    deploymentId: string,
+    health: CatalogModelDeploymentHealthV2,
+  ): Promise<CatalogModelVersionDeploymentRowV2 | null> {
+    return await updateModelVersionDeploymentHealthV2(
+      this.#client,
+      namespaceId,
+      modelVersionId,
+      deploymentId,
+      health,
+    )
+  }
+
   async createOrReadModelDeployment(
     input: CreateModelDeploymentV2,
   ): Promise<CatalogModelDeploymentRowV2> {
@@ -2003,11 +2087,11 @@ export class V2Catalog {
     const id = randomUUID()
     const inserted = await this.#client.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
       INSERT INTO "model_deployments_v2" (
-        "id", "namespace_id", "create_digest", "artifact_id", "provider",
+        "id", "namespace_id", "deployment_profile", "create_digest", "artifact_id", "provider",
         "display_name", "served_model_name", "endpoint_base_url", "auth_mode", "status"
       )
       VALUES (
-        ${id}::uuid, ${input.namespaceId}::uuid, ${input.createDigest},
+        ${id}::uuid, ${input.namespaceId}::uuid, 'artifact-bound-v1', ${input.createDigest},
         ${input.artifactId}::uuid, ${input.provider}, ${input.displayName},
         ${input.servedModelName}, ${input.endpointBaseUrl}, ${input.authMode}, 'active'
       )
@@ -2021,7 +2105,10 @@ export class V2Catalog {
     const rows = await this.#client.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
       SELECT ${MODEL_DEPLOYMENT_COLUMNS}
       FROM "model_deployments_v2"
-      WHERE "namespace_id" = ${input.namespaceId}::uuid AND "create_digest" = ${input.createDigest}
+      WHERE
+        "namespace_id" = ${input.namespaceId}::uuid AND
+        "create_digest" = ${input.createDigest} AND
+        "deployment_profile" = 'artifact-bound-v1'
     `)
     if (rows.length !== 1 || !rows[0]) {
       throw new V2CatalogConsistencyError(
@@ -2046,7 +2133,10 @@ export class V2Catalog {
     const rows = await this.#client.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
       SELECT ${MODEL_DEPLOYMENT_COLUMNS}
       FROM "model_deployments_v2"
-      WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        "id" = ${id}::uuid AND
+        "deployment_profile" = 'artifact-bound-v1'
     `)
     if (rows.length > 1) {
       throw new V2CatalogConsistencyError('Model Deployment lookup returned more than one row')
@@ -2071,6 +2161,7 @@ export class V2Catalog {
       FROM "model_deployments_v2"
       WHERE
         "namespace_id" = ${namespaceId}::uuid AND
+        "deployment_profile" = 'artifact-bound-v1' AND
         (${filter.artifactId}::text IS NULL OR "artifact_id" = ${filter.artifactId}::uuid) AND
         (${filter.status}::text IS NULL OR "status" = ${filter.status}) AND
         ${
@@ -2114,7 +2205,10 @@ export class V2Catalog {
       const rows = await transaction.$queryRaw<ModelDeploymentSqlRow[]>(Prisma.sql`
         SELECT ${MODEL_DEPLOYMENT_COLUMNS}
         FROM "model_deployments_v2"
-        WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+        WHERE
+          "namespace_id" = ${namespaceId}::uuid AND
+          "id" = ${id}::uuid AND
+          "deployment_profile" = 'artifact-bound-v1'
         FOR UPDATE
       `)
       if (rows.length > 1) {
@@ -2129,7 +2223,10 @@ export class V2Catalog {
           "status" = 'disabled',
           "disabled_at" = clock_timestamp(),
           "updated_at" = clock_timestamp()
-        WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+        WHERE
+          "namespace_id" = ${namespaceId}::uuid AND
+          "id" = ${id}::uuid AND
+          "deployment_profile" = 'artifact-bound-v1'
         RETURNING ${MODEL_DEPLOYMENT_COLUMNS}
       `)
       if (updated.length !== 1 || !updated[0]) {
@@ -2154,7 +2251,10 @@ export class V2Catalog {
         "health_checked_at" = clock_timestamp(),
         "health_error" = ${health.error},
         "updated_at" = clock_timestamp()
-      WHERE "namespace_id" = ${namespaceId}::uuid AND "id" = ${id}::uuid
+      WHERE
+        "namespace_id" = ${namespaceId}::uuid AND
+        "id" = ${id}::uuid AND
+        "deployment_profile" = 'artifact-bound-v1'
       RETURNING ${MODEL_DEPLOYMENT_COLUMNS}
     `)
     if (rows.length > 1) {
@@ -3895,7 +3995,11 @@ function sqlRowToModelArtifact(row: ModelArtifactSqlRow): CatalogModelArtifactRo
 }
 
 function sqlRowToModelDeployment(row: ModelDeploymentSqlRow): CatalogModelDeploymentRowV2 {
+  if (row.deployment_profile !== 'artifact-bound-v1') {
+    throw new V2CatalogConsistencyError('Stored legacy Model Deployment profile is invalid')
+  }
   const result: CatalogModelDeploymentRowV2 = {
+    deploymentProfile: 'artifact-bound-v1',
     id: row.id,
     namespaceId: row.namespace_id,
     createDigest: row.create_digest,

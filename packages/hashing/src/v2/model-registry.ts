@@ -20,6 +20,7 @@ export const V2_MODEL_REGISTRATION_PLAN_REPOSITORY_PROFILE =
 export const V2_MODEL_REGISTRATION_PLAN_SERVICE_PROFILE =
   'model-registration-plan-service-v1' as const
 export const V2_MODEL_DEPLOYMENT_ADOPTION_PROFILE = 'model-deployment-adoption-v1' as const
+export const V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE = 'model-deployment-create-v2' as const
 export const V2_MODEL_SOURCE_EVIDENCE_PROFILE = 'model-source-evidence-v1' as const
 
 const DOMAIN = {
@@ -35,6 +36,7 @@ const DOMAIN = {
     'databench.model-registration-plan.model-registration-plan-repository-v1\0',
   registrationService: 'databench.model-registration-plan.model-registration-plan-service-v1\0',
   deploymentAdoption: 'databench.model-deployment-adoption.model-deployment-adoption-v1\0',
+  versionDeploymentCreate: 'databench.model-deployment-create.model-deployment-create-v2\0',
   sourceEvidence: 'databench.model-source-evidence.model-source-evidence-v1\0',
 } as const
 
@@ -142,6 +144,24 @@ export interface ModelDeploymentAdoptionIdentityV1 {
   readonly deployment_id: string
   readonly deployment_digest: string
   readonly artifact_id: string
+}
+
+export interface ModelVersionDeploymentCreateIdentityV2 {
+  readonly model_deployment_create_profile: typeof V2_MODEL_VERSION_DEPLOYMENT_CREATE_PROFILE
+  readonly namespace: string
+  readonly model_version_id: string
+  readonly source_fingerprint: string
+  readonly provider: 'openai_compatible'
+  readonly display_name: string
+  readonly served_model_name: string
+  readonly endpoint_base_url: string
+  readonly connectivity_scope: 'private_network' | 'public_network'
+  readonly auth_profile: 'none' | 'bearer_ref'
+  readonly credential_ref: string | null
+  readonly declared_capabilities: {
+    readonly interfaces: readonly ('chat_completions' | 'embeddings' | 'vision' | 'tools')[]
+    readonly context_limit: number | null
+  }
 }
 
 export interface ModelSourceEvidenceIdentityV1 {
@@ -283,6 +303,25 @@ export function hashV2ModelDeploymentAdoption<
   })
 }
 
+export function hashV2ModelVersionDeploymentCreate<
+  const Identity extends ModelVersionDeploymentCreateIdentityV2,
+>(identity: NoExtraKeys<ModelVersionDeploymentCreateIdentityV2, Identity>): string {
+  return hashDomain(DOMAIN.versionDeploymentCreate, {
+    model_deployment_create_profile: identity.model_deployment_create_profile,
+    namespace: identity.namespace,
+    model_version_id: identity.model_version_id,
+    source_fingerprint: identity.source_fingerprint,
+    provider: identity.provider,
+    display_name: identity.display_name,
+    served_model_name: identity.served_model_name,
+    endpoint_base_url: identity.endpoint_base_url,
+    connectivity_scope: identity.connectivity_scope,
+    auth_profile: identity.auth_profile,
+    credential_ref: identity.credential_ref,
+    declared_capabilities: identity.declared_capabilities,
+  })
+}
+
 export function hashV2ModelSourceEvidence<const Identity extends ModelSourceEvidenceIdentityV1>(
   identity: NoExtraKeys<ModelSourceEvidenceIdentityV1, Identity>,
 ): string {
@@ -306,6 +345,10 @@ export function deriveV2ModelIdFromCreateDigest(createDigest: string): string {
 }
 
 export function deriveV2ModelVersionIdFromCreateDigest(createDigest: string): string {
+  return uuidV8FromDigest(createDigest)
+}
+
+export function deriveV2ModelVersionDeploymentIdFromCreateDigest(createDigest: string): string {
   return uuidV8FromDigest(createDigest)
 }
 

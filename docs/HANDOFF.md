@@ -100,12 +100,13 @@
   `S4 non-GPU contract green / GPU deferred`。owner 已再次确认 GPU 全部后置。证据与实时状态见
   `docs/swift/STATUS.md`，S1 GPU 证据模板见
   `docs/swift/evidence/S1-GPU-STUDIO.md`。
-- ADR 0019 Model Registry 已完成 MR0-MR4。当前 `/models` 支持 immutable Model/Version、Artifact 注册、
+- ADR 0019 Model Registry 已完成 MR0-MR5。当前 `/models` 支持 immutable Model/Version、Artifact 注册、
   candidate Alias、ModelScope offline declared-only 与 operator-managed Repository 注册、append-only source
   evidence 和 refresh；共享 endpoint policy、approved-IP transport、legacy network hardening 与 offline
-  credential authority/projection 已落地。Hugging Face adapter、Existing Service、Deployment v2、Evaluation
-  v5/v6 与 hosted secret backend 尚未实现。当前进入 MR5，整体 capability 仍为 false，公网与 GPU gate
-  均未打开。证据与实时状态见 `docs/models/STATUS.md`。
+  credential authority/projection 已落地；Existing Service、version-bound Deployment、nested REST、internal v2
+  resolver 与 EvalScope strict parser也已完成。Hugging Face adapter、Evaluation v5/v6 与 hosted secret backend
+  尚未实现。当前进入 MR6，整体 capability 仍为 false，公网与 GPU gate均未打开。证据与实时状态见
+  `docs/models/STATUS.md`。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 

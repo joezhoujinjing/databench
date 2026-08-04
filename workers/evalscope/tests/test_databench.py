@@ -10,15 +10,24 @@ import pytest
 from databench_evalscope.databench import (
     DatabenchClient,
     DatabenchSource,
+    ResolvedModelArtifactSource,
+    ResolvedModelDeclaredCapabilities,
     ResolvedModelDeployment,
+    ResolvedModelRepositorySource,
+    ResolvedModelServiceSource,
+    ResolvedModelVersionDeployment,
 )
-from databench_evalscope.errors import RuntimePolicyError
+from databench_evalscope.errors import RuntimePolicyError, UpstreamProtocolError
 from databench_evalscope.storage import TaskManifestStore, config_digest
 
 TASK_ID = 'eval_123e4567-e89b-42d3-a456-426614174000'
 RUN_ID = '123e4567-e89b-42d3-a456-426614174099'
 VERSION = 'a' * 64
 FIDELITY = 'b' * 64
+MODEL_ID = '423e4567-e89b-42d3-a456-426614174000'
+MODEL_VERSION_ID = '523e4567-e89b-42d3-a456-426614174000'
+MODEL_VERSION_DEPLOYMENT_ID = '623e4567-e89b-42d3-a456-426614174000'
+MODEL_ARTIFACT_ID = '723e4567-e89b-42d3-a456-426614174000'
 
 
 def source() -> DatabenchSource:
@@ -48,6 +57,181 @@ def archive_prepare(url: str) -> dict[str, Any]:
             'max_size_bytes': 1024 * 1024 * 1024,
         },
     }
+
+
+def resolved_model_version_deployment(source_kind: str) -> dict[str, Any]:
+    artifact_id: str | None
+    source_value: dict[str, Any]
+    if source_kind == 'databench_artifact':
+        artifact_id = MODEL_ARTIFACT_ID
+        source_value = {
+            'kind': 'databench_artifact',
+            'artifact_id': MODEL_ARTIFACT_ID,
+            'artifact_kind': 'lora_adapter',
+            'artifact_format': 'swift-lora-adapter-v1',
+            'archive_digest': '3' * 64,
+            'manifest_digest': '4' * 64,
+        }
+    elif source_kind == 'repository_reference':
+        artifact_id = None
+        source_value = {
+            'kind': 'repository_reference',
+            'provider': 'modelscope',
+            'repository_id': 'Qwen/Qwen3-0.6B',
+            'revision': '0123456789abcdef',
+            'revision_kind': 'commit',
+        }
+    else:
+        artifact_id = None
+        source_value = {
+            'kind': 'existing_service',
+            'provider': 'openai_compatible',
+            'external_model_ref': 'Qwen/Qwen3-0.6B',
+            'external_version_ref': 'service-release-2026-08-05',
+            'declared_reference_kind': 'immutable_version',
+        }
+    return {
+        'id': MODEL_VERSION_DEPLOYMENT_ID,
+        'model_id': MODEL_ID,
+        'model_version_id': MODEL_VERSION_ID,
+        'create_digest': '1' * 64,
+        'source_fingerprint': '2' * 64,
+        'source_kind': source_kind,
+        'artifact_id': artifact_id,
+        'source': source_value,
+        'provider': 'openai_compatible',
+        'served_model_name': 'qwen-registry-route',
+        'endpoint_base_url': 'http://model-service:8000/v1',
+        'connectivity_scope': 'private_network',
+        'auth_profile': 'bearer_ref',
+        'credential_ref': 'qwen-evalscope-v1',
+        'declared_capabilities': {
+            'interfaces': ['chat_completions', 'tools'],
+            'context_limit': 32_768,
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ('source_kind', 'source_type'),
+    [
+        ('databench_artifact', ResolvedModelArtifactSource),
+        ('repository_reference', ResolvedModelRepositorySource),
+        ('existing_service', ResolvedModelServiceSource),
+    ],
+)
+def test_model_version_deployment_parser_has_a_strict_three_source_union(
+    source_kind: str,
+    source_type: type,
+) -> None:
+    resolved = ResolvedModelVersionDeployment.parse(
+        resolved_model_version_deployment(source_kind),
+        MODEL_VERSION_DEPLOYMENT_ID,
+    )
+    assert resolved.deployment_id == MODEL_VERSION_DEPLOYMENT_ID
+    assert resolved.model_id == MODEL_ID
+    assert resolved.model_version_id == MODEL_VERSION_ID
+    assert resolved.source_kind == source_kind
+    assert isinstance(resolved.source, source_type)
+    assert resolved.artifact_id == (
+        MODEL_ARTIFACT_ID if source_kind == 'databench_artifact' else None
+    )
+    assert resolved.auth_profile == 'bearer_ref'
+    assert resolved.credential_ref == 'qwen-evalscope-v1'
+    assert resolved.declared_capabilities == ResolvedModelDeclaredCapabilities(
+        interfaces=('chat_completions', 'tools'),
+        context_limit=32_768,
+    )
+
+
+@pytest.mark.parametrize(
+    'invalid_case',
+    [
+        'extra_field',
+        'deployment_id_mismatch',
+        'model_id_invalid',
+        'digest_invalid',
+        'artifact_binding_missing',
+        'artifact_binding_forbidden',
+        'source_discriminator_mismatch',
+        'source_shape_extra',
+        'endpoint_query',
+        'auth_ref_mismatch',
+        'credential_ref_invalid',
+        'capability_duplicate',
+        'capability_context_invalid',
+    ],
+)
+def test_model_version_deployment_parser_rejects_cross_union_and_runtime_drift(
+    invalid_case: str,
+) -> None:
+    source_kind = 'repository_reference' if invalid_case == 'artifact_binding_forbidden' else 'databench_artifact'
+    value = resolved_model_version_deployment(source_kind)
+    if invalid_case == 'extra_field':
+        value['secret'] = 'must-not-be-accepted'
+    elif invalid_case == 'deployment_id_mismatch':
+        value['id'] = MODEL_ID
+    elif invalid_case == 'model_id_invalid':
+        value['model_id'] = 'not-a-uuid'
+    elif invalid_case == 'digest_invalid':
+        value['source_fingerprint'] = 'A' * 64
+    elif invalid_case == 'artifact_binding_missing':
+        value['artifact_id'] = None
+    elif invalid_case == 'artifact_binding_forbidden':
+        value['artifact_id'] = MODEL_ARTIFACT_ID
+    elif invalid_case == 'source_discriminator_mismatch':
+        value['source_kind'] = 'existing_service'
+    elif invalid_case == 'source_shape_extra':
+        value['source']['raw_response'] = {}
+    elif invalid_case == 'endpoint_query':
+        value['endpoint_base_url'] = 'https://models.example/v1?api_key=secret'
+    elif invalid_case == 'auth_ref_mismatch':
+        value['auth_profile'] = 'none'
+    elif invalid_case == 'credential_ref_invalid':
+        value['credential_ref'] = '../secret'
+    elif invalid_case == 'capability_duplicate':
+        value['declared_capabilities']['interfaces'] = ['tools', 'tools']
+    else:
+        value['declared_capabilities']['context_limit'] = True
+
+    with pytest.raises(UpstreamProtocolError):
+        ResolvedModelVersionDeployment.parse(value, MODEL_VERSION_DEPLOYMENT_ID)
+
+
+def test_resolves_model_version_deployment_without_switching_evaluation_execution(
+    runtime_config,
+) -> None:
+    runtime_config.prepare()
+    manifests = TaskManifestStore(runtime_config.output_dir)
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        assert request.headers['authorization'] == (
+            f'Bearer {runtime_config.databench_service_credential}'
+        )
+        return httpx.Response(
+            200,
+            json=resolved_model_version_deployment('existing_service'),
+        )
+
+    client = DatabenchClient(
+        runtime_config,
+        manifests,
+        client=httpx.Client(
+            base_url=runtime_config.databench_base_url,
+            headers={
+                'Authorization': f'Bearer {runtime_config.databench_service_credential}',
+            },
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    resolved = client.resolve_model_version_deployment(MODEL_VERSION_DEPLOYMENT_ID)
+    assert isinstance(resolved.source, ResolvedModelServiceSource)
+    assert requests == [
+        f'/internal/v2/model-deployments/{MODEL_VERSION_DEPLOYMENT_ID}:resolve',
+    ]
+    assert not (runtime_config.output_dir / TASK_ID).exists()
 
 
 def test_exact_inspect_create_export_start_and_complete(runtime_config) -> None:

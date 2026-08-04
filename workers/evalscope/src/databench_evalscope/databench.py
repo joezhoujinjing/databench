@@ -7,10 +7,11 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -24,7 +25,20 @@ _DIGEST = re.compile(r'^[0-9a-f]{64}$')
 _RUN_ID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
 _UUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
 _REF = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$')
+_CREDENTIAL_REF = re.compile(r'^[a-z0-9][a-z0-9._-]{0,127}$')
+_REPOSITORY_REVISION = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+:/-]{0,255}$')
+_HOSTED_REPOSITORY_ID = re.compile(
+    r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,255}$'
+)
+_OPERATOR_REPOSITORY_ID = re.compile(r'^[a-z][a-z0-9._-]{0,127}$')
+_ABSOLUTE_PATH = re.compile(r'^(?:/|\\|[A-Za-z]:[\\/]|file:|(?:\.\.?)[\\/]|(?:~)[\\/])', re.I)
+_CREDENTIAL_VALUE = re.compile(
+    r'(?:\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}\b)|'
+    r'(?:\b(?:authorization|x-api-key|api[_-]?key|token)\s*[:=]\s*\S+)',
+    re.I,
+)
 _TARGET_SOURCES = {'selected-candidate', 'verification-ground-truth', 'none'}
+_MODEL_INTERFACES = {'chat_completions', 'embeddings', 'vision', 'tools'}
 
 
 @dataclass(frozen=True)
@@ -175,6 +189,281 @@ class ResolvedModelDeployment:
             endpoint_base_url=endpoint_base_url,
             base_model_reference=base_model_reference,
             base_model_revision=base_model_revision,
+        )
+
+
+@dataclass(frozen=True)
+class ResolvedModelArtifactSource:
+    kind: Literal['databench_artifact']
+    artifact_id: str
+    artifact_kind: Literal['lora_adapter']
+    artifact_format: Literal['swift-lora-adapter-v1']
+    archive_digest: str
+    manifest_digest: str
+
+    @classmethod
+    def parse(cls, value: Any, artifact_id: str) -> 'ResolvedModelArtifactSource':
+        if not isinstance(value, dict) or set(value) != {
+            'kind',
+            'artifact_id',
+            'artifact_kind',
+            'artifact_format',
+            'archive_digest',
+            'manifest_digest',
+        }:
+            raise _invalid_model_version_deployment()
+        if (
+            value.get('kind') != 'databench_artifact'
+            or value.get('artifact_id') != artifact_id
+            or value.get('artifact_kind') != 'lora_adapter'
+            or value.get('artifact_format') != 'swift-lora-adapter-v1'
+            or not isinstance(value.get('archive_digest'), str)
+            or not _DIGEST.fullmatch(value['archive_digest'])
+            or not isinstance(value.get('manifest_digest'), str)
+            or not _DIGEST.fullmatch(value['manifest_digest'])
+        ):
+            raise _invalid_model_version_deployment()
+        return cls(
+            kind='databench_artifact',
+            artifact_id=artifact_id,
+            artifact_kind='lora_adapter',
+            artifact_format='swift-lora-adapter-v1',
+            archive_digest=value['archive_digest'],
+            manifest_digest=value['manifest_digest'],
+        )
+
+
+@dataclass(frozen=True)
+class ResolvedModelRepositorySource:
+    kind: Literal['repository_reference']
+    provider: Literal['hugging_face', 'modelscope', 'operator_managed']
+    repository_id: str
+    revision: str
+    revision_kind: Literal['commit', 'digest', 'tag', 'opaque']
+
+    @classmethod
+    def parse(cls, value: Any) -> 'ResolvedModelRepositorySource':
+        if not isinstance(value, dict) or set(value) != {
+            'kind',
+            'provider',
+            'repository_id',
+            'revision',
+            'revision_kind',
+        }:
+            raise _invalid_model_version_deployment()
+        provider = value.get('provider')
+        repository_id = _resolved_bounded_text(value.get('repository_id'), 512, reject_path=True)
+        revision = _resolved_bounded_text(value.get('revision'), 256)
+        if (
+            value.get('kind') != 'repository_reference'
+            or provider not in {'hugging_face', 'modelscope', 'operator_managed'}
+            or value.get('revision_kind') not in {'commit', 'digest', 'tag', 'opaque'}
+            or '\\' in repository_id
+            or '..' in repository_id
+            or not _REPOSITORY_REVISION.fullmatch(revision)
+            or '\\' in revision
+            or '..' in revision.split('/')
+            or (
+                provider == 'operator_managed'
+                and not _OPERATOR_REPOSITORY_ID.fullmatch(repository_id)
+            )
+            or (
+                provider != 'operator_managed'
+                and not _HOSTED_REPOSITORY_ID.fullmatch(repository_id)
+            )
+        ):
+            raise _invalid_model_version_deployment()
+        return cls(
+            kind='repository_reference',
+            provider=provider,
+            repository_id=repository_id,
+            revision=revision,
+            revision_kind=value['revision_kind'],
+        )
+
+
+@dataclass(frozen=True)
+class ResolvedModelServiceSource:
+    kind: Literal['existing_service']
+    provider: Literal['openai_compatible']
+    external_model_ref: str
+    external_version_ref: str
+    declared_reference_kind: Literal['immutable_version', 'mutable_alias', 'opaque']
+
+    @classmethod
+    def parse(cls, value: Any) -> 'ResolvedModelServiceSource':
+        if not isinstance(value, dict) or set(value) != {
+            'kind',
+            'provider',
+            'external_model_ref',
+            'external_version_ref',
+            'declared_reference_kind',
+        }:
+            raise _invalid_model_version_deployment()
+        external_model_ref = _resolved_bounded_text(
+            value.get('external_model_ref'),
+            512,
+            reject_path=True,
+        )
+        external_version_ref = _resolved_bounded_text(
+            value.get('external_version_ref'),
+            512,
+            reject_path=True,
+        )
+        if (
+            value.get('kind') != 'existing_service'
+            or value.get('provider') != 'openai_compatible'
+            or value.get('declared_reference_kind')
+            not in {'immutable_version', 'mutable_alias', 'opaque'}
+        ):
+            raise _invalid_model_version_deployment()
+        return cls(
+            kind='existing_service',
+            provider='openai_compatible',
+            external_model_ref=external_model_ref,
+            external_version_ref=external_version_ref,
+            declared_reference_kind=value['declared_reference_kind'],
+        )
+
+
+ResolvedModelVersionSource = (
+    ResolvedModelArtifactSource | ResolvedModelRepositorySource | ResolvedModelServiceSource
+)
+
+
+@dataclass(frozen=True)
+class ResolvedModelDeclaredCapabilities:
+    interfaces: tuple[Literal['chat_completions', 'embeddings', 'vision', 'tools'], ...]
+    context_limit: int | None
+
+    @classmethod
+    def parse(cls, value: Any) -> 'ResolvedModelDeclaredCapabilities':
+        if not isinstance(value, dict) or set(value) != {'interfaces', 'context_limit'}:
+            raise _invalid_model_version_deployment()
+        interfaces = value.get('interfaces')
+        context_limit = value.get('context_limit')
+        if (
+            not isinstance(interfaces, list)
+            or not 1 <= len(interfaces) <= 4
+            or any(not isinstance(item, str) or item not in _MODEL_INTERFACES for item in interfaces)
+            or interfaces != sorted(set(interfaces))
+            or (
+                context_limit is not None
+                and (
+                    not isinstance(context_limit, int)
+                    or isinstance(context_limit, bool)
+                    or not 1 <= context_limit <= 10_000_000
+                )
+            )
+        ):
+            raise _invalid_model_version_deployment()
+        return cls(interfaces=tuple(interfaces), context_limit=context_limit)
+
+
+@dataclass(frozen=True)
+class ResolvedModelVersionDeployment:
+    deployment_id: str
+    model_id: str
+    model_version_id: str
+    create_digest: str
+    source_fingerprint: str
+    source_kind: Literal['databench_artifact', 'repository_reference', 'existing_service']
+    artifact_id: str | None
+    source: ResolvedModelVersionSource
+    served_model_name: str
+    endpoint_base_url: str
+    connectivity_scope: Literal['private_network', 'public_network']
+    auth_profile: Literal['none', 'bearer_ref']
+    credential_ref: str | None
+    declared_capabilities: ResolvedModelDeclaredCapabilities
+
+    @classmethod
+    def parse(cls, value: Any, expected_id: str) -> 'ResolvedModelVersionDeployment':
+        expected_fields = {
+            'id',
+            'model_id',
+            'model_version_id',
+            'create_digest',
+            'source_fingerprint',
+            'source_kind',
+            'artifact_id',
+            'source',
+            'provider',
+            'served_model_name',
+            'endpoint_base_url',
+            'connectivity_scope',
+            'auth_profile',
+            'credential_ref',
+            'declared_capabilities',
+        }
+        if not isinstance(value, dict) or set(value) != expected_fields:
+            raise _invalid_model_version_deployment()
+        if (
+            not _UUID.fullmatch(expected_id)
+            or value.get('id') != expected_id
+            or not isinstance(value.get('model_id'), str)
+            or not _UUID.fullmatch(value['model_id'])
+            or not isinstance(value.get('model_version_id'), str)
+            or not _UUID.fullmatch(value['model_version_id'])
+            or not isinstance(value.get('create_digest'), str)
+            or not _DIGEST.fullmatch(value['create_digest'])
+            or not isinstance(value.get('source_fingerprint'), str)
+            or not _DIGEST.fullmatch(value['source_fingerprint'])
+            or value.get('source_kind')
+            not in {'databench_artifact', 'repository_reference', 'existing_service'}
+            or value.get('provider') != 'openai_compatible'
+            or value.get('connectivity_scope') not in {'private_network', 'public_network'}
+            or value.get('auth_profile') not in {'none', 'bearer_ref'}
+        ):
+            raise _invalid_model_version_deployment()
+
+        served_model_name = _resolved_bounded_text(value.get('served_model_name'), 512)
+        endpoint_base_url = _resolved_endpoint(value.get('endpoint_base_url'))
+        credential_ref = value.get('credential_ref')
+        if credential_ref is not None and (
+            not isinstance(credential_ref, str)
+            or not _CREDENTIAL_REF.fullmatch(credential_ref)
+            or '..' in credential_ref
+        ):
+            raise _invalid_model_version_deployment()
+        if (value['auth_profile'] == 'bearer_ref') != (credential_ref is not None):
+            raise _invalid_model_version_deployment()
+
+        source_kind = value['source_kind']
+        artifact_id = value.get('artifact_id')
+        if source_kind == 'databench_artifact':
+            if not isinstance(artifact_id, str) or not _UUID.fullmatch(artifact_id):
+                raise _invalid_model_version_deployment()
+            source: ResolvedModelVersionSource = ResolvedModelArtifactSource.parse(
+                value.get('source'),
+                artifact_id,
+            )
+        elif source_kind == 'repository_reference':
+            if artifact_id is not None:
+                raise _invalid_model_version_deployment()
+            source = ResolvedModelRepositorySource.parse(value.get('source'))
+        else:
+            if artifact_id is not None:
+                raise _invalid_model_version_deployment()
+            source = ResolvedModelServiceSource.parse(value.get('source'))
+
+        return cls(
+            deployment_id=expected_id,
+            model_id=value['model_id'],
+            model_version_id=value['model_version_id'],
+            create_digest=value['create_digest'],
+            source_fingerprint=value['source_fingerprint'],
+            source_kind=source_kind,
+            artifact_id=artifact_id,
+            source=source,
+            served_model_name=served_model_name,
+            endpoint_base_url=endpoint_base_url,
+            connectivity_scope=value['connectivity_scope'],
+            auth_profile=value['auth_profile'],
+            credential_ref=credential_ref,
+            declared_capabilities=ResolvedModelDeclaredCapabilities.parse(
+                value.get('declared_capabilities')
+            ),
         )
 
 
@@ -331,6 +620,24 @@ class DatabenchClient:
             f'/internal/v1/model-deployments/{deployment_id}:resolve',
         )
         return ResolvedModelDeployment.parse(value, deployment_id)
+
+    def resolve_model_version_deployment(
+        self,
+        deployment_id: str,
+    ) -> ResolvedModelVersionDeployment:
+        """Resolve the MR5 contract without switching Evaluation execution before MR6."""
+        if not isinstance(deployment_id, str) or not _UUID.fullmatch(deployment_id):
+            raise RuntimePolicyError(
+                'model_deployment_invalid',
+                'Databench Model Deployment ID is invalid',
+                422,
+                '/databench_deployment_id',
+            )
+        value = self._json_request(
+            'GET',
+            f'/internal/v2/model-deployments/{deployment_id}:resolve',
+        )
+        return ResolvedModelVersionDeployment.parse(value, deployment_id)
 
     def start(self, run_id: str) -> bool:
         result = self._json_request('POST', f'/v2/evaluation-runs/{run_id}:start', {})
@@ -715,6 +1022,45 @@ def _bounded_optional_string(value: Any, field: str, maximum: int = 512) -> str 
     if not isinstance(value, str) or not value or len(value.encode('utf-8')) > maximum:
         raise RuntimePolicyError('task_config_invalid', f'{field} is invalid', 422, f'/{field}')
     return value
+
+
+def _invalid_model_version_deployment() -> UpstreamProtocolError:
+    return UpstreamProtocolError('Databench returned an invalid Model Version Deployment')
+
+
+def _resolved_bounded_text(value: Any, maximum: int, *, reject_path: bool = False) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or value != unicodedata.normalize('NFC', value)
+        or len(value.encode('utf-8')) > maximum
+        or any(ord(character) <= 0x1f or ord(character) == 0x7f for character in value)
+        or _CREDENTIAL_VALUE.search(value)
+        or (reject_path and _ABSOLUTE_PATH.match(value))
+    ):
+        raise _invalid_model_version_deployment()
+    return value
+
+
+def _resolved_endpoint(value: Any) -> str:
+    endpoint = _resolved_bounded_text(value, 2_048)
+    try:
+        parsed = urlsplit(endpoint)
+        parsed.port
+    except ValueError as exc:
+        raise _invalid_model_version_deployment() from exc
+    if (
+        parsed.scheme not in {'http', 'https'}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or '@' in endpoint
+    ):
+        raise _invalid_model_version_deployment()
+    return endpoint
 
 
 def _write_all(fd: int, raw: bytes) -> None:

@@ -21,6 +21,18 @@ export interface AuthorizedModelEndpointV1 {
   readonly scope: ModelEndpointConnectivityScopeV1
 }
 
+export interface AdmittedModelEndpointConfigurationV1 {
+  readonly url: URL
+  readonly hostname: string
+  readonly port: number
+  readonly policyGeneration: number
+  readonly scope: ModelEndpointConnectivityScopeV1
+}
+
+interface MatchedModelEndpointConfigurationV1 extends AdmittedModelEndpointConfigurationV1 {
+  readonly privateRules: Readonly<ModelEndpointPolicyV1>['private_network']
+}
+
 export type ModelEndpointResolverV1 = (hostname: string, port: number) => Promise<readonly string[]>
 
 export class ModelEndpointPolicyError extends Error {
@@ -54,39 +66,23 @@ export class ModelEndpointPolicyV1Runtime {
     return this.#policy.generation
   }
 
+  admitConfiguration(
+    rawUrl: string,
+    scope: ModelEndpointConnectivityScopeV1,
+  ): Readonly<AdmittedModelEndpointConfigurationV1> {
+    const { privateRules: _privateRules, ...configuration } = this.#matchConfiguration(
+      rawUrl,
+      scope,
+    )
+    return Object.freeze(configuration)
+  }
+
   async authorize(
     rawUrl: string,
     scope: ModelEndpointConnectivityScopeV1,
   ): Promise<Readonly<AuthorizedModelEndpointV1>> {
-    const url = parseModelEndpointUrlV1(rawUrl)
-    const hostname = normalizeUrlHostname(url.hostname)
-    const port = url.port === '' ? (url.protocol === 'https:' ? 443 : 80) : Number(url.port)
-    const scheme = url.protocol.slice(0, -1) as 'http' | 'https'
-
-    if (scope === 'public_network' && this.#releaseProfile !== 'connected') {
-      throw new ModelEndpointPolicyError(
-        'model_endpoint_public_network_disabled',
-        'Public-network model endpoints are unavailable in the offline release profile',
-      )
-    }
-
-    const privateRules = this.#policy.private_network.filter(
-      (rule) =>
-        scope === 'private_network' &&
-        rule.hostname === hostname &&
-        rule.schemes.includes(scheme) &&
-        rule.ports.includes(port),
-    )
-    const publicRules = this.#policy.public_network.filter(
-      (rule) =>
-        scope === 'public_network' &&
-        scheme === 'https' &&
-        rule.hostname === hostname &&
-        rule.ports.includes(port),
-    )
-    if (privateRules.length === 0 && publicRules.length === 0) {
-      throw new ModelEndpointPolicyError('model_endpoint_host_rejected')
-    }
+    const configuration = this.#matchConfiguration(rawUrl, scope)
+    const { url, hostname, port, privateRules } = configuration
 
     let rawAddresses: readonly string[]
     try {
@@ -123,8 +119,51 @@ export class ModelEndpointPolicyV1Runtime {
       hostname,
       port,
       addresses: Object.freeze(addresses),
+      policyGeneration: configuration.policyGeneration,
+      scope,
+    })
+  }
+
+  #matchConfiguration(
+    rawUrl: string,
+    scope: ModelEndpointConnectivityScopeV1,
+  ): Readonly<MatchedModelEndpointConfigurationV1> {
+    const url = parseModelEndpointUrlV1(rawUrl)
+    const hostname = normalizeUrlHostname(url.hostname)
+    const port = url.port === '' ? (url.protocol === 'https:' ? 443 : 80) : Number(url.port)
+    const scheme = url.protocol.slice(0, -1) as 'http' | 'https'
+
+    if (scope === 'public_network' && this.#releaseProfile !== 'connected') {
+      throw new ModelEndpointPolicyError(
+        'model_endpoint_public_network_disabled',
+        'Public-network model endpoints are unavailable in the offline release profile',
+      )
+    }
+
+    const privateRules = this.#policy.private_network.filter(
+      (rule) =>
+        scope === 'private_network' &&
+        rule.hostname === hostname &&
+        rule.schemes.includes(scheme) &&
+        rule.ports.includes(port),
+    )
+    const publicRules = this.#policy.public_network.filter(
+      (rule) =>
+        scope === 'public_network' &&
+        scheme === 'https' &&
+        rule.hostname === hostname &&
+        rule.ports.includes(port),
+    )
+    if (privateRules.length === 0 && publicRules.length === 0) {
+      throw new ModelEndpointPolicyError('model_endpoint_host_rejected')
+    }
+    return Object.freeze({
+      url,
+      hostname,
+      port,
       policyGeneration: this.#policy.generation,
       scope,
+      privateRules,
     })
   }
 }
