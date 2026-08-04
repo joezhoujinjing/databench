@@ -46,19 +46,60 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: 3.11.15
-
       - uses: astral-sh/setup-uv@v6
         with:
           version: 0.11.1
 
+      - run: uv python install 3.11.15
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @databench/workspace... build
       - run: uv sync --directory workers/python --frozen
       - run: pnpm codegen:worker:check
       - run: pnpm test:worker:python
+
+      - name: Start Worker integration services
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install postgresql@17 minio
+          pg_bin="$(brew --prefix postgresql@17)/bin"
+          pg_data="$RUNNER_TEMP/databench-postgres"
+          "$pg_bin/initdb" --auth=trust --username=databench "$pg_data"
+          "$pg_bin/pg_ctl" -D "$pg_data" -l "$RUNNER_TEMP/postgres.log" \
+            -o "-p 55432 -h localhost" start -w
+          "$pg_bin/createdb" --host=localhost --port=55432 \
+            --username=databench databench
+
+          minio_bin="$(brew --prefix minio)/bin/minio"
+          minio_data="$RUNNER_TEMP/databench-minio"
+          mkdir -p "$minio_data"
+          MINIO_ROOT_USER=databench MINIO_ROOT_PASSWORD=databench-secret \
+            "$minio_bin" server "$minio_data" \
+            --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 \
+            >"$RUNNER_TEMP/minio.log" 2>&1 &
+          echo "DATABENCH_CI_MINIO_PID=$!" >> "$GITHUB_ENV"
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:9000/minio/health/live
+
       - run: pnpm --filter @databench/workspace test:worker
+        env:
+          DATABENCH_UV: uv
+
+      - if: always()
+        run: |
+          if [[ -n "${DATABENCH_CI_MINIO_PID:-}" ]]; then
+            kill "$DATABENCH_CI_MINIO_PID" 2>/dev/null || true
+          fi
+          if pg_prefix="$(brew --prefix postgresql@17 2>/dev/null)" && \
+            [[ -x "$pg_prefix/bin/pg_ctl" ]] && \
+            [[ -d "$RUNNER_TEMP/databench-postgres" ]]; then
+            "$pg_prefix/bin/pg_ctl" -D "$RUNNER_TEMP/databench-postgres" stop -m fast
+          fi
 
   validate:
     runs-on: ubuntu-latest
@@ -81,9 +122,11 @@ jobs:
       - run: pnpm evalscope:parity:test
       - run: pnpm ecs:check
 
-      # Stateful backends for the golden/e2e tests. The store suite creates its
-      # own temporary bucket, so minio-init is not required here.
-      - run: docker compose up -d --wait postgres minio
+      # Stateful backends for the golden/e2e tests. Store tests create temporary
+      # buckets, while Workspace/API/CLI integration suites use the default one.
+      - run: |
+          docker compose up -d --wait postgres minio
+          docker compose run --rm --no-deps minio-init
 
       # The pg driver adapter ignores the connection URL's ?schema param, so the
       # runtime queries the public schema. Migrate it here (CI's DB starts empty;

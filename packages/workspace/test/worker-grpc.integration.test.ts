@@ -317,6 +317,8 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
         capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
         capabilityVersion: '1',
         inputCount: BigInt(dataset.length),
+        resultRefNamespaceId: null,
+        resultRefName: null,
       })
       const job = await catalog.claimNextTransformJob({
         leaseOwner: 'worker.integration',
@@ -358,7 +360,7 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
         capabilityName: DATA_JUICER_BATCH_CAPABILITY_V1,
         capabilityVersion: '1',
         ...prepared,
-        deadlineUnixMs: Date.now() + 10_000,
+        deadlineUnixMs: Date.now() + 30_000,
       })) {
         events.push(event)
       }
@@ -504,7 +506,7 @@ describe.skipIf(!RUN_INTEGRATION)('Python Worker gRPC transport', () => {
       admin.destroy()
       await rm(root, { recursive: true, force: true })
     }
-  }, 30_000)
+  }, 60_000)
 
   test('cancels a 10k Data-Juicer gRPC execution and does not upload output', async () => {
     dataJuicerInput = dataJuicerRows(10_000)
