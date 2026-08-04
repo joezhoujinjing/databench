@@ -87,6 +87,8 @@ jobs:
           curl -fsS http://127.0.0.1:9000/minio/health/live
 
       - run: pnpm --filter @databench/workspace test:worker
+        env:
+          DATABENCH_UV: uv
 
       - if: always()
         run: |
