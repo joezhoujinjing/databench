@@ -10,8 +10,13 @@ disabled unless their separate access-control and owner gates are approved.
 - Caddy sends `/evalscope-api/*` to Databench API. The API forwards only the compiled method + exact-path manifest.
 - EvalScope calls Databench REST for exact Dataset export, run callback and archive; it never connects to PostgreSQL
   or receives a long-lived object-store credential.
-- Model endpoints are operator allowlisted. Redirects, metadata/link-local/private destinations outside that
-  allowlist and browser-supplied Dataset locators fail closed.
+- Model endpoints use the shared strict `model-endpoint-policy-v1`; hostname, scheme/port and every resolved address
+  must pass, and each socket remains pinned to its approved snapshot while Host/SNI/certificate validation uses the
+  hostname. Redirects, ambient proxies, metadata/link-local destinations and browser-supplied Dataset locators fail
+  closed. The ADR 0012 offline profile always rejects public-network activation.
+- Model bearer credentials come only from the EvalScope-minimal `model-credentials-v1` projection. The root-owned
+  authority is never mounted into the container; each reference must pass both consumer and Deployment ACLs and is
+  handed to the child through an anonymous file descriptor rather than argv/environment/task config.
 - Active HTML is converted to an opaque generated document with sanitizer, nonce CSP and sandbox framing. Raw HTML
   is never a top-level route. Plotly is a digest-pinned local asset.
 
@@ -71,7 +76,8 @@ One consistent offline backup generation contains:
 - PostgreSQL dump and migration list;
 - MinIO mirror, including immutable evaluation archives;
 - EvalScope `outputs` and `inputs` volume archive;
-- encrypted Databench, MCP and EvalScope config escrow;
+- six encrypted config escrows: Databench, MCP, EvalScope, Swift, Model endpoint policy and Model credential
+  authority; consumer projections are regenerated from the authority;
 - release/bundle identity and checksums.
 
 Store the generation, matching release bundle and backup key on independent media. Restore the same generation as a

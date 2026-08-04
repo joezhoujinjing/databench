@@ -101,10 +101,21 @@
 | `DATABENCH_MODEL_REPOSITORY_MODE` | Repository metadata resolution：默认 `offline`，可显式 `connected` |
 | `DATABENCH_MODEL_REPOSITORY_CONFIG` | operator-managed alias 与 allowlisted root 的绝对配置路径 |
 | `DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS` | ModelScope metadata resolution 总超时 |
+| `DATABENCH_MODEL_ENDPOINT_POLICY` | `model-endpoint-policy-v1` JSON 的绝对路径；缺失时 endpoint 默认全拒绝 |
+| `DATABENCH_MODEL_CREDENTIALS` | API `api-health` 最小 `model-credentials-v1` projection 的绝对路径 |
+| `DATABENCH_MODEL_ENDPOINT_CONNECT_TIMEOUT_MS` | Model endpoint socket/TLS connect 分段超时；默认 2000 ms |
+| `DATABENCH_MODEL_ENDPOINT_HEADERS_TIMEOUT_MS` | Model endpoint response headers 分段超时；默认 3000 ms |
+| `DATABENCH_MODEL_ENDPOINT_BODY_TIMEOUT_MS` | Model endpoint bounded body 分段超时；默认 3000 ms |
+| `DATABENCH_MODEL_ENDPOINT_TOTAL_TIMEOUT_MS` | Model endpoint 整体 deadline；默认 5000 ms，且不得短于任一分段超时 |
 | `DATABENCH_SERVICE_CREDENTIAL` | EvalScope → Databench internal Deployment resolve credential |
+| `EVALSCOPE_MODEL_ENDPOINT_POLICY` | EvalScope 共享 endpoint policy 的绝对路径；缺失时默认全拒绝 |
+| `EVALSCOPE_MODEL_CREDENTIALS` | EvalScope consumer-minimal credential projection 的绝对路径 |
 | `PORT` | API 端口 |
 
-密钥不写入代码或仓库。本地 `.env` 必须忽略；CI/生产使用 secret store。
+密钥不写入代码或仓库。本地 `.env` 必须忽略；CI/生产使用 secret store。离线 release 的
+`model-credentials-v1` authority 只能由 root-owned operator 文件持有；API/EvalScope runtime 只挂载各自
+最小只读 projection，authority 不进入容器。endpoint transport 禁止 ambient proxy 和 redirect，并把
+Host/TLS SNI/CA/hostname validation 保留在原始 hostname 上，只将 socket 目标钉到 policy 批准的 IP。
 
 ## 8. 依赖与存储
 

@@ -8,7 +8,7 @@
   回滚和恢复的逐步操作；
 - [故障排查手册](TROUBLESHOOTING.zh-CN.md)：按错误现象定位并安全恢复；
 - [内网 Agent 接入指南](MCP-AGENT-GUIDE.zh-CN.md)：配置 MCP、Excel 三种意图与重试规则；
-- [EvalScope 运维指南](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md)：模型 allowlist、容量、drain、备份和断网验收；
+- [EvalScope 运维指南](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md)：模型 policy/credential、容量、drain、备份和断网验收；
 - [Swift Studio GPU 指南](SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md)：GPU 启用、离线模型、训练、部署和备份；
 - [技术方案](docs/offline-single-host-plan.zh-CN.md)：部署架构、发布契约和设计边界；
 - [ADR 0012](docs/ADR-0012.md)：Ubuntu 单机离线部署的正式决策记录；
@@ -100,12 +100,13 @@ sudo env \
 启用前必须将至少一个完整模型预置到 `/srv/databench/swift-models`，空目录会被安装器拒绝。完整步骤见
 [Swift Studio GPU 指南](SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md)。
 
-若可信内网已有模型端点，同时提供 exact allowlist，例如：
+若可信内网已有模型端点，先复制并收紧包内的 `model-endpoint-policy.example.json`，同时提供 exact
+hostname、CIDR、scheme 和 port：
 
 ```bash
 sudo -E env \
   DATABENCH_MCP_PUBLIC_BASE_URL=http://<稳定内网IP或DNS>/api \
-  DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST='http|10.10.0.15/32|8000' \
+  DATABENCH_MODEL_ENDPOINT_POLICY_SOURCE=/root/model-endpoint-policy.json \
   ./install.sh
 ```
 
@@ -122,9 +123,13 @@ MinIO 和 v2 cursor secret，直接写入 `/etc/databench/databench.env`，权�
 非默认端口使用无前导零的十进制。安装器把匿名 MCP 配置单独写入 `/etc/databench/mcp.env`，
 后续升级复用，不会把它混进 secret 文件。
 
-安装器另生成 `/etc/databench/evalscope.env`，保存稳定 task HMAC/operator/service secret、浏览器 origin、模型
-allowlist 和容量上限。该文件同样是 `root:root 0600`；native Benchmark 的远程 Dataset allowlist 在离线
-通道中固定为空。
+安装器另生成 `/etc/databench/model-endpoint-policy.json` 和 `/etc/databench/secrets/model-credentials.json`；
+authority 不挂入容器，API/EvalScope 只读各自最小 projection。安装器还生成
+`/etc/databench/evalscope.env`，保存稳定 task HMAC/operator/service secret、浏览器 origin 和容量上限。
+Model policy 与 credential 不进入 env；native Benchmark 的远程 Dataset 下载在离线通道中保持关闭。
+authority 更新后运行 `sudo databenchctl model-credentials-project`，再运行
+`sudo databenchctl restart` 重新挂载同代 projection；完整格式和 rotation 边界见
+[EvalScope 运维指南](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md)。
 
 安装器总会生成 `/etc/databench/swift.env`；默认 `DATABENCH_SWIFT_ENABLED=false`。显式
 `DATABENCH_ENABLE_SWIFT_STUDIO=true` 可启用完整 UI，`DATABENCH_SWIFT_RUNTIME_MODE=ui-only`
@@ -167,7 +172,8 @@ sudo databenchctl backup
 ```
 
 备份位于 `/srv/databench/backups/<generation>`。每次备份会先 drain，包含 PostgreSQL dump、MinIO
-bucket mirror、EvalScope output/input volume、启用时的 Swift Session workspace、版本信息、校验值和四份加密配置 escrow。必须把备份、匹配 SHA-256 的离线发布
+bucket mirror、EvalScope output/input volume、启用时的 Swift Session workspace、版本信息、校验值和最多
+六份加密配置 escrow（含 Model policy/authority）。必须把备份、匹配 SHA-256 的离线发布
 包以及 `/etc/databench/backup.key` 分开复制到 NAS/异机；只保存在本机不算备份。
 
 ## 离线升级与回滚

@@ -83,8 +83,9 @@ E9 did not replace those controls with deployment-only assumptions.
 ## Offline lifecycle and backup
 
 Install creates or reuses `/etc/databench/evalscope.env` as `root:root 0600`. The file owns stable task-HMAC and
-operator secrets, the trusted Databench origin, model endpoint allowlist and reviewed capacity values. It is not
-browser-readable.
+operator secrets, the trusted Databench origin, model endpoint allowlist and reviewed capacity values. This records
+the historical E9 gate; ADR 0019 MR4 later superseded that comma allowlist with versioned JSON endpoint policy and
+minimum credential projections outside `evalscope.env`. The secret configuration is not browser-readable.
 
 Application lifecycle order is Worker → API → EvalScope → Web. Maintenance stops Web admission first, drains
 EvalScope, then stops API, EvalScope and Worker. Backup generations now cover PostgreSQL, MinIO, EvalScope outputs

@@ -42,6 +42,7 @@ import {
 } from '../src/internal/worker/canonical-finalizer.js'
 import { compileBasicCleanWorkerParametersV1 } from '../src/internal/worker/data-juicer.js'
 import { WorkerStagingJobPreparerV1 } from '../src/internal/worker/staging.js'
+import type { V2ModelDeploymentHealthClient } from '../src/v2/model-deployment.js'
 import type { V2ModelRepositoryRuntime } from '../src/v2/model-repository.js'
 import {
   SwiftStudioProviderConflictError,
@@ -1700,12 +1701,11 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
       'model-deployment-lifecycle',
       provider,
       swiftStudioCatalog(),
-      async (input) => {
-        checkedUrls.push(String(input))
-        return new Response(
-          JSON.stringify({ data: [{ id: 'integration-lora-v1', object: 'model' }] }),
-          { headers: { 'Content-Type': 'application/json' }, status: 200 },
-        )
+      {
+        async observe(request) {
+          checkedUrls.push(`${request.endpointBaseUrl.replace(/\/+$/u, '')}/models`)
+          return { status: 'healthy', error: null }
+        },
       },
     )
     const deployment = await deploymentWorkspace.createModelDeployment({
@@ -2152,7 +2152,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
     tempName: string,
     provider: SwiftStudioProviderV2,
     swiftCatalog: V2WorkspaceSwiftStudioCatalog = swiftStudioCatalog(),
-    modelDeploymentFetch?: typeof fetch,
+    modelDeploymentHealthClient?: V2ModelDeploymentHealthClient,
   ): V2Workspace {
     return new V2Workspace({
       catalog,
@@ -2164,7 +2164,7 @@ describe.runIf(runIntegration)('V2Workspace against real MinIO and Postgres', ()
         readConcurrency: 1,
       }),
       cursorSecret: 'swift-studio-integration-cursor-secret',
-      ...(modelDeploymentFetch === undefined ? {} : { modelDeploymentFetch }),
+      ...(modelDeploymentHealthClient === undefined ? {} : { modelDeploymentHealthClient }),
       swiftStudio: {
         catalog: swiftCatalog,
         provider,

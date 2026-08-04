@@ -1,4 +1,8 @@
-import type { CatalogModelArtifactRowV2, CatalogModelDeploymentRowV2 } from '@databench/catalog'
+import type {
+  CatalogModelArtifactRowV2,
+  CatalogModelDeploymentHealthV2,
+  CatalogModelDeploymentRowV2,
+} from '@databench/catalog'
 import {
   IntegrityError,
   type ModelDeploymentV2,
@@ -14,6 +18,26 @@ const PUBLIC_HEALTH_ERROR_CODES = new Set([
   'invalid_response',
   'served_model_missing',
 ])
+
+export interface V2ModelDeploymentHealthRequest {
+  readonly deploymentId: string
+  readonly endpointBaseUrl: string
+  readonly servedModelName: string
+}
+
+export interface V2ModelDeploymentHealthClient {
+  observe(
+    request: Readonly<V2ModelDeploymentHealthRequest>,
+    context?: { readonly signal?: AbortSignal },
+  ): Promise<Readonly<CatalogModelDeploymentHealthV2>>
+}
+
+export const DENY_ALL_MODEL_DEPLOYMENT_HEALTH_CLIENT_V2: V2ModelDeploymentHealthClient =
+  Object.freeze({
+    async observe() {
+      return Object.freeze({ status: 'unhealthy', error: 'network_error' })
+    },
+  })
 
 export function modelDeploymentFromCatalogV2(row: CatalogModelDeploymentRowV2): ModelDeploymentV2 {
   return ModelDeploymentV2Schema.parse({

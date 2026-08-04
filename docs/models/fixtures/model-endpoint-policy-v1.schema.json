@@ -24,7 +24,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 253,
-      "pattern": "^(?![.*])(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$"
+      "pattern": "^(?![.*])(?=.{1,253}$)[a-z0-9](?:[a-z0-9.:-]*[a-z0-9])?$"
     },
     "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
     "cidr": {

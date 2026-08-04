@@ -1,0 +1,13 @@
+{
+  "profile": "model-endpoint-policy-v1",
+  "generation": 1,
+  "private_network": [
+    {
+      "hostname": "model.internal",
+      "cidrs": ["10.10.0.15/32"],
+      "schemes": ["http"],
+      "ports": [8000]
+    }
+  ],
+  "public_network": []
+}

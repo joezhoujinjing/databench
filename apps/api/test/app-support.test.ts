@@ -5,6 +5,15 @@ import { createApp, createOpenApiDocument } from '../src/app.js'
 import { createAppFromConfig, loadConfig, startApiRuntime } from '../src/index.js'
 import { createTestApp } from './test-app.js'
 
+function modelEndpointSecurityDefaults() {
+  return {
+    connectTimeoutMs: 2_000,
+    headersTimeoutMs: 3_000,
+    bodyTimeoutMs: 3_000,
+    totalTimeoutMs: 5_000,
+  }
+}
+
 describe('api support', () => {
   test('fails closed when the V2 cursor secret is missing at runtime', () => {
     expect(() => createApp()).toThrow(
@@ -324,7 +333,11 @@ describe('api support', () => {
   test('entrypoint config is passed into app creation', async () => {
     const app = createAppFromConfig({
       corsOrigins: ['https://web.example.test'],
+      evaluationArchiveMaxBytes: 1_073_741_824,
+      evaluationArchiveSignedUrlTtlMs: 900_000,
       mcp: { enabled: false },
+      modelEndpointSecurity: modelEndpointSecurityDefaults(),
+      modelRepository: { mode: 'offline', timeoutMs: 5_000 },
       openApiServerUrl: '/api',
       port: 8000,
       storeConfig: {
@@ -366,6 +379,11 @@ describe('api support', () => {
     const runtime = await startApiRuntime(
       {
         corsOrigins: [],
+        evaluationArchiveMaxBytes: 1_073_741_824,
+        evaluationArchiveSignedUrlTtlMs: 900_000,
+        mcp: { enabled: false },
+        modelEndpointSecurity: modelEndpointSecurityDefaults(),
+        modelRepository: { mode: 'offline', timeoutMs: 5_000 },
         port: 0,
         storeConfig: { bucket: 'unused', region: 'us-east-1' },
         v2CursorSecret: 'databench-api-v2-test-cursor-secret',
@@ -416,6 +434,11 @@ describe('api support', () => {
     const runtime = await startApiRuntime(
       {
         corsOrigins: [],
+        evaluationArchiveMaxBytes: 1_073_741_824,
+        evaluationArchiveSignedUrlTtlMs: 900_000,
+        mcp: { enabled: false },
+        modelEndpointSecurity: modelEndpointSecurityDefaults(),
+        modelRepository: { mode: 'offline', timeoutMs: 5_000 },
         port: 0,
         storeConfig: { bucket: 'unused', region: 'us-east-1' },
         v2CursorSecret: 'databench-api-v2-test-cursor-secret',

@@ -55,6 +55,30 @@ grep -Fq 'DATABENCH_WORKER_ENABLED: "true"' "${SCRIPT_DIR}/compose.yml" ||
   fail 'offline API does not explicitly enable the Worker runtime'
 grep -Fq 'DATABENCH_WORKER_TARGET: "worker:50051"' "${SCRIPT_DIR}/compose.yml" ||
   fail 'offline API does not use the private Compose Worker target'
+grep -Fq 'DATABENCH_MODEL_ENDPOINT_POLICY: "/run/config/model-endpoint-policy.json"' \
+  "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline API does not load the versioned Model endpoint policy'
+grep -Fq 'DATABENCH_MODEL_CREDENTIALS: "/run/secrets/api-model-credentials.json"' \
+  "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline API does not load its minimum Model credential projection'
+grep -Fq 'EVALSCOPE_MODEL_ENDPOINT_POLICY: /run/config/model-endpoint-policy.json' \
+  "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline EvalScope does not load the shared Model endpoint policy'
+grep -Fq 'EVALSCOPE_MODEL_CREDENTIALS: /run/secrets/evalscope-model-credentials.json' \
+  "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline EvalScope does not load its minimum Model credential projection'
+grep -Fq '/etc/databench/model-endpoint-policy.json:/run/config/model-endpoint-policy.json:ro' \
+  "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline services do not mount the Model endpoint policy read-only'
+grep -Fq '/etc/databench/secrets/api-model-credentials.json:/run/secrets/api-model-credentials.json:ro' \
+  "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline API Model credential projection is not mounted read-only'
+grep -Fq '/etc/databench/secrets/evalscope-model-credentials.json:/run/secrets/evalscope-model-credentials.json:ro' \
+  "${SCRIPT_DIR}/compose.yml" ||
+  fail 'offline EvalScope Model credential projection is not mounted read-only'
+if rg -n '/secrets/model-credentials\.json:/run/' "${SCRIPT_DIR}/compose.yml"; then
+  fail 'offline runtime mounts the Model credential authority into a service container'
+fi
 grep -Fq 'image: ${DATABENCH_WORKER_IMAGE:?missing DATABENCH_WORKER_IMAGE}' \
   "${SCRIPT_DIR}/compose.yml" || fail 'offline Compose does not require the Worker image'
 grep -Fq 'image: ${DATABENCH_EVALSCOPE_IMAGE:?missing DATABENCH_EVALSCOPE_IMAGE}' \
@@ -241,6 +265,8 @@ for bundle_asset in \
   deploy/offline/mcp.env.example \
   deploy/offline/evalscope.env.example \
   deploy/offline/swift.env.example \
+  deploy/offline/model-endpoint-policy.example.json \
+  deploy/offline/project-model-credentials.sh \
   deploy/offline/compose.swift-gpu.yml \
   docs/deployment/offline-single-host-plan.zh-CN.md \
   docs/decisions/0012-offline-single-host-deployment.md \
@@ -252,7 +278,8 @@ done
 for release_asset in DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
   MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
   SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md mcp.env.example evalscope.env.example \
-  swift.env.example compose.swift-gpu.yml docs; do
+  swift.env.example model-endpoint-policy.example.json project-model-credentials.sh \
+  compose.swift-gpu.yml docs; do
   grep -Fq "$release_asset" "${SCRIPT_DIR}/lib/common.sh" ||
     fail "installed release does not preserve: $release_asset"
 done
@@ -297,6 +324,10 @@ grep -Fq 'ensure_evalscope_config' "${SCRIPT_DIR}/install.sh" ||
   fail 'offline install does not create the stable EvalScope configuration'
 grep -Fq 'ensure_evalscope_config' "${SCRIPT_DIR}/upgrade.sh" ||
   fail 'offline upgrade does not preserve or create the EvalScope configuration'
+grep -Fq 'ensure_model_security_config' "${SCRIPT_DIR}/install.sh" ||
+  fail 'offline install does not create and validate Model security configuration'
+grep -Fq 'ensure_model_security_config' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'offline upgrade does not preserve and validate Model security configuration'
 grep -Fq 'ensure_swift_config' "${SCRIPT_DIR}/install.sh" ||
   fail 'offline install does not create the explicit Swift GPU configuration'
 grep -Fq 'ensure_swift_config' "${SCRIPT_DIR}/upgrade.sh" ||
@@ -305,11 +336,11 @@ upgrade_swift_config_line="$(
   grep -nF '  ensure_swift_config' "${SCRIPT_DIR}/upgrade.sh" | cut -d: -f1
 )"
 upgrade_backup_line="$(
-  grep -nF '"${PREVIOUS_RELEASE}/backup.sh" --api-already-stopped' \
+  grep -nF '"${SCRIPT_DIR}/backup.sh" --api-already-stopped' \
     "${SCRIPT_DIR}/upgrade.sh" | cut -d: -f1
 )"
 [ "$upgrade_swift_config_line" -gt "$upgrade_backup_line" ] ||
-  fail 'offline upgrade changes the Swift enabled state before backing up the previous release'
+  fail 'offline upgrade changes the Swift enabled state before the target release captures its security-aware backup'
 grep -Fq 'set_swift_enabled_state "$PREVIOUS_SWIFT_ENABLED"' "${SCRIPT_DIR}/upgrade.sh" ||
   fail 'offline upgrade recovery does not restore the previous Swift enabled state'
 grep -Fq 'verify_swift_gpu_runtime' "${SCRIPT_DIR}/install.sh" ||
@@ -346,6 +377,41 @@ grep -Fq -- '-type f -exec chmod 0640' "${SCRIPT_DIR}/restore.sh" ||
   fail 'offline restore does not normalize EvalScope file permissions'
 grep -Fq 'evalscope.env.enc' "${SCRIPT_DIR}/backup.sh" ||
   fail 'offline backup does not escrow the EvalScope stable secrets'
+grep -Fq 'model-endpoint-policy.json.enc' "${SCRIPT_DIR}/backup.sh" ||
+  fail 'offline backup does not escrow the Model endpoint policy'
+grep -Fq 'model-credentials.json.enc' "${SCRIPT_DIR}/backup.sh" ||
+  fail 'offline backup does not escrow the Model credential authority'
+grep -Fq 'model-endpoint-policy.json.enc' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not require the Model endpoint policy escrow'
+grep -Fq 'model-credentials.json.enc' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'offline restore does not require the Model credential authority escrow'
+grep -Fq 'validate_model_security_config' "${SCRIPT_DIR}/rollback.sh" ||
+  fail 'offline rollback does not validate the active Model security generation'
+grep -Fq '"${SCRIPT_DIR}/backup.sh" --api-already-stopped' "${SCRIPT_DIR}/upgrade.sh" ||
+  fail 'full upgrade does not use the target backup script for Model security escrow'
+grep -Fq 'release_requires_model_security_config "$TARGET_RELEASE"' "${SCRIPT_DIR}/restore.sh" ||
+  fail 'restore does not preserve historical backups that predate the Model security contract'
+grep -Fq 'validate_model_credential_document "$DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE" authority 640' \
+  "${SCRIPT_DIR}/lib/config.sh" ||
+  fail 'offline authority does not require root-owned 0640 permissions'
+grep -Fq 'validate_model_credential_document "$DATABENCH_API_MODEL_CREDENTIALS_FILE" api-health 444' \
+  "${SCRIPT_DIR}/lib/config.sh" ||
+  fail 'offline API projection does not require root-owned 0444 permissions'
+grep -Fq 'validate_model_credential_document "$DATABENCH_EVALSCOPE_MODEL_CREDENTIALS_FILE" evalscope 444' \
+  "${SCRIPT_DIR}/lib/config.sh" ||
+  fail 'offline EvalScope projection does not require root-owned 0444 permissions'
+grep -Fq 'authority and projections must use one atomic generation' \
+  "${SCRIPT_DIR}/lib/config.sh" ||
+  fail 'offline validation does not fence mixed Model credential generations'
+grep -Fq -- '--network none' "${SCRIPT_DIR}/project-model-credentials.sh" ||
+  fail 'Model credential projection tool is not isolated from the network'
+grep -Fq -- '--cap-drop ALL' "${SCRIPT_DIR}/project-model-credentials.sh" ||
+  fail 'Model credential projection tool retains ambient container capabilities'
+grep -Fq '/app/apps/api/dist/model-credentials-project.js' \
+  "${SCRIPT_DIR}/project-model-credentials.sh" ||
+  fail 'offline projection tool does not use the strict packaged projector'
+grep -Fq 'model-credentials-project)' "${SCRIPT_DIR}/databenchctl" ||
+  fail 'databenchctl does not expose Model credential projection'
 grep -Fq 'swift-studio-workspace.tar' "${SCRIPT_DIR}/backup.sh" ||
   fail 'offline backup does not capture the Swift Studio Session workspace'
 grep -Fq 'swift-studio-workspace.tar' "${SCRIPT_DIR}/restore.sh" ||
@@ -743,6 +809,15 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
     "${TEMP_DIR}/release/compose.yml"
   sed -i.bak "s#/etc/databench/swift.env#${TEMP_DIR}/swift.env#g" \
     "${TEMP_DIR}/release/compose.yml"
+  sed -i.bak \
+    "s#/etc/databench/model-endpoint-policy.json#${TEMP_DIR}/model-endpoint-policy.json#g" \
+    "${TEMP_DIR}/release/compose.yml"
+  sed -i.bak \
+    "s#/etc/databench/secrets/api-model-credentials.json#${TEMP_DIR}/api-model-credentials.json#g" \
+    "${TEMP_DIR}/release/compose.yml"
+  sed -i.bak \
+    "s#/etc/databench/secrets/evalscope-model-credentials.json#${TEMP_DIR}/evalscope-model-credentials.json#g" \
+    "${TEMP_DIR}/release/compose.yml"
   cat > "${TEMP_DIR}/databench.env" <<'EOF'
 POSTGRES_USER=databench
 POSTGRES_PASSWORD=test
@@ -769,8 +844,6 @@ EVALSCOPE_TASK_CONFIG_HMAC_KEY=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 EVALSCOPE_OPERATOR_TOKEN=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 DATABENCH_ORIGIN=http://databench.internal
 DATABENCH_SERVICE_CREDENTIAL=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=
-EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=
 EVALSCOPE_INPUT_MAX_BYTES=1073741824
 EVALSCOPE_OUTPUT_MAX_BYTES=4294967296
 EVALSCOPE_ARCHIVE_MAX_BYTES=1073741824
@@ -790,6 +863,30 @@ EVALSCOPE_PERFORMANCE_REQUESTS_MAX=1000000
 EVALSCOPE_PERFORMANCE_RATE_MAX=10000
 EVALSCOPE_MODEL_TOKENS_MAX=32768
 EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX=3600
+EOF
+  cat > "${TEMP_DIR}/model-endpoint-policy.json" <<'EOF'
+{
+  "profile": "model-endpoint-policy-v1",
+  "generation": 1,
+  "private_network": [],
+  "public_network": []
+}
+EOF
+  cat > "${TEMP_DIR}/api-model-credentials.json" <<'EOF'
+{
+  "profile": "model-credentials-v1",
+  "generation": 1,
+  "projection_for": "api-health",
+  "credentials": {}
+}
+EOF
+  cat > "${TEMP_DIR}/evalscope-model-credentials.json" <<'EOF'
+{
+  "profile": "model-credentials-v1",
+  "generation": 1,
+  "projection_for": "evalscope",
+  "credentials": {}
+}
 EOF
   cat > "${TEMP_DIR}/mcp.env" <<'EOF'
 DATABENCH_MCP_ENABLED=true

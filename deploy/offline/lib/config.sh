@@ -6,6 +6,154 @@ random_secret() {
   od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
 }
 
+model_security_generation() {
+  local file="$1" generation count
+  count="$(grep -Ec '^[[:space:]]*"generation"[[:space:]]*:[[:space:]]*[1-9][0-9]*,?[[:space:]]*$' "$file" || true)"
+  [ "$count" -eq 1 ] || die "Model security document must contain one positive generation: $file"
+  generation="$(sed -n 's/^[[:space:]]*"generation"[[:space:]]*:[[:space:]]*\([1-9][0-9]*\),\{0,1\}[[:space:]]*$/\1/p' "$file")"
+  [ "${#generation}" -le 16 ] && [ "$generation" -le 9007199254740991 ] ||
+    die "Model security generation is outside the safe integer range: $file"
+  printf '%s\n' "$generation"
+}
+
+validate_model_endpoint_policy() {
+  local generation
+  [ -f "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE" ] ||
+    die "Model endpoint policy is missing: $DATABENCH_MODEL_ENDPOINT_POLICY_FILE"
+  [ ! -L "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE" ] || die "Model endpoint policy must not be a symlink"
+  [ "$(stat -c '%a' "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE")" = '644' ] ||
+    die "Model endpoint policy permissions must be 0644"
+  [ "$(stat -c '%U:%G' "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE")" = 'root:root' ] ||
+    die "Model endpoint policy owner must be root:root"
+  grep -Fq '"profile": "model-endpoint-policy-v1"' "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE" ||
+    die "Model endpoint policy profile is invalid"
+  grep -Fq '"private_network": [' "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE" ||
+    die "Model endpoint policy is missing private_network"
+  grep -Fq '"public_network": []' "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE" ||
+    die "offline Model endpoint policy must keep public_network empty"
+  if model_security_swift_enabled; then
+    grep -Fq '"hostname": "swift-studio"' "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE" ||
+      die "enabled Swift serving requires an exact swift-studio private policy rule"
+  fi
+  generation="$(model_security_generation "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE")"
+  [ -n "$generation" ] || die "Model endpoint policy generation is missing"
+}
+
+model_security_swift_enabled() {
+  if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then
+    grep -qx 'DATABENCH_SWIFT_ENABLED=true' "$DATABENCH_SWIFT_CONFIG_FILE"
+    return
+  fi
+  [ "$(requested_swift_enabled_state)" = 'true' ]
+}
+
+validate_model_credential_document() {
+  local file="$1" projection="$2" expected_mode="$3"
+  [ -f "$file" ] || die "Model credential document is missing: $file"
+  [ ! -L "$file" ] || die "Model credential document must not be a symlink: $file"
+  [ "$(stat -c '%a' "$file")" = "$expected_mode" ] ||
+    die "Model credential document has invalid permissions: $file"
+  [ "$(stat -c '%U:%G' "$file")" = 'root:root' ] ||
+    die "Model credential document owner must be root:root: $file"
+  grep -Fq '"profile": "model-credentials-v1"' "$file" ||
+    die "Model credential profile is invalid: $file"
+  grep -Fq "\"projection_for\": \"${projection}\"" "$file" ||
+    die "Model credential projection target is invalid: $file"
+  model_security_generation "$file" >/dev/null
+}
+
+validate_model_security_config() {
+  local authority_generation api_generation evalscope_generation
+  validate_model_endpoint_policy
+  validate_model_credential_document "$DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE" authority 640
+  validate_model_credential_document "$DATABENCH_API_MODEL_CREDENTIALS_FILE" api-health 444
+  validate_model_credential_document "$DATABENCH_EVALSCOPE_MODEL_CREDENTIALS_FILE" evalscope 444
+  authority_generation="$(model_security_generation "$DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE")"
+  api_generation="$(model_security_generation "$DATABENCH_API_MODEL_CREDENTIALS_FILE")"
+  evalscope_generation="$(model_security_generation "$DATABENCH_EVALSCOPE_MODEL_CREDENTIALS_FILE")"
+  [ "$authority_generation" = "$api_generation" ] &&
+    [ "$authority_generation" = "$evalscope_generation" ] ||
+    die "Model credential authority and projections must use one atomic generation"
+}
+
+write_empty_model_credential_document() {
+  local file="$1" projection="$2" mode="$3" generation="$4" temp
+  temp="${file}.tmp.$$"
+  umask 077
+  {
+    printf '{\n'
+    printf '  "profile": "model-credentials-v1",\n'
+    printf '  "generation": %s,\n' "$generation"
+    printf '  "projection_for": "%s",\n' "$projection"
+    printf '  "credentials": {}\n'
+    printf '}\n'
+  } > "$temp"
+  chown root:root "$temp"
+  chmod "$mode" "$temp"
+  mv -f "$temp" "$file"
+}
+
+ensure_model_security_config() {
+  local temp source generation=1
+  install -d -m 0700 -o root -g root "$DATABENCH_MODEL_CREDENTIALS_DIR"
+  if [ ! -e "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE" ]; then
+    source="${DATABENCH_MODEL_ENDPOINT_POLICY_SOURCE:-}"
+    temp="${DATABENCH_MODEL_ENDPOINT_POLICY_FILE}.tmp.$$"
+    if [ -n "$source" ]; then
+      [ -f "$source" ] && [ ! -L "$source" ] ||
+        die "DATABENCH_MODEL_ENDPOINT_POLICY_SOURCE must be a regular file"
+      cp "$source" "$temp"
+    else
+      umask 077
+      if model_security_swift_enabled; then
+        {
+          printf '{\n'
+          printf '  "profile": "model-endpoint-policy-v1",\n'
+          printf '  "generation": 1,\n'
+          printf '  "private_network": [\n'
+          printf '    {\n'
+          printf '      "hostname": "swift-studio",\n'
+          printf '      "cidrs": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"],\n'
+          printf '      "schemes": ["http"],\n'
+          printf '      "ports": [8000]\n'
+          printf '    }\n'
+          printf '  ],\n'
+          printf '  "public_network": []\n'
+          printf '}\n'
+        } > "$temp"
+      else
+        {
+          printf '{\n'
+          printf '  "profile": "model-endpoint-policy-v1",\n'
+          printf '  "generation": 1,\n'
+          printf '  "private_network": [],\n'
+          printf '  "public_network": []\n'
+          printf '}\n'
+        } > "$temp"
+      fi
+    fi
+    chown root:root "$temp"
+    chmod 0644 "$temp"
+    mv -f "$temp" "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE"
+  fi
+  if [ ! -e "$DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE" ]; then
+    write_empty_model_credential_document \
+      "$DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE" authority 0640 "$generation"
+  fi
+  generation="$(model_security_generation "$DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE")"
+  if [ ! -e "$DATABENCH_API_MODEL_CREDENTIALS_FILE" ] ||
+    [ ! -e "$DATABENCH_EVALSCOPE_MODEL_CREDENTIALS_FILE" ]; then
+    grep -Eq '^[[:space:]]*"credentials"[[:space:]]*:[[:space:]]*\{\}[[:space:]]*$' \
+      "$DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE" ||
+      die "non-empty Model credential authority requires atomic operator-generated projections"
+    write_empty_model_credential_document \
+      "$DATABENCH_API_MODEL_CREDENTIALS_FILE" api-health 0444 "$generation"
+    write_empty_model_credential_document \
+      "$DATABENCH_EVALSCOPE_MODEL_CREDENTIALS_FILE" evalscope 0444 "$generation"
+  fi
+  validate_model_security_config
+}
+
 validate_existing_config() {
   local key count
   [ -f "$DATABENCH_CONFIG_FILE" ] || die "configuration is missing: $DATABENCH_CONFIG_FILE"
@@ -207,13 +355,12 @@ validate_evalscope_positive_bound() {
 }
 
 validate_evalscope_config() {
-  local key count task_key operator_token origin model_allowlist dataset_allowlist public_base
+  local key count task_key operator_token origin public_base
   local service_credential expected_service_credential
   [ -f "$DATABENCH_EVALSCOPE_CONFIG_FILE" ] ||
     die "EvalScope configuration is missing: $DATABENCH_EVALSCOPE_CONFIG_FILE"
   validate_mcp_config
   for key in EVALSCOPE_TASK_CONFIG_HMAC_KEY EVALSCOPE_OPERATOR_TOKEN DATABENCH_ORIGIN \
-    EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST \
     EVALSCOPE_INPUT_MAX_BYTES EVALSCOPE_OUTPUT_MAX_BYTES EVALSCOPE_ARCHIVE_MAX_BYTES \
     EVALSCOPE_REQUEST_MAX_BYTES EVALSCOPE_RESPONSE_MAX_BYTES EVALSCOPE_DOCUMENT_MAX_BYTES \
     EVALSCOPE_DOCUMENT_TTL_SECONDS EVALSCOPE_MAX_CONCURRENT_EVALS \
@@ -241,11 +388,7 @@ validate_evalscope_config() {
     die "EvalScope Databench service credential must be 32 random bytes in hex"
   [ "$service_credential" = "$expected_service_credential" ] ||
     die "EvalScope and API Databench service credentials must match"
-  model_allowlist="$(grep -E '^EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
-  dataset_allowlist="$(grep -E '^EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
-  [[ "$model_allowlist" =~ ^[A-Za-z0-9.,\|:/_-]*$ ]] ||
-    die "EvalScope model endpoint allowlist contains unsupported characters"
-  [ -z "$dataset_allowlist" ] || die "offline EvalScope Dataset endpoint allowlist must remain empty"
+  validate_model_security_config
   validate_evalscope_positive_bound EVALSCOPE_INPUT_MAX_BYTES 4294967296
   validate_evalscope_positive_bound EVALSCOPE_OUTPUT_MAX_BYTES 17179869184
   validate_evalscope_positive_bound EVALSCOPE_ARCHIVE_MAX_BYTES 1073741824
@@ -272,11 +415,9 @@ validate_evalscope_config() {
 }
 
 ensure_evalscope_config() {
-  local public_base origin task_key operator_token model_allowlist service_credential temp
+  local public_base origin task_key operator_token service_credential temp
   if [ -e "$DATABENCH_EVALSCOPE_CONFIG_FILE" ]; then
     ensure_evalscope_service_credential
-    validate_evalscope_config
-    ensure_evalscope_swift_allowlist
     validate_evalscope_config
     log "reusing EvalScope configuration from $DATABENCH_EVALSCOPE_CONFIG_FILE"
     return
@@ -287,9 +428,6 @@ ensure_evalscope_config() {
   task_key="$(random_secret)"
   operator_token="$(random_secret)"
   service_credential="$(grep -E '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_CONFIG_FILE" | cut -d= -f2-)"
-  model_allowlist="${DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST:-}"
-  [[ "$model_allowlist" =~ ^[A-Za-z0-9.,\|:/_-]*$ ]] ||
-    die "DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST contains unsupported characters"
   temp="${DATABENCH_EVALSCOPE_CONFIG_FILE}.tmp.$$"
   umask 077
   {
@@ -297,8 +435,6 @@ ensure_evalscope_config() {
     printf 'EVALSCOPE_OPERATOR_TOKEN=%s\n' "$operator_token"
     printf 'DATABENCH_ORIGIN=%s\n' "$origin"
     printf 'DATABENCH_SERVICE_CREDENTIAL=%s\n' "$service_credential"
-    printf 'EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=%s\n' "$model_allowlist"
-    printf 'EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST=\n'
     printf 'EVALSCOPE_INPUT_MAX_BYTES=1073741824\n'
     printf 'EVALSCOPE_OUTPUT_MAX_BYTES=4294967296\n'
     printf 'EVALSCOPE_ARCHIVE_MAX_BYTES=1073741824\n'
@@ -322,7 +458,6 @@ ensure_evalscope_config() {
   chown root:root "$temp"
   chmod 0600 "$temp"
   mv -f "$temp" "$DATABENCH_EVALSCOPE_CONFIG_FILE"
-  ensure_evalscope_swift_allowlist
   validate_evalscope_config
   log "wrote EvalScope runtime configuration to $DATABENCH_EVALSCOPE_CONFIG_FILE"
 }
@@ -345,43 +480,6 @@ ensure_evalscope_service_credential() {
   chown root:root "$temp"
   chmod 0600 "$temp"
   mv -f "$temp" "$DATABENCH_EVALSCOPE_CONFIG_FILE"
-}
-
-ensure_evalscope_swift_allowlist() {
-  local current updated rule temp
-  [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ] || return
-  grep -qx 'DATABENCH_SWIFT_ENABLED=true' "$DATABENCH_SWIFT_CONFIG_FILE" || return
-  current="$(grep -E '^EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=' "$DATABENCH_EVALSCOPE_CONFIG_FILE" | cut -d= -f2-)"
-  updated="$current"
-  for rule in \
-    'http|10.0.0.0/8|8000' \
-    'http|172.16.0.0/12|8000' \
-    'http|192.168.0.0/16|8000'; do
-    case ",${updated}," in
-      *",${rule},"*) ;;
-      *)
-        if [ -n "$updated" ]; then
-          updated="${updated},${rule}"
-        else
-          updated="$rule"
-        fi
-        ;;
-    esac
-  done
-  [ "$updated" != "$current" ] || return
-  temp="${DATABENCH_EVALSCOPE_CONFIG_FILE}.tmp.$$"
-  umask 077
-  awk -v value="$updated" '
-    /^EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=/ {
-      print "EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST=" value
-      next
-    }
-    { print }
-  ' "$DATABENCH_EVALSCOPE_CONFIG_FILE" > "$temp"
-  chown root:root "$temp"
-  chmod 0600 "$temp"
-  mv -f "$temp" "$DATABENCH_EVALSCOPE_CONFIG_FILE"
-  log "allowed Docker-private Swift serving endpoints on port 8000 for EvalScope"
 }
 
 validate_swift_config() {
@@ -573,6 +671,13 @@ release_requires_mcp_config() {
   local release_dir="$1"
   [ -f "${release_dir}/compose.yml" ] || die "release is missing compose.yml: $release_dir"
   grep -Eq '/mcp\.env([[:space:]]|$)' "${release_dir}/compose.yml"
+}
+
+release_requires_model_security_config() {
+  local release_dir="$1"
+  [ -f "${release_dir}/compose.yml" ] || die "release is missing compose.yml: $release_dir"
+  grep -Fq '/etc/databench/model-endpoint-policy.json:/run/config/model-endpoint-policy.json:ro' \
+    "${release_dir}/compose.yml"
 }
 
 validate_release_mcp_config_if_required() {

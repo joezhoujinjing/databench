@@ -9,6 +9,11 @@ DATABENCH_MCP_CONFIG_FILE="${DATABENCH_MCP_CONFIG_FILE:-${DATABENCH_CONFIG_DIR}/
 DATABENCH_EVALSCOPE_CONFIG_FILE="${DATABENCH_EVALSCOPE_CONFIG_FILE:-${DATABENCH_CONFIG_DIR}/evalscope.env}"
 DATABENCH_SWIFT_CONFIG_FILE="${DATABENCH_SWIFT_CONFIG_FILE:-${DATABENCH_CONFIG_DIR}/swift.env}"
 DATABENCH_BACKUP_KEY_FILE="${DATABENCH_BACKUP_KEY_FILE:-${DATABENCH_CONFIG_DIR}/backup.key}"
+DATABENCH_MODEL_ENDPOINT_POLICY_FILE="${DATABENCH_MODEL_ENDPOINT_POLICY_FILE:-${DATABENCH_CONFIG_DIR}/model-endpoint-policy.json}"
+DATABENCH_MODEL_CREDENTIALS_DIR="${DATABENCH_MODEL_CREDENTIALS_DIR:-${DATABENCH_CONFIG_DIR}/secrets}"
+DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE="${DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE:-${DATABENCH_MODEL_CREDENTIALS_DIR}/model-credentials.json}"
+DATABENCH_API_MODEL_CREDENTIALS_FILE="${DATABENCH_API_MODEL_CREDENTIALS_FILE:-${DATABENCH_MODEL_CREDENTIALS_DIR}/api-model-credentials.json}"
+DATABENCH_EVALSCOPE_MODEL_CREDENTIALS_FILE="${DATABENCH_EVALSCOPE_MODEL_CREDENTIALS_FILE:-${DATABENCH_MODEL_CREDENTIALS_DIR}/evalscope-model-credentials.json}"
 DATABENCH_DATA_ROOT="${DATABENCH_DATA_ROOT:-/srv/databench}"
 DATABENCH_STATE_DIR="${DATABENCH_STATE_DIR:-${DATABENCH_INSTALL_ROOT}/state}"
 DATABENCH_RELEASES_DIR="${DATABENCH_RELEASES_DIR:-${DATABENCH_INSTALL_ROOT}/releases}"
@@ -486,7 +491,7 @@ copy_release_assets() {
   local item
   install -d -m 0755 "$release_dir"
   for item in compose.yml compose.swift-gpu.yml release.env release-manifest.json images.lock SHA256SUMS RELEASE.txt \
-    env.example mcp.env.example evalscope.env.example swift.env.example install.sh upgrade.sh rollback.sh backup.sh \
+    env.example mcp.env.example evalscope.env.example swift.env.example model-endpoint-policy.example.json install.sh upgrade.sh rollback.sh backup.sh project-model-credentials.sh \
     restore.sh smoke.sh \
     databenchctl Caddyfile README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md \
     TROUBLESHOOTING.zh-CN.md MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \

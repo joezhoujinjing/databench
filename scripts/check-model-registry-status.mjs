@@ -33,6 +33,11 @@ const PATHS = {
     'MODEL_REGISTRY_CREDENTIALS_PATH',
     'docs/models/fixtures/model-credentials-v1.schema.json',
   ),
+  evalscopeLock: inputPath('MODEL_REGISTRY_EVALSCOPE_LOCK_PATH', 'deploy/evalscope/upstream.lock'),
+  evalscopePatch: inputPath(
+    'MODEL_REGISTRY_EVALSCOPE_PATCH_PATH',
+    'deploy/evalscope/patches/0001-databench-runtime-boundary.patch',
+  ),
   legacy: inputPath(
     'MODEL_REGISTRY_LEGACY_BASELINE_PATH',
     'docs/models/fixtures/legacy-s4-baseline.json',
@@ -485,13 +490,14 @@ const requiredEndpointCases = [
   'dual-stack-one-address-denied',
   'ipv4-mapped-ipv6-bypass',
   'idna-or-trailing-dot-confusion',
+  'idna-unicode-confusion',
   'ipv6-zone-id',
   'ambient-proxy-present',
   'redirect',
   'offline-public-network',
 ]
 if (
-  endpointCases.fixture_version !== 1 ||
+  endpointCases.fixture_version !== 2 ||
   endpointCases.profile !== 'model-endpoint-policy-v1' ||
   !Array.isArray(endpointCases.required_cases)
 ) {
@@ -507,11 +513,35 @@ for (const entry of endpointCases.required_cases) {
     fail(`endpoint policy case ${entry.id} has invalid scope`)
   }
   if (
-    !['allow', 'allow-connected-only', 'deny', 'ignore-proxy', 'registered-unavailable'].includes(
-      entry.expected,
-    )
+    ![
+      'allow',
+      'allow-connected-only',
+      'deny',
+      'deny-on-second-connection',
+      'ignore-proxy',
+      'registered-unavailable',
+    ].includes(entry.expected)
   ) {
     fail(`endpoint policy case ${entry.id} has invalid expectation`)
+  }
+}
+
+const evalscopeLock = await readJson(PATHS.evalscopeLock, 'EvalScope upstream lock')
+const evalscopePatch = await readFile(PATHS.evalscopePatch)
+const lockedEvalscopePatch = evalscopeLock.patches?.find(
+  (entry) => entry.path === 'patches/0001-databench-runtime-boundary.patch',
+)
+if (lockedEvalscopePatch?.sha256 !== sha256(evalscopePatch)) {
+  fail('EvalScope runtime boundary patch digest does not match upstream.lock')
+}
+const evalscopePatchSource = evalscopePatch.toString('utf8')
+for (const requiredFence of [
+  'install_pinned_socket_transport_v1',
+  'follow_redirects=False',
+  'trust_env=False',
+]) {
+  if (!evalscopePatchSource.includes(requiredFence)) {
+    fail(`EvalScope runtime boundary patch is missing ${requiredFence}`)
   }
 }
 

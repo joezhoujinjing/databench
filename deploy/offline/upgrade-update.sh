@@ -41,6 +41,9 @@ offline_preflight upgrade
 acquire_operation_lock
 ensure_secret_config
 ensure_mcp_config
+release_requires_model_security_config "$PREVIOUS_RELEASE" ||
+  die "this update crosses the Model security runtime contract; publish a full offline bundle"
+ensure_model_security_config
 PREVIOUS_SWIFT_ENABLED=false
 PREVIOUS_SWIFT_MODE='ui-only'
 if [ -f "$DATABENCH_SWIFT_CONFIG_FILE" ]; then

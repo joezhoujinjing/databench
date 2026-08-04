@@ -60,6 +60,13 @@ TARGET_RELEASE="${DATABENCH_RELEASES_DIR}/${BACKUP_VERSION}"
 [ -d "$TARGET_RELEASE" ] || die "matching release is not installed: $BACKUP_VERSION"
 [ "$(sed -n '1p' "${TARGET_RELEASE}/release-bundle.sha256")" = "$BACKUP_BUNDLE_SHA" ] ||
   die "matching release bundle checksum is unavailable"
+if release_requires_model_security_config "$TARGET_RELEASE"; then
+  validate_model_security_config
+  [ -f "${BACKUP_DIR}/model-endpoint-policy.json.enc" ] ||
+    die "backup generation is missing the encrypted Model endpoint policy escrow"
+  [ -f "${BACKUP_DIR}/model-credentials.json.enc" ] ||
+    die "backup generation is missing the encrypted Model credential authority escrow"
+fi
 if release_has_evalscope "$TARGET_RELEASE"; then
   validate_evalscope_config
   [ -f "${BACKUP_DIR}/evalscope-volume.tar" ] ||

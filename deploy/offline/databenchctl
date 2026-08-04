@@ -25,6 +25,7 @@ Commands:
   evalscope-status               Show internal drain and active-task state
   evalscope-drain                Stop admitting new evaluation tasks
   evalscope-resume               Resume evaluation task admission
+  model-credentials-project      Generate minimum API/EvalScope credential projections
   backup                         Create a consistent backup generation
   restore <generation> --confirm Restore a backup generation
   upgrade <extracted-bundle>     Upgrade using a new offline bundle
@@ -64,6 +65,9 @@ case "$COMMAND" in
   evalscope-resume)
     release_has_evalscope "$RELEASE_DIR" || die "this release does not contain EvalScope"
     evalscope_operator_request POST /internal/v1/operator/resume
+    ;;
+  model-credentials-project)
+    exec "${RELEASE_DIR}/project-model-credentials.sh"
     ;;
   backup)
     exec "${RELEASE_DIR}/backup.sh"

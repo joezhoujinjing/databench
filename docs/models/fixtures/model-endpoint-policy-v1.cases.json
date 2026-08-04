@@ -1,41 +1,238 @@
 {
-  "fixture_version": 1,
+  "fixture_version": 2,
   "profile": "model-endpoint-policy-v1",
-  "note": "MR0 pre-registers decisions only. MR4 must execute these cases in both TypeScript and Python and add exact DNS/socket fixtures.",
+  "policy": {
+    "profile": "model-endpoint-policy-v1",
+    "generation": 7,
+    "private_network": [
+      {
+        "hostname": "model.internal",
+        "cidrs": ["10.10.0.0/16", "fd00:db8::/64"],
+        "schemes": ["http"],
+        "ports": [8000]
+      },
+      {
+        "hostname": "10.10.0.15",
+        "cidrs": ["10.10.0.0/16"],
+        "schemes": ["http"],
+        "ports": [8000]
+      },
+      {
+        "hostname": "localhost",
+        "cidrs": ["127.0.0.0/8"],
+        "schemes": ["http"],
+        "ports": [18080]
+      }
+    ],
+    "public_network": [
+      {
+        "hostname": "models.example",
+        "ports": [443]
+      }
+    ]
+  },
   "required_cases": [
-    { "id": "private-exact-host-cidr-port-http", "scope": "private_network", "expected": "allow" },
-    { "id": "private-host-match-cidr-miss", "scope": "private_network", "expected": "deny" },
-    { "id": "private-cidr-match-host-miss", "scope": "private_network", "expected": "deny" },
-    { "id": "private-ip-literal-in-cidr", "scope": "private_network", "expected": "allow" },
-    { "id": "private-ip-literal-outside-cidr", "scope": "private_network", "expected": "deny" },
+    {
+      "id": "private-exact-host-cidr-port-http",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://model.internal:8000/v1",
+      "dns_answers": ["10.10.0.15"],
+      "expected": "allow"
+    },
+    {
+      "id": "private-host-match-cidr-miss",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://model.internal:8000/v1",
+      "dns_answers": ["10.11.0.15"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "private-cidr-match-host-miss",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://other.internal:8000/v1",
+      "dns_answers": ["10.10.0.15"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_host_rejected"
+    },
+    {
+      "id": "private-ip-literal-in-cidr",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://10.10.0.15:8000/v1",
+      "dns_answers": ["10.10.0.15"],
+      "expected": "allow"
+    },
+    {
+      "id": "private-ip-literal-outside-cidr",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://10.11.0.15:8000/v1",
+      "dns_answers": ["10.11.0.15"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_host_rejected"
+    },
     {
       "id": "public-https-global-v4",
       "scope": "public_network",
-      "expected": "allow-connected-only"
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["8.8.8.8"],
+      "expected": "allow"
     },
     {
       "id": "public-https-global-v6",
       "scope": "public_network",
-      "expected": "allow-connected-only"
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["2606:4700:4700::1111"],
+      "expected": "allow"
     },
-    { "id": "public-http", "scope": "public_network", "expected": "deny" },
-    { "id": "public-loopback", "scope": "public_network", "expected": "deny" },
-    { "id": "public-rfc1918", "scope": "public_network", "expected": "deny" },
-    { "id": "public-cgnat", "scope": "public_network", "expected": "deny" },
-    { "id": "public-link-local", "scope": "public_network", "expected": "deny" },
-    { "id": "public-cloud-metadata", "scope": "public_network", "expected": "deny" },
-    { "id": "public-ula", "scope": "public_network", "expected": "deny" },
-    { "id": "dns-rebinding-second-resolution", "scope": "both", "expected": "deny" },
-    { "id": "dual-stack-one-address-denied", "scope": "both", "expected": "deny" },
-    { "id": "ipv4-mapped-ipv6-bypass", "scope": "both", "expected": "deny" },
-    { "id": "idna-or-trailing-dot-confusion", "scope": "both", "expected": "deny" },
-    { "id": "ipv6-zone-id", "scope": "both", "expected": "deny" },
-    { "id": "ambient-proxy-present", "scope": "both", "expected": "ignore-proxy" },
-    { "id": "redirect", "scope": "both", "expected": "deny" },
+    {
+      "id": "public-http",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "http://models.example/v1",
+      "dns_answers": ["8.8.8.8"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_host_rejected"
+    },
+    {
+      "id": "public-loopback",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["127.0.0.1"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "public-rfc1918",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["10.0.0.1"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "public-cgnat",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["100.64.0.1"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "public-link-local",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["169.254.10.20"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "public-cloud-metadata",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["169.254.169.254"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "public-ula",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["fd00::1"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "dns-rebinding-second-resolution",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://model.internal:8000/v1",
+      "dns_answers_by_call": [["10.10.0.15"], ["169.254.169.254"]],
+      "expected": "deny-on-second-connection",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "dual-stack-one-address-denied",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["8.8.8.8", "::1"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_address_rejected"
+    },
+    {
+      "id": "ipv4-mapped-ipv6-bypass",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example/v1",
+      "dns_answers": ["::ffff:8.8.8.8"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_dns_rejected"
+    },
+    {
+      "id": "idna-or-trailing-dot-confusion",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://models.example./v1",
+      "dns_answers": ["8.8.8.8"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_url_rejected"
+    },
+    {
+      "id": "idna-unicode-confusion",
+      "scope": "public_network",
+      "release_profile": "connected",
+      "url": "https://mödels.example/v1",
+      "dns_answers": ["8.8.8.8"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_url_rejected"
+    },
+    {
+      "id": "ipv6-zone-id",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://[fe80::1%25eth0]:8000/v1",
+      "dns_answers": ["fe80::1%eth0"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_url_rejected"
+    },
+    {
+      "id": "ambient-proxy-present",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://localhost:18080/v1",
+      "dns_answers": ["127.0.0.1"],
+      "expected": "ignore-proxy"
+    },
+    {
+      "id": "redirect",
+      "scope": "private_network",
+      "release_profile": "offline",
+      "url": "http://localhost:18080/redirect",
+      "dns_answers": ["127.0.0.1"],
+      "expected": "deny",
+      "expected_code": "model_endpoint_redirect_rejected"
+    },
     {
       "id": "offline-public-network",
       "scope": "public_network",
-      "expected": "registered-unavailable"
+      "release_profile": "offline",
+      "url": "https://models.example/v1",
+      "dns_answers": ["8.8.8.8"],
+      "expected": "registered-unavailable",
+      "expected_code": "model_endpoint_public_network_disabled"
     }
   ]
 }

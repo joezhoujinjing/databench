@@ -29,7 +29,9 @@ from .documents import (
 )
 from .errors import RuntimePolicyError, UpstreamProtocolError
 from .metrics import MetricCatalogue, ResolvedMetricSelection
-from .security import EndpointPolicy, validate_dataset_args, validate_task_id
+from .model_credentials import ModelCredentialRegistryV1
+from .model_endpoint_policy import ModelEndpointPolicyV1, load_model_endpoint_policy_v1
+from .security import validate_dataset_args, validate_task_id
 from .storage import TaskManifestStore, config_digest
 
 _PLOTLY_ASSET_ROUTE = '/generated-assets/plotly-6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603.min.js'
@@ -178,12 +180,18 @@ def create_app(
         plotly_digest=runtime.plotly_asset_sha256,
         databench_origin=runtime.databench_origin,
     )
-    endpoint_policy = EndpointPolicy(
-        runtime.endpoint_allowlist,
-        redirect_max_hops=runtime.model_redirect_max_hops,
+    endpoint_policy = ModelEndpointPolicyV1(
+        load_model_endpoint_policy_v1(runtime.model_endpoint_policy_path),
+        release_profile='offline',
     )
     metric_catalogue = MetricCatalogue.load()
-    EndpointPolicy(runtime.dataset_endpoint_allowlist)
+    model_credentials = None
+    if runtime.model_credentials_path is not None:
+        model_credentials = ModelCredentialRegistryV1(
+            runtime.model_credentials_path,
+            'evalscope',
+        )
+        model_credentials.reload()
     upstream = _load_upstream(runtime) if upstream_app is None else upstream_app
     databench = databench_client or DatabenchClient(runtime, manifests)
     app = Flask(__name__, static_folder=None)
@@ -195,6 +203,7 @@ def create_app(
         'documents': documents,
         'databench': databench,
         'metric_catalogue': metric_catalogue,
+        'model_credentials': model_credentials,
         'upstream': upstream,
     }
     evaluation_slots = threading.BoundedSemaphore(runtime.max_concurrent_evals)
@@ -516,7 +525,7 @@ def _invoke(
     runtime: RuntimeConfig,
     manifests: TaskManifestStore,
     databench: DatabenchClient,
-    endpoint_policy: EndpointPolicy,
+    endpoint_policy: ModelEndpointPolicyV1,
     upstream: Flask,
     deployment_endpoints: dict[str, str],
     deployment_endpoint_lock: threading.Lock,
@@ -1176,10 +1185,8 @@ def _validate_minimum_maximum(value: Mapping[str, Any], minimum_key: str, maximu
 def _load_upstream(runtime: RuntimeConfig) -> Flask:
     os.environ['EVALSCOPE_OUTPUT_DIR'] = str(runtime.output_dir)
     os.environ['EVALSCOPE_SERVE_WEB'] = 'false'
-    os.environ['EVALSCOPE_TASK_NETWORK_ALLOWLIST'] = ','.join(
-        rule
-        for rule in (runtime.endpoint_allowlist, runtime.dataset_endpoint_allowlist)
-        if rule
+    os.environ['EVALSCOPE_TASK_MODEL_ENDPOINT_POLICY'] = (
+        '' if runtime.model_endpoint_policy_path is None else str(runtime.model_endpoint_policy_path)
     )
     from evalscope.service.app import create_app as create_upstream_app
 

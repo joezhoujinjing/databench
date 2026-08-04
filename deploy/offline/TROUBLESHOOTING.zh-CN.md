@@ -376,8 +376,12 @@ df -h /srv/databench/evalscope
   `sudo databenchctl evalscope-resume`；
 - `task_capacity_invalid` / `task_concurrency_exceeded`：缩小 samples、parallel、requests、tokens 或等待
   现有任务完成，不要直接删除容量检查；
-- `model_endpoint_*_rejected`：模型 URL 不在 `/etc/databench/evalscope.env` 的精确 allowlist 中，按
-  [EVALSCOPE-OPERATOR-GUIDE.zh-CN.md](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md) 在维护窗口修正并重启；
+- `model_endpoint_*_rejected`：模型 URL 未同时通过
+  `/etc/databench/model-endpoint-policy.json` 的 hostname、scheme/port、DNS 全量地址与 CIDR 规则，按
+  [EVALSCOPE-OPERATOR-GUIDE.zh-CN.md](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md) 在维护窗口原子更新 policy 并重启；
+- `credential_reference_unknown` / `credential_reference_forbidden`：检查 authority 中 ref 的 consumer 与
+  Deployment ID ACL；增加 generation 后运行 `sudo databenchctl model-credentials-project` 和
+  `sudo databenchctl restart`。不要把 secret 写进 `.env` 或命令行；
 - 容器启动即失败：确认配置为 `root:root 0600`、稳定 HMAC/operator secret 未丢失、Plotly asset digest
   未改变、output/input 目录 owner 为 UID/GID 10001；
 - 页面 503 但容器健康：检查 API gateway 和 EvalScope health。不要把 9000 发布到宿主机作为绕过；

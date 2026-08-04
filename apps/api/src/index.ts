@@ -11,6 +11,14 @@ import { serve } from '@hono/node-server'
 import { createApp, createOpenApiDocument } from './app.js'
 import { type ApiConfig, loadConfig } from './config.js'
 import { mcpHttpRequestTimeoutMs } from './mcp/config.js'
+import { ModelCredentialRegistryV1 } from './model-credentials/index.js'
+import {
+  createPinnedModelDeploymentHealthClientV2,
+  DENY_ALL_MODEL_ENDPOINT_POLICY_V1,
+  loadModelEndpointPolicyV1,
+  ModelEndpointPolicyV1Runtime,
+  PinnedModelEndpointTransportV1,
+} from './model-endpoint-policy/index.js'
 import {
   DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG,
   MS_SWIFT_UPSTREAM_COMMIT,
@@ -36,6 +44,8 @@ function loadRootEnv(): void {
 }
 
 export function createAppFromConfig(config: ApiConfig) {
+  validateModelCredentialProjectionFromConfig(config)
+  const modelDeploymentHealthClient = modelDeploymentHealthClientFromConfig(config)
   return createApp({
     ...(config.databaseUrl !== undefined ? { databaseUrl: config.databaseUrl } : {}),
     ...(config.openApiServerUrl !== undefined ? { openApiServerUrl: config.openApiServerUrl } : {}),
@@ -51,6 +61,7 @@ export function createAppFromConfig(config: ApiConfig) {
       ? {}
       : { modelDeploymentServiceCredential: config.modelDeploymentServiceCredential }),
     modelRepository: config.modelRepository,
+    modelDeploymentHealthClient,
     storeConfig: config.storeConfig,
     ...(config.swiftStudio === undefined ? {} : { swiftStudio: config.swiftStudio }),
     v2CursorSecret: config.v2CursorSecret,
@@ -80,9 +91,11 @@ export async function startApiRuntime(
   config: ApiConfig,
   dependencies: ApiRuntimeDependencies = DEFAULT_RUNTIME_DEPENDENCIES,
 ): Promise<ApiRuntime> {
+  validateModelCredentialProjectionFromConfig(config)
   const mcpConfig = config.mcp ?? { enabled: false }
   const swiftStudioConfig: SwiftStudioGatewayConfig =
     config.swiftStudio ?? DISABLED_SWIFT_STUDIO_GATEWAY_CONFIG
+  const modelDeploymentHealthClient = modelDeploymentHealthClientFromConfig(config)
   const workspace = await dependencies.openWorkspace({
     root: config.workspaceRoot,
     cursorSecret: config.v2CursorSecret,
@@ -90,6 +103,7 @@ export async function startApiRuntime(
     evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
     evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
     modelRepository: config.modelRepository,
+    modelDeploymentHealthClient,
     ...(config.databaseUrl === undefined ? {} : { databaseUrl: config.databaseUrl }),
     ...(swiftStudioConfig.enabled &&
     swiftStudioConfig.providerBaseUrl !== undefined &&
@@ -197,6 +211,31 @@ export async function startApiRuntime(
       await closePromise
     },
   }
+}
+
+function validateModelCredentialProjectionFromConfig(config: ApiConfig): void {
+  const path = config.modelEndpointSecurity.credentialProjectionPath
+  if (path === undefined) return
+  const registry = new ModelCredentialRegistryV1(path, 'api-health')
+  registry.reload()
+}
+
+function modelDeploymentHealthClientFromConfig(config: ApiConfig) {
+  const policy =
+    config.modelEndpointSecurity.policyPath === undefined
+      ? DENY_ALL_MODEL_ENDPOINT_POLICY_V1
+      : loadModelEndpointPolicyV1(config.modelEndpointSecurity.policyPath)
+  return createPinnedModelDeploymentHealthClientV2(
+    new PinnedModelEndpointTransportV1({
+      policy: new ModelEndpointPolicyV1Runtime(policy, { releaseProfile: 'offline' }),
+      timeouts: {
+        connectMs: config.modelEndpointSecurity.connectTimeoutMs,
+        headersMs: config.modelEndpointSecurity.headersTimeoutMs,
+        bodyMs: config.modelEndpointSecurity.bodyTimeoutMs,
+        totalMs: config.modelEndpointSecurity.totalTimeoutMs,
+      },
+    }),
+  )
 }
 
 async function closeServer(server: ReturnType<typeof serve>): Promise<void> {

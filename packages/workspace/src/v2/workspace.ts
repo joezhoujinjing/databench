@@ -393,8 +393,10 @@ import {
   modelArtifactManifestDigestV2,
 } from './model-artifact.js'
 import {
+  DENY_ALL_MODEL_DEPLOYMENT_HEALTH_CLIENT_V2,
   modelDeploymentFromCatalogV2,
   resolvedModelDeploymentFromCatalogV2,
+  type V2ModelDeploymentHealthClient,
 } from './model-deployment.js'
 import {
   commitModelRegistrationV2,
@@ -438,8 +440,6 @@ const SWIFT_STUDIO_RECONCILE_TIMEOUT_MS = 10_000
 const DEFAULT_SWIFT_STUDIO_ABANDON_GRACE_MS = 310_000
 const DEFAULT_SWIFT_ARTIFACT_SIGNED_URL_TTL_MS = 4 * 60 * 60 * 1_000
 const MODEL_ARTIFACT_STAGING_CLEANUP_ATTEMPTS = 3
-const DEFAULT_MODEL_DEPLOYMENT_HEALTH_TIMEOUT_MS = 5_000
-const MODEL_DEPLOYMENT_HEALTH_MAX_RESPONSE_BYTES = 1024 * 1024
 
 export interface V2WorkspaceCatalog {
   getOrCreateNamespace(scope: 'default'): Promise<string>
@@ -704,8 +704,7 @@ export interface V2WorkspaceOptions {
   readonly jsonlLimits?: Partial<V2JsonlLimits>
   readonly onCleanupError?: (error: unknown, primaryError: unknown | null) => void
   readonly swiftStudio?: V2SwiftStudioWorkspaceOptions
-  readonly modelDeploymentFetch?: typeof fetch
-  readonly modelDeploymentHealthTimeoutMs?: number
+  readonly modelDeploymentHealthClient?: V2ModelDeploymentHealthClient
   readonly modelRepository?: V2ModelRepositoryRuntime
   readonly evaluationArtifactStore?: EvaluationArtifactStoreV1
 }
@@ -752,6 +751,7 @@ export interface V2WorkspaceOpenOptions {
   readonly evaluationArchiveMaxBytes?: number
   readonly evaluationArchiveSignedUrlTtlMs?: number
   readonly modelRepository?: V2ModelRepositoryOpenOptions
+  readonly modelDeploymentHealthClient?: V2ModelDeploymentHealthClient
 }
 
 interface ResolvedLayoutV2 {
@@ -796,8 +796,7 @@ export class V2Workspace {
   readonly #transformSemaphore: V2TransformSemaphore
   readonly #onCleanupError: ((error: unknown, primaryError: unknown | null) => void) | undefined
   readonly #swiftStudio: Readonly<ResolvedV2SwiftStudioWorkspaceOptions> | null
-  readonly #modelDeploymentFetch: typeof fetch
-  readonly #modelDeploymentHealthTimeoutMs: number
+  readonly #modelDeploymentHealthClient: V2ModelDeploymentHealthClient
   readonly #evaluationArtifacts: EvaluationArtifactStoreV1 | undefined
   readonly #modelRepository: V2ModelRepositoryRuntime
   #namespacePromise: Promise<string> | undefined
@@ -833,6 +832,9 @@ export class V2Workspace {
             V2_EVALUATION_ARCHIVE_DEFAULT_SIGNED_URL_TTL_MS,
         }),
         modelRepository: await openModelRepositoryRuntimeV2(options.modelRepository),
+        ...(options.modelDeploymentHealthClient === undefined
+          ? {}
+          : { modelDeploymentHealthClient: options.modelDeploymentHealthClient }),
         ...(options.datasetLimits === undefined ? {} : { datasetLimits: options.datasetLimits }),
         ...(options.transformLimits === undefined
           ? {}
@@ -945,11 +947,8 @@ export class V2Workspace {
       options.swiftStudio === undefined
         ? null
         : snapshotSwiftStudioWorkspaceOptions(options.swiftStudio)
-    this.#modelDeploymentFetch = options.modelDeploymentFetch ?? globalThis.fetch
-    this.#modelDeploymentHealthTimeoutMs = positiveSafeInteger(
-      'Model Deployment health timeout',
-      options.modelDeploymentHealthTimeoutMs ?? DEFAULT_MODEL_DEPLOYMENT_HEALTH_TIMEOUT_MS,
-    )
+    this.#modelDeploymentHealthClient =
+      options.modelDeploymentHealthClient ?? DENY_ALL_MODEL_DEPLOYMENT_HEALTH_CLIENT_V2
     this.#evaluationArtifacts = options.evaluationArtifactStore
     this.#modelRepository = options.modelRepository ?? DECLARED_ONLY_MODEL_REPOSITORY_RUNTIME_V2
     this.#runtimeCapability = postTrainingV2Capability({
@@ -3930,46 +3929,21 @@ export class V2Workspace {
     row: CatalogModelDeploymentRowV2,
     callerSignal?: AbortSignal,
   ): Promise<CatalogModelDeploymentHealthV2> {
-    const timeoutSignal = AbortSignal.timeout(this.#modelDeploymentHealthTimeoutMs)
-    const signal =
-      callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal])
-    const modelsUrl = `${row.endpointBaseUrl.replace(/\/+$/u, '')}/models`
-    let response: Response
     try {
-      response = await this.#modelDeploymentFetch(modelsUrl, {
-        method: 'GET',
-        headers: { accept: 'application/json' },
-        redirect: 'manual',
-        signal,
-      })
+      return await this.#modelDeploymentHealthClient.observe(
+        {
+          deploymentId: row.id,
+          endpointBaseUrl: row.endpointBaseUrl,
+          servedModelName: row.servedModelName,
+        },
+        { ...(callerSignal === undefined ? {} : { signal: callerSignal }) },
+      )
     } catch (error) {
       if (callerSignal?.aborted) throw error
       return Object.freeze({
         status: 'unhealthy',
-        error: timeoutSignal.aborted ? 'timeout' : 'network_error',
+        error: 'network_error',
       })
-    }
-    if (!response.ok || (response.status >= 300 && response.status < 400)) {
-      await response.body?.cancel().catch(() => undefined)
-      return Object.freeze({ status: 'unhealthy', error: 'http_error' })
-    }
-    try {
-      const bytes = await readBoundedResponseBytes(
-        response,
-        MODEL_DEPLOYMENT_HEALTH_MAX_RESPONSE_BYTES,
-        signal,
-      )
-      const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown
-      if (!openAiModelsResponseContains(value, row.servedModelName)) {
-        return Object.freeze({ status: 'unhealthy', error: 'served_model_missing' })
-      }
-      return Object.freeze({ status: 'healthy', error: null })
-    } catch (error) {
-      if (callerSignal?.aborted) throw error
-      if (timeoutSignal.aborted) {
-        return Object.freeze({ status: 'unhealthy', error: 'timeout' })
-      }
-      return Object.freeze({ status: 'unhealthy', error: 'invalid_response' })
     }
   }
 
@@ -6911,62 +6885,6 @@ function checkedMultiply(left: number, right: number): number {
     throw new TypeError('V2 cache capacity exceeds the safe integer range')
   }
   return left * right
-}
-
-async function readBoundedResponseBytes(
-  response: Response,
-  maxBytes: number,
-  signal: AbortSignal,
-): Promise<Uint8Array> {
-  const declaredLength = response.headers.get('content-length')
-  if (
-    declaredLength !== null &&
-    (!/^(?:0|[1-9][0-9]*)$/u.test(declaredLength) || BigInt(declaredLength) > BigInt(maxBytes))
-  ) {
-    await response.body?.cancel().catch(() => undefined)
-    throw new Error('Model Deployment health response exceeds its byte limit')
-  }
-  if (response.body === null) return new Uint8Array()
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  try {
-    while (true) {
-      signal.throwIfAborted()
-      const result = await reader.read()
-      if (result.done) break
-      total = checkedAddSafeInteger(total, result.value.byteLength, 'health response bytes')
-      if (total > maxBytes) {
-        throw new Error('Model Deployment health response exceeds its byte limit')
-      }
-      chunks.push(result.value)
-    }
-  } catch (error) {
-    await reader.cancel().catch(() => undefined)
-    throw error
-  } finally {
-    reader.releaseLock()
-  }
-  const bytes = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return bytes
-}
-
-function openAiModelsResponseContains(value: unknown, servedModelName: string): boolean {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const data = (value as { readonly data?: unknown }).data
-  if (!Array.isArray(data) || data.length > 10_000) return false
-  return data.some(
-    (item) =>
-      item !== null &&
-      typeof item === 'object' &&
-      !Array.isArray(item) &&
-      (item as { readonly id?: unknown }).id === servedModelName,
-  )
 }
 
 async function waitWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {

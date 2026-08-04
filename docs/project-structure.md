@@ -14,9 +14,10 @@
 > unvalidated。S2 exact Dataset 与单 active Studio Session bridge、S3 LoRA immutable Model Artifact
 > import 均已完成 non-GPU gate；S4 operator-attested Deployment + EvalScope opaque resolve/lineage 已完成
 > non-GPU contract，GPU 训练、推理部署与真实模型评测证据继续 deferred。
-> Model Registry ADR 0019 的 MR0-MR2 已按 Gate 完成：逻辑 Model/不可变 Version、Artifact 来源注册、
-> candidate Alias、显式 legacy adoption 与基础 REST/Web/CLI read 已落地；Repository、Existing Service、
-> Deployment v2 与 Evaluation v5/v6 仍按 MR3-MR6 顺序实施，整体 capability 保持 false。
+> Model Registry ADR 0019 的 MR0-MR3 已按 Gate 完成：逻辑 Model/不可变 Version、Artifact 来源注册、
+> candidate Alias、显式 legacy adoption、基础 REST/Web/CLI read，以及 ModelScope/operator-managed
+> Repository evidence，以及 MR4 endpoint/secret 安全底座和 legacy network hardening 已落地。Existing
+> Service、Deployment v2 与 Evaluation v5/v6 仍按 MR5-MR6 顺序实施，整体 capability 保持 false。
 
 ## 顶层目录
 
@@ -205,11 +206,17 @@ packages/<name>/
 - Model Repository：API 默认 `offline`，ModelScope 只有显式 `connected` 才执行有界 metadata
   resolution；operator-managed 只通过部署配置中的 opaque alias 解析 allowlisted root，公共 wire/PG
   不保存真实路径或 provider response body。
+- Model endpoint：API 与 EvalScope 读取同一 generation 的 strict `model-endpoint-policy-v1`，按
+  hostname + scheme/port + DNS 全量地址/CIDR 判定，并将 socket 钉到批准 IP；Host、SNI、CA 与 hostname
+  validation 仍使用原始 hostname。缺少配置时默认全拒绝，离线 profile 固定拒绝 public network。
+- Model credential：root-owned `model-credentials-v1` authority 不挂入容器；operator 工具按 consumer 与
+  Deployment ACL 原子生成 API/EvalScope 最小只读 projection。runtime 只 JIT resolve 并集中脱敏。
 - 离线增量发布：`build-update-bundle.sh` 只构建变化的应用镜像，并精确绑定已安装
   `base_version + bundle SHA-256`；目标机 `upgrade.sh` 合成完整八镜像 release。它不提供首次
   安装能力，运行契约变化仍发布完整包。
-- 离线备份覆盖 PostgreSQL、MinIO、EvalScope volume、启用时的 Swift Session workspace 和四份
-  加密配置 escrow；模型 cache/权重不进入每代业务备份。
+- 离线备份覆盖 PostgreSQL、MinIO、EvalScope volume、启用时的 Swift Session workspace 和六份
+  加密配置 escrow（Databench/MCP/EvalScope/Swift、Model endpoint policy、Model credential
+  authority）；consumer projection 可重建，不单独 escrow。模型 cache/权重不进入每代业务备份。
 - OpenAPI：API Zod route → `openapi/openapi.json` →
   `apps/web/src/api/generated/schema.ts`。
 - Node 版本：`.nvmrc`，当前 Node 22 LTS。

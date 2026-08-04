@@ -22,6 +22,7 @@ fi
 require_root
 acquire_operation_lock
 validate_existing_config
+validate_model_security_config
 validate_backup_key
 RELEASE_DIR="$(current_release_dir)"
 validate_release_contract "$RELEASE_DIR"
@@ -122,6 +123,14 @@ openssl enc -aes-256-cbc -pbkdf2 -salt \
   -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \
   -in "$DATABENCH_MCP_CONFIG_FILE" \
   -out "${TEMP_DIR}/mcp.env.enc"
+openssl enc -aes-256-cbc -pbkdf2 -salt \
+  -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \
+  -in "$DATABENCH_MODEL_ENDPOINT_POLICY_FILE" \
+  -out "${TEMP_DIR}/model-endpoint-policy.json.enc"
+openssl enc -aes-256-cbc -pbkdf2 -salt \
+  -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \
+  -in "$DATABENCH_MODEL_CREDENTIALS_AUTHORITY_FILE" \
+  -out "${TEMP_DIR}/model-credentials.json.enc"
 if release_has_evalscope "$RELEASE_DIR"; then
   openssl enc -aes-256-cbc -pbkdf2 -salt \
     -pass "file:${DATABENCH_BACKUP_KEY_FILE}" \

@@ -35,6 +35,7 @@ record_bundle_identity "$SCRIPT_DIR" "$RELEASE_DIR"
 ensure_secret_config
 ensure_mcp_config
 ensure_swift_config
+ensure_model_security_config
 ensure_evalscope_config
 
 log "loading offline images"

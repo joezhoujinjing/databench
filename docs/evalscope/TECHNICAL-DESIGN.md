@@ -1506,7 +1506,8 @@ EVALSCOPE_MODEL_TOKENS_MAX
 EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX
 EVALSCOPE_TASK_CONFIG_HMAC_KEY
 EVALSCOPE_OPERATOR_TOKEN
-EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST
+EVALSCOPE_MODEL_ENDPOINT_POLICY
+EVALSCOPE_MODEL_CREDENTIALS
 EVALSCOPE_MODEL_REDIRECT_MAX_HOPS=0
 EVALSCOPE_PLOTLY_ASSET_PATH
 EVALSCOPE_PLOTLY_ASSET_SHA256
@@ -1515,8 +1516,10 @@ DATABENCH_SERVICE_CREDENTIAL       # 有认证时
 ```
 
 task HMAC key 属于稳定 secret 配置，升级/重启必须保留且进入配置 escrow；Plotly version/digest/license 和
-asset bytes 进入 image/offline manifest。endpoint allowlist 为空时所有用户提交的 model URL fail closed；
-允许内网/localhost 必须写出精确 operator 配置，不能靠代码默认放行。
+asset bytes 进入 image/offline manifest。ADR 0019 MR4 已以 strict `model-endpoint-policy-v1` JSON 和
+consumer-minimal `model-credentials-v1` projection 取代本节最初的逗号 allowlist；缺少 policy 时所有用户
+提交的 model URL fail closed。旧 `EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST` 与
+`EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST` 不再是当前 runtime 配置，不能重新接回。
 
 不再需要 `EVALSCOPE_PUBLIC_BASE_URL` 或 frame origin。
 

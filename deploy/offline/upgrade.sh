@@ -31,6 +31,7 @@ if ! release_has_swift "$SCRIPT_DIR" &&
     [ -n "${DATABENCH_SWIFT_RUNTIME_MODE:-}" ]; }; then
   die "this release does not contain the Swift GPU runtime"
 fi
+ensure_model_security_config
 
 PREVIOUS_RELEASE="$(current_release_dir)"
 load_release_env "${PREVIOUS_RELEASE}/release.env"
@@ -128,7 +129,7 @@ assert_swift_session_transition_compatible \
   die "close the active Swift Studio Session before changing this runtime"
 
 log "creating pre-upgrade backup"
-DATABENCH_OPERATION_LOCK_HELD=1 "${PREVIOUS_RELEASE}/backup.sh" --api-already-stopped
+DATABENCH_OPERATION_LOCK_HELD=1 "${SCRIPT_DIR}/backup.sh" --api-already-stopped
 BACKUP_GENERATION="$(read_state_value last-backup-generation)"
 [ -n "$BACKUP_GENERATION" ] || die "backup generation marker was not written"
 

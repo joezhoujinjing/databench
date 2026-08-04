@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,13 @@ from databench_evalscope.errors import RuntimePolicyError
 
 def valid_env(tmp_path: Path) -> dict[str, str]:
     deployment_root = Path(__file__).resolve().parents[3] / 'deploy' / 'evalscope'
+    policy = tmp_path / 'model-endpoint-policy.json'
+    policy.write_text(json.dumps({
+        'profile': 'model-endpoint-policy-v1',
+        'generation': 1,
+        'private_network': [],
+        'public_network': [],
+    }), encoding='utf-8')
     return {
         'EVALSCOPE_SERVE_WEB': 'false',
         'EVALSCOPE_OUTPUT_DIR': str(tmp_path / 'outputs'),
@@ -22,6 +30,7 @@ def valid_env(tmp_path: Path) -> dict[str, str]:
         'EVALSCOPE_PLOTLY_ASSET_SHA256': PLOTLY_SHA256,
         'DATABENCH_BASE_URL': 'http://api:8000',
         'DATABENCH_ORIGIN': 'https://databench.example',
+        'EVALSCOPE_MODEL_ENDPOINT_POLICY': str(policy),
     }
 
 
@@ -31,8 +40,8 @@ def test_runtime_config_is_fail_closed_and_path_separated(tmp_path: Path) -> Non
     config.prepare()
     assert config.output_dir.is_dir()
     assert config.input_dir.is_dir()
-    assert config.endpoint_allowlist == ''
-    assert config.dataset_endpoint_allowlist == ''
+    assert config.model_endpoint_policy_path == tmp_path / 'model-endpoint-policy.json'
+    assert config.model_credentials_path is None
     assert config.archive_max_bytes == 1024 * 1024 * 1024
     assert config.task_runtime_seconds == 24 * 60 * 60
     assert config.evaluation_sample_limit_max == 100_000
@@ -44,13 +53,9 @@ def test_runtime_config_is_fail_closed_and_path_separated(tmp_path: Path) -> Non
     assert config.model_tokens_max == 32_768
     assert config.request_timeout_seconds_max == 3_600
 
-    configured = RuntimeConfig.from_env({
-        **env,
-        'EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST': 'http|127.0.0.1/32|8001',
-        'EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST': 'https|modelscope.cn|443',
-    })
-    assert configured.endpoint_allowlist == 'http|127.0.0.1/32|8001'
-    assert configured.dataset_endpoint_allowlist == 'https|modelscope.cn|443'
+    credential_path = tmp_path / 'model-credentials.json'
+    configured = RuntimeConfig.from_env({**env, 'EVALSCOPE_MODEL_CREDENTIALS': str(credential_path)})
+    assert configured.model_credentials_path == credential_path
 
     with pytest.raises(RuntimePolicyError):
         RuntimeConfig.from_env({**env, 'EVALSCOPE_SERVE_WEB': 'true'})
@@ -65,7 +70,7 @@ def test_runtime_config_is_fail_closed_and_path_separated(tmp_path: Path) -> Non
     with pytest.raises(RuntimePolicyError):
         RuntimeConfig.from_env({**env, 'DATABENCH_SERVICE_CREDENTIAL': 'bad\nheader'})
     with pytest.raises(RuntimePolicyError):
-        RuntimeConfig.from_env({**env, 'EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST': 'https|*|443'})
+        RuntimeConfig.from_env({**env, 'EVALSCOPE_MODEL_ENDPOINT_POLICY': 'relative.json'})
     with pytest.raises(RuntimePolicyError):
         RuntimeConfig.from_env({**env, 'EVALSCOPE_ARCHIVE_MAX_BYTES': str(1024 * 1024 * 1024 + 1)})
     with pytest.raises(RuntimePolicyError):

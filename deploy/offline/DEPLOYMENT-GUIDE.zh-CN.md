@@ -12,7 +12,7 @@
 如果只需要快速安装，先看 [README.zh-CN.md](README.zh-CN.md)。遇到错误时看
 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)。Agent 接入和 Excel 使用方式见
 [MCP-AGENT-GUIDE.zh-CN.md](MCP-AGENT-GUIDE.zh-CN.md)。
-EvalScope 模型 allowlist、容量、drain 与离线验收见
+EvalScope 模型 endpoint policy、credential projection、容量、drain 与离线验收见
 [EVALSCOPE-OPERATOR-GUIDE.zh-CN.md](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md)。
 Swift GPU、离线模型、训练与部署见
 [SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md](SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md)。
@@ -450,7 +450,11 @@ sudo iptables -L DOCKER-USER -n --line-numbers
 | `/opt/databench-offline/state` | current/previous/backup marker | 不要删除 |
 | `/etc/databench/databench.env` | 数据库、MinIO 和 v2 secret | 不要提交、打印或随意编辑 |
 | `/etc/databench/mcp.env` | 匿名模式与 agent 可达 public base | 维护窗口显式修改，禁止改成公网 URL |
-| `/etc/databench/evalscope.env` | EvalScope stable secrets、model allowlist 与容量 | 维护窗口修改，保持 0600 |
+| `/etc/databench/evalscope.env` | EvalScope stable secrets 与容量；不保存模型 endpoint/secret | 维护窗口修改，保持 0600 |
+| `/etc/databench/swift.env` | Swift runtime mode 与 Provider 配置 | 维护窗口修改，保持 0600 |
+| `/etc/databench/model-endpoint-policy.json` | TS/Python 共享 strict endpoint policy | 维护窗口原子替换，保持 0644 |
+| `/etc/databench/secrets/model-credentials.json` | root-owned credential authority；不挂入容器 | 维护窗口原子替换，保持 0640 |
+| `/etc/databench/secrets/*-model-credentials.json` | API/EvalScope consumer-minimal projection | 只由 projector 生成，保持 0444 |
 | `/etc/databench/backup.key` | 备份配置 escrow 加密密钥 | 必须异机单独保存 |
 | `/srv/databench/postgres` | PostgreSQL 数据目录 | 禁止手工修改 |
 | `/srv/databench/minio` | MinIO 对象数据 | 禁止手工修改 |
@@ -464,10 +468,18 @@ sudo iptables -L DOCKER-USER -n --line-numbers
 ```bash
 sudo stat -c '%U:%G %a %n' \
   /etc/databench/databench.env /etc/databench/mcp.env \
-  /etc/databench/evalscope.env /etc/databench/backup.key
+  /etc/databench/evalscope.env /etc/databench/swift.env \
+  /etc/databench/model-endpoint-policy.json \
+  /etc/databench/secrets/model-credentials.json \
+  /etc/databench/secrets/api-model-credentials.json \
+  /etc/databench/secrets/evalscope-model-credentials.json \
+  /etc/databench/backup.key
 ```
 
-四个文件都应为 `root:root 600`。
+所有文件都应为 `root:root`。四个 `.env` 与 `backup.key` 为 `0600`，endpoint policy 为 `0644`，
+credential authority 为 `0640`，两个 runtime projection 为 `0444`。authority 更新后必须增加 generation，
+运行 `sudo databenchctl model-credentials-project`，再运行 `sudo databenchctl restart`；不要手工复制完整
+authority 到 projection 或容器。
 
 升级不会轮换 secret。需要轮换时必须另做维护方案和恢复演练，不要直接编辑 `.env` 后只重启
 部分容器。
@@ -524,8 +536,9 @@ sudo databenchctl backup
 
 备份会拒绝活动 Swift 原生任务，停止 Web admission、drain EvalScope 并停止 API/EvalScope/Worker/Swift，
 依次生成 PostgreSQL custom dump、MinIO bucket mirror、EvalScope output/input volume、启用时的 Swift Session
-workspace、migration 列表、版本清单、校验文件和加密的 Databench/MCP/EvalScope/Swift 配置 escrow，
-然后按 Worker → Swift → API → EvalScope → Web 重新启动服务并运行 doctor。Swift 模型缓存和
+workspace、migration 列表、版本清单、校验文件和六份加密配置 escrow（Databench/MCP/EvalScope/Swift、
+Model endpoint policy、Model credential authority），然后按 Worker → Swift → API → EvalScope → Web
+重新启动服务并运行 doctor。consumer projections 从 authority 重建，不单独 escrow。Swift 模型缓存和
 `/srv/databench/swift-models` 使用独立备份，不会被普通恢复删除。
 
 成功时输出 generation 路径，例如：

@@ -64,8 +64,11 @@ export {
   modelArtifactManifestDigestV2,
 } from './model-artifact.js'
 export {
+  DENY_ALL_MODEL_DEPLOYMENT_HEALTH_CLIENT_V2,
   modelDeploymentFromCatalogV2,
   resolvedModelDeploymentFromCatalogV2,
+  type V2ModelDeploymentHealthClient,
+  type V2ModelDeploymentHealthRequest,
 } from './model-deployment.js'
 export {
   commitModelRegistrationV2,

@@ -65,6 +65,16 @@ def _absolute_path(env: Mapping[str, str], name: str) -> Path:
     return path.resolve(strict=False)
 
 
+def _optional_absolute_path(env: Mapping[str, str], name: str) -> Path | None:
+    raw = env.get(name, '').strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        raise RuntimePolicyError('invalid_runtime_config', f'{name} must be absolute', 500)
+    return path
+
+
 def _secret(env: Mapping[str, str], name: str) -> bytes:
     value = env.get(name, '').encode('utf-8')
     if len(value) < 32:
@@ -137,8 +147,8 @@ class RuntimeConfig:
     databench_origin: str
     plotly_asset_path: Path
     plotly_asset_sha256: str
-    endpoint_allowlist: str
-    dataset_endpoint_allowlist: str
+    model_endpoint_policy_path: Path | None
+    model_credentials_path: Path | None
     model_redirect_max_hops: int
     input_max_bytes: int
     output_max_bytes: int
@@ -222,12 +232,17 @@ class RuntimeConfig:
                 500,
             )
 
-        endpoint_allowlist = env.get('EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST', '').strip()
-        dataset_endpoint_allowlist = env.get('EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST', '').strip()
-        from .security import EndpointPolicy
+        model_endpoint_policy_path = _optional_absolute_path(
+            env,
+            'EVALSCOPE_MODEL_ENDPOINT_POLICY',
+        )
+        model_credentials_path = _optional_absolute_path(
+            env,
+            'EVALSCOPE_MODEL_CREDENTIALS',
+        )
+        from .model_endpoint_policy import load_model_endpoint_policy_v1
 
-        EndpointPolicy(endpoint_allowlist, redirect_max_hops=redirect_max_hops)
-        EndpointPolicy(dataset_endpoint_allowlist)
+        load_model_endpoint_policy_v1(model_endpoint_policy_path)
 
         config = cls(
             output_dir=output_dir,
@@ -240,8 +255,8 @@ class RuntimeConfig:
             databench_origin=_origin(env),
             plotly_asset_path=plotly_path,
             plotly_asset_sha256=plotly_digest,
-            endpoint_allowlist=endpoint_allowlist,
-            dataset_endpoint_allowlist=dataset_endpoint_allowlist,
+            model_endpoint_policy_path=model_endpoint_policy_path,
+            model_credentials_path=model_credentials_path,
             model_redirect_max_hops=redirect_max_hops,
             input_max_bytes=_bounded_positive_int(
                 env,

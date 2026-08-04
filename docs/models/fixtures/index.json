@@ -32,7 +32,7 @@
       "path": "docs/models/fixtures/model-endpoint-policy-v1.schema.json",
       "assertion": "Defines a strict default-deny policy configuration envelope before TS or Python runtime implementation.",
       "source": "ADR 0019 section 8",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr0-endpoint-policy-cases",
@@ -43,7 +43,7 @@
       "path": "docs/models/fixtures/model-endpoint-policy-v1.cases.json",
       "assertion": "Pre-registers required allow and deny categories for identical TS/Python decisions in MR4.",
       "source": "ADR 0019 section 8",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr0-credential-registry-schema",
@@ -54,7 +54,7 @@
       "path": "docs/models/fixtures/model-credentials-v1.schema.json",
       "assertion": "Defines the strict offline authority/projection envelope without committing any secret value.",
       "source": "ADR 0019 section 9",
-      "status": "planned"
+      "status": "verified"
     },
     {
       "id": "mr1-model-create-v1",

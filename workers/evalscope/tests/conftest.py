@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,18 @@ from databench_evalscope.config import PLOTLY_SHA256, RuntimeConfig
 @pytest.fixture
 def runtime_config(tmp_path: Path) -> RuntimeConfig:
     deployment_root = Path(__file__).resolve().parents[3] / 'deploy' / 'evalscope'
+    model_policy = tmp_path / 'model-endpoint-policy.json'
+    model_policy.write_text(json.dumps({
+        'profile': 'model-endpoint-policy-v1',
+        'generation': 1,
+        'private_network': [{
+            'hostname': '127.0.0.1',
+            'cidrs': ['127.0.0.0/8'],
+            'schemes': ['http'],
+            'ports': [8001],
+        }],
+        'public_network': [],
+    }), encoding='utf-8')
     return RuntimeConfig(
         output_dir=tmp_path / 'outputs',
         input_dir=tmp_path / 'inputs',
@@ -21,8 +34,8 @@ def runtime_config(tmp_path: Path) -> RuntimeConfig:
         databench_origin='http://databench.test',
         plotly_asset_path=deployment_root / 'vendor' / 'plotly-2.35.2.min.js',
         plotly_asset_sha256=PLOTLY_SHA256,
-        endpoint_allowlist='http|127.0.0.1/32|8001',
-        dataset_endpoint_allowlist='',
+        model_endpoint_policy_path=model_policy,
+        model_credentials_path=None,
         model_redirect_max_hops=0,
         input_max_bytes=1024 * 1024,
         output_max_bytes=8 * 1024 * 1024,

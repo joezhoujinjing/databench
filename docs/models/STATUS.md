@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- model-registry-status
-current_step: MR4
-last_completed_step: MR3
+current_step: MR5
+last_completed_step: MR4
 capability_enabled: false
 runtime_implemented: true
 public_network_activation: false
@@ -14,15 +14,16 @@ gpu_gate: deferred
 
 ## 当前检查点
 
-- **工作分支:** `feat/model-registry-mr3`
-- **代码基线:** `feat/model-registry-mr2@9740987`
-- **当前 Step:** MR4——Endpoint policy、受控 transport 与 offline secret registry
+- **工作分支:** `feat/model-registry-mr4`
+- **代码基线:** `feat/model-registry-mr3@db93fed`
+- **当前 Step:** MR5——Existing Service 与 version-bound Deployment
 - **Owner 范围:** MR2 candidate Alias；MR3 ModelScope + operator-managed；CLI MR2 read/MR8 write；
   一级导航“数据集 / 训练 / 模型 / 测评”
-- **Runtime:** MR3 已完成 ModelScope/operator-managed Repository Inspect/Commit、append-only source
-  evidence、refresh 与 offline declared-only；Service、Deployment v2 与 Evaluation v5/v6 尚未实现
-- **Capability:** 整体 Model Registry capability 仍未启用；MR3 只增加 Repository 引用与证据，
-  不能据此宣称三来源、version-bound Deployment 或新 Evaluation 已完成
+- **Runtime:** MR4 已完成跨语言 endpoint policy、approved-IP transport、legacy health/inference hardening、
+  offline credential authority/projection 与匿名 FD handoff；Service、Deployment v2 与 Evaluation v5/v6
+  尚未实现
+- **Capability:** 整体 Model Registry capability 仍未启用；MR4 只交付共享安全底座，不能据此宣称三来源、
+  version-bound Deployment 或新 Evaluation 已完成
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
 - **GPU/V16/V17:** 状态不变，Model Registry 的实施不自动完成 V16/V17，也不打开 GPU gate
 
@@ -34,7 +35,7 @@ gpu_gate: deferred
 | MR1 | Model/Version identity 与 Catalog | ✅ | `feat/model-registry-mr1` | GMR1 green | internal only；capability false |
 | MR2 | Artifact 注册与基础产品面 | ✅ | `feat/model-registry-mr2` | GMR2 green | candidate Alias + CLI read；capability false |
 | MR3 | Repository reference 与 evidence | ✅ | `feat/model-registry-mr3` | GMR3 green | ModelScope + operator-managed |
-| MR4 | Endpoint/secret 安全底座 | ⬜ | | GMR4 | 包含 legacy network hardening |
+| MR4 | Endpoint/secret 安全底座 | ✅ | `feat/model-registry-mr4` | GMR4 green | legacy network hardening + offline projection |
 | MR5 | Existing Service 与 Deployment v2 | ⬜ | | GMR5 | internal v1/v2 隔离 |
 | MR6 | Evaluation v5/v6 | ⬜ | | GMR6 | 不改历史 identity |
 | MR7 | 完整 Model 产品面 | ⬜ | | GMR7 | 浏览器与 selector gate |
@@ -159,3 +160,38 @@ Repository runtime、Existing Service、Deployment v2、Evaluation v5/v6，也�
 GMR3 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不下载
 权重、不创建 Artifact，也不实现 Existing Service、Deployment v2、Evaluation v5/v6 或 hosted secret
 backend；MR4 必须先完成 endpoint/secret 安全底座与 legacy network hardening。
+
+## GMR4 完成证据
+
+- [x] TypeScript/Python strict `model-endpoint-policy-v1` parser 与同源 allow/deny fixtures；
+- [x] private/public 地址分类、全量 A/AAAA、CIDR + hostname、scheme/port、offline public-network fence；
+- [x] Node Undici approved-IP connector 保留 Host/SNI/CA/hostname validation，并复核 remote socket address；
+- [x] EvalScope child 在 upstream import 前安装 pinned-address socket guard；OpenAI-compatible sync/async client
+  显式关闭 redirect 与 ambient proxy；
+- [x] legacy Deployment health 移除 raw `fetch`，Workspace 改为注入受控 health client，缺省 deny-all；
+- [x] redirect/auth、proxy、header smuggling、slow header/body、compression bomb、JSON depth/node/model count与
+  compressed/decompressed response 上限负测；
+- [x] `model-credentials-v1` authority、consumer/Deployment ACL、JIT snapshot、集中 redaction、rotation/
+  rollback fence 与 anonymous pipe/FD handoff；
+- [x] root-owned authority 不挂容器；隔离 projector 生成 API/EvalScope `0444` 最小 projection，同代内容漂移
+  与 generation rollback 均拒绝；
+- [x] offline install/upgrade/rollback/backup/restore、encrypted policy/authority escrow、projection reload 与
+  Compose mount 静态 smoke；
+- [x] legacy public/internal schema、identity、migration 和 replay baseline 未漂移；Hugging Face、Existing
+  Service、Deployment v2、Evaluation v5/v6 继续未启用。
+
+2026-08-05 实际通过：
+
+- EvalScope upstream patch dry-run、实际 apply 与 patched Python `py_compile`；
+- `pnpm lint`、`pnpm build`、`pnpm typecheck`、`pnpm test`；API 164 passed / 4 skipped，其中 endpoint
+  transport 35 passed、credential registry 5 passed；
+- `pnpm test:evalscope:python`、`pnpm evalscope:parity:check`；
+- `pnpm openapi:check`、`pnpm models:status:test`、`pnpm models:status:check`、
+  `pnpm v2:status:check`；
+- `pnpm peers check`、`pnpm offline:check`；
+- `RUN_MINIO_STORE_TESTS=true pnpm --filter @databench/workspace test`（200 passed / 10 skipped）；
+- `git diff --check`。
+
+GMR4 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不下载
+权重、不创建 Artifact，不实现 Existing Service、Deployment v2 或 Evaluation v5/v6，也不自动完成
+V16/V17、GE9、GPU 或 production readiness。

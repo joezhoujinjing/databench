@@ -40,8 +40,8 @@ The service fails closed unless all required values are present:
 | `DATABENCH_BASE_URL` | Internal Databench API origin |
 | `DATABENCH_SERVICE_CREDENTIAL` | Optional internal service credential |
 | `DATABENCH_ORIGIN` | Exact browser origin used by generated-document CSP |
-| `EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST` | `scheme|CIDR-or-host|port` entries; empty denies every model endpoint |
-| `EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST` | Optional reviewed `scheme|host-or-CIDR|port` entries used only by native Benchmark adapters; empty denies remote Dataset downloads |
+| `EVALSCOPE_MODEL_ENDPOINT_POLICY` | Absolute path to strict `model-endpoint-policy-v1` JSON; absent means deny all |
+| `EVALSCOPE_MODEL_CREDENTIALS` | Optional absolute path to the read-only `evalscope` credential projection |
 | `EVALSCOPE_PLOTLY_ASSET_PATH` | Must point to the pinned local Plotly asset |
 | `EVALSCOPE_PLOTLY_ASSET_SHA256` | Must equal the digest in `upstream.lock` |
 
@@ -53,15 +53,17 @@ Optional bounded settings are `EVALSCOPE_INPUT_MAX_BYTES`, `EVALSCOPE_OUTPUT_MAX
 `EVALSCOPE_EVALUATION_REPEATS_MAX`, `EVALSCOPE_PERFORMANCE_PARALLEL_MAX`,
 `EVALSCOPE_PERFORMANCE_REQUESTS_MAX`, `EVALSCOPE_PERFORMANCE_RATE_MAX`,
 `EVALSCOPE_MODEL_TOKENS_MAX` and `EVALSCOPE_REQUEST_TIMEOUT_SECONDS_MAX`.
-`EVALSCOPE_MODEL_REDIRECT_MAX_HOPS` must remain `0`.
+`EVALSCOPE_MODEL_REDIRECT_MAX_HOPS` must remain `0`. ADR 0019 MR4 supersedes the former comma-separated
+`EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST` and `EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST`; they are not runtime inputs.
 
 The production command is fixed to one Gunicorn worker with eight threads. One process owns the in-memory upstream
 process registry; the threads allow progress/log/stop requests while an invoke request blocks.
 
-The model allowlist is enforced before a task is claimed. The child-process socket guard receives the union of the
-model and Dataset allowlists so built-in Benchmark adapters can reach only operator-reviewed Dataset hosts. Adding a
-Dataset host does not make that host an admissible browser-supplied model endpoint. Offline deployments keep the
-Dataset allowlist empty and must pre-populate any native Benchmark data they intend to run.
+The endpoint policy is validated before a task is claimed. The child process installs the pinned-address socket
+guard before importing the upstream execution path; every connection must remain inside the one approved DNS
+snapshot, redirects and ambient proxies are disabled, and normal hostname-based TLS verification stays enabled.
+Offline native Benchmark data must be pre-populated or supplied through the reviewed Databench Dataset path; there is
+no general remote Dataset allowlist runtime input.
 
 ## Databench gateway
 

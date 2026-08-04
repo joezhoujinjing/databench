@@ -343,14 +343,66 @@ diff --git a/evalscope/utils/data_utils.py b/evalscope/utils/data_utils.py
 diff --git a/evalscope/service/utils/process.py b/evalscope/service/utils/process.py
 --- a/evalscope/service/utils/process.py
 +++ b/evalscope/service/utils/process.py
-@@ -3,0 +4 @@
+@@ -3,0 +4,2 @@
 +import os
++from pathlib import Path
 @@ -29,0 +31,2 @@
 +        if task_id in _active_processes:
 +            raise RuntimeError(f'Task {task_id} already has an active process')
-@@ -84,0 +88,2 @@
-+    from databench_evalscope.security import install_socket_guard
-+    restore_socket = install_socket_guard(os.getenv('EVALSCOPE_TASK_NETWORK_ALLOWLIST', ''))
-@@ -95,0 +101,2 @@
+@@ -84,0 +88,6 @@
++    from databench_evalscope.model_endpoint_policy import (
++        ModelEndpointPolicyV1, install_pinned_socket_transport_v1, load_model_endpoint_policy_v1,
++    )
++    policy_path = os.getenv('EVALSCOPE_TASK_MODEL_ENDPOINT_POLICY', '')
++    policy = ModelEndpointPolicyV1(load_model_endpoint_policy_v1(Path(policy_path) if policy_path else None))
++    restore_socket = install_pinned_socket_transport_v1(policy)
+@@ -95,0 +105,2 @@
 +        finally:
 +            restore_socket()
+diff --git a/evalscope/models/openai_compatible.py b/evalscope/models/openai_compatible.py
+--- a/evalscope/models/openai_compatible.py
++++ b/evalscope/models/openai_compatible.py
+@@ -1,5 +1,6 @@
+ import os
+ import time
++import httpx
+ from openai import APIStatusError, AsyncOpenAI, BadRequestError, OpenAI, PermissionDeniedError, UnprocessableEntityError
+ from openai._types import NOT_GIVEN
+ from openai.types.chat import ChatCompletion
+@@ -28,6 +29,14 @@
+ logger = get_logger()
+
+
++def _databench_http_client() -> httpx.Client:
++    return httpx.Client(follow_redirects=False, trust_env=False, timeout=httpx.Timeout(600.0, connect=10.0))
++
++
++def _databench_async_http_client() -> httpx.AsyncClient:
++    return httpx.AsyncClient(follow_redirects=False, trust_env=False, timeout=httpx.Timeout(600.0, connect=10.0))
++
++
+ class OpenAICompatibleAPI(ModelAPI):
+
+     def __init__(
+@@ -61,6 +70,7 @@
+         self.client = OpenAI(
+             api_key=self.api_key,
+             base_url=self.base_url,
++            http_client=_databench_http_client(),
+             **model_args,
+         )
+
+@@ -71,7 +81,12 @@
+             'base_url': self.base_url,
+             **model_args,
+         }
+-        self._async_client_pool = LoopBoundAsyncClientPool(lambda: AsyncOpenAI(**self._async_client_kwargs))
++        self._async_client_pool = LoopBoundAsyncClientPool(
++            lambda: AsyncOpenAI(
++                **self._async_client_kwargs,
++                http_client=_databench_async_http_client(),
++            )
++        )
+
+     @property
+     def async_client(self) -> AsyncOpenAI:

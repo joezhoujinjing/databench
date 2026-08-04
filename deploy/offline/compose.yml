@@ -128,9 +128,13 @@ services:
       EVALSCOPE_PLOTLY_ASSET_PATH: /opt/vendor/plotly-2.35.2.min.js
       EVALSCOPE_PLOTLY_ASSET_SHA256: 6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603
       DATABENCH_BASE_URL: http://api:8000
+      EVALSCOPE_MODEL_ENDPOINT_POLICY: /run/config/model-endpoint-policy.json
+      EVALSCOPE_MODEL_CREDENTIALS: /run/secrets/evalscope-model-credentials.json
     volumes:
       - /srv/databench/evalscope/outputs:/var/lib/evalscope/outputs
       - /srv/databench/evalscope/inputs:/var/lib/evalscope/inputs
+      - /etc/databench/model-endpoint-policy.json:/run/config/model-endpoint-policy.json:ro
+      - /etc/databench/secrets/evalscope-model-credentials.json:/run/secrets/evalscope-model-credentials.json:ro
     tmpfs:
       - /tmp:size=2g,mode=1777
       - /var/lib/evalscope/home:size=512m,uid=10001,gid=10001,mode=0700
@@ -213,6 +217,8 @@ services:
       DATABENCH_SWIFT_STUDIO_ROUTES_MANIFEST: "/app/swift-studio-gradio-routes.json"
       DATABENCH_WORKER_ENABLED: "true"
       DATABENCH_WORKER_TARGET: "worker:50051"
+      DATABENCH_MODEL_ENDPOINT_POLICY: "/run/config/model-endpoint-policy.json"
+      DATABENCH_MODEL_CREDENTIALS: "/run/secrets/api-model-credentials.json"
       NODE_ENV: production
       PORT: "8000"
     depends_on:
@@ -226,6 +232,8 @@ services:
         condition: service_healthy
     volumes:
       - /srv/databench/workspace:/var/lib/databench
+      - /etc/databench/model-endpoint-policy.json:/run/config/model-endpoint-policy.json:ro
+      - /etc/databench/secrets/api-model-credentials.json:/run/secrets/api-model-credentials.json:ro
     tmpfs:
       - /tmp:size=1g,mode=1777
     read_only: true

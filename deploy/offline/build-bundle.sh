@@ -251,12 +251,14 @@ cp -a \
   deploy/offline/mcp.env.example \
   deploy/offline/evalscope.env.example \
   deploy/offline/swift.env.example \
+  deploy/offline/model-endpoint-policy.example.json \
   deploy/offline/compose.swift-gpu.yml \
   deploy/offline/Caddyfile \
   deploy/offline/install.sh \
   deploy/offline/upgrade.sh \
   deploy/offline/rollback.sh \
   deploy/offline/backup.sh \
+  deploy/offline/project-model-credentials.sh \
   deploy/offline/restore.sh \
   deploy/offline/smoke.sh \
   deploy/offline/databenchctl \

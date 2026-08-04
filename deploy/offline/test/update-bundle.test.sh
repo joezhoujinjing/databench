@@ -36,6 +36,9 @@ grep -Fq '"${SCRIPT_DIR}/changed-images.lock" true' "${SCRIPT_DIR}/upgrade-updat
   fail 'incremental upgrade does not validate loaded changed images'
 grep -Fq '"${TARGET_RELEASE}/images.lock" true' "${SCRIPT_DIR}/upgrade-update.sh" ||
   fail 'incremental upgrade does not validate the synthesized full release'
+grep -Fq 'release_requires_model_security_config "$PREVIOUS_RELEASE"' \
+  "${SCRIPT_DIR}/upgrade-update.sh" ||
+  fail 'incremental update does not reject a pre-MR4 runtime contract base'
 if grep -Fq 'docker pull' "${SCRIPT_DIR}/upgrade-update.sh"; then
   fail 'incremental target upgrade attempts to pull an image'
 fi
@@ -47,7 +50,7 @@ mkdir -p "$BASE_RELEASE" "$UPDATE_DIR" "${BASE_RELEASE}/docs"
 
 for item in \
   compose.yml compose.swift-gpu.yml env.example mcp.env.example evalscope.env.example \
-  swift.env.example install.sh upgrade.sh rollback.sh backup.sh restore.sh smoke.sh \
+  swift.env.example model-endpoint-policy.example.json install.sh upgrade.sh rollback.sh backup.sh project-model-credentials.sh restore.sh smoke.sh \
   databenchctl Caddyfile README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md \
   TROUBLESHOOTING.zh-CN.md MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
   SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md lib minio smoke; do

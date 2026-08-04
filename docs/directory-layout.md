@@ -82,7 +82,15 @@ apps/api/
 │  ├─ index.ts                 runtime owner；装配 Workspace 并启动 Hono
 │  ├─ app.ts                   OpenAPIHono 工厂；挂 meta 与 /v2 routes
 │  ├─ capabilities.ts          当前能力声明
-│  ├─ config.ts                DB、Store、CORS、cursor、Model Repository、PORT 配置
+│  ├─ config.ts                DB、Store、CORS、cursor、Model Repository/endpoint、PORT 配置
+│  ├─ model-credentials-project.ts 离线 operator projection CLI entry
+│  ├─ model-endpoint-policy/
+│  │  ├─ config.ts             strict policy parser、file boundary 与 deny-all default
+│  │  ├─ policy.ts             DNS 全量复核、地址分类与 offline public-network fence
+│  │  └─ transport.ts          Undici approved-IP connector、Host/SNI/TLS 与 bounded response
+│  ├─ model-credentials/
+│  │  ├─ registry.ts           authority/projection、ACL、generation、atomic writer 与 redaction
+│  │  └─ index.ts              私有 app 内 barrel
 │  ├─ context.ts               Hono context 中的 V2Workspace
 │  ├─ openapi.ts               OpenAPI 元信息与 server URL
 │  ├─ response.ts              REST/MCP 共用 response stream 与附件 header
@@ -128,6 +136,8 @@ apps/api/
 │  ├─ app-support.test.ts
 │  ├─ model-deployments.test.ts
 │  ├─ models.test.ts
+│  ├─ model-endpoint-policy.test.ts
+│  ├─ model-credentials.test.ts
 │  ├─ evalscope-gateway.test.ts
 │  ├─ errors.test.ts
 │  ├─ mcp-config.test.ts · mcp-file-tokens.test.ts · mcp.test.ts
@@ -492,6 +502,8 @@ workers/evalscope/
 │  ├─ app.py · wsgi.py · config.py
 │  ├─ databench.py · archive.py · storage.py
 │  ├─ metrics.py · metric-descriptors.json
+│  ├─ model_endpoint_policy.py strict shared policy + pinned-address socket guard
+│  ├─ model_credentials.py     consumer ACL、JIT snapshot、redaction 与 anonymous FD handoff
 │  └─ security.py · documents.py · volume_backup.py · errors.py
 └─ tests/                      Python runtime/security tests
 
@@ -580,7 +592,9 @@ deploy/offline/
 ├─ upgrade-update.sh              增量包内重命名为 upgrade.sh 的目标机入口
 ├─ README-UPDATE.zh-CN.md         增量包独立操作边界
 ├─ mcp.env.example                匿名可信内网 MCP 配置示例
-├─ evalscope.env.example          EvalScope stable secret、allowlist 与容量示例
+├─ evalscope.env.example          EvalScope stable secret 与容量示例；endpoint/credential 使用 JSON 文件
+├─ model-endpoint-policy.example.json strict private/public endpoint policy 示例
+├─ project-model-credentials.sh  隔离一次性容器内生成 consumer-minimal projections
 ├─ swift.env.example              默认关闭的单 GPU Studio 与双向 Provider credential
 ├─ MCP-AGENT-GUIDE.zh-CN.md       agent endpoint、三种意图与恢复规则
 ├─ EVALSCOPE-OPERATOR-GUIDE.zh-CN.md  EvalScope drain、容量、备份与断网验收
@@ -588,7 +602,7 @@ deploy/offline/
 ├─ README.zh-CN.md
 ├─ DEPLOYMENT-GUIDE.zh-CN.md
 ├─ TROUBLESHOOTING.zh-CN.md
-├─ install.sh · upgrade.sh        显式创建或复用 MCP/EvalScope/Swift 配置
+├─ install.sh · upgrade.sh        显式创建或复用 MCP/EvalScope/Swift/Model security 配置
 ├─ rollback.sh                    停服务前校验 current/target 所需配置
 ├─ lib/config.sh                  public base、EvalScope/Swift stable secret 与原子配置
 ├─ lib/update-manifest.sh         增量 manifest、变化 lock 与完整 target release 合成

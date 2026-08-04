@@ -45,6 +45,12 @@ const EnvSchema = z
       .min(100)
       .max(30_000)
       .default(5_000),
+    DATABENCH_MODEL_ENDPOINT_POLICY: optionalAbsolutePath(),
+    DATABENCH_MODEL_CREDENTIALS: optionalAbsolutePath(),
+    DATABENCH_MODEL_ENDPOINT_CONNECT_TIMEOUT_MS: endpointTimeout(2_000),
+    DATABENCH_MODEL_ENDPOINT_HEADERS_TIMEOUT_MS: endpointTimeout(3_000),
+    DATABENCH_MODEL_ENDPOINT_BODY_TIMEOUT_MS: endpointTimeout(3_000),
+    DATABENCH_MODEL_ENDPOINT_TOTAL_TIMEOUT_MS: endpointTimeout(5_000),
     DATABENCH_SERVICE_CREDENTIAL: optionalServiceToken(),
     DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES: z.coerce
       .number()
@@ -69,6 +75,25 @@ const EnvSchema = z
     PORT: z.coerce.number().int().positive().default(8000),
   })
   .superRefine((value, context) => {
+    for (const [field, timeout] of [
+      [
+        'DATABENCH_MODEL_ENDPOINT_CONNECT_TIMEOUT_MS',
+        value.DATABENCH_MODEL_ENDPOINT_CONNECT_TIMEOUT_MS,
+      ],
+      [
+        'DATABENCH_MODEL_ENDPOINT_HEADERS_TIMEOUT_MS',
+        value.DATABENCH_MODEL_ENDPOINT_HEADERS_TIMEOUT_MS,
+      ],
+      ['DATABENCH_MODEL_ENDPOINT_BODY_TIMEOUT_MS', value.DATABENCH_MODEL_ENDPOINT_BODY_TIMEOUT_MS],
+    ] as const) {
+      if (timeout > value.DATABENCH_MODEL_ENDPOINT_TOTAL_TIMEOUT_MS) {
+        context.addIssue({
+          code: 'custom',
+          path: [field],
+          message: 'Endpoint phase timeout must not exceed total timeout',
+        })
+      }
+    }
     if (
       value.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN !== undefined &&
       value.DATABENCH_SERVICE_CREDENTIAL !== undefined &&
@@ -134,6 +159,14 @@ export interface ApiConfig {
   readonly mcp: McpRuntimeConfig
   readonly modelDeploymentOperatorToken?: string
   readonly modelRepository: V2ModelRepositoryOpenOptions
+  readonly modelEndpointSecurity: {
+    readonly policyPath?: string
+    readonly credentialProjectionPath?: string
+    readonly connectTimeoutMs: number
+    readonly headersTimeoutMs: number
+    readonly bodyTimeoutMs: number
+    readonly totalTimeoutMs: number
+  }
   readonly modelDeploymentServiceCredential?: string
   readonly openApiServerUrl?: string
   readonly port: number
@@ -167,6 +200,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       ...(parsed.DATABENCH_MODEL_REPOSITORY_CONFIG === undefined
         ? {}
         : { operatorConfigPath: parsed.DATABENCH_MODEL_REPOSITORY_CONFIG }),
+    },
+    modelEndpointSecurity: {
+      ...(parsed.DATABENCH_MODEL_ENDPOINT_POLICY === undefined
+        ? {}
+        : { policyPath: parsed.DATABENCH_MODEL_ENDPOINT_POLICY }),
+      ...(parsed.DATABENCH_MODEL_CREDENTIALS === undefined
+        ? {}
+        : { credentialProjectionPath: parsed.DATABENCH_MODEL_CREDENTIALS }),
+      connectTimeoutMs: parsed.DATABENCH_MODEL_ENDPOINT_CONNECT_TIMEOUT_MS,
+      headersTimeoutMs: parsed.DATABENCH_MODEL_ENDPOINT_HEADERS_TIMEOUT_MS,
+      bodyTimeoutMs: parsed.DATABENCH_MODEL_ENDPOINT_BODY_TIMEOUT_MS,
+      totalTimeoutMs: parsed.DATABENCH_MODEL_ENDPOINT_TOTAL_TIMEOUT_MS,
     },
     ...(parsed.DATABENCH_SERVICE_CREDENTIAL === undefined
       ? {}
@@ -229,6 +274,10 @@ function optionalAbsolutePath() {
       .refine(isAbsolute, { message: 'Path must be absolute' })
       .optional(),
   )
+}
+
+function endpointTimeout(defaultValue: number) {
+  return z.coerce.number().int().min(100).max(60_000).default(defaultValue)
 }
 
 function hasControlCharacter(value: string): boolean {

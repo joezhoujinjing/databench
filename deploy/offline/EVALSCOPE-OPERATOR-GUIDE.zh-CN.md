@@ -6,17 +6,51 @@ Compose 私网中的 `evalscope:9000`。EvalScope 不发布宿主机端口，也
 
 ## 安装前模型端点
 
-离线运行不会下载 Benchmark 数据，`EVALSCOPE_DATASET_ENDPOINT_ALLOWLIST` 必须保持为空。需要运行测评时，
-目标机所在可信内网应已有 OpenAI-compatible 模型端点。安装前显式提供其 allowlist，例如：
+离线运行不会下载 Benchmark 数据。需要运行测评时，目标机所在可信内网应已有 OpenAI-compatible
+模型端点。安装前从 `model-endpoint-policy.example.json` 建立严格 JSON policy，例如：
 
 ```bash
-export DATABENCH_EVALSCOPE_MODEL_ENDPOINT_ALLOWLIST='http|10.10.0.15/32|8000'
+export DATABENCH_MODEL_ENDPOINT_POLICY_SOURCE=/root/model-endpoint-policy.json
 sudo -E ./install.sh
 ```
 
-规则格式为 `scheme|host-or-CIDR|port`，多条规则用逗号分隔。不要允许 metadata、link-local、宿主控制面或
-不受 operator 管理的整段网络。未配置时服务和报告页面仍可用，但所有新测评/performance 模型 URL 会
-fail closed。
+每条 private 规则要求 hostname 与 CIDR 同时命中，scheme/port 也必须 exact；`public_network` 在离线
+profile 必须为空。不要允许 metadata、link-local、宿主控制面或不受 operator 管理的整段网络。未配置时
+安装器生成 deny-all policy，服务和报告页面仍可用，但所有新测评/performance 模型 URL 会 fail closed。
+
+模型 bearer secret 的权威文件是 `/etc/databench/secrets/model-credentials.json`（`root:root 0640`）。
+该文件不挂入容器；API 与 EvalScope 分别只读 `api-model-credentials.json` 和
+`evalscope-model-credentials.json`，每个 ref 还需同时通过 consumer 与 Deployment ID ACL。更新必须先
+增加 authority 的 `generation`，再用包内 projector 生成同代的两份最小 projection；不得把 secret 放进
+env、argv 或任务配置。authority 条目格式为：
+
+```json
+{
+  "profile": "model-credentials-v1",
+  "generation": 2,
+  "projection_for": "authority",
+  "credentials": {
+    "internal-serving-a": {
+      "kind": "bearer",
+      "secret": "replace-with-the-exact-bearer-value",
+      "allowed_consumers": ["api-health", "evalscope"],
+      "allowed_deployments": ["123e4567-e89b-42d3-a456-426614174000"]
+    }
+  }
+}
+```
+
+在维护窗口通过临时文件、`chown root:root`、`chmod 0640` 和同目录 `mv` 替换 authority，然后执行：
+
+```bash
+sudo databenchctl model-credentials-project
+sudo databenchctl restart
+```
+
+projector 在已锁定 API 镜像内以 `--network none`、只读 rootfs、无 Linux capabilities 运行；它拒绝未知
+字段、错误 ACL、相同 generation 内容漂移和 generation 回滚。输出为 `root:root 0444`，运行容器必须经
+restart 重新挂载后才读取新 generation。authority 与 policy 进入加密 backup escrow，projection 可由
+authority 重建，不单独备份。
 
 安装脚本生成 `/etc/databench/evalscope.env`，权限固定为 `root:root 0600`。其中 task HMAC key 和 operator
 token 是稳定 secret，重启和升级必须原样保留；不得复制到浏览器、任务 URL、日志或报告。
@@ -68,7 +102,8 @@ reconciliation 可以访问 Databench。
 - run/archive locator：PostgreSQL `evaluation_runs_v2`。
 
 `databenchctl backup` 在 drain 后生成同一 generation 的 PostgreSQL dump、MinIO mirror、
-`evalscope-volume.tar`，并加密 escrow `databench.env`、`mcp.env`、`evalscope.env`。把 backup generation、对应
+`evalscope-volume.tar`，并加密 escrow `databench.env`、`mcp.env`、`evalscope.env`、Model endpoint policy
+与 credential authority。把 backup generation、对应
 release bundle 和 `/etc/databench/backup.key` 分开复制到独立介质；仅留在本机不算灾备。
 备份拒绝 EvalScope volume 中的 symlink、hardlink 和特殊文件；恢复前再次校验 tar 只含普通文件/目录且
 根目录精确为 `outputs`、`inputs`，随后统一恢复为固定 EvalScope UID/GID、目录 `0750` 和文件 `0640`；
