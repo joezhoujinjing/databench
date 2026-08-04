@@ -23,6 +23,7 @@
     "evalscope:parity:check": "node scripts/check-evalscope-parity.mjs",
     "evalscope:parity:check:green": "node scripts/check-evalscope-parity.mjs --require-green",
     "evalscope:parity:test": "node --test scripts/check-evalscope-parity.test.mjs",
+    "ecs:check": "bash deploy/ecs/test/cleanup.test.sh",
     "swift:baseline:check": "node scripts/check-swift-baseline.mjs",
     "swift:baseline:check:green": "node scripts/check-swift-baseline.mjs --require-s0-green",
     "swift:baseline:test": "node --test scripts/check-swift-baseline.test.mjs",

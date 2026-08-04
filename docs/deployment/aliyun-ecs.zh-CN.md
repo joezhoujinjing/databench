@@ -225,6 +225,8 @@ GitHub Secrets。
 | `/opt/databench/api.env.example` | 从 `deploy/ecs/api.env.example` 复制过去的模板 |
 | `/opt/databench/docker-compose.yml` | 从 `deploy/ecs/docker-compose.yml` 复制过去 |
 | `/opt/databench/deploy.sh` | 从 `deploy/ecs/deploy.sh` 复制过去 |
+| `/opt/databench/cleanup.sh` | Databench 镜像与发布归档的定向过期清理 |
+| `/opt/databench/deploy.env` | 可选的清理模式和保留数量配置，不由 workflow 覆盖 |
 | `/opt/databench/caddy/Caddyfile` | Caddy 反向代理配置 |
 | `/opt/databench/compose.env` | `deploy.sh` 写入当前镜像 tag |
 | `/opt/databench/releases/*.tar.gz` | GitHub Actions 上传的后端镜像压缩包 |
@@ -241,6 +243,7 @@ OSS_ACCESS_KEY_SECRET=<databench-api-runtime access key secret>
 OSS_INTERNAL=true
 DATABENCH_CORS_ORIGINS=https://databench.jinjing.me
 DATABENCH_ROOT=/var/lib/databench
+DATABENCH_V2_CURSOR_SECRET=<at-least-16-character-random-secret>
 PORT=8000
 ```
 
@@ -249,6 +252,21 @@ PORT=8000
 
 部署脚本会在加载镜像或启动服务前校验这些变量。如果变量为空，或还保留
 `REPLACE_ME` 之类占位值，部署会直接失败。
+旧安装若缺少 `DATABENCH_V2_CURSOR_SECRET`，部署脚本会用 OpenSSL 生成一次并以
+`600` 权限追加到 `api.env`；后续部署复用该值，不覆盖现有 secret。
+
+可选的 `/opt/databench/deploy.env`：
+
+```env
+DATABENCH_DEPLOY_CLEANUP_MODE=auto
+DATABENCH_DEPLOY_KEEP_RELEASES=3
+DATABENCH_DEPLOY_MIN_FREE_MIB=4096
+```
+
+`auto` 会删除过期的 Databench tar 包和未被任何容器引用的旧
+`databench-api:*` 镜像；`report` 只打印计划，`off` 关闭删除但仍执行磁盘准入。
+脚本始终保护当前容器镜像、正在发布的镜像和最近回滚版本，只匹配 Databench
+命名空间，不执行全局 `docker system prune`，不触碰同机其他应用或任何 volume。
 
 `deploy/ecs/docker-compose.yml` 也会给 API 服务显式注入
 `DATABENCH_OBJECT_STORE=oss`。这样即使本地开发可以用
@@ -262,11 +280,13 @@ PORT=8000
 
 - 基础镜像是 `node:22-bookworm-slim`。
 - 通过 Corepack 启用 `pnpm@11.7.0`。
-- Docker build 会复制 `prisma.config.ts`、`prisma/`、`apps/`、`packages/`
-  和 `tooling/`。
+- 构建阶段会复制 `prisma.config.ts`、`prisma/`、`apps/`、`packages/`
+  和 `tooling/`，用于安装与编译。
 - 构建阶段执行 `pnpm install --frozen-lockfile` 和
   `pnpm --filter @databench/api... build`。
-- 运行时执行 `node apps/api/dist/index.js`。
+- `pnpm deploy --prod --legacy` 只把 API 的生产依赖、构建产物和 Prisma
+  migration 投影到运行时镜像，不再复制整个 monorepo 和开发依赖。
+- 运行时保持 monorepo 兼容路径并执行 `node apps/api/dist/index.js`。
 - `prisma.config.ts` 必须进入镜像，因为 Prisma 7 在
   `prisma migrate deploy` 时会读取这个配置里的 datasource。
 
@@ -310,7 +330,8 @@ GitHub Actions 执行步骤：
 3. 把镜像保存为 `databench-api-${GITHUB_SHA}.tar.gz`。
 4. 用 GitHub Secrets 配置 SSH。
 5. 在 ECS 上创建 `/opt/databench/releases` 和 `/opt/databench/caddy`。
-6. 上传镜像压缩包、Compose 文件、部署脚本和 Caddyfile。
+6. 先上传轻量部署资产并执行发布前清理与 4 GiB 默认磁盘准入；清理成功后把
+   镜像上传到 `.part` 临时名，再原子改成正式归档名。
 7. 在 ECS 上执行：
 
    ```bash
@@ -325,8 +346,8 @@ GitHub Actions 执行步骤：
 
 ECS 上的 `deploy/ecs/deploy.sh` 会做这些事：
 
-1. 校验参数和 `/opt/databench/api.env`。
-2. `docker load` 加载镜像压缩包。
+1. 校验参数和 `/opt/databench/api.env`，必要时一次性生成 cursor secret。
+2. 再执行一次 Databench 定向清理，然后 `docker load` 加载镜像压缩包。
 3. 写入 `/opt/databench/compose.env`：
 
    ```env
@@ -344,6 +365,7 @@ ECS 上的 `deploy/ecs/deploy.sh` 会做这些事：
 5. migration 成功后，如果 `/opt/liber-stack/docker-compose.yaml` 存在，则停止旧栈。
 6. 启动 `databench-api` 和 `databench-caddy`。
 7. 在 ECS 本机等待 `http://127.0.0.1:8000/health` 返回成功。
+8. health 成功后再次收敛归档和镜像到配置的保留数量。
 
 注意：migration 是在停止旧栈前执行的。这样如果新镜像或 migration 已经失败，
 不会先把旧服务停掉。
@@ -574,7 +596,8 @@ deploy/smoke.sh https://api.databench.jinjing.me
 
 ## 回滚
 
-后端镜像 tar 包和已加载镜像会留在 ECS 上。回滚到旧镜像 tag：
+默认保留当前/最新共 3 个后端镜像和 tar 包，足够进行近期回滚；更老版本会在
+后续发布时过期清理。回滚到保留的旧镜像 tag：
 
 ```bash
 ssh -i ~/.ssh/databench_ecs_deploy root@8.217.10.40

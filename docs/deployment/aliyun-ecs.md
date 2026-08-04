@@ -197,6 +197,8 @@ Important files:
 | `/opt/databench/api.env.example` | Template copied from `deploy/ecs/api.env.example` |
 | `/opt/databench/docker-compose.yml` | Compose file copied from `deploy/ecs/docker-compose.yml` |
 | `/opt/databench/deploy.sh` | Deploy script copied from `deploy/ecs/deploy.sh` |
+| `/opt/databench/cleanup.sh` | Scoped expiry cleanup for Databench images and archives |
+| `/opt/databench/deploy.env` | Optional persistent cleanup mode and retention settings |
 | `/opt/databench/caddy/Caddyfile` | Caddy reverse proxy config |
 | `/opt/databench/compose.env` | Written by deploy script with the selected image tag |
 | `/opt/databench/releases/*.tar.gz` | Uploaded backend image archives |
@@ -213,6 +215,7 @@ OSS_ACCESS_KEY_SECRET=<databench-api-runtime access key secret>
 OSS_INTERNAL=true
 DATABENCH_CORS_ORIGINS=https://databench.jinjing.me
 DATABENCH_ROOT=/var/lib/databench
+DATABENCH_V2_CURSOR_SECRET=<at-least-16-character-random-secret>
 PORT=8000
 ```
 
@@ -222,6 +225,24 @@ If the database password contains reserved URL characters, encode them inside
 The deploy script validates required variables before loading the image or
 starting services. It rejects missing values and obvious placeholders such as
 `REPLACE_ME`.
+For an older installation missing `DATABENCH_V2_CURSOR_SECRET`, the deploy script
+generates it once with OpenSSL, appends it to `api.env` with mode `600`, and
+preserves the value on later deploys.
+
+Optional `/opt/databench/deploy.env` settings:
+
+```env
+DATABENCH_DEPLOY_CLEANUP_MODE=auto
+DATABENCH_DEPLOY_KEEP_RELEASES=3
+DATABENCH_DEPLOY_MIN_FREE_MIB=4096
+```
+
+`auto` removes expired Databench archives and old `databench-api:*` images that
+no container references. `report` logs the plan without deleting, while `off`
+disables deletion but keeps disk admission. The cleanup always protects the
+active container image, the incoming image, and recent rollback releases. It
+never runs a global `docker system prune`, touches another application's images,
+or deletes volumes.
 
 `deploy/ecs/docker-compose.yml` also pins `DATABENCH_OBJECT_STORE=oss` for the
 API service. This keeps production on Aliyun OSS even though local development
@@ -235,11 +256,14 @@ Key details:
 
 - Base image: `node:22-bookworm-slim`.
 - `pnpm@11.7.0` is enabled through Corepack.
-- The Docker build copies `prisma.config.ts`, `prisma/`, `apps/`, `packages/`,
-  and `tooling/` from the monorepo root.
+- The build stage copies `prisma.config.ts`, `prisma/`, `apps/`, `packages/`,
+  and `tooling/` from the monorepo root for installation and compilation.
 - The build runs `pnpm install --frozen-lockfile` and
   `pnpm --filter @databench/api... build`.
-- The runtime image copies the built `/app` tree and runs
+- `pnpm deploy --prod --legacy` projects only the API production dependencies,
+  build output, and Prisma migrations into the runtime image instead of copying
+  the full monorepo and development dependencies.
+- The runtime image preserves the monorepo-compatible path and runs
   `node apps/api/dist/index.js`.
 - `prisma.config.ts` must be present in the image because Prisma 7 reads the
   datasource URL from that config during `prisma migrate deploy`.
@@ -261,14 +285,17 @@ GitHub Actions does the following:
 3. Saves the image to `databench-api-${GITHUB_SHA}.tar.gz`.
 4. Configures SSH from GitHub Secrets.
 5. Creates `/opt/databench/releases` and `/opt/databench/caddy` on ECS.
-6. Copies the image archive and deploy assets to ECS.
+6. Copies lightweight deploy assets, runs scoped cleanup and the default 4 GiB
+   free-space admission, then uploads the archive under a `.part` name and
+   atomically renames it.
 7. Runs `/opt/databench/deploy.sh <archive> <GITHUB_SHA>`.
 8. Runs `deploy/smoke.sh https://api.databench.jinjing.me`.
 
 `deploy/ecs/deploy.sh` does the server-side work:
 
-1. Validates arguments and `/opt/databench/api.env`.
-2. Loads the image archive with `docker load`.
+1. Validates arguments and `/opt/databench/api.env`, generating a missing cursor
+   secret once for older installations.
+2. Runs scoped cleanup again, then loads the image archive with `docker load`.
 3. Writes `/opt/databench/compose.env` with `DATABENCH_API_IMAGE`.
 4. Runs database migrations:
 
@@ -281,6 +308,7 @@ GitHub Actions does the following:
 5. Stops `/opt/liber-stack/docker-compose.yaml` if it exists.
 6. Starts `databench-api` and `databench-caddy`.
 7. Waits for `http://127.0.0.1:8000/health` on ECS.
+8. Converges the archive and image set to the configured retention after health succeeds.
 
 The migration step runs before the legacy stack is stopped. This avoids taking
 down the old process when the new image or database migration is already known
@@ -449,7 +477,8 @@ with `5xx`, inspect API logs.
 
 ## Rollback
 
-Images remain on ECS after deploys. To rollback to a previous image tag:
+The current/latest three backend images and archives are retained by default;
+older releases expire during later deploys. To rollback to a retained image tag:
 
 ```bash
 ssh -i ~/.ssh/databench_ecs_deploy root@8.217.10.40

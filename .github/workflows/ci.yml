@@ -79,6 +79,7 @@ jobs:
       - run: pnpm v2:status:check
       - run: pnpm evalscope:parity:check
       - run: pnpm evalscope:parity:test
+      - run: pnpm ecs:check
 
       # Stateful backends for the golden/e2e tests. The store suite creates its
       # own temporary bucket, so minio-init is not required here.

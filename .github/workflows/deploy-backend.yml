@@ -21,6 +21,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: databench-production-backend
+  cancel-in-progress: false
+
 env:
   IMAGE_NAME: databench-api
   REMOTE_APP_DIR: /opt/databench
@@ -67,14 +71,20 @@ jobs:
           ECS_USER="${ECS_USER:-root}"
           ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
             "mkdir -p '${REMOTE_APP_DIR}/releases' '${REMOTE_APP_DIR}/caddy'"
-          scp -i ~/.ssh/ecs_deploy "${IMAGE_NAME}-${GITHUB_SHA}.tar.gz" \
-            "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/releases/"
-          scp -i ~/.ssh/ecs_deploy deploy/ecs/docker-compose.yml deploy/ecs/deploy.sh deploy/ecs/api.env.example \
+          scp -i ~/.ssh/ecs_deploy \
+            deploy/ecs/docker-compose.yml deploy/ecs/deploy.sh deploy/ecs/cleanup.sh \
+            deploy/ecs/api.env.example deploy/ecs/deploy.env.example \
             "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/"
           scp -i ~/.ssh/ecs_deploy deploy/ecs/caddy/Caddyfile \
             "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/caddy/Caddyfile"
           ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
-            "chmod +x '${REMOTE_APP_DIR}/deploy.sh'"
+            "chmod +x '${REMOTE_APP_DIR}/deploy.sh' '${REMOTE_APP_DIR}/cleanup.sh' && \
+             APP_DIR='${REMOTE_APP_DIR}' '${REMOTE_APP_DIR}/cleanup.sh' '${GITHUB_SHA}' '' before-upload"
+          scp -i ~/.ssh/ecs_deploy "${IMAGE_NAME}-${GITHUB_SHA}.tar.gz" \
+            "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/releases/${IMAGE_NAME}-${GITHUB_SHA}.tar.gz.part"
+          ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
+            "mv '${REMOTE_APP_DIR}/releases/${IMAGE_NAME}-${GITHUB_SHA}.tar.gz.part' \
+                '${REMOTE_APP_DIR}/releases/${IMAGE_NAME}-${GITHUB_SHA}.tar.gz'"
 
       - name: Deploy on ECS
         env:
