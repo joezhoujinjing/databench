@@ -10,9 +10,11 @@
 - [内网 Agent 接入指南](MCP-AGENT-GUIDE.zh-CN.md)：配置 MCP、Excel 三种意图与重试规则；
 - [EvalScope 运维指南](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md)：模型 policy/credential、容量、drain、备份和断网验收；
 - [Swift Studio GPU 指南](SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md)：GPU 启用、离线模型、训练、部署和备份；
+- [Model Registry 运维指南](MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md)：三来源注册、CLI、Deployment、安全边界和恢复；
 - [技术方案](docs/offline-single-host-plan.zh-CN.md)：部署架构、发布契约和设计边界；
 - [ADR 0012](docs/ADR-0012.md)：Ubuntu 单机离线部署的正式决策记录；
 - [ADR 0018](docs/ADR-0018.md)：完整原生 ms-swift Gradio Studio 集成决策。
+- [ADR 0019](docs/ADR-0019.md)：Model Registry 的身份、注册、Deployment 与产品边界。
 
 本目录实现 ADR 0012：在联网构建机生成一个包含全部 `linux/amd64` 镜像的完整发布包，再将
 发布包复制到没有公网、没有内部镜像仓库的 Ubuntu 22.04 amd64 服务器。
@@ -167,6 +169,7 @@ sudo databenchctl status
 sudo databenchctl logs api
 sudo databenchctl doctor
 sudo databenchctl evalscope-status
+sudo databenchctl model list --compact
 sudo databenchctl restart
 sudo databenchctl backup
 ```

@@ -53,7 +53,8 @@ for item in \
   swift.env.example model-endpoint-policy.example.json install.sh upgrade.sh rollback.sh backup.sh project-model-credentials.sh restore.sh smoke.sh \
   databenchctl Caddyfile README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md \
   TROUBLESHOOTING.zh-CN.md MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
-  SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md lib minio smoke; do
+  SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md \
+  lib minio smoke; do
   cp -a "${SCRIPT_DIR}/${item}" "${BASE_RELEASE}/${item}"
 done
 printf 'base docs\n' > "${BASE_RELEASE}/docs/base.md"

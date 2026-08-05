@@ -18,6 +18,7 @@ while IFS= read -r script; do
 done < <(find "$SCRIPT_DIR" -type f \( -name '*.sh' -o -name databenchctl \) | LC_ALL=C sort)
 node --check "${SCRIPT_DIR}/smoke/gateway.mjs"
 node --check "${SCRIPT_DIR}/smoke/mcp.mjs"
+node --check "${SCRIPT_DIR}/smoke/model-registry.mjs"
 node --check "${SCRIPT_DIR}/smoke/upstream-failure.mjs"
 node --check "${SCRIPT_DIR}/smoke/worker.mjs"
 
@@ -203,6 +204,18 @@ grep -Fq 'mcp-smoke.mjs' "${SCRIPT_DIR}/smoke.sh" ||
   fail 'offline lifecycle smoke does not run the MCP SDK client'
 grep -Fq 'worker-smoke.mjs' "${SCRIPT_DIR}/smoke.sh" ||
   fail 'offline lifecycle smoke does not run the canonical Worker client'
+grep -Fq 'model-registry.mjs' "${SCRIPT_DIR}/smoke.sh" ||
+  fail 'offline lifecycle smoke does not run the Model Registry CLI/API proof'
+grep -Fq "?? 'http://web'" "${SCRIPT_DIR}/smoke/model-registry.mjs" ||
+  fail 'offline Model Registry smoke does not default to the private Compose gateway'
+grep -Fq 'isDeepStrictEqual(cliPlan, apiPlan)' "${SCRIPT_DIR}/smoke/model-registry.mjs" ||
+  fail 'offline Model Registry smoke does not compare the complete CLI/API plan'
+grep -Fq 'cliResult.replayed !== true' "${SCRIPT_DIR}/smoke/model-registry.mjs" ||
+  fail 'offline Model Registry smoke does not prove durable CLI replay'
+grep -Fq 'deployments.items.length !== 0' "${SCRIPT_DIR}/smoke/model-registry.mjs" ||
+  fail 'offline Model Registry smoke does not preserve the repository-only Deployment boundary'
+grep -Fq "'--input', '-'" "${SCRIPT_DIR}/smoke/model-registry.mjs" ||
+  fail 'offline Model Registry smoke does not pass registration requests over stdin'
 grep -Fq '/v2/transforms/basic-clean/jobs' "${SCRIPT_DIR}/smoke/worker.mjs" ||
   fail 'offline Worker smoke does not submit basic-clean'
 grep -Fq 'system-offline-smoke-clean-v2' "${SCRIPT_DIR}/smoke/worker.mjs" ||
@@ -241,7 +254,7 @@ fi
 
 for document in README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
   MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
-  SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md; do
+  SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md; do
   [ -f "${SCRIPT_DIR}/${document}" ] || fail "offline document is missing: $document"
 done
 if rg -n 'http://127\.0\.0\.1/(health|version|capabilities|openapi\.json|v1/)' \
@@ -256,12 +269,15 @@ grep -Fq '(DEPLOYMENT-GUIDE.zh-CN.md)' "${SCRIPT_DIR}/README.zh-CN.md" ||
   fail 'README does not link the deployment guide'
 grep -Fq '(TROUBLESHOOTING.zh-CN.md)' "${SCRIPT_DIR}/README.zh-CN.md" ||
   fail 'README does not link the troubleshooting guide'
+grep -Fq '(MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md)' "${SCRIPT_DIR}/README.zh-CN.md" ||
+  fail 'README does not link the Model Registry operator guide'
 for bundle_asset in \
   deploy/offline/DEPLOYMENT-GUIDE.zh-CN.md \
   deploy/offline/TROUBLESHOOTING.zh-CN.md \
   deploy/offline/MCP-AGENT-GUIDE.zh-CN.md \
   deploy/offline/EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
   deploy/offline/SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md \
+  deploy/offline/MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md \
   deploy/offline/mcp.env.example \
   deploy/offline/evalscope.env.example \
   deploy/offline/swift.env.example \
@@ -271,13 +287,17 @@ for bundle_asset in \
   docs/deployment/offline-single-host-plan.zh-CN.md \
   docs/decisions/0012-offline-single-host-deployment.md \
   docs/decisions/0018-ms-swift-native-gradio-studio.md \
+  docs/decisions/0019-model-registry.md \
+  docs/models/TECHNICAL-DESIGN.md \
+  docs/models/STATUS.md \
   'docs/ADR-0012.md'; do
   grep -Fq "$bundle_asset" "${SCRIPT_DIR}/build-bundle.sh" ||
     fail "bundle builder does not include: $bundle_asset"
 done
 for release_asset in DEPLOYMENT-GUIDE.zh-CN.md TROUBLESHOOTING.zh-CN.md \
   MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
-  SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md mcp.env.example evalscope.env.example \
+  SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md \
+  mcp.env.example evalscope.env.example \
   swift.env.example model-endpoint-policy.example.json project-model-credentials.sh \
   compose.swift-gpu.yml docs; do
   grep -Fq "$release_asset" "${SCRIPT_DIR}/lib/common.sh" ||
@@ -363,6 +383,8 @@ grep -Fq 'remove_application_services_absent_from_release' "${SCRIPT_DIR}/rollba
   fail 'offline rollback does not remove service containers absent from the selected release'
 grep -Fq 'readlink -f "${BASH_SOURCE[0]}"' "${SCRIPT_DIR}/databenchctl" ||
   fail 'databenchctl does not resolve the installed symlink before loading release libraries'
+grep -Fq 'exec -T api databench model' "${SCRIPT_DIR}/databenchctl" ||
+  fail 'databenchctl does not provide the stdin-safe Model operator CLI entrypoint'
 grep -Fq 'evalscope-volume.tar' "${SCRIPT_DIR}/backup.sh" ||
   fail 'offline backup does not capture the EvalScope persistent volume'
 grep -Fq 'evalscope-volume.tar' "${SCRIPT_DIR}/restore.sh" ||

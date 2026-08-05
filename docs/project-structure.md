@@ -14,11 +14,14 @@
 > unvalidated。S2 exact Dataset 与单 active Studio Session bridge、S3 LoRA immutable Model Artifact
 > import 均已完成 non-GPU gate；S4 operator-attested Deployment + EvalScope opaque resolve/lineage 已完成
 > non-GPU contract，GPU 训练、推理部署与真实模型评测证据继续 deferred。
-> Model Registry ADR 0019 的 MR0-MR6 已按 Gate 完成：逻辑 Model/不可变 Version、Artifact 来源注册、
+> Model Registry ADR 0019 的 MR0-MR8 已按 Gate 完成：逻辑 Model/不可变 Version、Artifact 来源注册、
 > candidate Alias、显式 legacy adoption、基础 REST/Web/CLI read，以及 ModelScope/operator-managed
 > Repository evidence、MR4 endpoint/secret 安全底座和 legacy network hardening，以及 Existing Service、
 > version-bound Deployment、internal v2 resolver、Evaluation v5/v6 exact lineage 与 EvalScope claim/JIT secret
-> 执行边界已落地。完整 Model 产品面与 selector 仍属于 MR7，整体 capability 保持 false。
+> 执行边界、六 Tab Model detail、Version detail、exact lineage、可比 Evaluation summary、Deployment selector、
+> capability exclusion、archive/restore、operator CLI、离线 lifecycle/runbook 与 final gate 已落地。
+> Model Registry capability 只在已实现的本地/可信内网范围启用；public network、D3 secret backend、GPU、
+> GE9 和 production readiness 边界不变。
 
 ## 顶层目录
 

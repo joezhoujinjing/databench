@@ -28,6 +28,11 @@ compose_for_release "$SCRIPT_DIR" run --rm --no-deps \
   --volume "${SCRIPT_DIR}/smoke:/opt/databench/smoke:ro" \
   --entrypoint node api /opt/databench/smoke/gateway.mjs
 
+log "running Model Registry CLI/API replay lifecycle smoke"
+compose_for_release "$SCRIPT_DIR" run --rm --no-deps \
+  --volume "${SCRIPT_DIR}/smoke:/opt/databench/smoke:ro" \
+  --entrypoint node api /opt/databench/smoke/model-registry.mjs
+
 if release_has_evalscope "$SCRIPT_DIR"; then
   log "verifying EvalScope operator drain and resume controls"
   [ "$(evalscope_operator_request POST /internal/v1/operator/drain)" = \

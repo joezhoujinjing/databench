@@ -100,7 +100,7 @@
   `S4 non-GPU contract green / GPU deferred`。owner 已再次确认 GPU 全部后置。证据与实时状态见
   `docs/swift/STATUS.md`，S1 GPU 证据模板见
   `docs/swift/evidence/S1-GPU-STUDIO.md`。
-- ADR 0019 Model Registry 已完成 MR0-MR6。当前 `/models` 支持 immutable Model/Version、Artifact 注册、
+- ADR 0019 Model Registry 已完成 MR0-MR8。当前 `/models` 支持 immutable Model/Version、Artifact 注册、
   candidate Alias、ModelScope offline declared-only 与 operator-managed Repository 注册、append-only source
   evidence 和 refresh；共享 endpoint policy、approved-IP transport、legacy network hardening 与 offline
   credential authority/projection 已落地；Existing Service、version-bound Deployment、nested REST、internal v2
@@ -108,8 +108,11 @@
   Model/Version/Deployment digest、nullable Artifact和source classification/evidence/DB observation snapshot；
   EvalScope按atomic claim→replay→capacity/drain→single internal v2 resolve→endpoint policy→credential JIT
   resolve→provider排序，bearer secret只经anonymous FD进入spawn child memory。v1-v4 Evaluation identity/read
-  不改写。Hugging Face adapter、完整Model产品面/selector与hosted secret backend尚未实现。当前进入MR7，
-  整体capability仍为false，公网与GPU gate均未打开。证据与实时状态见`docs/models/STATUS.md`。
+  不改写。六 Tab Model detail、Version detail、exact lineage、可比 Evaluation summary、Deployment selector、
+  capability exclusion、archive/restore 与 archived-but-serving 产品闭环已完成；registration/deployment
+  CLI、离线 lifecycle smoke、operator runbook 与 final gate 也已关闭。Model Registry capability 只在已实现
+  的本地/可信内网范围启用。Hugging Face adapter 与 hosted secret backend 尚未实现，公网与 GPU gate 均未
+  打开；真实 Ubuntu 八镜像目标机仍属于 GE9 pending。证据与实时状态见 `docs/models/STATUS.md`。
 
 权威进度见 `docs/v2/STATUS.md`。历史 migration status 只记录已完成的重写过程。
 
@@ -168,7 +171,9 @@ CLI
   databench transform list|run
   databench ref list|show|move
   databench lineage show
-  databench model list|show
+  databench model list|show|versions
+  databench model registration inspect|commit
+  databench model deployment list|activate|check|disable
 
 REST
   /health /version /capabilities

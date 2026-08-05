@@ -3,9 +3,9 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- model-registry-status
-current_step: MR8
-last_completed_step: MR7
-capability_enabled: false
+current_step: complete
+last_completed_step: MR8
+capability_enabled: true
 runtime_implemented: true
 public_network_activation: false
 hosted_secret_backend: undecided-d3
@@ -14,16 +14,16 @@ gpu_gate: deferred
 
 ## 当前检查点
 
-- **工作分支:** `feat/model-registry-mr7`
-- **代码基线:** `feat/model-registry-mr6@5725b47`
-- **当前 Step:** MR8——CLI、离线生命周期与 Final Gate
+- **工作分支:** `feat/model-registry-mr8`
+- **代码基线:** `feat/model-registry-mr7@577618c`
+- **当前 Step:** MR0-MR8 complete——Model Registry 计划关闭
 - **Owner 范围:** MR2 candidate Alias；MR3 ModelScope + operator-managed；CLI MR2 read/MR8 write；
   一级导航“数据集 / 训练 / 模型 / 测评”
 - **Runtime:** MR7 已完成三来源注册、Model 注册表与六 Tab detail、Version detail、exact lineage、可比 Evaluation
   summary、Model → Version → Deployment selector、capability exclusion、archive/restore 与 archived-but-serving
   产品闭环；legacy Evaluation v1-v4 保持不变
-- **Capability:** 整体 Model Registry capability 仍未启用；MR7 只关闭完整产品面 Gate，不能据此宣称 CLI/离线
-  生命周期、Model Registry final gate 或 production readiness 已完成
+- **Capability:** Model Registry 已在已实现的本地/可信内网范围启用；这不包含 public-network activation、
+  hosted secret backend、managed serving、Hugging Face runtime、GPU 或 production readiness
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
 - **GPU/V16/V17:** 状态不变，Model Registry 的实施不自动完成 V16/V17，也不打开 GPU gate
 
@@ -39,7 +39,7 @@ gpu_gate: deferred
 | MR5 | Existing Service 与 Deployment v2 | ✅ | `feat/model-registry-mr5` | GMR5 green | internal v1/v2 隔离 |
 | MR6 | Evaluation v5/v6 | ✅ | `feat/model-registry-mr6` | GMR6 green | v1-v4 identity/read 保持 |
 | MR7 | 完整 Model 产品面 | ✅ | `feat/model-registry-mr7` | GMR7 green | 三来源、六 Tabs、selector 与浏览器 gate |
-| MR8 | CLI、离线与 Final Gate | ⬜ | | GMR8 | 不自动完成 V16/V17 |
+| MR8 | CLI、离线与 Final Gate | ✅ | `feat/model-registry-mr8` | GMR8 green | 不自动完成 V16/V17 |
 
 ## Owner 决策
 
@@ -306,3 +306,39 @@ hosted secret backend，也不自动完成V16/V17、GE9、GPU或production readi
 GMR7 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不实现
 MR8 CLI 写操作、完整离线生命周期或 Final Gate，不启用 Hugging Face adapter、hosted secret backend、
 managed serving 或 GPU gate，也不自动完成 V16/V17、GE9 或 production readiness。
+
+## GMR8 完成证据
+
+- [x] CLI `model versions`、registration Inspect/Commit 和 Deployment list/activate/check/disable；
+- [x] Model list 全量 filter、两级 verb discovery/help 与稳定 typed error/exit；
+- [x] registration JSON 128 KiB/depth/duplicate-key/strict schema 边界，stdin 输入和 `0600` 原子 plan 输出；
+- [x] 原 strict request + expected digest Commit、digest mismatch 零写入和 response-loss durable replay；
+- [x] 离线 API/CLI 同 request 完整 plan 对拍、Commit replay、locator 对拍与 repository-only 无 Deployment；
+- [x] `databenchctl model` 使用 `docker compose exec -T` 保留 stdin，不把 request/secret 放入 argv；
+- [x] Model Registry operator guide、ADR 0019、技术方案与状态进入完整 bundle，并由增量 release 保留；
+- [x] offline policy/projection/backup/restore/upgrade/rollback 静态与合成 release gates保持；
+- [x] package DAG、OpenAPI、legacy Evaluation v1-v4、public/internal v1/v2 和 Model security 边界未漂移；
+- [x] final review 未发现 blocker/major；MR8 未修改 Web，MR7 浏览器证据保持适用。
+
+2026-08-05 实际通过：
+
+- `pnpm exec prisma format`、`pnpm exec prisma validate`、`pnpm models:migration:check`；
+- `pnpm test:evalscope:python`、`pnpm evalscope:parity:check`；
+- `pnpm lint`、`pnpm build`（initial JS 927829 bytes）、`pnpm typecheck`、`pnpm test`；
+- `pnpm openapi:check`、`pnpm models:status:test`、`pnpm models:status:check`、
+  `pnpm v2:status:check`、`pnpm peers check`、`pnpm offline:check`、`git diff --check`；
+- `RUN_MINIO_STORE_TESTS=true pnpm --filter @databench/workspace test`（205 passed / 10 skipped）；
+- `RUN_MINIO_STORE_TESTS=true pnpm --filter @databench/cli test`（20 passed）；
+- 隔离 PostgreSQL schema + 真实 MinIO + 真实 API + `/api` gateway + 正式 CLI 执行
+  `deploy/offline/smoke/model-registry.mjs`，完整 lifecycle proof 通过。
+
+本机没有完整八镜像离线 release，因此没有新增真实 Ubuntu 22.04 amd64 断网 install/upgrade/rollback
+证据；该目标机证据继续属于既有 GE9 pending，不伪造为通过，也不阻止 Model Registry 的代码、契约和
+可执行 lifecycle final gate 收口。打包 CLI 的 `activate/check` 在未注入 API endpoint security runtime 时
+保持 fail closed；离线 operator 使用 Web/API runtime 执行受 policy/credential/generation 保护的动作，
+不得绕过安全 transport。
+
+GMR8 后 `capability_enabled: true` 只表示 ADR 0019 的 Model Registry 计划在已实现本地/可信内网范围完成。
+`public_network_activation: false`、`hosted_secret_backend: undecided-d3` 和 `gpu_gate: deferred` 保持；不启用
+Hugging Face runtime、managed serving 或 Model Registry MCP tools，也不自动完成 V16/V17、GE9 或
+production readiness。

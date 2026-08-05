@@ -113,9 +113,10 @@ export async function dispatch(rest: readonly string[], flags: GlobalFlags): Pro
   }
   let verbName: string
   let verbArgv: readonly string[]
-  if (maybeVerb !== undefined && Object.hasOwn(group.verbs, maybeVerb)) {
-    verbName = maybeVerb
-    verbArgv = rest.slice(2)
+  const matchedVerb = matchVerb(group, rest.slice(1))
+  if (matchedVerb !== null) {
+    verbName = matchedVerb.name
+    verbArgv = rest.slice(1 + matchedVerb.tokenCount)
   } else if (group.defaultVerb !== undefined) {
     verbName = group.defaultVerb
     verbArgv = rest.slice(1)
@@ -155,6 +156,23 @@ export async function dispatch(rest: readonly string[], flags: GlobalFlags): Pro
   if (result !== STREAMED) {
     emitResult(result, flags.compact)
   }
+}
+
+function matchVerb(
+  group: CommandGroup,
+  tokens: readonly string[],
+): { readonly name: string; readonly tokenCount: number } | null {
+  const names = Object.keys(group.verbs).sort((left, right) => {
+    const tokenDifference = right.split(' ').length - left.split(' ').length
+    return tokenDifference === 0 ? left.localeCompare(right) : tokenDifference
+  })
+  for (const name of names) {
+    const parts = name.split(' ')
+    if (parts.every((part, index) => tokens[index] === part)) {
+      return { name, tokenCount: parts.length }
+    }
+  }
+  return null
 }
 
 // Machine-readable command catalog — always JSON, so an agent can discover the

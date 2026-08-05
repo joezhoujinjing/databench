@@ -16,6 +16,8 @@ EvalScope 模型 endpoint policy、credential projection、容量、drain 与离
 [EVALSCOPE-OPERATOR-GUIDE.zh-CN.md](EVALSCOPE-OPERATOR-GUIDE.zh-CN.md)。
 Swift GPU、离线模型、训练与部署见
 [SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md](SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md)。
+三来源模型注册、operator CLI、Deployment 与恢复边界见
+[MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md](MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md)。
 
 ## 1. 重要边界
 

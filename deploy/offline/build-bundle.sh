@@ -268,6 +268,7 @@ cp -a \
   deploy/offline/MCP-AGENT-GUIDE.zh-CN.md \
   deploy/offline/EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
   deploy/offline/SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md \
+  deploy/offline/MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md \
   "$BUNDLE_DIR/"
 cp -a deploy/offline/lib deploy/offline/minio deploy/offline/smoke "$BUNDLE_DIR/"
 install -d -m 0755 "${BUNDLE_DIR}/docs"
@@ -276,7 +277,11 @@ cp -a docs/decisions/0012-offline-single-host-deployment.md \
   "${BUNDLE_DIR}/docs/ADR-0012.md"
 cp -a docs/decisions/0018-ms-swift-native-gradio-studio.md \
   "${BUNDLE_DIR}/docs/ADR-0018.md"
+cp -a docs/decisions/0019-model-registry.md \
+  "${BUNDLE_DIR}/docs/ADR-0019.md"
 cp -a docs/swift/TECHNICAL-DESIGN.md docs/swift/STATUS.md "${BUNDLE_DIR}/docs/"
+cp -a docs/models/TECHNICAL-DESIGN.md "${BUNDLE_DIR}/docs/MODEL-REGISTRY-TECHNICAL-DESIGN.md"
+cp -a docs/models/STATUS.md "${BUNDLE_DIR}/docs/MODEL-REGISTRY-STATUS.md"
 chmod 0755 "$BUNDLE_DIR"/*.sh "$BUNDLE_DIR/databenchctl"
 
 cat > "${BUNDLE_DIR}/release.env" <<EOF

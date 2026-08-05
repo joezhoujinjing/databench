@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { open, rename, rm } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
-import { BadInputError } from '@databench/schema'
+import { BadInputError, parseRawJsonV2, RawJsonErrorV2 } from '@databench/schema'
 import type { CliOperation } from './runtime.js'
+
+export interface CliJsonInputLimits {
+  readonly maxBytes: number
+  readonly maxDepth: number
+}
 
 export async function* readCliInput(path: string, signal: AbortSignal): AsyncIterable<Uint8Array> {
   signal.throwIfAborted()
@@ -26,6 +31,51 @@ export async function* readCliInput(path: string, signal: AbortSignal): AsyncIte
     signal.removeEventListener('abort', abort)
     if (path !== '-') source.destroy()
   }
+}
+
+export async function readCliJsonInput(
+  path: string,
+  signal: AbortSignal,
+  limits: CliJsonInputLimits,
+): Promise<ReturnType<typeof parseRawJsonV2>> {
+  if (!Number.isSafeInteger(limits.maxBytes) || limits.maxBytes < 1) {
+    throw new TypeError('CLI JSON byte limit must be a positive safe integer')
+  }
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for await (const chunk of readCliInput(path, signal)) {
+    size += chunk.byteLength
+    if (size > limits.maxBytes) {
+      throw new RawJsonErrorV2(
+        'byte_limit_exceeded',
+        `Raw JSON exceeds the ${limits.maxBytes} byte limit`,
+      )
+    }
+    chunks.push(chunk)
+  }
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return parseRawJsonV2(bytes, limits)
+}
+
+export async function writeCliJsonFileAtomically(
+  outputPath: string,
+  value: unknown,
+  signal: AbortSignal,
+  compact = false,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(`${JSON.stringify(value, null, compact ? 0 : 2)}\n`)
+  return await writeCliFileAtomically(
+    outputPath,
+    (async function* () {
+      yield bytes
+    })(),
+    signal,
+  )
 }
 
 export async function writeCliStdout(

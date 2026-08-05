@@ -57,6 +57,8 @@ function rewindStatus(document, currentStep) {
   let output = document
     .replace(/^current_step: .+$/m, `current_step: ${currentStep}`)
     .replace(/^last_completed_step: .+$/m, `last_completed_step: ${lastCompleted}`)
+    .replace(/^capability_enabled: .+$/m, 'capability_enabled: false')
+    .replace(/^runtime_implemented: .+$/m, 'runtime_implemented: false')
   for (let index = currentIndex; index <= 8; index += 1) {
     output = output.replace(
       new RegExp(`^\\| MR${index} \\|(.*?)\\| (?:⬜|🔄|✅|⛔) \\|`, 'm'),
@@ -97,7 +99,11 @@ test('rejects a false-green product capability', async () => {
 test('rejects a false-green runtime implementation', async () => {
   await expectFailure(
     'status',
-    (document) => rewindStatus(document, 'MR1'),
+    (document) =>
+      rewindStatus(document, 'MR1').replace(
+        'runtime_implemented: false',
+        'runtime_implemented: true',
+      ),
     /runtime_implemented must remain false until MR1 is complete/,
   )
 })

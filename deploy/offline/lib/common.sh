@@ -495,7 +495,7 @@ copy_release_assets() {
     restore.sh smoke.sh \
     databenchctl Caddyfile README.zh-CN.md DEPLOYMENT-GUIDE.zh-CN.md \
     TROUBLESHOOTING.zh-CN.md MCP-AGENT-GUIDE.zh-CN.md EVALSCOPE-OPERATOR-GUIDE.zh-CN.md \
-    SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md \
+    SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md \
     docs lib minio smoke; do
     [ -e "${source_dir}/${item}" ] || die "bundle asset is missing: $item"
     rm -rf "${release_dir:?}/${item}"

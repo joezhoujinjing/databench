@@ -25,6 +25,7 @@ Commands:
   evalscope-status               Show internal drain and active-task state
   evalscope-drain                Stop admitting new evaluation tasks
   evalscope-resume               Resume evaluation task admission
+  model [arguments]              Run the Model Registry operator CLI (request via stdin)
   model-credentials-project      Generate minimum API/EvalScope credential projections
   backup                         Create a consistent backup generation
   restore <generation> --confirm Restore a backup generation
@@ -65,6 +66,11 @@ case "$COMMAND" in
   evalscope-resume)
     release_has_evalscope "$RELEASE_DIR" || die "this release does not contain EvalScope"
     evalscope_operator_request POST /internal/v1/operator/resume
+    ;;
+  model)
+    shift
+    [ "$#" -gt 0 ] || die "usage: databenchctl model <list|show|versions|registration|deployment> ..."
+    compose_for_release "$RELEASE_DIR" exec -T api databench model "$@"
     ;;
   model-credentials-project)
     exec "${RELEASE_DIR}/project-model-credentials.sh"

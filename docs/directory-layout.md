@@ -10,9 +10,10 @@
 > ms-swift ADR 0018 已接受；S0 已完成，S1 的 Provider、部署镜像、Gateway 与 `/training` 已实现并进入
 > deferred GPU gate。S2 exact Dataset 与单 active Session bridge、S3 immutable LoRA Artifact 已完成
 > non-GPU gate；S4 Deployment + EvalScope opaque resolve/lineage 已完成 non-GPU contract，GPU gate deferred。
-> Model Registry ADR 0019 的 MR0-MR6 已完成；Existing Service、version-bound Deployment、nested REST、
+> Model Registry ADR 0019 的 MR0-MR8 已完成；Existing Service、version-bound Deployment、nested REST、
 > internal v2 resolver、Evaluation v5/v6 exact lineage、atomic claim 后的 single resolve 和 anonymous FD
-> secret handoff 已落地。完整 Model 产品面与 selector 仍属于 MR7。
+> secret handoff、完整 Model 产品面、selector、archive/restore、operator CLI、离线 lifecycle/runbook 与
+> final gate 已落地。public network、D3 secret backend、GPU、GE9 和 production readiness 边界不变。
 
 ## `third_party/ms-swift`
 
@@ -174,7 +175,7 @@ apps/cli/
 │     ├─ transform.ts           list/run
 │     ├─ ref.ts                 list/show/move
 │     ├─ lineage.ts             show
-│     └─ model.ts               Model/Version list/show
+│     └─ model.ts               Model/Version read、registration Inspect/Commit 与 Deployment actions
 ├─ test/
 │  ├─ config.test.ts
 │  ├─ v2-router.test.ts
@@ -613,6 +614,7 @@ deploy/offline/
 ├─ MCP-AGENT-GUIDE.zh-CN.md       agent endpoint、三种意图与恢复规则
 ├─ EVALSCOPE-OPERATOR-GUIDE.zh-CN.md  EvalScope drain、容量、备份与断网验收
 ├─ SWIFT-STUDIO-OPERATOR-GUIDE.zh-CN.md  GPU、模型预置、Session/Artifact 与目标机验收
+├─ MODEL-REGISTRY-OPERATOR-GUIDE.zh-CN.md 三来源注册、CLI、Deployment 与恢复边界
 ├─ README.zh-CN.md
 ├─ DEPLOYMENT-GUIDE.zh-CN.md
 ├─ TROUBLESHOOTING.zh-CN.md
@@ -624,6 +626,7 @@ deploy/offline/
 ├─ lib/preflight.sh               CPU/RAM、磁盘和显式 NVIDIA profile 前置检查
 └─ smoke/
    ├─ mcp.mjs                     官方 SDK + companion lifecycle smoke
+   ├─ model-registry.mjs          API/CLI plan 对拍、durable replay 与 repository-only 边界
    ├─ worker.mjs                  basic-clean Dataset/lineage/deterministic reuse smoke
    ├─ upstream-failure.mjs        Caddy 502 runtime-log 脱敏 probe
    └─ mcp-draft.jsonl             最小 canonical draft fixture

@@ -11,6 +11,29 @@ import { writeCliFileAtomically, writeCliStdout } from '../src/streaming.js'
 
 const VERSION = 'a'.repeat(64)
 const NEXT_VERSION = 'b'.repeat(64)
+const MODEL_ID = '123e4567-e89b-42d3-a456-426614174010'
+const MODEL_VERSION_ID = '123e4567-e89b-42d3-a456-426614174011'
+const MODEL_DEPLOYMENT_ID = '123e4567-e89b-42d3-a456-426614174012'
+const MODEL_REGISTRATION_DIGEST = 'c'.repeat(64)
+const MODEL_REGISTRATION_REQUEST = {
+  target: {
+    kind: 'create_model' as const,
+    key: 'cli-model',
+    display_name: 'CLI Model',
+    description: 'Bounded CLI registration fixture',
+    task_family: 'chat',
+    tags: ['cli'],
+  },
+  version_label: 'r1',
+  source: {
+    kind: 'repository_reference' as const,
+    provider: 'modelscope' as const,
+    repository_id: 'Qwen/Qwen3-0.6B',
+    revision: 'main',
+    revision_kind: 'tag' as const,
+    base_model: null,
+  },
+}
 
 let stdout: Uint8Array[]
 let stderr: Uint8Array[]
@@ -71,6 +94,13 @@ describe('product command router', () => {
       'lineage show',
       'model list',
       'model show',
+      'model versions',
+      'model registration inspect',
+      'model registration commit',
+      'model deployment list',
+      'model deployment activate',
+      'model deployment check',
+      'model deployment disable',
     ])
 
     expect(
@@ -93,7 +123,7 @@ describe('product command router', () => {
     expect(outputJson()).toEqual({ dataset_version: VERSION, items: [] })
   })
 
-  test('routes Model list/show through V2Workspace without exposing write commands', async () => {
+  test('routes Model list/show through V2Workspace', async () => {
     const workspace = fakeWorkspace()
     injectWorkspace(workspace)
 
@@ -124,11 +154,166 @@ describe('product command router', () => {
     )
 
     stdout.length = 0
-    const modelId = '123e4567-e89b-42d3-a456-426614174010'
-    expect(await run(['model', 'show', modelId, '--compact'])).toBe(EXIT.ok)
-    expect(workspace.getModel).toHaveBeenCalledWith(modelId, {
+    expect(await run(['model', 'show', MODEL_ID, '--compact'])).toBe(EXIT.ok)
+    expect(workspace.getModel).toHaveBeenCalledWith(MODEL_ID, {
       signal: expect.any(AbortSignal),
     })
+  })
+
+  test('inspects, commits, lists Versions, and operates Deployments through V2Workspace', async () => {
+    const workspace = fakeWorkspace()
+    injectWorkspace(workspace)
+    const directory = await mkdtemp(join(tmpdir(), 'databench-model-cli-'))
+    try {
+      const requestPath = join(directory, 'request.json')
+      const planPath = join(directory, 'plan.json')
+      await writeFile(requestPath, JSON.stringify(MODEL_REGISTRATION_REQUEST), { mode: 0o600 })
+
+      expect(
+        await run([
+          'model',
+          'registration',
+          'inspect',
+          '--input',
+          requestPath,
+          '--output',
+          planPath,
+          '--compact',
+        ]),
+      ).toBe(EXIT.ok)
+      expect(workspace.inspectModelRegistration).toHaveBeenCalledWith(MODEL_REGISTRATION_REQUEST, {
+        signal: expect.any(AbortSignal),
+      })
+      expect(JSON.parse(await readFile(planPath, 'utf8'))).toEqual(modelRegistrationPlan())
+      expect((await stat(planPath)).mode & 0o777).toBe(0o600)
+      expect(outputJson()).toEqual({
+        path: planPath,
+        plan_profile: 'model-registration-plan-repository-v1',
+        registration_digest: MODEL_REGISTRATION_DIGEST,
+      })
+
+      stdout.length = 0
+      expect(
+        await run([
+          'model',
+          'registration',
+          'commit',
+          '--input',
+          requestPath,
+          '--expected-digest',
+          MODEL_REGISTRATION_DIGEST,
+          '--compact',
+        ]),
+      ).toBe(EXIT.ok)
+      expect(workspace.commitModelRegistration).toHaveBeenCalledWith(
+        {
+          request: MODEL_REGISTRATION_REQUEST,
+          expected_registration_digest: MODEL_REGISTRATION_DIGEST,
+        },
+        { signal: expect.any(AbortSignal) },
+      )
+
+      stdout.length = 0
+      expect(await run(['model', 'versions', MODEL_ID, '--limit', '7', '--compact'])).toBe(EXIT.ok)
+      expect(workspace.listModelVersions).toHaveBeenCalledWith(
+        MODEL_ID,
+        { cursor: null, limit: 7 },
+        { signal: expect.any(AbortSignal) },
+      )
+
+      stdout.length = 0
+      expect(
+        await run([
+          'model',
+          'deployment',
+          'list',
+          MODEL_VERSION_ID,
+          '--lifecycle',
+          'active',
+          '--limit',
+          '7',
+          '--compact',
+        ]),
+      ).toBe(EXIT.ok)
+      expect(workspace.listModelVersionDeployments).toHaveBeenCalledWith(
+        MODEL_VERSION_ID,
+        { lifecycle: 'active', cursor: null, limit: 7 },
+        { signal: expect.any(AbortSignal) },
+      )
+
+      for (const action of ['activate', 'check', 'disable'] as const) {
+        stdout.length = 0
+        expect(
+          await run([
+            'model',
+            'deployment',
+            action,
+            MODEL_VERSION_ID,
+            MODEL_DEPLOYMENT_ID,
+            '--compact',
+          ]),
+        ).toBe(EXIT.ok)
+      }
+      expect(workspace.activateModelVersionDeployment).toHaveBeenCalledWith(
+        MODEL_VERSION_ID,
+        MODEL_DEPLOYMENT_ID,
+        { signal: expect.any(AbortSignal) },
+      )
+      expect(workspace.checkModelVersionDeployment).toHaveBeenCalledWith(
+        MODEL_VERSION_ID,
+        MODEL_DEPLOYMENT_ID,
+        { signal: expect.any(AbortSignal) },
+      )
+      expect(workspace.disableModelVersionDeployment).toHaveBeenCalledWith(
+        MODEL_VERSION_ID,
+        MODEL_DEPLOYMENT_ID,
+        { signal: expect.any(AbortSignal) },
+      )
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  test('rejects oversized, duplicate-key, and secret-shaped registration files safely', async () => {
+    const workspace = fakeWorkspace()
+    injectWorkspace(workspace)
+    const directory = await mkdtemp(join(tmpdir(), 'databench-model-cli-invalid-'))
+    try {
+      const oversizedPath = join(directory, 'oversized.json')
+      await writeFile(oversizedPath, `{"payload":"${'x'.repeat(128 * 1024)}"}`, { mode: 0o600 })
+      expect(await run(['model', 'registration', 'inspect', '--input', oversizedPath])).toBe(
+        EXIT.badInput,
+      )
+      expect(outputError().code).toBe('bad_request')
+      expect(workspace.inspectModelRegistration).not.toHaveBeenCalled()
+
+      stderr.length = 0
+      const duplicatePath = join(directory, 'duplicate.json')
+      await writeFile(duplicatePath, '{"target":{},"target":{}}', { mode: 0o600 })
+      expect(await run(['model', 'registration', 'inspect', '--input', duplicatePath])).toBe(
+        EXIT.badInput,
+      )
+      expect(new TextDecoder().decode(joinBytes(stderr))).not.toContain(duplicatePath)
+
+      stderr.length = 0
+      const secret = 'sk-sensitive-cli-fixture-value'
+      const secretPath = join(directory, 'secret.json')
+      await writeFile(
+        secretPath,
+        JSON.stringify({
+          ...MODEL_REGISTRATION_REQUEST,
+          target: { ...MODEL_REGISTRATION_REQUEST.target, description: secret },
+        }),
+        { mode: 0o600 },
+      )
+      expect(await run(['model', 'registration', 'inspect', '--input', secretPath])).toBe(
+        EXIT.validation,
+      )
+      expect(new TextDecoder().decode(joinBytes(stderr))).not.toContain(secret)
+      expect(workspace.inspectModelRegistration).not.toHaveBeenCalled()
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
   })
 
   test('always inspects first and exports the exact inspected version', async () => {
@@ -384,6 +569,29 @@ function fakeWorkspace(options: { plan?: ExportPlanV2 } = {}) {
     addJsonl: vi.fn(async () => ({})),
     listModels: vi.fn(async () => ({ items: [], next_cursor: null })),
     getModel: vi.fn(async (modelId: string) => ({ id: modelId })),
+    inspectModelRegistration: vi.fn(async () => modelRegistrationPlan()),
+    commitModelRegistration: vi.fn(async () => ({
+      model_id: MODEL_ID,
+      model_version_id: MODEL_VERSION_ID,
+      deployment_id: null,
+      deployment_digest: null,
+      alias: null,
+      replayed: false,
+    })),
+    listModelVersions: vi.fn(async () => ({ items: [], next_cursor: null })),
+    listModelVersionDeployments: vi.fn(async () => ({ items: [], next_cursor: null })),
+    activateModelVersionDeployment: vi.fn(async () => ({
+      id: MODEL_DEPLOYMENT_ID,
+      lifecycle: 'active',
+    })),
+    checkModelVersionDeployment: vi.fn(async () => ({
+      id: MODEL_DEPLOYMENT_ID,
+      health_status: 'healthy',
+    })),
+    disableModelVersionDeployment: vi.fn(async () => ({
+      id: MODEL_DEPLOYMENT_ID,
+      lifecycle: 'disabled',
+    })),
   }
 }
 
@@ -416,6 +624,25 @@ function exportPlan(semantic: boolean): ExportPlanV2 {
         : [],
     },
   })
+}
+
+function modelRegistrationPlan() {
+  return {
+    plan_profile: 'model-registration-plan-repository-v1' as const,
+    normalized_request: MODEL_REGISTRATION_REQUEST,
+    model_id: MODEL_ID,
+    model_create_digest: 'd'.repeat(64),
+    source_fingerprint: 'e'.repeat(64),
+    version_create_digest: 'f'.repeat(64),
+    classification: {
+      source_mutability: 'mutable' as const,
+      verification_level: 'operator_attested' as const,
+      evidence_digest: null,
+    },
+    warnings: [],
+    registration_digest: MODEL_REGISTRATION_DIGEST,
+    deployment: null,
+  }
 }
 
 async function* byteSource(parts: readonly string[]): AsyncIterable<Uint8Array> {

@@ -282,6 +282,109 @@ describe.runIf(runIntegration)('V2 CLI against real MinIO and Postgres', () => {
     expect(outputJson<{ version: string }>().version).toBe(transformed.run.output_dataset_version)
     expect(stderr).toHaveLength(0)
   })
+
+  test('CLI registration matches Workspace and replays a lost response without partial writes', async () => {
+    const suffix = randomUUID()
+    const request = {
+      target: {
+        kind: 'create_model' as const,
+        key: `cli-registry-${suffix}`,
+        display_name: 'CLI Registry Integration',
+        description: 'ModelScope offline declared-only registration',
+        task_family: 'chat',
+        tags: ['cli', 'integration'],
+      },
+      version_label: 'r1',
+      source: {
+        kind: 'repository_reference' as const,
+        provider: 'modelscope' as const,
+        repository_id: 'Qwen/Qwen3-0.6B',
+        revision: 'main',
+        revision_kind: 'tag' as const,
+        base_model: null,
+      },
+    }
+    const requestPath = join(temporaryRoot, `${suffix}.model-registration.json`)
+    await writeFile(requestPath, JSON.stringify(request), { mode: 0o600 })
+
+    const directPlan = await workspace.inspectModelRegistration(request)
+    expect(
+      await run(['model', 'registration', 'inspect', '--input', requestPath, '--compact']),
+    ).toBe(EXIT.ok)
+    expect(outputJson()).toEqual(directPlan)
+
+    integrationStdout.length = 0
+    expect(
+      await run([
+        'model',
+        'registration',
+        'commit',
+        '--input',
+        requestPath,
+        '--expected-digest',
+        '0'.repeat(64),
+        '--compact',
+      ]),
+    ).toBe(EXIT.conflict)
+    expect(
+      await workspace.listModels({
+        search: request.target.key,
+        archive: 'all',
+        cursor: null,
+        limit: 10,
+      }),
+    ).toMatchObject({ items: [] })
+
+    stderr.length = 0
+    const committedBeforeResponseLoss = await workspace.commitModelRegistration({
+      request,
+      expected_registration_digest: directPlan.registration_digest,
+    })
+    integrationStdout.length = 0
+    expect(
+      await run([
+        'model',
+        'registration',
+        'commit',
+        '--input',
+        requestPath,
+        '--expected-digest',
+        directPlan.registration_digest,
+        '--compact',
+      ]),
+    ).toBe(EXIT.ok)
+    const replayed = outputJson<typeof committedBeforeResponseLoss>()
+    expect(replayed).toEqual({ ...committedBeforeResponseLoss, replayed: true })
+
+    integrationStdout.length = 0
+    expect(
+      await run(['model', 'versions', committedBeforeResponseLoss.model_id, '--compact']),
+    ).toBe(EXIT.ok)
+    expect(outputJson()).toEqual(
+      await workspace.listModelVersions(committedBeforeResponseLoss.model_id, {
+        cursor: null,
+        limit: 20,
+      }),
+    )
+
+    integrationStdout.length = 0
+    expect(
+      await run([
+        'model',
+        'deployment',
+        'list',
+        committedBeforeResponseLoss.model_version_id,
+        '--compact',
+      ]),
+    ).toBe(EXIT.ok)
+    expect(outputJson()).toEqual(
+      await workspace.listModelVersionDeployments(committedBeforeResponseLoss.model_version_id, {
+        cursor: null,
+        limit: 20,
+      }),
+    )
+    expect(stderr).toHaveLength(0)
+  })
 })
 
 function outputJson<T>(): T {
