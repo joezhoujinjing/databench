@@ -16,7 +16,7 @@ import {
 import { createRoute, type OpenAPIHono } from '@hono/zod-openapi'
 import type { ApiEnv } from '../../context.js'
 import { getV2Workspace } from '../../context.js'
-import { requireModelDeploymentBearer } from '../model-deployment-auth.js'
+import { requireModelDeploymentServiceBearer } from '../model-deployment-auth.js'
 import type { RegisterV2RoutesOptions } from './index.js'
 import {
   jsonResponseV2,
@@ -29,14 +29,12 @@ import { assertJsonContentTypeV2, readRawJsonRequestV2 } from './transport.js'
 
 const CREATE_MAX_BYTES = 16 * 1024
 const ACTION_MAX_BYTES = 1024
-const OPERATOR_SECURITY = [{ ModelDeploymentOperatorBearer: [] }]
 const TAGS = ['v2 Model Version Deployments']
 
 const createDeploymentRoute = createRoute({
   method: 'post',
   path: '/v2/model-versions/{version_id}/deployments',
   operationId: 'createModelVersionDeploymentV2',
-  security: OPERATOR_SECURITY,
   tags: TAGS,
   request: {
     params: ModelVersionParamsV2Schema,
@@ -98,7 +96,6 @@ function actionRoute(suffix: 'activate' | 'check' | 'disable') {
     method: 'post',
     path: `/v2/model-versions/{version_id}/deployments/{deployment_id}:${suffix}`,
     operationId: `${suffix}ModelVersionDeploymentV2`,
-    security: OPERATOR_SECURITY,
     tags: TAGS,
     request: {
       params: ModelVersionDeploymentParamsV2Schema,
@@ -131,7 +128,7 @@ export function registerV2ModelVersionDeploymentRoutes(
   }
 
   app.post(createDeploymentRoute.getRoutingPath(), async (context) => {
-    authorizeOperatorWrite(context, options)
+    validateWriteRequest(context)
     const { version_id } = ModelVersionParamsV2Schema.parse(context.req.param())
     const request = await readRawJsonRequestV2(
       context,
@@ -178,7 +175,7 @@ export function registerV2ModelVersionDeploymentRoutes(
     app.post(
       `/v2/model-versions/:versionId/deployments/:target{[^/]+:${suffix}}`,
       async (context) => {
-        authorizeOperatorWrite(context, options)
+        validateWriteRequest(context)
         const version_id = context.req.param('versionId')
         const deployment_id = actionTarget(context.req.param('target'), `:${suffix}`)
         ModelVersionDeploymentParamsV2Schema.parse({ version_id, deployment_id })
@@ -218,7 +215,7 @@ export function registerV2ModelVersionDeploymentRoutes(
 
   app.get('/internal/v2/model-deployments/:target{[^/]+:resolve}', async (context) => {
     assertNoQuery(context.req.url)
-    requireModelDeploymentBearer(context, options.modelDeploymentServiceCredential, 'service')
+    requireModelDeploymentServiceBearer(context, options.modelDeploymentServiceCredential)
     const deployment_id = actionTarget(context.req.param('target'), ':resolve')
     ModelVersionDeploymentParamsV2Schema.shape.deployment_id.parse(deployment_id)
     const deployment = await getV2Workspace(context).resolveModelVersionDeployment(
@@ -229,16 +226,14 @@ export function registerV2ModelVersionDeploymentRoutes(
   })
 }
 
-function authorizeOperatorWrite(
-  context: Parameters<typeof requireModelDeploymentBearer>[0],
-  options: RegisterV2RoutesOptions,
+function validateWriteRequest(
+  context: Parameters<typeof requireModelDeploymentServiceBearer>[0],
 ): void {
   assertNoQuery(context.req.url)
-  requireModelDeploymentBearer(context, options.modelDeploymentOperatorToken, 'operator')
   assertJsonContentTypeV2(context.req.raw)
 }
 
-function operationContext(context: Parameters<typeof requireModelDeploymentBearer>[0]) {
+function operationContext(context: Parameters<typeof requireModelDeploymentServiceBearer>[0]) {
   return { signal: context.req.raw.signal }
 }
 

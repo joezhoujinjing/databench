@@ -134,15 +134,9 @@ OpenAI-compatible 服务并监听 `8000`，Databench Deployment 注册地址使�
 http://swift-studio:8000/v1
 ```
 
-安装器在启用 Swift 时自动允许 EvalScope 访问 Docker 私网的 `8000` 端口。注册、探活和停用
-Deployment 需要 operator token，可由管理员只读获取：
-
-```bash
-sudo sed -n 's/^DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=//p' \
-  /etc/databench/databench.env
-```
-
-将该值临时填入浏览器的后端连接 Token；不要把 token 复制进模型参数、日志或共享文档。
+安装器在启用 Swift 时自动允许 EvalScope 访问 Docker 私网的 `8000` 端口。当前单租户产品阶段的
+Model 注册、探活和停用不单独要求临时 operator token；统一用户登录与 RBAC 落地后再由同一授权层
+保护这些动作。内部 Deployment resolve 仍只接受独立 service credential，浏览器不能直接调用。
 
 ## 8. 维护、备份与模型保留
 

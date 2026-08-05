@@ -41,7 +41,6 @@ export interface CreateAppOptions {
   readonly evalscope?: EvalScopeGatewayConfig
   readonly evalscopeFetch?: typeof fetch
   readonly mcp?: McpRuntimeConfig
-  readonly modelDeploymentOperatorToken?: string
   readonly modelDeploymentServiceCredential?: string
   readonly modelDeploymentHealthClient?: V2ModelDeploymentHealthClient
   readonly modelVersionDeploymentRuntime?: V2ModelVersionDeploymentRuntime
@@ -119,9 +118,6 @@ function createRoutedApp(
   registerMetaRoutes(app, options)
   registerV2Routes(app, {
     workerJobsAvailable: options.workerJobsAvailable ?? false,
-    ...(options.modelDeploymentOperatorToken === undefined
-      ? {}
-      : { modelDeploymentOperatorToken: options.modelDeploymentOperatorToken }),
     ...(options.modelDeploymentServiceCredential === undefined
       ? {}
       : { modelDeploymentServiceCredential: options.modelDeploymentServiceCredential }),

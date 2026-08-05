@@ -177,10 +177,10 @@ scheduler、Artifact runtime 与 Swift Provider config 完全解耦，以及多�
   namespace + Artifact composite FK 与 exact endpoint-change/new-ID 语义
 - [x] 首个 profile 固定为 `openai_compatible + operator_attested + auth_mode=none`；只准入 verified-base
   LoRA Artifact
-- [x] public projection 隐藏 endpoint/create digest；operator Bearer 保护 create/check/disable；service
-  credential 独占 internal resolve，且 internal route 不进入 OpenAPI
-- [x] operator/service token unset、wrong、cross-role、same-value fail-closed，以及 query smuggling、credential
-  text、URL normalization 和 public non-leak tests
+- [x] public projection 隐藏 endpoint/create digest；历史 S4 operator Bearer 已由 2026-08-05 owner 修订取代，
+  service credential 继续独占 internal resolve，且 internal route 不进入 OpenAPI
+- [x] service token unset/wrong fail-closed，以及 query smuggling、credential text、URL normalization 和
+  public non-leak tests
 - [x] lifecycle `active|disabled` 与 health `unknown|healthy|unhealthy` 分离；有界 `/models` probe 不自动
   disable；endpoint/served model 变化创建新 Deployment ID
 - [x] `evaluation-run-create-v2` 将 exact Dataset、Deployment、Artifact、Deployment digest 加入 canonical

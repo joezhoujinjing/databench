@@ -30,8 +30,6 @@ import {
 import { createRoute, type OpenAPIHono } from '@hono/zod-openapi'
 import type { ApiEnv } from '../../context.js'
 import { getV2Workspace } from '../../context.js'
-import { requireModelDeploymentBearer } from '../model-deployment-auth.js'
-import type { RegisterV2RoutesOptions } from './index.js'
 import {
   jsonResponseV2,
   V2_MODEL_ACTION_ERROR_RESPONSES,
@@ -44,14 +42,12 @@ import { assertJsonContentTypeV2, readRawJsonRequestV2 } from './transport.js'
 
 const REGISTRATION_MAX_BYTES = 128 * 1024
 const ACTION_MAX_BYTES = 32 * 1024
-const OPERATOR_SECURITY = [{ ModelDeploymentOperatorBearer: [] }]
 const MODEL_TAG = ['v2 Models']
 
 const inspectRegistrationRoute = createRoute({
   method: 'post',
   path: '/v2/model-registrations:inspect',
   operationId: 'inspectModelRegistrationV2',
-  security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     body: {
@@ -69,7 +65,6 @@ const registerModelRoute = createRoute({
   method: 'post',
   path: '/v2/models:register',
   operationId: 'registerModelV2',
-  security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     body: {
@@ -118,7 +113,6 @@ function modelActionRoute(suffix: 'update' | 'archive' | 'restore') {
     method: 'post',
     path: `/v2/models/{model_id}:${suffix}`,
     operationId: `${suffix}ModelV2`,
-    security: OPERATOR_SECURITY,
     tags: MODEL_TAG,
     request: {
       params: ModelParamsV2Schema,
@@ -139,7 +133,6 @@ const registerVersionRoute = createRoute({
   method: 'post',
   path: '/v2/models/{model_id}/versions:register',
   operationId: 'registerModelVersionV2',
-  security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     params: ModelParamsV2Schema,
@@ -182,7 +175,6 @@ const refreshSourceEvidenceRoute = createRoute({
   method: 'post',
   path: '/v2/model-versions/{version_id}:refresh-source-evidence',
   operationId: 'refreshModelSourceEvidenceV2',
-  security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     params: ModelVersionParamsV2Schema,
@@ -213,7 +205,6 @@ const moveCandidateRoute = createRoute({
   method: 'post',
   path: '/v2/models/{model_id}/aliases/{alias}:move',
   operationId: 'moveCandidateModelAliasV2',
-  security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     params: CandidateModelAliasParamsV2Schema,
@@ -232,7 +223,6 @@ const adoptDeploymentRoute = createRoute({
   method: 'post',
   path: '/v2/model-versions/{version_id}/deployments/{deployment_id}:adopt',
   operationId: 'adoptModelDeploymentV2',
-  security: OPERATOR_SECURITY,
   tags: MODEL_TAG,
   request: {
     params: AdoptModelDeploymentParamsV2Schema,
@@ -262,10 +252,7 @@ const listDeploymentAdoptionsRoute = createRoute({
   },
 })
 
-export function registerV2ModelRoutes(
-  app: OpenAPIHono<ApiEnv>,
-  options: RegisterV2RoutesOptions,
-): void {
+export function registerV2ModelRoutes(app: OpenAPIHono<ApiEnv>): void {
   for (const route of [
     inspectRegistrationRoute,
     registerModelRoute,
@@ -287,7 +274,7 @@ export function registerV2ModelRoutes(
   }
 
   app.post(inspectRegistrationRoute.getRoutingPath(), async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const request = await readRawJsonRequestV2(context, ModelRegistryRegistrationRequestV2Schema, {
       maxBytes: REGISTRATION_MAX_BYTES,
       maxDepth: 8,
@@ -299,7 +286,7 @@ export function registerV2ModelRoutes(
   })
 
   app.post(registerModelRoute.getRoutingPath(), async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const request = await readRawJsonRequestV2(
       context,
       CommitModelRegistryRegistrationRequestV2Schema,
@@ -328,7 +315,7 @@ export function registerV2ModelRoutes(
   })
 
   app.post('/v2/models/:target{[^/]+:update}', async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const model_id = actionTarget(context.req.param('target'), ':update')
     ModelParamsV2Schema.parse({ model_id })
     const request = await readRawJsonRequestV2(context, UpdateModelMetadataV2Schema, {
@@ -342,7 +329,7 @@ export function registerV2ModelRoutes(
   })
 
   app.post('/v2/models/:target{[^/]+:archive}', async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const model_id = actionTarget(context.req.param('target'), ':archive')
     ModelParamsV2Schema.parse({ model_id })
     const request = await readRawJsonRequestV2(context, ArchiveModelV2Schema, {
@@ -356,7 +343,7 @@ export function registerV2ModelRoutes(
   })
 
   app.post('/v2/models/:target{[^/]+:restore}', async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const model_id = actionTarget(context.req.param('target'), ':restore')
     ModelParamsV2Schema.parse({ model_id })
     const request = await readRawJsonRequestV2(context, RestoreModelV2Schema, {
@@ -370,7 +357,7 @@ export function registerV2ModelRoutes(
   })
 
   app.post(registerVersionRoute.getRoutingPath(), async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const { model_id } = ModelParamsV2Schema.parse(context.req.param())
     const request = await readRawJsonRequestV2(
       context,
@@ -404,7 +391,7 @@ export function registerV2ModelRoutes(
   })
 
   app.post('/v2/model-versions/:target{[^/]+:refresh-source-evidence}', async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const version_id = actionTarget(context.req.param('target'), ':refresh-source-evidence')
     ModelVersionParamsV2Schema.parse({ version_id })
     await readRawJsonRequestV2(context, RefreshModelSourceEvidenceRequestV2Schema, {
@@ -429,7 +416,7 @@ export function registerV2ModelRoutes(
   })
 
   app.post('/v2/models/:modelId/aliases/:target{[^/]+:move}', async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const model_id = context.req.param('modelId')
     const alias = actionTarget(context.req.param('target'), ':move')
     CandidateModelAliasParamsV2Schema.parse({ model_id, alias })
@@ -448,7 +435,7 @@ export function registerV2ModelRoutes(
   })
 
   app.post('/v2/model-versions/:versionId/deployments/:target{[^/]+:adopt}', async (context) => {
-    authorizeWrite(context, options)
+    validateWriteRequest(context)
     const version_id = context.req.param('versionId')
     const deployment_id = actionTarget(context.req.param('target'), ':adopt')
     AdoptModelDeploymentParamsV2Schema.parse({ version_id, deployment_id })
@@ -481,12 +468,8 @@ export function registerV2ModelRoutes(
   })
 }
 
-function authorizeWrite(
-  context: Parameters<typeof requireModelDeploymentBearer>[0],
-  options: RegisterV2RoutesOptions,
-): void {
+function validateWriteRequest(context: Parameters<typeof getV2Workspace>[0]): void {
   assertNoQuery(context.req.url)
-  requireModelDeploymentBearer(context, options.modelDeploymentOperatorToken, 'operator')
   assertJsonContentTypeV2(context.req.raw)
 }
 
@@ -516,7 +499,7 @@ function assertRegistrationTarget(
   })
 }
 
-function operationContext(context: Parameters<typeof requireModelDeploymentBearer>[0]) {
+function operationContext(context: Parameters<typeof getV2Workspace>[0]) {
   return { signal: context.req.raw.signal }
 }
 

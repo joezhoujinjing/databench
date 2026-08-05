@@ -1,7 +1,7 @@
 # Databench Model Registry 实施计划
 
-- **状态:** Accepted——owner 于 2026-08-04 在四项推荐范围列明后要求“下一步叭”，并进一步要求
-  “按照实施计划依次的实现吧”，授权按 Gate 顺序实施 MR0-MR8
+- **状态:** Accepted——owner 于 2026-08-04 在四项推荐范围列明后要求“下一步叭”，并授权按 Gate 顺序
+  实施 MR0-MR8；2026-08-05 接受 post-MR8 修订，将公共 Model mutation 的用户鉴权延后到统一 RBAC
 - **日期:** 2026-08-04
 - **决策:** [ADR 0019](../decisions/0019-model-registry.md)
 - **技术方案:** [TECHNICAL-DESIGN.md](TECHNICAL-DESIGN.md)
@@ -48,6 +48,10 @@ owner 已同时接受 ADR 0019、技术方案、本计划与以下首期范围�
 | Repository providers | ModelScope + operator-managed | Hugging Face 只保留 schema/profile |
 | CLI 节奏 | MR2 list/show，MR8 写操作 | Web 先形成主闭环 |
 | 一级导航 | 数据集 / 训练 / 模型 / 测评 | 固定产品主链 |
+
+2026-08-05 owner 追加范围修订：当前不保留独立 Model operator token，公共 Model mutation 暂时不做用户
+鉴权；internal Deployment resolve 的 service credential 与 endpoint/secret 安全边界不变。统一 RBAC 必须在
+公共云 D3、公网开放或不可信多用户部署之前完成。
 
 后续修改产品范围时必须先同步更新 ADR、技术方案与本计划；不得借范围选择放宽 identity、安全、legacy
 compatibility 或发布边界。

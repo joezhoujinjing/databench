@@ -97,7 +97,6 @@
 | `DATABENCH_OPENAPI_SERVER_URL` | 部署侧 OpenAPI server URL |
 | `DATABENCH_ROOT` | bounded local staging root |
 | `DATABENCH_V2_CURSOR_SECRET` | v2 cursor signing secret |
-| `DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN` | Deployment create/check/disable operator Bearer |
 | `DATABENCH_MODEL_REPOSITORY_MODE` | Repository metadata resolution：默认 `offline`，可显式 `connected` |
 | `DATABENCH_MODEL_REPOSITORY_CONFIG` | operator-managed alias 与 allowlisted root 的绝对配置路径 |
 | `DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS` | ModelScope metadata resolution 总超时 |

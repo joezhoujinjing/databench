@@ -36,7 +36,6 @@ const EnvSchema = z
     DATABENCH_OPENAPI_SERVER_URL: z.string().trim().min(1).optional(),
     DATABENCH_ROOT: z.string().default('./bench'),
     DATABENCH_V2_CURSOR_SECRET: z.string().min(16),
-    DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN: optionalServiceToken(),
     DATABENCH_MODEL_REPOSITORY_MODE: z.enum(['offline', 'connected']).default('offline'),
     DATABENCH_MODEL_REPOSITORY_CONFIG: optionalAbsolutePath(),
     DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS: z.coerce
@@ -94,17 +93,6 @@ const EnvSchema = z
         })
       }
     }
-    if (
-      value.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN !== undefined &&
-      value.DATABENCH_SERVICE_CREDENTIAL !== undefined &&
-      value.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN === value.DATABENCH_SERVICE_CREDENTIAL
-    ) {
-      context.addIssue({
-        code: 'custom',
-        path: ['DATABENCH_SERVICE_CREDENTIAL'],
-        message: 'Model Deployment operator and service credentials must be distinct',
-      })
-    }
     if (value.DATABENCH_WORKER_ENABLED !== 'true') return
     if (value.DATABENCH_WORKER_LEASE_MS <= 2 * value.DATABENCH_WORKER_HEARTBEAT_MS) {
       context.addIssue({
@@ -157,7 +145,6 @@ export interface ApiConfig {
   readonly databaseUrl?: string
   readonly evalscope?: EvalScopeGatewayConfig
   readonly mcp: McpRuntimeConfig
-  readonly modelDeploymentOperatorToken?: string
   readonly modelRepository: V2ModelRepositoryOpenOptions
   readonly modelEndpointSecurity: {
     readonly policyPath?: string
@@ -189,11 +176,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     evaluationArchiveMaxBytes: parsed.DATABENCH_EVALUATION_ARCHIVE_MAX_BYTES,
     evaluationArchiveSignedUrlTtlMs: parsed.DATABENCH_EVALUATION_ARCHIVE_SIGNED_URL_TTL_MS,
     mcp: mcpConfigFromEnv(env),
-    ...(parsed.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN === undefined
-      ? {}
-      : {
-          modelDeploymentOperatorToken: parsed.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN,
-        }),
     modelRepository: {
       mode: parsed.DATABENCH_MODEL_REPOSITORY_MODE,
       timeoutMs: parsed.DATABENCH_MODEL_REPOSITORY_TIMEOUT_MS,

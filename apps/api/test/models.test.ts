@@ -7,7 +7,6 @@ const MODEL_ID = '123e4567-e89b-42d3-a456-426614174010'
 const VERSION_ID = '123e4567-e89b-42d3-a456-426614174011'
 const ARTIFACT_ID = '123e4567-e89b-42d3-a456-426614174012'
 const DEPLOYMENT_ID = '123e4567-e89b-42d3-a456-426614174013'
-const OPERATOR_TOKEN = 'operator-token-that-is-at-least-32-bytes'
 const NOW = '2026-08-04T12:00:00.000Z'
 
 const createRegistration = {
@@ -195,13 +194,10 @@ function request(path: string, init: RequestInit = {}): Request {
   return new Request(`http://localhost${path}`, init)
 }
 
-function write(body: unknown, token = OPERATOR_TOKEN): RequestInit {
+function write(body: unknown): RequestInit {
   return {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }
 }
@@ -209,10 +205,7 @@ function write(body: unknown, token = OPERATOR_TOKEN): RequestInit {
 describe('Model Registry HTTP contract', () => {
   test('exposes Artifact and Repository inspect with separate create-Model/register-Version commits', async () => {
     const fake = workspace()
-    const app = createTestApp({
-      v2Workspace: fake,
-      modelDeploymentOperatorToken: OPERATOR_TOKEN,
-    })
+    const app = createTestApp({ v2Workspace: fake })
     const inspected = await app.fetch(
       request('/v2/model-registrations:inspect', write(createRegistration)),
     )
@@ -267,10 +260,7 @@ describe('Model Registry HTTP contract', () => {
         registration_digest: registrationPlan.registration_digest,
       }),
     )
-    const app = createTestApp({
-      v2Workspace: fake,
-      modelDeploymentOperatorToken: OPERATOR_TOKEN,
-    })
+    const app = createTestApp({ v2Workspace: fake })
 
     const response = await app.fetch(
       request(
@@ -371,12 +361,9 @@ describe('Model Registry HTTP contract', () => {
     )
   })
 
-  test('protects metadata, archive, restore, Alias, and adoption actions with the operator role', async () => {
+  test('serves metadata, archive, restore, Alias, and adoption actions without temporary auth', async () => {
     const fake = workspace()
-    const app = createTestApp({
-      v2Workspace: fake,
-      modelDeploymentOperatorToken: OPERATOR_TOKEN,
-    })
+    const app = createTestApp({ v2Workspace: fake })
     const actions: Array<[string, unknown]> = [
       [
         `/v2/models/${MODEL_ID}:update`,
@@ -404,10 +391,8 @@ describe('Model Registry HTTP contract', () => {
       [`/v2/model-versions/${VERSION_ID}:refresh-source-evidence`, {}],
     ]
     for (const [path, body] of actions) {
-      const denied = await app.fetch(request(path, write(body, 'wrong-token-but-long-enough')))
-      expect(denied.status, path).toBe(401)
-      const allowed = await app.fetch(request(path, write(body)))
-      expect(allowed.status, path).toBe(200)
+      const response = await app.fetch(request(path, write(body)))
+      expect(response.status, path).toBe(200)
     }
     expect(fake.updateModel).toHaveBeenCalledOnce()
     expect(fake.archiveModel).toHaveBeenCalledOnce()

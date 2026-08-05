@@ -563,7 +563,12 @@ for (const requiredFence of [
   }
 }
 
-if (legacy.baseline_version !== 1 || legacy.source_commit !== 'main@b8167b7') {
+if (
+  legacy.baseline_version !== 2 ||
+  legacy.source_commit !== 'owner-amendment-2026-08-05' ||
+  legacy.public_mutation_auth !== 'deferred_to_rbac' ||
+  legacy.internal_resolve_auth !== 'service_bearer'
+) {
   fail('legacy S4 baseline version or source commit has drifted')
 }
 if (legacy.identity?.profile !== 'model-deployment-create-v1') {

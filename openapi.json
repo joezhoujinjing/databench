@@ -9648,13 +9648,6 @@
         ],
         "type": "object"
       }
-    },
-    "securitySchemes": {
-      "ModelDeploymentOperatorBearer": {
-        "bearerFormat": "opaque operator token",
-        "scheme": "bearer",
-        "type": "http"
-      }
     }
   },
   "info": {
@@ -20514,11 +20507,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Model Deployments"
         ]
@@ -21274,11 +21262,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Model Deployments"
         ]
@@ -21717,11 +21700,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Model Deployments"
         ]
@@ -22112,11 +22090,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]
@@ -22872,11 +22845,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]
@@ -23967,11 +23935,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Model Version Deployments"
         ]
@@ -24419,11 +24382,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Model Version Deployments"
         ]
@@ -24871,11 +24829,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]
@@ -25323,11 +25276,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Model Version Deployments"
         ]
@@ -25775,11 +25723,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Model Version Deployments"
         ]
@@ -26998,11 +26941,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]
@@ -27758,11 +27696,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]
@@ -28201,11 +28134,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]
@@ -28644,11 +28572,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]
@@ -29415,11 +29338,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]
@@ -30197,11 +30115,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ModelDeploymentOperatorBearer": []
-          }
-        ],
         "tags": [
           "v2 Models"
         ]

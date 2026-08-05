@@ -119,7 +119,7 @@
       "name": "Deployment 名称",
       "servedModel": "服务模型名称",
       "endpoint": "Endpoint Base URL",
-      "endpointHint": "MVP 仅支持 auth_mode=none。注册、探活和停用时，请将浏览器的后端连接 Token 配置为 Deployment operator token。",
+      "endpointHint": "MVP 仅支持 auth_mode=none。统一 RBAC 落地前，Model 写操作不再单独使用临时 operator token。",
       "register": "注册 Deployment",
       "registering": "正在注册…",
       "loading": "正在加载 Deployment…",

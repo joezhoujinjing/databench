@@ -857,7 +857,6 @@ DATABENCH_OBJECT_STORE=s3
 DATABENCH_CORS_ORIGINS=
 DATABENCH_ROOT=/var/lib/databench
 DATABENCH_V2_CURSOR_SECRET=test-cursor-secret-long-enough
-DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 DATABENCH_SERVICE_CREDENTIAL=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 PORT=8000
 EOF

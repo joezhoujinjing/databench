@@ -1,7 +1,8 @@
 # ADR 0019 — Model Registry、三种注册来源与版本绑定部署
 
 - **状态:** Accepted——owner 于 2026-08-04 在四项推荐范围列明后要求“下一步叭”，接受本 ADR、
-  技术方案与实施计划；随后要求“按照实施计划依次的实现吧”，授权按 Gate 顺序实施 MR0-MR8
+  技术方案与实施计划并授权按 Gate 顺序实施 MR0-MR8；2026-08-05 进一步决定在统一 RBAC 落地前移除
+  公共 Model 写操作的临时 operator token
 - **日期:** 2026-08-04
 - **决策者:** owner
 - **依赖:** [ADR 0011](0011-identity-hashing-versioning-v2.md)、
@@ -196,6 +197,23 @@ inspect strict request
 - Evaluation selector 使用 `Model → Version → active available Deployment`，并执行 capability admission；
 - Web wire type 继续只来自 OpenAPI generated client。
 
+### 12. 公共 Model 写操作的鉴权延后到统一 RBAC
+
+owner 于 2026-08-05 明确决定当前阶段不保留独立的 Model operator token，待产品实现统一登录与 RBAC
+时再为 Model mutation 增加用户、角色和权限校验。因此：
+
+- `/v2` 的 Model 注册、metadata/Alias、Deployment create/activate/check/disable 等公共 mutation 当前不要求
+  独立 Bearer；Web 与 CLI 不再为这些动作配置临时 operator token；
+- `/internal/v1|v2/model-deployments/{id}:resolve` 仍是服务间私有接口，只接受独立
+  `DATABENCH_SERVICE_CREDENTIAL`，且不进入 OpenAPI 或浏览器产品面；
+- 模型 endpoint 的 `auth_profile`/`credential_ref`、default-deny endpoint policy、pinned transport、secret
+  projection 与 redaction 均不属于用户 RBAC，本修订不放宽；
+- 当前无用户鉴权的 mutation 只属于现有单租户、本地/可信内网产品阶段。公共云 D3、公网开放或任意
+  不可信多用户部署前，必须先接受并实现统一认证/RBAC 或等价的入口授权边界。
+
+本节取代此前“公共 Model mutation 使用 operator Bearer”的要求；历史 MR0-MR8 gate 记录仍描述其当时
+通过的实现，不应被解释为当前 runtime 继续要求该临时令牌。
+
 ## Owner 接受的首期范围
 
 owner 接受：
@@ -206,7 +224,8 @@ owner 接受：
 3. CLI 分阶段交付：MR2 list/show，MR8 registration/deployment actions；
 4. 一级导航固定为“数据集 / 训练 / 模型 / 测评”。
 
-安全、identity 和 legacy compatibility 约束不是可选产品开关。
+除第 12 节由 owner 明确修订的临时 operator token 外，endpoint/secret、identity 和 legacy compatibility
+约束不是可选产品开关。
 
 ## 非目标
 
@@ -252,6 +271,7 @@ owner 接受：
 - **−** 需要新增多个 identity profile、表、constraint trigger、resolver v2 与 EvalScope adapter；
 - **−** offline public endpoint 只能登记、不能激活；
 - **−** 第一版一个 Version 一个 primary Artifact，暂不支持同版本多 serving variant；
+- **−** 统一 RBAC 落地前，公共 Model mutation 仅适用于单租户、本地/可信内网，不能据此开放公网；
 - **−** 完整交付需要跨 Schema/Catalog/Workspace/API/Web/EvalScope/deploy 的多个严格 Step。
 
 ## 实施授权边界

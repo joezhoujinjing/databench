@@ -54,9 +54,6 @@ export function createAppFromConfig(config: ApiConfig) {
     evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
     evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
     mcp: config.mcp,
-    ...(config.modelDeploymentOperatorToken === undefined
-      ? {}
-      : { modelDeploymentOperatorToken: config.modelDeploymentOperatorToken }),
     ...(config.modelDeploymentServiceCredential === undefined
       ? {}
       : { modelDeploymentServiceCredential: config.modelDeploymentServiceCredential }),
@@ -152,9 +149,6 @@ export async function startApiRuntime(
       evaluationArchiveMaxBytes: config.evaluationArchiveMaxBytes,
       evaluationArchiveSignedUrlTtlMs: config.evaluationArchiveSignedUrlTtlMs,
       mcp: mcpConfig,
-      ...(config.modelDeploymentOperatorToken === undefined
-        ? {}
-        : { modelDeploymentOperatorToken: config.modelDeploymentOperatorToken }),
       ...(config.modelDeploymentServiceCredential === undefined
         ? {}
         : { modelDeploymentServiceCredential: config.modelDeploymentServiceCredential }),

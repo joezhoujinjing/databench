@@ -1086,15 +1086,15 @@ health_status     = unknown | healthy | unhealthy
 per-Deployment secret reference 时必须新增版本化 provider/auth contract，不能把 secret 写进当前表、
 create identity 的公开投影或浏览器 payload。
 
-### 21.2 public/operator/service 三个投影与权限面
+### 21.2 public mutation 与 service 投影/权限面
 
 ```text
 Browser/public
   id, artifact_id, display_name, served_model_name,
   provider, registration_mode, auth_mode, lifecycle/health timestamps
 
-Operator create/check/disable
-  Authorization: Bearer <model deployment operator token>
+Public create/check/disable
+  统一 RBAC 落地前不使用独立临时 operator token
 
 EvalScope internal resolve
   Authorization: Bearer <model deployment service credential>
@@ -1102,9 +1102,8 @@ EvalScope internal resolve
 ```
 
 - public list/show 与 Artifact detail 不返回 endpoint、create digest 或 base-model internal resolve material；
-- create/check/disable 使用 operator Bearer；token unset 返回 unavailable，错误/跨角色 token 返回 401；
-- internal resolve 不登记进 OpenAPI，只接受 service credential。operator token 与 service credential
-  配置成相同值时 API 启动配置 fail closed；
+- 2026-08-05 owner 修订后，create/check/disable 在统一 RBAC 落地前不使用独立 operator Bearer；
+- internal resolve 不登记进 OpenAPI，只接受 service credential；
 - route 不接受 query smuggling；endpoint 拒绝 credentials、query、fragment 和 credential-like text；
 - internal resolver 只解析 `active` Deployment，并重新验证 Artifact/base-model composite binding。
 

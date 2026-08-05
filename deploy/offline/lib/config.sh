@@ -160,8 +160,7 @@ validate_existing_config() {
   for key in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB DATABASE_URL MINIO_ROOT_USER \
     MINIO_ROOT_PASSWORD S3_ENDPOINT S3_REGION S3_BUCKET S3_ACCESS_KEY_ID \
     S3_SECRET_ACCESS_KEY S3_FORCE_PATH_STYLE DATABENCH_OBJECT_STORE DATABENCH_ROOT \
-    DATABENCH_V2_CURSOR_SECRET DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN \
-    DATABENCH_SERVICE_CREDENTIAL PORT; do
+    DATABENCH_V2_CURSOR_SECRET DATABENCH_SERVICE_CREDENTIAL PORT; do
     count="$(grep -Ec "^${key}=.+" "$DATABENCH_CONFIG_FILE" || true)"
     [ "$count" -eq 1 ] || die "configuration must contain exactly one non-empty $key"
   done
@@ -169,39 +168,29 @@ validate_existing_config() {
     die "configuration permissions must be 0600: $DATABENCH_CONFIG_FILE"
   [ "$(stat -c '%U:%G' "$DATABENCH_CONFIG_FILE")" = 'root:root' ] ||
     die "configuration owner must be root:root: $DATABENCH_CONFIG_FILE"
-  local operator_token service_credential
-  operator_token="$(grep -E '^DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=' "$DATABENCH_CONFIG_FILE" | cut -d= -f2-)"
+  local service_credential
   service_credential="$(grep -E '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_CONFIG_FILE" | cut -d= -f2-)"
-  [[ "$operator_token" =~ ^[0-9a-f]{64}$ ]] ||
-    die "model Deployment operator token must be 32 random bytes in hex"
   [[ "$service_credential" =~ ^[0-9a-f]{64}$ ]] ||
     die "Databench service credential must be 32 random bytes in hex"
-  [ "$operator_token" != "$service_credential" ] ||
-    die "model Deployment operator and service credentials must be distinct"
 }
 
-ensure_model_deployment_credentials() {
-  local operator_count service_count operator_token service_credential temp
-  operator_count="$(grep -Ec '^DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=' "$DATABENCH_CONFIG_FILE" || true)"
+ensure_model_deployment_service_credential() {
+  local service_count service_credential temp
   service_count="$(grep -Ec '^DATABENCH_SERVICE_CREDENTIAL=' "$DATABENCH_CONFIG_FILE" || true)"
-  if [ "$operator_count" -eq 1 ] && [ "$service_count" -eq 1 ]; then
+  if [ "$service_count" -eq 1 ]; then
     return
   fi
-  [ "$operator_count" -eq 0 ] && [ "$service_count" -eq 0 ] ||
-    die "existing configuration has an incomplete model Deployment credential pair"
-  operator_token="$(random_secret)"
+  [ "$service_count" -eq 0 ] ||
+    die "existing configuration has duplicate Databench service credentials"
   service_credential="$(random_secret)"
   temp="${DATABENCH_CONFIG_FILE}.tmp.$$"
   umask 077
   cp "$DATABENCH_CONFIG_FILE" "$temp"
-  {
-    printf 'DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=%s\n' "$operator_token"
-    printf 'DATABENCH_SERVICE_CREDENTIAL=%s\n' "$service_credential"
-  } >> "$temp"
+  printf 'DATABENCH_SERVICE_CREDENTIAL=%s\n' "$service_credential" >> "$temp"
   chown root:root "$temp"
   chmod 0600 "$temp"
   mv -f "$temp" "$DATABENCH_CONFIG_FILE"
-  log "added model Deployment credentials to $DATABENCH_CONFIG_FILE"
+  log "added the Databench service credential to $DATABENCH_CONFIG_FILE"
 }
 
 validate_mcp_public_base_url() {
@@ -698,9 +687,9 @@ validate_backup_key() {
 
 ensure_secret_config() {
   local postgres_password minio_root_password minio_app_password cursor_secret
-  local operator_token service_credential temp
+  local service_credential temp
   if [ -e "$DATABENCH_CONFIG_FILE" ]; then
-    ensure_model_deployment_credentials
+    ensure_model_deployment_service_credential
     validate_existing_config
     log "reusing existing secrets from $DATABENCH_CONFIG_FILE"
   else
@@ -708,7 +697,6 @@ ensure_secret_config() {
     minio_root_password="$(random_secret)"
     minio_app_password="$(random_secret)"
     cursor_secret="$(random_secret)"
-    operator_token="$(random_secret)"
     service_credential="$(random_secret)"
     temp="${DATABENCH_CONFIG_FILE}.tmp.$$"
     umask 077
@@ -729,7 +717,6 @@ ensure_secret_config() {
       printf 'DATABENCH_CORS_ORIGINS=\n'
       printf 'DATABENCH_ROOT=/var/lib/databench\n'
       printf 'DATABENCH_V2_CURSOR_SECRET=%s\n' "$cursor_secret"
-      printf 'DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN=%s\n' "$operator_token"
       printf 'DATABENCH_SERVICE_CREDENTIAL=%s\n' "$service_credential"
       printf 'PORT=8000\n'
     } > "$temp"

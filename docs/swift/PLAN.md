@@ -280,8 +280,8 @@ Artifact。
 - verified-base LoRA Artifact deployability validation 与跨 namespace composite FK；
 - 首个 provider 固定为 operator-confirmed OpenAI-compatible endpoint，
   `registration_mode=operator_attested`、`auth_mode=none`；
-- public projection 隐藏 endpoint/create digest，operator Bearer 保护 create/check/disable，service credential
-  独占 internal resolve；
+- public projection 隐藏 endpoint/create digest；2026-08-05 owner 将 create/check/disable 的用户鉴权延后到
+  统一 RBAC，service credential 继续独占 internal resolve；
 - endpoint/served model 变化创建新 Deployment ID；disable terminal、health 与 lifecycle 独立；
 - 浏览器只使用 opaque Deployment ID；EvalScope 服务端 resolve endpoint/model；
 - Evaluation model selector 支持 Manual endpoint 与 Databench Deployment，且与 Dataset source 独立；
@@ -295,7 +295,8 @@ Artifact。
 
 - LoRA Deployment 显式绑定 base model + adapter；
 - endpoint 只由服务端/Provider 解析，浏览器不能用 Deployment ID 注入任意 URL；
-- operator/service role separation、unset/wrong/cross-role credential、public non-leak、internal non-OpenAPI、
+- public mutation/internal service credential separation、unset/wrong service credential、public non-leak、
+  internal non-OpenAPI、
   query smuggling 与 endpoint normalization tests；
 - fake/CPU OpenAI-compatible `/models` health probe；
 - 同一 Deployment 的 EvalScope exact Databench Dataset evaluation contract 完成；

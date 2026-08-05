@@ -3,12 +3,6 @@ import { isDeepStrictEqual } from 'node:util'
 
 // biome-ignore lint/suspicious/noUndeclaredEnvVars: Optional local harness override; the packaged smoke keeps the Compose default.
 const origin = process.env.DATABENCH_OFFLINE_SMOKE_ORIGIN ?? 'http://web'
-// biome-ignore lint/suspicious/noUndeclaredEnvVars: Compose injects this runtime-only secret; Turbo tasks must not receive it.
-const operatorToken = process.env.DATABENCH_MODEL_DEPLOYMENT_OPERATOR_TOKEN
-if (operatorToken === undefined || operatorToken.length < 32) {
-  throw new Error('Model Registry smoke requires the configured operator token')
-}
-
 const request = {
   target: {
     kind: 'create_model',
@@ -99,10 +93,7 @@ function runCli(args, input) {
 async function postJson(path, body) {
   const response = await fetch(origin + path, {
     method: 'POST',
-    headers: {
-      authorization: `Bearer ${operatorToken}`,
-      'content-type': 'application/json',
-    },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
   if (!response.ok) throw new Error(`${path} returned ${response.status}`)

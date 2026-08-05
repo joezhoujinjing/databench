@@ -1276,11 +1276,11 @@ phase/code/sanitized message。
 ### 10.3 Model Deployment API 与 internal resolve
 
 ```text
-POST /v2/model-deployments                         operator Bearer
+POST /v2/model-deployments
 GET  /v2/model-deployments                         public projection
 GET  /v2/model-deployments/{deployment_id}         public projection
-POST /v2/model-deployments/{deployment_id}:check   operator Bearer
-POST /v2/model-deployments/{deployment_id}:disable operator Bearer
+POST /v2/model-deployments/{deployment_id}:check
+POST /v2/model-deployments/{deployment_id}:disable
 
 GET  /internal/v1/model-deployments/{deployment_id}:resolve
      service credential；不登记 OpenAPI
@@ -1294,8 +1294,8 @@ endpoint、create digest 或 base-model resolve material。internal resolver 只
 served model、endpoint、Artifact/base-model binding 与 create digest；EvalScope client 的 origin 只能来自
 operator config，不能由 browser payload 覆盖。
 
-operator token 和 service credential 是两个角色，即使当前可信单 operator 环境也不得复用；配置为相同值
-时 fail closed。endpoint/served model 发生变化时必须新建 Deployment ID；disable 不删除历史 Run/Report；
+2026-08-05 owner 将上述公共 mutation 的用户鉴权延后到统一 RBAC。service credential 仍专用于 internal
+resolve。endpoint/served model 发生变化时必须新建 Deployment ID；disable 不删除历史 Run/Report；
 health 只是有时间戳的 `/models` observation，不自动改变 lifecycle。
 
 ## 11. 完整结果归档
@@ -1817,7 +1817,7 @@ upstream patch/vendor 和 gateway manifest。实际落点变化必须同步更�
 - task claim race、same/mismatched digest、process overwrite rejection、terminal replay、stop/fail race；
 - prepared/running restart、callback loss、`provider_interrupted`、startup/manual reconcile；
 - model endpoint scheme/host/port/IP allowlist、dual-stack DNS rebinding、redirect 和 metadata negative tests；
-- opaque Deployment payload、operator/service credential separation、一次 internal resolve、disabled admission、
+- opaque Deployment payload、public mutation/internal service credential separation、一次 internal resolve、disabled admission、
   claim 前零外部 resolve、anonymous FD spawn-child secret、terminal replay 不依赖当前容量/Registry/
   credential、endpoint/report/log redaction；
 - malicious Markdown/HTML/Plotly spec corpus；raw active HTML 永不到浏览器；

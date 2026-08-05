@@ -92,7 +92,7 @@
   finalize、Artifact REST/Web/download，以及 Session close 后 retained Artifact；最终镜像为
   `sha256:57f2448c3e06985d1989465703f8e4883aee71da40b79be3bdfb70e6dda1f74d`。S4 non-GPU 已增加
   `model_deployments_v2`、operator-attested OpenAI-compatible registry、public/internal projection、
-  operator/service credential 分离、`/models` health、disable admission、opaque Deployment selector、
+  当时的 operator/service credential 分离、`/models` health、disable admission、opaque Deployment selector、
   `evaluation-run-create-v2` 与 Dataset/Artifact/Deployment/Report lineage。浏览器只提交 Deployment ID，
   EvalScope 在服务端 resolve endpoint/model；`Benchmark + Deployment` 是 source-less expert/untracked，
   只有 `Databench Dataset + Deployment` 创建 Databench Evaluation Run。真实 Postgres/MinIO、Python 和
@@ -100,6 +100,10 @@
   `S4 non-GPU contract green / GPU deferred`。owner 已再次确认 GPU 全部后置。证据与实时状态见
   `docs/swift/STATUS.md`，S1 GPU 证据模板见
   `docs/swift/evidence/S1-GPU-STUDIO.md`。
+- Owner 于 2026-08-05 决定统一 RBAC 落地前不保留公共 Model mutation 的临时 operator token；Model
+  注册、metadata/Alias 与 Deployment create/activate/check/disable 当前无需浏览器 Bearer。internal v1/v2
+  Deployment resolve 的 service credential、模型 endpoint policy/credential 与 secret projection 保持不变。
+  当前无用户鉴权的 mutation 仍只限单租户、本地/可信内网，不授权公网开放。
 - ADR 0019 Model Registry 已完成 MR0-MR8。当前 `/models` 支持 immutable Model/Version、Artifact 注册、
   candidate Alias、ModelScope offline declared-only 与 operator-managed Repository 注册、append-only source
   evidence 和 refresh；共享 endpoint policy、approved-IP transport、legacy network hardening 与 offline

@@ -25,6 +25,9 @@ gpu_gate: deferred
 - **Capability:** Model Registry 已在已实现的本地/可信内网范围启用；这不包含 public-network activation、
   hosted secret backend、managed serving、Hugging Face runtime、GPU 或 production readiness
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
+- **用户鉴权:** owner 于 2026-08-05 将公共 Model mutation 的临时 operator token 延后到统一 RBAC；
+  internal resolve service credential 与 endpoint/secret 安全边界继续启用。当前开放写操作不授权公网或
+  不可信多用户部署
 - **GPU/V17:** Model Registry 的实施没有自动完成 V16/V17；两者随后已分别通过 GV16/GV-final。
   GPU gate 仍独立 deferred
 
@@ -55,6 +58,12 @@ gpu_gate: deferred
 2026-08-04，owner 进一步要求“按照实施计划依次的实现吧”，授权在每个 Gate 全绿并单独提交后继续
 MR1-MR8。该授权不包含跳 Step、公共云 D3 选型、hosted secret backend、managed serving、GPU gate 或
 production readiness。
+
+2026-08-05，owner 明确表示“暂时不需要这个防护，后面我们做 RBAC 的时候自然会加”。据此移除公共
+Model 注册、metadata/Alias 与 Deployment lifecycle mutation 的临时 operator Bearer，并从 OpenAPI、API
+配置、离线配置和浏览器说明同步移除。internal v1/v2 Deployment resolve 仍只接受独立 service
+credential；模型 endpoint auth/policy、credential projection 与 secret redaction 不变。该修订只适用于当前
+单租户、本地/可信内网产品边界，不开放公共云或公网。
 
 ## GMR0 完成证据
 
@@ -286,7 +295,8 @@ hosted secret backend，也不自动完成V16/V17、GE9、GPU或production readi
   与 context/output budget capability mismatch；registered + unavailable 显示完整 exclusion reason；
 - [x] verified、declared、healthy、compatible、evaluated 与 GPU validated 状态语义隔离；归档 Model 继续服务时
   显示告警，Restore Model 使用 CAS/幂等 action 且不改变原 Deployment row、lifecycle、availability 或 health；
-- [x] REST/OpenAPI/generated Web client、operator auth、Schema/Catalog/Workspace/API/Web 回归与中英文文案同步；
+- [x] REST/OpenAPI/generated Web client、当时的 operator auth、Schema/Catalog/Workspace/API/Web 回归与
+  中英文文案同步；operator auth 已由 2026-08-05 owner 修订取代；
 - [x] 真实 PostgreSQL + MinIO、ModelScope/operator-managed/fake Existing Service/fake EvalScope、桌面与窄屏真实
   浏览器、direct refresh、keyboard/a11y、中文/English 和 console gate 通过。
 

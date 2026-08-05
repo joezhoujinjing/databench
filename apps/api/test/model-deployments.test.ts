@@ -9,7 +9,6 @@ const VERSION_DEPLOYMENT_ID = '123e4567-e89b-42d3-a456-426614174098'
 const VERSION_ID = '123e4567-e89b-42d3-a456-426614174097'
 const MODEL_ID = '123e4567-e89b-42d3-a456-426614174096'
 const ARTIFACT_ID = '223e4567-e89b-42d3-a456-426614174000'
-const OPERATOR_TOKEN = 'operator-token-that-is-at-least-32-bytes'
 const SERVICE_TOKEN = 'service-token-that-is-distinct-and-long-enough'
 
 function publicDeployment(status: 'active' | 'disabled' = 'active') {
@@ -146,11 +145,10 @@ function bearer(token: string): Record<string, string> {
 }
 
 describe('Model Deployment HTTP contract', () => {
-  test('requires the operator role for create, health check, and disable', async () => {
+  test('allows public lifecycle mutations without a temporary operator token', async () => {
     const fake = workspace()
     const app = createTestApp({
       v2Workspace: fake,
-      modelDeploymentOperatorToken: OPERATOR_TOKEN,
       modelDeploymentServiceCredential: SERVICE_TOKEN,
     })
     const createBody = {
@@ -161,24 +159,10 @@ describe('Model Deployment HTTP contract', () => {
       endpoint_base_url: 'http://model-service:8000/v1',
       auth_mode: 'none',
     }
-    for (const token of [undefined, 'wrong-token-that-is-at-least-32-bytes', SERVICE_TOKEN]) {
-      const response = await app.fetch(
-        request('/v2/model-deployments', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token === undefined ? {} : bearer(token)),
-          },
-          body: JSON.stringify(createBody),
-        }),
-      )
-      expect(response.status).toBe(401)
-    }
-
     const created = await app.fetch(
       request('/v2/model-deployments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...bearer(OPERATOR_TOKEN) },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(createBody),
       }),
     )
@@ -189,7 +173,7 @@ describe('Model Deployment HTTP contract', () => {
       const response = await app.fetch(
         request(`/v2/model-deployments/${DEPLOYMENT_ID}:${suffix}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...bearer(OPERATOR_TOKEN) },
+          headers: { 'Content-Type': 'application/json' },
           body: '{}',
         }),
       )
@@ -213,10 +197,9 @@ describe('Model Deployment HTTP contract', () => {
     const fake = workspace()
     const app = createTestApp({
       v2Workspace: fake,
-      modelDeploymentOperatorToken: OPERATOR_TOKEN,
       modelDeploymentServiceCredential: SERVICE_TOKEN,
     })
-    for (const token of [undefined, OPERATOR_TOKEN]) {
+    for (const token of [undefined, 'public-client-token-that-cannot-resolve']) {
       const response = await app.fetch(
         request(`/internal/v1/model-deployments/${DEPLOYMENT_ID}:resolve`, {
           headers: token === undefined ? {} : bearer(token),
@@ -250,29 +233,17 @@ describe('Model Deployment HTTP contract', () => {
     }
   })
 
-  test('fails closed when role credentials are unset and rejects query smuggling', async () => {
+  test('keeps internal credentials fail-closed and rejects query smuggling', async () => {
     const app = createTestApp({ v2Workspace: workspace() })
-    const create = await app.fetch(
-      request('/v2/model-deployments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      }),
-    )
-    expect(create.status).toBe(503)
     const resolve = await app.fetch(
       request(`/internal/v1/model-deployments/${DEPLOYMENT_ID}:resolve`),
     )
     expect(resolve.status).toBe(503)
 
-    const configured = createTestApp({
-      v2Workspace: workspace(),
-      modelDeploymentOperatorToken: OPERATOR_TOKEN,
-    })
-    const smuggled = await configured.fetch(
+    const smuggled = await app.fetch(
       request(`/v2/model-deployments/${DEPLOYMENT_ID}:check?endpoint=http://evil.test`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...bearer(OPERATOR_TOKEN) },
+        headers: { 'Content-Type': 'application/json' },
         body: '{}',
       }),
     )
@@ -283,7 +254,6 @@ describe('Model Deployment HTTP contract', () => {
     const fake = workspace()
     const app = createTestApp({
       v2Workspace: fake,
-      modelDeploymentOperatorToken: OPERATOR_TOKEN,
       modelDeploymentServiceCredential: SERVICE_TOKEN,
     })
     const createBody = {
@@ -298,7 +268,7 @@ describe('Model Deployment HTTP contract', () => {
     const created = await app.fetch(
       request(`/v2/model-versions/${VERSION_ID}/deployments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...bearer(OPERATOR_TOKEN) },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(createBody),
       }),
     )
@@ -316,7 +286,7 @@ describe('Model Deployment HTTP contract', () => {
       const response = await app.fetch(
         request(`/v2/model-versions/${VERSION_ID}/deployments/${VERSION_DEPLOYMENT_ID}:${suffix}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...bearer(OPERATOR_TOKEN) },
+          headers: { 'Content-Type': 'application/json' },
           body: '{}',
         }),
       )
@@ -332,6 +302,7 @@ describe('Model Deployment HTTP contract', () => {
     expect(await resolved.json()).toEqual(resolvedVersionDeployment())
     const openapi = JSON.stringify(createOpenApiDocument())
     expect(openapi).not.toContain('/internal/v2/model-deployments')
+    expect(openapi).not.toContain('ModelDeploymentOperatorBearer')
   })
 
   test('keeps new Deployment IDs invisible to legacy public and internal v1 routes', async () => {

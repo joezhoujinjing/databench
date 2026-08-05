@@ -130,7 +130,7 @@ apps/api/
 │  │  ├─ request.ts            请求 metadata / abort
 │  │  └─ v2-workspace.ts       惰性注入 Workspace
 │  ├─ routes/
-│  │  ├─ model-deployment-auth.ts operator/service Bearer 角色分离
+│  │  ├─ model-deployment-auth.ts internal Deployment resolve service Bearer
 │  │  ├─ meta.ts               /health /version /capabilities
 │  │  └─ v2/
 │  │     ├─ index.ts            v2 route registry

@@ -153,7 +153,7 @@
       "evidence": [
         {
           "path": "apps/api/test/model-deployments.test.ts",
-          "test": "requires the operator role for create, health check, and disable"
+          "test": "keeps internal credentials fail-closed and rejects query smuggling"
         },
         {
           "path": "apps/web/src/api/backend-scope.test.ts",

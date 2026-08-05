@@ -777,28 +777,33 @@ JSON 放进当前 wire contract。
 ### 11.1 公共 REST 草案
 
 ```text
-POST /v2/model-registrations:inspect                  operator Bearer
-POST /v2/models:register                              operator Bearer
+POST /v2/model-registrations:inspect
+POST /v2/models:register
 GET  /v2/models
 GET  /v2/models/{model_id}
-POST /v2/models/{model_id}:update                     operator Bearer + metadata CAS
-POST /v2/models/{model_id}:archive                    operator Bearer
+POST /v2/models/{model_id}:update                     metadata CAS
+POST /v2/models/{model_id}:archive
 
-POST /v2/models/{model_id}/versions:register          operator Bearer
+POST /v2/models/{model_id}/versions:register
 GET  /v2/models/{model_id}/versions
 GET  /v2/model-versions/{version_id}
 
-POST /v2/model-versions/{version_id}/deployments      operator Bearer
+POST /v2/model-versions/{version_id}/deployments
 GET  /v2/model-versions/{version_id}/deployments
-POST /v2/model-versions/{version_id}/deployments/{deployment_id}:activate operator Bearer
-POST /v2/model-versions/{version_id}/deployments/{deployment_id}:check    operator Bearer
-POST /v2/model-versions/{version_id}/deployments/{deployment_id}:disable  operator Bearer
-POST /v2/model-versions/{version_id}:refresh-source-evidence              operator Bearer
-POST /v2/model-versions/{version_id}/deployments/{deployment_id}:adopt    operator Bearer
+POST /v2/model-versions/{version_id}/deployments/{deployment_id}:activate
+POST /v2/model-versions/{version_id}/deployments/{deployment_id}:check
+POST /v2/model-versions/{version_id}/deployments/{deployment_id}:disable
+POST /v2/model-versions/{version_id}:refresh-source-evidence
+POST /v2/model-versions/{version_id}/deployments/{deployment_id}:adopt
 
 GET  /v2/models/{model_id}/aliases
-POST /v2/models/{model_id}/aliases/{alias}:move       operator Bearer + CAS
+POST /v2/models/{model_id}/aliases/{alias}:move       CAS
 ```
+
+2026-08-05 owner 修订：统一 RBAC 落地前，上述公共 mutation 不再使用独立临时 operator Bearer。
+internal v1/v2 Deployment resolve 仍只接受 service credential；endpoint policy、模型服务 credential 与
+secret projection 不变。当前无用户鉴权的 mutation 仅用于单租户、本地/可信内网产品阶段，不能作为公网
+开放依据。
 
 现有以下 routes 保持兼容：
 
@@ -890,7 +895,7 @@ Public Web/OpenAPI
   Model/Version identity、source mutability、当前 verification、Artifact public metadata、
   Deployment opaque ID/served model/lifecycle/availability/health/declared capability；不含 endpoint/credential ref
 
-Operator action
+Mutation / inspect response
   registration source、endpoint、auth profile、credential ref、inspect warnings
 
 Internal EvalScope resolve
@@ -1153,7 +1158,7 @@ EvalScope → Databench internal resolver
 - offline `public_network` 保持 registered + unavailable；禁止 ambient proxy；
 - unknown/wrong credential ref、atomic generation rotation、running-task snapshot、FD injection、
   exact secret/ref/header 的 public/log/report/archive/tracing non-leak；
-- operator/service role separation 与 endpoint/query/header smuggling；
+- public mutation 无临时 operator token、internal service credential 隔离与 endpoint/query/header smuggling；
 - internal v1/v2 resolver 都只消费 opaque Deployment ID，v2 strict union 不返回 secret value。
 
 ### 17.4 Web/CLI

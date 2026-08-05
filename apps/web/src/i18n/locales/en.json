@@ -119,7 +119,7 @@
       "name": "Deployment name",
       "servedModel": "Served model name",
       "endpoint": "Endpoint base URL",
-      "endpointHint": "MVP supports auth_mode=none. Configure the browser backend token as the Deployment operator token for register, check, and disable actions.",
+      "endpointHint": "MVP supports auth_mode=none. Model mutations do not use a temporary operator token before unified RBAC is introduced.",
       "register": "Register Deployment",
       "registering": "Registering…",
       "loading": "Loading Deployments…",

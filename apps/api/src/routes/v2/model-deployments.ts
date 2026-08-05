@@ -12,7 +12,7 @@ import {
 import { createRoute, type OpenAPIHono } from '@hono/zod-openapi'
 import type { ApiEnv } from '../../context.js'
 import { getV2Workspace } from '../../context.js'
-import { requireModelDeploymentBearer } from '../model-deployment-auth.js'
+import { requireModelDeploymentServiceBearer } from '../model-deployment-auth.js'
 import {
   jsonResponseV2,
   V2_MODEL_DEPLOYMENT_ACTION_ERROR_RESPONSES,
@@ -24,10 +24,8 @@ import { assertJsonContentTypeV2, readRawJsonRequestV2 } from './transport.js'
 
 const CREATE_MAX_BYTES = 16 * 1024
 const ACTION_MAX_BYTES = 1024
-const OPERATOR_SECURITY = [{ ModelDeploymentOperatorBearer: [] }]
 
 export interface RegisterV2ModelDeploymentRoutesOptions {
-  readonly modelDeploymentOperatorToken?: string
   readonly modelDeploymentServiceCredential?: string
 }
 
@@ -35,7 +33,6 @@ const createDeploymentRoute = createRoute({
   method: 'post',
   path: '/v2/model-deployments',
   operationId: 'createModelDeploymentV2',
-  security: OPERATOR_SECURITY,
   tags: ['v2 Model Deployments'],
   request: {
     body: {
@@ -82,7 +79,6 @@ function actionRoute(suffix: 'disable' | 'check') {
     method: 'post',
     path: `/v2/model-deployments/{deployment_id}:${suffix}`,
     operationId: `${suffix}ModelDeploymentV2`,
-    security: OPERATOR_SECURITY,
     tags: ['v2 Model Deployments'],
     request: {
       params: ModelDeploymentParamsV2Schema,
@@ -102,11 +98,6 @@ export function registerV2ModelDeploymentRoutes(
   app: OpenAPIHono<ApiEnv>,
   options: RegisterV2ModelDeploymentRoutesOptions,
 ): void {
-  app.openAPIRegistry.registerComponent('securitySchemes', 'ModelDeploymentOperatorBearer', {
-    type: 'http',
-    scheme: 'bearer',
-    bearerFormat: 'opaque operator token',
-  })
   for (const route of [
     createDeploymentRoute,
     listDeploymentsRoute,
@@ -119,7 +110,6 @@ export function registerV2ModelDeploymentRoutes(
 
   app.post(createDeploymentRoute.getRoutingPath(), async (context) => {
     assertNoQuery(context.req.url)
-    requireModelDeploymentBearer(context, options.modelDeploymentOperatorToken, 'operator')
     assertJsonContentTypeV2(context.req.raw)
     const request = await readRawJsonRequestV2(context, CreateModelDeploymentRequestV2Schema, {
       maxBytes: CREATE_MAX_BYTES,
@@ -152,7 +142,6 @@ export function registerV2ModelDeploymentRoutes(
 
   app.post('/v2/model-deployments/:target{[^/]+:disable}', async (context) => {
     assertNoQuery(context.req.url)
-    requireModelDeploymentBearer(context, options.modelDeploymentOperatorToken, 'operator')
     const deploymentId = actionTarget(context.req.param('target'), ':disable')
     ModelDeploymentParamsV2Schema.parse({ deployment_id: deploymentId })
     assertJsonContentTypeV2(context.req.raw)
@@ -168,7 +157,6 @@ export function registerV2ModelDeploymentRoutes(
 
   app.post('/v2/model-deployments/:target{[^/]+:check}', async (context) => {
     assertNoQuery(context.req.url)
-    requireModelDeploymentBearer(context, options.modelDeploymentOperatorToken, 'operator')
     const deploymentId = actionTarget(context.req.param('target'), ':check')
     ModelDeploymentParamsV2Schema.parse({ deployment_id: deploymentId })
     assertJsonContentTypeV2(context.req.raw)
@@ -184,7 +172,7 @@ export function registerV2ModelDeploymentRoutes(
 
   app.get('/internal/v1/model-deployments/:target{[^/]+:resolve}', async (context) => {
     assertNoQuery(context.req.url)
-    requireModelDeploymentBearer(context, options.modelDeploymentServiceCredential, 'service')
+    requireModelDeploymentServiceBearer(context, options.modelDeploymentServiceCredential)
     const deploymentId = actionTarget(context.req.param('target'), ':resolve')
     ModelDeploymentParamsV2Schema.parse({ deployment_id: deploymentId })
     const deployment = await getV2Workspace(context).resolveModelDeployment(deploymentId, {

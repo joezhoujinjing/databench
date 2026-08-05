@@ -1,8 +1,10 @@
 {
-  "baseline_version": 1,
-  "captured_at": "2026-08-04",
-  "source_commit": "main@b8167b7",
-  "purpose": "Protect ADR 0017/0018 artifact-bound-v1 semantics while allowing additive Model Registry routes and schemas.",
+  "baseline_version": 2,
+  "captured_at": "2026-08-05",
+  "source_commit": "owner-amendment-2026-08-05",
+  "purpose": "Protect ADR 0017/0018 artifact-bound-v1 identity, data, projection, and internal resolver semantics while recording the owner-approved removal of temporary public mutation auth.",
+  "public_mutation_auth": "deferred_to_rbac",
+  "internal_resolve_auth": "service_bearer",
   "identity": {
     "profile": "model-deployment-create-v1",
     "canonical_json": "{\"artifact_id\":\"22222222-2222-4222-8222-222222222222\",\"auth_mode\":\"none\",\"display_name\":\"customer-service-lora\",\"endpoint_base_url\":\"http://model.internal:8000/v1\",\"model_deployment_create_profile\":\"model-deployment-create-v1\",\"namespace\":\"11111111-1111-4111-8111-111111111111\",\"provider\":\"openai_compatible\",\"served_model_name\":\"customer-service-lora-v1\"}",
@@ -20,11 +22,11 @@
   "openapi": {
     "algorithm": "sha256-sorted-json-v1",
     "operations": {
-      "POST /v2/model-deployments": "6491029cdee213e54c93c4293acda121d587fa9c62c098d8f81c7a9ffe9377ca",
+      "POST /v2/model-deployments": "2347ea9063fee31870086d76d0e1b017e9634246f49ac65dd9dc874f40b36421",
       "GET /v2/model-deployments": "2db38e5bc62b41776218d870db991443250d6e9581a569f3016902822e07c77e",
       "GET /v2/model-deployments/{deployment_id}": "7ce748b73642485a9277d408b71b061e012107ee9d420229fe9902dea32d3f9b",
-      "POST /v2/model-deployments/{deployment_id}:check": "c18c90d85750d437c74f7abb1ba819a52d3aacbcb05a271f6d6f865ad019d5b1",
-      "POST /v2/model-deployments/{deployment_id}:disable": "9051acaae38a9bce8e5bd0348098084ed35a4691817eeb9197ecda63c1f9a07d"
+      "POST /v2/model-deployments/{deployment_id}:check": "42dbf744cc8b9e4d27c3fa3319434f3f6841dd074bdc45e44aedb548ad2d130b",
+      "POST /v2/model-deployments/{deployment_id}:disable": "22a52da5f84c296cd2de69722cd87b90d3c804f34c018d0a8d67f31337fef7a4"
     },
     "schemas": {
       "CreateModelDeploymentRequestV2": "b80e18ac347f4a4c243f937ecaf164b60d39c71aad055c3b6823fa711de57a70",
