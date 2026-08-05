@@ -20,7 +20,7 @@ describe('Evaluation UI foundation static boundaries', () => {
     expect(joined).not.toMatch(/target=["']_blank["'][^>]*href=.*generated-documents/u)
   })
 
-  test('keeps EvalScope tokens scoped and registers every route lazily', async () => {
+  test('keeps EvalScope tokens scoped and registers product-heavy routes lazily', async () => {
     const css = await readFile(path.join(evaluationsRoot, 'styles/tokens.css'), 'utf8')
     const router = await readFile(path.join(webSourceRoot, 'router.tsx'), 'utf8')
 
@@ -43,7 +43,14 @@ describe('Evaluation UI foundation static boundaries', () => {
     ]) {
       expect(router).toContain(`path: '${route}'`)
     }
-    expect(router.match(/lazyRouteComponent\(/gu)).toHaveLength(12)
+    for (const modelRoute of [
+      '/models',
+      '/models/$modelId',
+      '/models/$modelId/versions/$versionId',
+    ]) {
+      expect(router).toContain(`path: '${modelRoute}'`)
+    }
+    expect(router.match(/lazyRouteComponent\(/gu)).toHaveLength(15)
   })
 
   test('keeps all five evaluation entries in the responsive workspace sidebar', async () => {

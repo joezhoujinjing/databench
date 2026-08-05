@@ -1,6 +1,7 @@
 import type {
   CatalogModelAliasRowV2,
   CatalogModelDeploymentAdoptionResultV2,
+  CatalogModelDeploymentAdoptionRowV2,
   CatalogModelListItemV2,
   CatalogModelRowV2,
   CatalogModelSourceEvidenceRowV2,
@@ -11,6 +12,8 @@ import type {
 import {
   type ModelAliasV2,
   ModelAliasV2Schema,
+  type ModelDeploymentAdoptionRecordV2,
+  ModelDeploymentAdoptionRecordV2Schema,
   type ModelDeploymentAdoptionV2,
   ModelDeploymentAdoptionV2Schema,
   type ModelListItemV2,
@@ -40,6 +43,18 @@ export function modelFromCatalogV2(row: CatalogModelRowV2): ModelV2 {
   })
 }
 
+export function modelDeploymentAdoptionRecordFromCatalogV2(
+  row: CatalogModelDeploymentAdoptionRowV2,
+): ModelDeploymentAdoptionRecordV2 {
+  return ModelDeploymentAdoptionRecordV2Schema.parse({
+    model_id: row.modelId,
+    model_version_id: row.modelVersionId,
+    deployment_id: row.deploymentId,
+    artifact_id: row.artifactId,
+    adopted_at: row.adoptedAt.toISOString(),
+  })
+}
+
 export function modelListItemFromCatalogV2(row: CatalogModelListItemV2): ModelListItemV2 {
   const candidateClassification =
     row.candidate === null
@@ -59,7 +74,41 @@ export function modelListItemFromCatalogV2(row: CatalogModelListItemV2): ModelLi
             base_model_reference: row.candidate.version.baseModelReference,
           },
     version_count: row.versionCount,
+    deployment_summary: {
+      total: row.deploymentSummary.total,
+      registered: row.deploymentSummary.registered,
+      active: row.deploymentSummary.active,
+      disabled: row.deploymentSummary.disabled,
+      healthy_active: row.deploymentSummary.healthyActive,
+    },
+    latest_comparable_evaluation:
+      row.latestComparableEvaluation === null
+        ? null
+        : {
+            run_id: row.latestComparableEvaluation.runId,
+            model_version_id: row.latestComparableEvaluation.modelVersionId,
+            model_deployment_id: row.latestComparableEvaluation.modelDeploymentId,
+            benchmark: row.latestComparableEvaluation.benchmark,
+            dataset_version: row.latestComparableEvaluation.datasetVersion,
+            metric_id: row.latestComparableEvaluation.metricId,
+            output_key: row.latestComparableEvaluation.outputKey,
+            score: row.latestComparableEvaluation.score,
+            finished_at: row.latestComparableEvaluation.finishedAt.toISOString(),
+            reproducibility: {
+              kind:
+                row.latestComparableEvaluation.sourceMutability === 'immutable'
+                  ? 'exact_source'
+                  : row.latestComparableEvaluation.sourceMutability === 'mutable'
+                    ? 'mutable_observation'
+                    : 'unknown_observation',
+              source_mutability: row.latestComparableEvaluation.sourceMutability,
+              verification_level: row.latestComparableEvaluation.verificationLevel,
+              source_evidence_digest: row.latestComparableEvaluation.sourceEvidenceDigest,
+              source_observed_at: row.latestComparableEvaluation.sourceObservedAt.toISOString(),
+            },
+          },
     adopted_deployment_count: row.adoptedDeploymentCount,
+    active_adopted_deployment_count: row.activeAdoptedDeploymentCount,
     healthy_adopted_deployment_count: row.healthyAdoptedDeploymentCount,
   })
 }

@@ -13,6 +13,25 @@ export const en: Dict = {
   deploymentBinding: 'Databench Model Deployment binding',
   deploymentBindingHint:
     'Only the opaque Deployment ID is sent by the browser. EvalScope resolves the model and endpoint server-side.',
+  registryBinding: 'Model Registry binding',
+  registryBindingHint:
+    'Choose Model, immutable Version identity, then an active and available Deployment admitted by the EvalScope chat profile (minimum context: {{count}} tokens). The profile includes a 4,096-token input budget plus the configured output budget.',
+  loadMoreRegistryItems: 'Load more',
+  registryModel: 'Model',
+  registryVersion: 'Model Version',
+  registryDeployment: 'Available Deployment',
+  selectModel: 'Select a Model',
+  selectVersion: 'Select a Version',
+  loadingCandidates: 'Checking Deployment admission…',
+  noVersionDeployments: 'This Version has no registered Deployment.',
+  noRegistryModels: 'No active Model is registered.',
+  selectorExclusions: {
+    not_active: 'Deployment is not active',
+    unavailable: 'Deployment is currently unavailable',
+    interface_missing: 'chat_completions capability is not declared',
+    context_limit_unknown: 'Context limit is unknown',
+    context_limit_insufficient: 'Context limit is insufficient',
+  },
   deploymentBenchmarkExpertTitle: 'Expert mode · untracked Benchmark run',
   deploymentBenchmarkExpertHint:
     'This combination runs the EvalScope Benchmark against the Deployment, but it does not create a Databench Evaluation Run or Dataset/Artifact/Deployment lineage. Select a Databench Dataset for tracked lineage.',
@@ -84,6 +103,25 @@ export const zh: Dict = {
   deploymentBinding: 'Databench 模型 Deployment 绑定',
   deploymentBindingHint:
     '浏览器只提交 opaque Deployment ID；模型名称和 endpoint 由 EvalScope 在服务端解析。',
+  registryBinding: 'Model Registry 绑定',
+  registryBindingHint:
+    '依次选择 Model、不可变 Version 身份，以及通过 EvalScope chat profile 准入的 active + available Deployment（最小 context：{{count}} token）。该 profile 包含 4,096 token 输入预算和当前配置的输出预算。',
+  loadMoreRegistryItems: '加载更多',
+  registryModel: '模型',
+  registryVersion: '模型版本',
+  registryDeployment: '可用 Deployment',
+  selectModel: '选择模型',
+  selectVersion: '选择版本',
+  loadingCandidates: '正在检查 Deployment 准入…',
+  noVersionDeployments: '该 Version 尚未注册 Deployment。',
+  noRegistryModels: '当前没有 active Model。',
+  selectorExclusions: {
+    not_active: 'Deployment 不是 active 状态',
+    unavailable: 'Deployment 当前不可用',
+    interface_missing: '未声明 chat_completions 能力',
+    context_limit_unknown: 'Context limit 未知',
+    context_limit_insufficient: 'Context limit 不足',
+  },
   deploymentBenchmarkExpertTitle: '专家模式 · 不纳管的 Benchmark 任务',
   deploymentBenchmarkExpertHint:
     '该组合会使用 Deployment 运行 EvalScope Benchmark，但不会创建 Databench Evaluation Run，也不会形成 Dataset/Artifact/Deployment lineage。如需完整纳管，请选择 Databench 数据集。',

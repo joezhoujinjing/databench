@@ -44,6 +44,8 @@ import {
   LayoutConflictDetailV2Schema,
   LayoutConflictErrorResponseV2Schema,
   LineagePageRequestV2Schema,
+  ModelRegistryConflictDetailV2Schema,
+  ModelRegistryConflictErrorResponseV2Schema,
   NotFoundDetailV2Schema,
   NotFoundErrorResponseV2Schema,
   PostTrainingV2CapabilitySchema,
@@ -398,6 +400,19 @@ describe('V12 typed error envelopes', () => {
       },
     ],
     [
+      ModelRegistryConflictErrorResponseV2Schema,
+      {
+        error: {
+          code: 'model_registry_conflict',
+          message: 'Model Registry state conflicts with this request',
+          detail: {
+            reason: 'model_key_conflict',
+            registration_digest: 'e'.repeat(64),
+          },
+        },
+      },
+    ],
+    [
       UnsupportedProfileErrorResponseV2Schema,
       {
         error: {
@@ -499,6 +514,7 @@ describe('V12 typed error envelopes', () => {
       'determinism_conflict',
       'layout_conflict',
       'ref_conflict',
+      'model_registry_conflict',
       'unsupported_profile',
       'fidelity_error',
       'integrity_error',
@@ -520,6 +536,7 @@ describe('V12 typed error envelopes', () => {
       'determinism_conflict',
       'layout_conflict',
       'ref_conflict',
+      'model_registry_conflict',
     ]) {
       const response = errorCases.find(([, candidate]) => candidate.error.code === code)?.[1]
       expect(ErrorResponse409V2Schema.safeParse(response).success).toBe(true)
@@ -622,6 +639,7 @@ describe('V12 reusable component generation', () => {
       ['LayoutConflictDetailV2', LayoutConflictDetailV2Schema],
       ['RefConflictDetailV2', RefConflictDetailV2Schema],
       ['RefStateConflictDetailV2', RefStateConflictDetailV2Schema],
+      ['ModelRegistryConflictDetailV2', ModelRegistryConflictDetailV2Schema],
       ['TransformJobStateConflictDetailV2', TransformJobStateConflictDetailV2Schema],
       ['UnsupportedProfileDetailV2', UnsupportedProfileDetailV2Schema],
       ['FidelityErrorDetailV2', FidelityErrorDetailV2Schema],
@@ -651,6 +669,7 @@ describe('V12 reusable component generation', () => {
       ['IdentityConflictErrorResponseV2', IdentityConflictErrorResponseV2Schema],
       ['RefConflictErrorResponseV2', RefConflictErrorResponseV2Schema],
       ['RefStateConflictErrorResponseV2', RefStateConflictErrorResponseV2Schema],
+      ['ModelRegistryConflictErrorResponseV2', ModelRegistryConflictErrorResponseV2Schema],
       ['FidelityErrorResponseV2', FidelityErrorResponseV2Schema],
       ['UnsupportedProfileErrorResponseV2', UnsupportedProfileErrorResponseV2Schema],
       ['DeterminismConflictErrorResponseV2', DeterminismConflictErrorResponseV2Schema],
@@ -683,6 +702,7 @@ describe('V12 reusable component generation', () => {
       'ErrorResponse500V2',
       'ErrorResponse503V2',
       'IngestConflictErrorResponseV2',
+      'ModelRegistryConflictDetailV2',
       'ValidationOrUnsupportedProfileErrorResponseV2',
     ])
     for (const [id] of components) {

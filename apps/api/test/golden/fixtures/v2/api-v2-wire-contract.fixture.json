@@ -1,5 +1,5 @@
 {
-  "fixture_version": 3,
+  "fixture_version": 5,
   "operations": [
     "DELETE /v2/refs/{name}",
     "GET /v2/converters",
@@ -18,7 +18,9 @@
     "GET /v2/model-deployments",
     "GET /v2/model-deployments/{deployment_id}",
     "GET /v2/model-versions/{version_id}",
+    "GET /v2/model-versions/{version_id}/deployment-adoptions",
     "GET /v2/model-versions/{version_id}/deployments",
+    "GET /v2/model-versions/{version_id}/evaluation-deployments",
     "GET /v2/models",
     "GET /v2/models/{model_id}",
     "GET /v2/models/{model_id}/aliases",
@@ -58,6 +60,7 @@
     "POST /v2/models/{model_id}/aliases/{alias}:move",
     "POST /v2/models/{model_id}/versions:register",
     "POST /v2/models/{model_id}:archive",
+    "POST /v2/models/{model_id}:restore",
     "POST /v2/models/{model_id}:update",
     "POST /v2/models:register",
     "POST /v2/refs/{name}:restore",
@@ -91,6 +94,8 @@
     "ModelAliasPageV2",
     "ModelAliasV2",
     "ModelDeploymentAdoptionV2",
+    "ModelDeploymentAdoptionPageV2",
+    "ModelEvaluationDeploymentSelectorV2",
     "ModelPageV2",
     "ModelRegistrationCommitResultV2",
     "ModelV2",

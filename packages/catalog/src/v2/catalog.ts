@@ -34,6 +34,7 @@ import {
   listModelVersionsV2,
   registerModelVersionV2,
   replayModelRegistrationV2,
+  restoreModelV2,
   updateModelMetadataV2,
   updateModelVersionDeploymentHealthV2,
 } from './model-registry.js'
@@ -66,8 +67,9 @@ import type {
   CatalogModelArtifactPageV2,
   CatalogModelArtifactRowV2,
   CatalogModelCursorV2,
+  CatalogModelDeploymentAdoptionCursorV2,
+  CatalogModelDeploymentAdoptionPageV2,
   CatalogModelDeploymentAdoptionResultV2,
-  CatalogModelDeploymentAdoptionRowV2,
   CatalogModelDeploymentCursorV2,
   CatalogModelDeploymentHealthV2,
   CatalogModelDeploymentListFilterV2,
@@ -133,6 +135,7 @@ import type {
   PrepareEvaluationRunArchiveV2,
   RegisterLayoutV2,
   RegisterTransformResultV2,
+  RestoreCatalogModelV2,
   RestoreRefResultV2,
   RestoreRefV2,
   SetTransformJobStagingKeysV2,
@@ -912,6 +915,16 @@ export class V2Catalog {
           filter.modelDeploymentId === null
             ? Prisma.sql`TRUE`
             : Prisma.sql`"model_deployment_id" = ${filter.modelDeploymentId}::uuid`
+        } AND
+        ${
+          filter.modelId === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`"model_id" = ${filter.modelId}::uuid`
+        } AND
+        ${
+          filter.modelVersionId === null
+            ? Prisma.sql`TRUE`
+            : Prisma.sql`"model_version_id" = ${filter.modelVersionId}::uuid`
         } AND
         ${filter.status === null ? Prisma.sql`TRUE` : Prisma.sql`"status" = ${filter.status}`} AND
         ${
@@ -2035,6 +2048,10 @@ export class V2Catalog {
     return await archiveModelV2(this.#client, input)
   }
 
+  async restoreModel(input: RestoreCatalogModelV2): Promise<CatalogModelRowV2 | null> {
+    return await restoreModelV2(this.#client, input)
+  }
+
   async compareAndSetModelAlias(input: CompareAndSetModelAliasV2): Promise<CatalogModelAliasRowV2> {
     return await compareAndSetModelAliasV2(this.#client, input)
   }
@@ -2061,8 +2078,16 @@ export class V2Catalog {
   async listModelDeploymentAdoptions(
     namespaceId: string,
     modelVersionId: string,
-  ): Promise<readonly CatalogModelDeploymentAdoptionRowV2[]> {
-    return await listModelDeploymentAdoptionsV2(this.#client, namespaceId, modelVersionId)
+    before: CatalogModelDeploymentAdoptionCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelDeploymentAdoptionPageV2> {
+    return await listModelDeploymentAdoptionsV2(
+      this.#client,
+      namespaceId,
+      modelVersionId,
+      before,
+      limit,
+    )
   }
 
   async createOrReadModelVersionDeployment(
@@ -5624,6 +5649,12 @@ function validateEvaluationRunListFilter(filter: CatalogEvaluationRunListFilterV
   if (filter.modelDeploymentId !== null && !UUID.test(filter.modelDeploymentId)) {
     throw new V2CatalogInputError('Evaluation run Model Deployment filter is invalid')
   }
+  if (filter.modelId !== null && !UUID.test(filter.modelId)) {
+    throw new V2CatalogInputError('Evaluation run Model filter is invalid')
+  }
+  if (filter.modelVersionId !== null && !UUID.test(filter.modelVersionId)) {
+    throw new V2CatalogInputError('Evaluation run Model Version filter is invalid')
+  }
   if (filter.status !== null) parseEvaluationRunStatus(filter.status)
 }
 
@@ -5685,6 +5716,7 @@ function validateEvaluationMetrics(metrics: readonly CatalogEvaluationMetricV2[]
   if (Buffer.byteLength(JSON.stringify(metrics)) > MAX_EVALUATION_METRICS_BYTES) {
     throw new V2CatalogInputError('Evaluation metrics exceed the byte bound')
   }
+  const scoredOutputs = new Set<string>()
   for (const metric of metrics) {
     validateEvaluationText(metric.dataset, 512, 'metric dataset')
     if (metric.subset !== null) validateEvaluationText(metric.subset, 512, 'metric subset')
@@ -5696,6 +5728,13 @@ function validateEvaluationMetrics(metrics: readonly CatalogEvaluationMetricV2[]
         throw new V2CatalogInputError('Evaluation Metric ID is invalid')
       }
       validateEvaluationText(metric.outputKey as string, 128, 'metric output key')
+      if (metric.score !== null) {
+        const outputIdentity = `${metric.metricId}\u0000${metric.outputKey}`
+        if (scoredOutputs.has(outputIdentity)) {
+          throw new V2CatalogInputError('Evaluation Metric output score must be unique')
+        }
+        scoredOutputs.add(outputIdentity)
+      }
     }
     validateEvaluationText(metric.metric, 512, 'metric name')
     if (metric.score !== null && !Number.isFinite(metric.score)) {

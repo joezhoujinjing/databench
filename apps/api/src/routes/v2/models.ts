@@ -6,6 +6,8 @@ import {
   CommitModelRegistryRegistrationRequestV2Schema,
   ModelAliasPageV2Schema,
   ModelAliasV2Schema,
+  ModelDeploymentAdoptionPageRequestV2Schema,
+  ModelDeploymentAdoptionPageV2Schema,
   ModelDeploymentAdoptionV2Schema,
   ModelPageRequestV2Schema,
   ModelPageV2Schema,
@@ -21,6 +23,7 @@ import {
   MoveCandidateModelAliasV2Schema,
   NotFoundError,
   RefreshModelSourceEvidenceRequestV2Schema,
+  RestoreModelV2Schema,
   UpdateModelMetadataV2Schema,
   ValidationError,
 } from '@databench/schema'
@@ -104,8 +107,13 @@ const getModelRoute = createRoute({
   },
 })
 
-function modelActionRoute(suffix: 'update' | 'archive') {
-  const schema = suffix === 'update' ? UpdateModelMetadataV2Schema : ArchiveModelV2Schema
+function modelActionRoute(suffix: 'update' | 'archive' | 'restore') {
+  const schema =
+    suffix === 'update'
+      ? UpdateModelMetadataV2Schema
+      : suffix === 'archive'
+        ? ArchiveModelV2Schema
+        : RestoreModelV2Schema
   return createRoute({
     method: 'post',
     path: `/v2/models/{model_id}:${suffix}`,
@@ -125,6 +133,7 @@ function modelActionRoute(suffix: 'update' | 'archive') {
 
 const updateModelRoute = modelActionRoute('update')
 const archiveModelRoute = modelActionRoute('archive')
+const restoreModelRoute = modelActionRoute('restore')
 
 const registerVersionRoute = createRoute({
   method: 'post',
@@ -238,6 +247,21 @@ const adoptDeploymentRoute = createRoute({
   },
 })
 
+const listDeploymentAdoptionsRoute = createRoute({
+  method: 'get',
+  path: '/v2/model-versions/{version_id}/deployment-adoptions',
+  operationId: 'listModelDeploymentAdoptionsV2',
+  tags: MODEL_TAG,
+  request: {
+    params: ModelVersionParamsV2Schema,
+    query: ModelDeploymentAdoptionPageRequestV2Schema,
+  },
+  responses: {
+    200: jsonResponseV2(ModelDeploymentAdoptionPageV2Schema, 'Historical Deployment adoptions'),
+    ...V2_MODEL_SHOW_ERROR_RESPONSES,
+  },
+})
+
 export function registerV2ModelRoutes(
   app: OpenAPIHono<ApiEnv>,
   options: RegisterV2RoutesOptions,
@@ -249,6 +273,7 @@ export function registerV2ModelRoutes(
     getModelRoute,
     updateModelRoute,
     archiveModelRoute,
+    restoreModelRoute,
     registerVersionRoute,
     listVersionsRoute,
     getVersionRoute,
@@ -256,6 +281,7 @@ export function registerV2ModelRoutes(
     listAliasesRoute,
     moveCandidateRoute,
     adoptDeploymentRoute,
+    listDeploymentAdoptionsRoute,
   ]) {
     app.openAPIRegistry.registerPath(route)
   }
@@ -325,6 +351,20 @@ export function registerV2ModelRoutes(
     })
     return context.json(
       await getV2Workspace(context).archiveModel(model_id, request, operationContext(context)),
+      200,
+    )
+  })
+
+  app.post('/v2/models/:target{[^/]+:restore}', async (context) => {
+    authorizeWrite(context, options)
+    const model_id = actionTarget(context.req.param('target'), ':restore')
+    ModelParamsV2Schema.parse({ model_id })
+    const request = await readRawJsonRequestV2(context, RestoreModelV2Schema, {
+      maxBytes: ACTION_MAX_BYTES,
+      maxDepth: 3,
+    })
+    return context.json(
+      await getV2Workspace(context).restoreModel(model_id, request, operationContext(context)),
       200,
     )
   })
@@ -420,6 +460,19 @@ export function registerV2ModelRoutes(
       await getV2Workspace(context).adoptModelDeployment(
         version_id,
         deployment_id,
+        request,
+        operationContext(context),
+      ),
+      200,
+    )
+  })
+
+  app.get(listDeploymentAdoptionsRoute.getRoutingPath(), async (context) => {
+    const { version_id } = ModelVersionParamsV2Schema.parse(context.req.param())
+    const request = ModelDeploymentAdoptionPageRequestV2Schema.parse(context.req.query())
+    return context.json(
+      await getV2Workspace(context).listModelDeploymentAdoptions(
+        version_id,
         request,
         operationContext(context),
       ),

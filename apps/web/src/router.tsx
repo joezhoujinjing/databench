@@ -24,9 +24,6 @@ import {
   EvaluationRouteNotFound,
   EvaluationRoutePending,
 } from './evaluations/routes/route-state.js'
-import { ModelDetailRoute } from './models/routes/detail.js'
-import { ModelsRoute } from './models/routes/registry.js'
-import { ModelVersionDetailRoute } from './models/routes/version.js'
 import { RootLayout } from './routes/__root.js'
 import { IndexPage } from './routes/index.js'
 import { NotFoundPage } from './routes/not-found.js'
@@ -89,19 +86,28 @@ const modelsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/models',
   validateSearch: z.object({ artifact: z.string().uuid().optional() }),
-  component: ModelsRoute,
+  component: lazyRouteComponent(() => import('./models/routes/registry.js'), 'ModelsRoute'),
 })
 
 const modelDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/models/$modelId',
-  component: ModelDetailRoute,
+  validateSearch: z.object({
+    tab: z
+      .enum(['overview', 'versions', 'artifacts', 'evaluations', 'deployments', 'lineage'])
+      .optional(),
+    version: z.string().uuid().optional(),
+  }),
+  component: lazyRouteComponent(() => import('./models/routes/detail.js'), 'ModelDetailRoute'),
 })
 
 const modelVersionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/models/$modelId/versions/$versionId',
-  component: ModelVersionDetailRoute,
+  component: lazyRouteComponent(
+    () => import('./models/routes/version.js'),
+    'ModelVersionDetailRoute',
+  ),
 })
 
 const lineageRoute = createRoute({

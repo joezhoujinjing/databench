@@ -3,13 +3,20 @@ import { canonicalJsonV2 } from '@databench/hashing'
 import {
   EvaluationRunIdV2Schema,
   EvaluationRunStatusV2Schema,
+  ModelAliasFilterV2Schema,
   ModelArchiveFilterV2Schema,
   ModelArtifactIdV2Schema,
   ModelArtifactKindV2Schema,
+  ModelDeploymentHealthFilterV2Schema,
   ModelDeploymentIdV2Schema,
   ModelDeploymentStatusV2Schema,
+  ModelEvaluationWorkloadProfileV2Schema,
   ModelIdV2Schema,
   ModelSourceKindV2Schema,
+  ModelSourceMutabilityV2Schema,
+  ModelTagV2Schema,
+  ModelTaskFamilyV2Schema,
+  ModelVerificationLevelV2Schema,
   ModelVersionDeploymentLifecycleV2Schema,
   ModelVersionIdV2Schema,
   parseRawJsonV2,
@@ -78,6 +85,8 @@ export interface V2EvaluationRunCursorState {
   readonly id: string
   readonly dataset_version: string | null
   readonly model_deployment_id: string | null
+  readonly model_id: string | null
+  readonly model_version_id: string | null
   readonly status: string | null
 }
 
@@ -117,12 +126,24 @@ interface ModelArtifactCursorPayloadV2 extends V2ModelArtifactCursorState {
   readonly expires_at: number
 }
 
-export interface V2ModelCursorState {
-  readonly updated_at: string
-  readonly id: string
+export interface V2ModelCursorFilterState {
   readonly search: string
   readonly archive: string
   readonly source_kind: string | null
+  readonly source_mutability: string | null
+  readonly verification_level: string | null
+  readonly task_family: string | null
+  readonly artifact_kind: string | null
+  readonly artifact_id: string | null
+  readonly alias: string | null
+  readonly deployment_lifecycle: string | null
+  readonly deployment_health: string | null
+  readonly tag: string | null
+}
+
+export interface V2ModelCursorState extends V2ModelCursorFilterState {
+  readonly updated_at: string
+  readonly id: string
 }
 
 interface ModelCursorPayloadV2 extends V2ModelCursorState {
@@ -169,6 +190,34 @@ export interface V2ModelVersionDeploymentCursorState {
 interface ModelVersionDeploymentCursorPayloadV2 extends V2ModelVersionDeploymentCursorState {
   readonly v: typeof CURSOR_VERSION
   readonly kind: 'model_version_deployments'
+  readonly scope: string
+  readonly expires_at: number
+}
+
+export interface V2ModelDeploymentAdoptionCursorState {
+  readonly adopted_at: string
+  readonly deployment_id: string
+  readonly model_version_id: string
+}
+
+interface ModelDeploymentAdoptionCursorPayloadV2 extends V2ModelDeploymentAdoptionCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'model_deployment_adoptions'
+  readonly scope: string
+  readonly expires_at: number
+}
+
+export interface V2ModelEvaluationDeploymentCursorState {
+  readonly created_at: string
+  readonly id: string
+  readonly model_version_id: string
+  readonly workload_profile: string
+  readonly max_output_tokens: number | null
+}
+
+interface ModelEvaluationDeploymentCursorPayloadV2 extends V2ModelEvaluationDeploymentCursorState {
+  readonly v: typeof CURSOR_VERSION
+  readonly kind: 'model_evaluation_deployments'
   readonly scope: string
   readonly expires_at: number
 }
@@ -286,6 +335,8 @@ export class V2CursorCodec {
     namespace: string,
     datasetVersion: string | null,
     modelDeploymentId: string | null,
+    modelId: string | null,
+    modelVersionId: string | null,
     status: string | null,
   ): Readonly<V2EvaluationRunCursorState> {
     try {
@@ -309,6 +360,8 @@ export class V2CursorCodec {
         value.scope !== this.#scope(namespace, 'evaluation_runs') ||
         value.dataset_version !== datasetVersion ||
         value.model_deployment_id !== modelDeploymentId ||
+        value.model_id !== modelId ||
+        value.model_version_id !== modelVersionId ||
         value.status !== status ||
         value.expires_at <= this.#now()
       ) {
@@ -407,18 +460,14 @@ export class V2CursorCodec {
   decodeModel(
     cursor: string,
     namespace: string,
-    search: string,
-    archive: string,
-    sourceKind: string | null,
+    filters: V2ModelCursorFilterState,
   ): Readonly<V2ModelCursorState> {
     try {
       const value = this.#decode(cursor)
       if (
         !isModelCursorPayload(value) ||
         value.scope !== this.#scope(namespace, 'models') ||
-        value.search !== search ||
-        value.archive !== archive ||
-        value.source_kind !== sourceKind ||
+        !sameModelCursorFilters(value, filters) ||
         value.expires_at <= this.#now()
       ) {
         throw new Error('cursor scope is invalid')
@@ -599,6 +648,80 @@ export class V2CursorCodec {
     }
   }
 
+  encodeModelDeploymentAdoption(
+    namespace: string,
+    stateInput: V2ModelDeploymentAdoptionCursorState,
+  ): string {
+    const state = validateModelDeploymentAdoptionState(stateInput)
+    return this.#encode({
+      v: CURSOR_VERSION,
+      kind: 'model_deployment_adoptions',
+      scope: this.#scope(namespace, 'model_deployment_adoptions'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    })
+  }
+
+  decodeModelDeploymentAdoption(
+    cursor: string,
+    namespace: string,
+    modelVersionId: string,
+  ): Readonly<V2ModelDeploymentAdoptionCursorState> {
+    try {
+      const value = this.#decode(cursor)
+      if (
+        !isModelDeploymentAdoptionCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'model_deployment_adoptions') ||
+        value.model_version_id !== modelVersionId ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateModelDeploymentAdoptionState(value)
+    } catch {
+      throw invalidCursor('Model Deployment adoption')
+    }
+  }
+
+  encodeModelEvaluationDeployment(
+    namespace: string,
+    stateInput: V2ModelEvaluationDeploymentCursorState,
+  ): string {
+    const state = validateModelEvaluationDeploymentState(stateInput)
+    return this.#encode({
+      v: CURSOR_VERSION,
+      kind: 'model_evaluation_deployments',
+      scope: this.#scope(namespace, 'model_evaluation_deployments'),
+      ...state,
+      expires_at: checkedAdd(this.#now(), this.#ttlMs),
+    })
+  }
+
+  decodeModelEvaluationDeployment(
+    cursor: string,
+    namespace: string,
+    modelVersionId: string,
+    workloadProfile: string,
+    maxOutputTokens: number | null,
+  ): Readonly<V2ModelEvaluationDeploymentCursorState> {
+    try {
+      const value = this.#decode(cursor)
+      if (
+        !isModelEvaluationDeploymentCursorPayload(value) ||
+        value.scope !== this.#scope(namespace, 'model_evaluation_deployments') ||
+        value.model_version_id !== modelVersionId ||
+        value.workload_profile !== workloadProfile ||
+        value.max_output_tokens !== maxOutputTokens ||
+        value.expires_at <= this.#now()
+      ) {
+        throw new Error('cursor scope is invalid')
+      }
+      return validateModelEvaluationDeploymentState(value)
+    } catch {
+      throw invalidCursor('Model Evaluation Deployment')
+    }
+  }
+
   #decodeRef(cursor: string, namespace: string, kind: RefCursorKindV2): string {
     try {
       if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
@@ -709,6 +832,11 @@ export class V2CursorCodec {
     return createHmac('sha256', this.#key).update(bytes).digest()
   }
 
+  #encode(value: object): string {
+    const bytes = encoder.encode(canonicalJsonV2(value))
+    return `${Buffer.from(bytes).toString('base64url')}.${this.#sign(bytes).toString('base64url')}`
+  }
+
   #decode(cursor: string): unknown {
     if (typeof cursor !== 'string' || cursor.length > V2_CURSOR_MAX_CHARS) {
       throw new Error('cursor text size is invalid')
@@ -739,7 +867,9 @@ export class V2CursorCodec {
       | 'model_versions'
       | 'model_artifacts'
       | 'model_deployments'
-      | 'model_version_deployments',
+      | 'model_version_deployments'
+      | 'model_deployment_adoptions'
+      | 'model_evaluation_deployments',
   ): string {
     return createHmac('sha256', this.#key)
       .update(canonicalJsonV2({ kind: `databench-v2-${kind}-cursor-scope`, namespace }))
@@ -818,7 +948,7 @@ function isEvaluationRunCursorPayload(value: unknown): value is EvaluationRunCur
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return (
-    Object.keys(record).length === 9 &&
+    Object.keys(record).length === 11 &&
     record.v === CURSOR_VERSION &&
     record.kind === 'evaluation_runs' &&
     typeof record.scope === 'string' &&
@@ -826,6 +956,8 @@ function isEvaluationRunCursorPayload(value: unknown): value is EvaluationRunCur
     typeof record.id === 'string' &&
     (record.dataset_version === null || typeof record.dataset_version === 'string') &&
     (record.model_deployment_id === null || typeof record.model_deployment_id === 'string') &&
+    (record.model_id === null || typeof record.model_id === 'string') &&
+    (record.model_version_id === null || typeof record.model_version_id === 'string') &&
     (record.status === null || typeof record.status === 'string') &&
     typeof record.expires_at === 'number' &&
     Number.isSafeInteger(record.expires_at) &&
@@ -876,7 +1008,7 @@ function isModelCursorPayload(value: unknown): value is ModelCursorPayloadV2 {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
   return (
-    Object.keys(record).length === 9 &&
+    Object.keys(record).length === 18 &&
     record.v === CURSOR_VERSION &&
     record.kind === 'models' &&
     typeof record.scope === 'string' &&
@@ -885,6 +1017,15 @@ function isModelCursorPayload(value: unknown): value is ModelCursorPayloadV2 {
     typeof record.search === 'string' &&
     typeof record.archive === 'string' &&
     (record.source_kind === null || typeof record.source_kind === 'string') &&
+    (record.source_mutability === null || typeof record.source_mutability === 'string') &&
+    (record.verification_level === null || typeof record.verification_level === 'string') &&
+    (record.task_family === null || typeof record.task_family === 'string') &&
+    (record.artifact_kind === null || typeof record.artifact_kind === 'string') &&
+    (record.artifact_id === null || typeof record.artifact_id === 'string') &&
+    (record.alias === null || typeof record.alias === 'string') &&
+    (record.deployment_lifecycle === null || typeof record.deployment_lifecycle === 'string') &&
+    (record.deployment_health === null || typeof record.deployment_health === 'string') &&
+    (record.tag === null || typeof record.tag === 'string') &&
     typeof record.expires_at === 'number' &&
     Number.isSafeInteger(record.expires_at) &&
     record.expires_at >= 0
@@ -946,6 +1087,46 @@ function isModelVersionDeploymentCursorPayload(
   )
 }
 
+function isModelDeploymentAdoptionCursorPayload(
+  value: unknown,
+): value is ModelDeploymentAdoptionCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 7 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'model_deployment_adoptions' &&
+    typeof record.scope === 'string' &&
+    typeof record.adopted_at === 'string' &&
+    typeof record.deployment_id === 'string' &&
+    typeof record.model_version_id === 'string' &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
+function isModelEvaluationDeploymentCursorPayload(
+  value: unknown,
+): value is ModelEvaluationDeploymentCursorPayloadV2 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    Object.keys(record).length === 9 &&
+    record.v === CURSOR_VERSION &&
+    record.kind === 'model_evaluation_deployments' &&
+    typeof record.scope === 'string' &&
+    typeof record.created_at === 'string' &&
+    typeof record.id === 'string' &&
+    typeof record.model_version_id === 'string' &&
+    typeof record.workload_profile === 'string' &&
+    (record.max_output_tokens === null || typeof record.max_output_tokens === 'number') &&
+    typeof record.expires_at === 'number' &&
+    Number.isSafeInteger(record.expires_at) &&
+    record.expires_at >= 0
+  )
+}
+
 function validateTransformJobState(
   input: V2TransformJobCursorState,
 ): Readonly<V2TransformJobCursorState> {
@@ -980,11 +1161,16 @@ function validateEvaluationRunState(
     input.model_deployment_id === null
       ? null
       : ModelDeploymentIdV2Schema.parse(input.model_deployment_id)
+  const modelId = input.model_id === null ? null : ModelIdV2Schema.parse(input.model_id)
+  const modelVersionId =
+    input.model_version_id === null ? null : ModelVersionIdV2Schema.parse(input.model_version_id)
   return Object.freeze({
     created_at: timestamp.toISOString(),
     id: EvaluationRunIdV2Schema.parse(input.id),
     dataset_version: datasetVersion,
     model_deployment_id: modelDeploymentId,
+    model_id: modelId,
+    model_version_id: modelVersionId,
     status,
   })
 }
@@ -1064,7 +1250,51 @@ function validateModelState(input: V2ModelCursorState): Readonly<V2ModelCursorSt
     archive: ModelArchiveFilterV2Schema.parse(input.archive),
     source_kind:
       input.source_kind === null ? null : ModelSourceKindV2Schema.parse(input.source_kind),
+    source_mutability:
+      input.source_mutability === null
+        ? null
+        : ModelSourceMutabilityV2Schema.parse(input.source_mutability),
+    verification_level:
+      input.verification_level === null
+        ? null
+        : ModelVerificationLevelV2Schema.parse(input.verification_level),
+    task_family:
+      input.task_family === null ? null : ModelTaskFamilyV2Schema.parse(input.task_family),
+    artifact_kind:
+      input.artifact_kind === null ? null : ModelArtifactKindV2Schema.parse(input.artifact_kind),
+    artifact_id:
+      input.artifact_id === null ? null : ModelArtifactIdV2Schema.parse(input.artifact_id),
+    alias: input.alias === null ? null : ModelAliasFilterV2Schema.parse(input.alias),
+    deployment_lifecycle:
+      input.deployment_lifecycle === null
+        ? null
+        : ModelVersionDeploymentLifecycleV2Schema.parse(input.deployment_lifecycle),
+    deployment_health:
+      input.deployment_health === null
+        ? null
+        : ModelDeploymentHealthFilterV2Schema.parse(input.deployment_health),
+    tag: input.tag === null ? null : ModelTagV2Schema.parse(input.tag),
   })
+}
+
+function sameModelCursorFilters(
+  left: V2ModelCursorFilterState,
+  right: V2ModelCursorFilterState,
+): boolean {
+  return (
+    left.search === right.search &&
+    left.archive === right.archive &&
+    left.source_kind === right.source_kind &&
+    left.source_mutability === right.source_mutability &&
+    left.verification_level === right.verification_level &&
+    left.task_family === right.task_family &&
+    left.artifact_kind === right.artifact_kind &&
+    left.artifact_id === right.artifact_id &&
+    left.alias === right.alias &&
+    left.deployment_lifecycle === right.deployment_lifecycle &&
+    left.deployment_health === right.deployment_health &&
+    left.tag === right.tag
+  )
 }
 
 function validateModelVersionState(
@@ -1112,6 +1342,43 @@ function validateModelVersionDeploymentState(
       input.lifecycle === null
         ? null
         : ModelVersionDeploymentLifecycleV2Schema.parse(input.lifecycle),
+  })
+}
+
+function validateModelDeploymentAdoptionState(
+  input: V2ModelDeploymentAdoptionCursorState,
+): Readonly<V2ModelDeploymentAdoptionCursorState> {
+  const timestamp = new Date(input.adopted_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.adopted_at) {
+    throw new TypeError('V2 Model Deployment adoption cursor timestamp is invalid')
+  }
+  return Object.freeze({
+    adopted_at: timestamp.toISOString(),
+    deployment_id: ModelDeploymentIdV2Schema.parse(input.deployment_id),
+    model_version_id: ModelVersionIdV2Schema.parse(input.model_version_id),
+  })
+}
+
+function validateModelEvaluationDeploymentState(
+  input: V2ModelEvaluationDeploymentCursorState,
+): Readonly<V2ModelEvaluationDeploymentCursorState> {
+  const timestamp = new Date(input.created_at)
+  if (!Number.isFinite(timestamp.getTime()) || timestamp.toISOString() !== input.created_at) {
+    throw new TypeError('V2 Model Evaluation Deployment cursor timestamp is invalid')
+  }
+  const maxOutputTokens = input.max_output_tokens
+  if (
+    maxOutputTokens !== null &&
+    (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 1_000_000)
+  ) {
+    throw new TypeError('V2 Model Evaluation Deployment cursor output budget is invalid')
+  }
+  return Object.freeze({
+    created_at: timestamp.toISOString(),
+    id: ModelDeploymentIdV2Schema.parse(input.id),
+    model_version_id: ModelVersionIdV2Schema.parse(input.model_version_id),
+    workload_profile: ModelEvaluationWorkloadProfileV2Schema.parse(input.workload_profile),
+    max_output_tokens: maxOutputTokens,
   })
 }
 

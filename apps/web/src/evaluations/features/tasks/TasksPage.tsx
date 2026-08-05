@@ -155,13 +155,14 @@ function EvaluationTaskPanel() {
               onBindingChange={onBindingChange}
             />
           )}
-          deploymentSource={
+          deploymentSource={(maxOutputTokens) => (
             <DatabenchDeploymentSource
               deploymentId={deploymentId}
               disabled={disabled}
+              {...(maxOutputTokens === undefined ? {} : { maxOutputTokens })}
               onChange={setDeploymentId}
             />
-          }
+          )}
           disabled={disabled}
           initialBenchmark={search.benchmark}
           modelSource={modelSource}

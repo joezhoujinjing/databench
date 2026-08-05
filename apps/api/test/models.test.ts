@@ -1,3 +1,4 @@
+import { ModelRegistryConflictErrorV2 } from '@databench/schema'
 import { describe, expect, test, vi } from 'vitest'
 import type { ApiV2Workspace } from '../src/context.js'
 import { createTestApp } from './test-app.js'
@@ -140,7 +141,16 @@ function workspace(): ApiV2Workspace {
             base_model_reference: 'Qwen/Qwen3-0.6B',
           },
           version_count: 1,
+          deployment_summary: {
+            total: 0,
+            registered: 0,
+            active: 0,
+            disabled: 0,
+            healthy_active: 0,
+          },
+          latest_comparable_evaluation: null,
           adopted_deployment_count: 1,
+          active_adopted_deployment_count: 1,
           healthy_adopted_deployment_count: 1,
         },
       ],
@@ -149,6 +159,7 @@ function workspace(): ApiV2Workspace {
     getModel: vi.fn(async () => model),
     updateModel: vi.fn(async () => ({ ...model, metadata_revision: 1 })),
     archiveModel: vi.fn(async () => ({ ...model, metadata_revision: 1, archived_at: NOW })),
+    restoreModel: vi.fn(async () => ({ ...model, metadata_revision: 2, archived_at: null })),
     listModelVersions: vi.fn(async () => ({ items: [version], next_cursor: null })),
     getModelVersion: vi.fn(async () => version),
     refreshModelSourceEvidence: vi.fn(async () => version),
@@ -164,6 +175,18 @@ function workspace(): ApiV2Workspace {
       artifact_id: ARTIFACT_ID,
       adopted_at: NOW,
       replayed: false,
+    })),
+    listModelDeploymentAdoptions: vi.fn(async () => ({
+      items: [
+        {
+          model_id: MODEL_ID,
+          model_version_id: VERSION_ID,
+          deployment_id: DEPLOYMENT_ID,
+          artifact_id: ARTIFACT_ID,
+          adopted_at: NOW,
+        },
+      ],
+      next_cursor: null,
     })),
   } as unknown as ApiV2Workspace
 }
@@ -236,6 +259,42 @@ describe('Model Registry HTTP contract', () => {
     expect(fake.inspectModelRegistration).toHaveBeenCalledTimes(2)
   })
 
+  test('returns a typed 409 when registration collides with an existing Model key', async () => {
+    const fake = workspace()
+    vi.mocked(fake.commitModelRegistration).mockRejectedValueOnce(
+      new ModelRegistryConflictErrorV2({
+        reason: 'model_key_conflict',
+        registration_digest: registrationPlan.registration_digest,
+      }),
+    )
+    const app = createTestApp({
+      v2Workspace: fake,
+      modelDeploymentOperatorToken: OPERATOR_TOKEN,
+    })
+
+    const response = await app.fetch(
+      request(
+        '/v2/models:register',
+        write({
+          request: createRegistration,
+          expected_registration_digest: registrationPlan.registration_digest,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'model_registry_conflict',
+        message: 'Model Registry state conflicts with this request',
+        detail: {
+          reason: 'model_key_conflict',
+          registration_digest: registrationPlan.registration_digest,
+        },
+      },
+    })
+  })
+
   test('serves stable Model, Version, and Alias read routes', async () => {
     const app = createTestApp({ v2Workspace: workspace() })
     for (const path of [
@@ -244,14 +303,75 @@ describe('Model Registry HTTP contract', () => {
       `/v2/models/${MODEL_ID}/versions?limit=20`,
       `/v2/model-versions/${VERSION_ID}`,
       `/v2/models/${MODEL_ID}/aliases`,
+      `/v2/model-versions/${VERSION_ID}/deployment-adoptions`,
     ]) {
       const response = await app.fetch(request(path))
       expect(response.status, path).toBe(200)
       expect(response.headers.get('Cache-Control')).toBe('private, no-store')
     }
+
+    const adoptionResponse = await app.fetch(
+      request(`/v2/model-versions/${VERSION_ID}/deployment-adoptions`),
+    )
+    const adoptionPage = await adoptionResponse.json()
+    expect(adoptionPage).toEqual({
+      items: [
+        {
+          model_id: MODEL_ID,
+          model_version_id: VERSION_ID,
+          deployment_id: DEPLOYMENT_ID,
+          artifact_id: ARTIFACT_ID,
+          adopted_at: NOW,
+        },
+      ],
+      next_cursor: null,
+    })
+    expect(JSON.stringify(adoptionPage)).not.toContain('deployment_digest')
+    expect(JSON.stringify(adoptionPage)).not.toContain('adoption_digest')
   })
 
-  test('protects metadata, archive, Alias, and adoption actions with the operator role', async () => {
+  test('passes every Model registry filter through one strict list contract', async () => {
+    const fake = workspace()
+    const app = createTestApp({ v2Workspace: fake })
+    const query = new URLSearchParams({
+      archive: 'all',
+      search: 'Support',
+      source_kind: 'databench_artifact',
+      source_mutability: 'immutable',
+      verification_level: 'content_verified',
+      task_family: 'chat',
+      artifact_kind: 'lora_adapter',
+      artifact_id: ARTIFACT_ID,
+      alias: 'candidate',
+      deployment_lifecycle: 'active',
+      deployment_health: 'healthy',
+      tag: 'support',
+      limit: '20',
+    })
+    const response = await app.fetch(request(`/v2/models?${query.toString()}`))
+    expect(response.status).toBe(200)
+    expect(fake.listModels).toHaveBeenCalledWith(
+      {
+        archive: 'all',
+        search: 'Support',
+        source_kind: 'databench_artifact',
+        source_mutability: 'immutable',
+        verification_level: 'content_verified',
+        task_family: 'chat',
+        artifact_kind: 'lora_adapter',
+        artifact_id: ARTIFACT_ID,
+        alias: 'candidate',
+        deployment_lifecycle: 'active',
+        deployment_health: 'healthy',
+        tag: 'support',
+        cursor: null,
+        limit: 20,
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  test('protects metadata, archive, restore, Alias, and adoption actions with the operator role', async () => {
     const fake = workspace()
     const app = createTestApp({
       v2Workspace: fake,
@@ -269,6 +389,7 @@ describe('Model Registry HTTP contract', () => {
         },
       ],
       [`/v2/models/${MODEL_ID}:archive`, { expected_metadata_revision: 0 }],
+      [`/v2/models/${MODEL_ID}:restore`, { expected_metadata_revision: 1 }],
       [
         `/v2/models/${MODEL_ID}/aliases/candidate:move`,
         { expected_version_id: null, new_version_id: VERSION_ID },
@@ -290,6 +411,7 @@ describe('Model Registry HTTP contract', () => {
     }
     expect(fake.updateModel).toHaveBeenCalledOnce()
     expect(fake.archiveModel).toHaveBeenCalledOnce()
+    expect(fake.restoreModel).toHaveBeenCalledOnce()
     expect(fake.moveCandidateModelAlias).toHaveBeenCalledOnce()
     expect(fake.adoptModelDeployment).toHaveBeenCalledOnce()
     expect(fake.refreshModelSourceEvidence).toHaveBeenCalledOnce()

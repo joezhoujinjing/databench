@@ -342,6 +342,14 @@ describe('V2 evaluation contracts', () => {
         ),
       }).success,
     ).toBe(false)
+    const primaryMetric = completion.metrics[1]
+    if (primaryMetric === undefined) throw new Error('primary Metric fixture is missing')
+    expect(
+      CompleteEvaluationRunRequestV2Schema.safeParse({
+        ...completion,
+        metrics: [...completion.metrics, { ...primaryMetric, score: 0.75 }],
+      }).success,
+    ).toBe(false)
   })
 
   test('binds opaque pagination cursors to strict filters', () => {

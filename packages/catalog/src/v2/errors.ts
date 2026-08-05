@@ -210,6 +210,17 @@ export class V2CatalogModelAliasConflictError extends Error {
   }
 }
 
+export class V2CatalogModelAliasAdmissionError extends Error {
+  override readonly name = 'V2CatalogModelAliasAdmissionError'
+
+  constructor(
+    readonly modelId: string,
+    readonly versionId: string,
+  ) {
+    super(`Model alias target is not immutable for ${modelId}/${versionId}`)
+  }
+}
+
 export class V2CatalogModelDeploymentAdoptionConflictError extends Error {
   override readonly name = 'V2CatalogModelDeploymentAdoptionConflictError'
 

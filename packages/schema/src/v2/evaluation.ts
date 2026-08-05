@@ -282,6 +282,8 @@ export const EvaluationRunPageRequestV2Schema = z
   .strictObject({
     dataset_version: DigestHexSchema.optional(),
     model_deployment_id: ModelDeploymentIdV2Schema.optional(),
+    model_id: ModelIdV2Schema.optional(),
+    model_version_id: ModelVersionIdV2Schema.optional(),
     status: EvaluationRunStatusV2Schema.optional(),
     cursor: OpaqueCursorQueryV2Schema,
     limit: z.coerce
@@ -361,11 +363,15 @@ export const CompleteEvaluationRunRequestV2Schema = z
         }
       }
       for (const outputKey of expectedOutputs.keys()) {
-        if ((observedOutputs.get(outputKey)?.length ?? 0) === 0) {
+        const observedCount = observedOutputs.get(outputKey)?.length ?? 0
+        if (observedCount !== 1) {
           context.addIssue({
             code: 'custom',
             path: ['metrics'],
-            message: `Requested Metric output is missing: ${outputKey}`,
+            message:
+              observedCount === 0
+                ? `Requested Metric output is missing: ${outputKey}`
+                : `Requested Metric output must have exactly one score: ${outputKey}`,
           })
         }
       }

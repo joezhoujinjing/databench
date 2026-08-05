@@ -120,6 +120,64 @@ export type SwiftStudioSessionStateConflictDetailV2 = z.infer<
   typeof SwiftStudioSessionStateConflictDetailV2Schema
 >
 
+export const ModelRegistryConflictDetailV2Schema = z
+  .discriminatedUnion('reason', [
+    z.strictObject({
+      reason: z.literal('registration_digest_mismatch'),
+      expected_registration_digest: DigestHexSchema,
+      current_registration_digest: DigestHexSchema,
+    }),
+    z.strictObject({
+      reason: z.literal('model_archived'),
+      model_id: z.uuid(),
+    }),
+    z.strictObject({
+      reason: z.enum([
+        'request_mismatch',
+        'model_key_conflict',
+        'model_target_not_found',
+        'version_label_conflict',
+        'source_fingerprint_conflict',
+        'alias_conflict',
+        'registration_source_conflict',
+      ]),
+      registration_digest: DigestHexSchema,
+    }),
+    z.strictObject({
+      reason: z.literal('model_metadata_conflict'),
+      model_id: z.uuid(),
+      expected_metadata_revision: NonNegativeSafeIntegerSchema,
+      current_metadata_revision: NonNegativeSafeIntegerSchema,
+    }),
+    z.strictObject({
+      reason: z.literal('model_alias_conflict'),
+      model_id: z.uuid(),
+      alias: z.enum(['candidate', 'staging', 'production']),
+      expected_version_id: z.uuid().nullable(),
+      current_version_id: z.uuid().nullable(),
+      new_version_id: z.uuid(),
+      registration_digest: DigestHexSchema.optional(),
+    }),
+    z.strictObject({
+      reason: z.literal('model_deployment_adoption_conflict'),
+      deployment_id: z.uuid(),
+      current_model_version_id: z.uuid(),
+      requested_model_version_id: z.uuid(),
+    }),
+    z.strictObject({
+      reason: z.literal('adoption_binding_mismatch'),
+      model_version_id: z.uuid(),
+      deployment_id: z.uuid(),
+    }),
+    z.strictObject({
+      reason: z.literal('model_deployment_disabled'),
+      model_version_id: z.uuid(),
+      deployment_id: z.uuid(),
+    }),
+  ])
+  .meta({ id: 'ModelRegistryConflictDetailV2' })
+export type ModelRegistryConflictDetailV2 = z.infer<typeof ModelRegistryConflictDetailV2Schema>
+
 export const PostTrainingV2LimitsSchema = z
   .strictObject({
     max_record_bytes: z.number().int().safe().nonnegative(),
@@ -770,6 +828,10 @@ const SwiftStudioSessionStateConflictErrorBodyV2Schema = createDetailedErrorBody
   'swift_studio_session_state_conflict',
   SwiftStudioSessionStateConflictDetailV2Schema,
 )
+const ModelRegistryConflictErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
+  'model_registry_conflict',
+  ModelRegistryConflictDetailV2Schema,
+)
 const UnsupportedProfileErrorBodyV2Schema = createDetailedErrorBodyV2Schema(
   'unsupported_profile',
   UnsupportedProfileDetailV2Schema,
@@ -818,6 +880,7 @@ export const ErrorBodyV2Schema = z
     TransformJobStateConflictErrorBodyV2Schema,
     EvaluationRunStateConflictErrorBodyV2Schema,
     SwiftStudioSessionStateConflictErrorBodyV2Schema,
+    ModelRegistryConflictErrorBodyV2Schema,
     UnsupportedProfileErrorBodyV2Schema,
     FidelityErrorBodyV2Schema,
     IntegrityErrorBodyV2Schema,
@@ -921,6 +984,14 @@ export type SwiftStudioSessionStateConflictErrorResponseV2 = z.infer<
   typeof SwiftStudioSessionStateConflictErrorResponseV2Schema
 >
 
+export const ModelRegistryConflictErrorResponseV2Schema = createErrorResponseV2Schema(
+  'ModelRegistryConflictErrorResponseV2',
+  ModelRegistryConflictErrorBodyV2Schema,
+)
+export type ModelRegistryConflictErrorResponseV2 = z.infer<
+  typeof ModelRegistryConflictErrorResponseV2Schema
+>
+
 export const FidelityErrorResponseV2Schema = createErrorResponseV2Schema(
   'FidelityErrorResponseV2',
   FidelityErrorBodyV2Schema,
@@ -983,6 +1054,7 @@ export const ErrorResponse409V2Schema = z
     TransformJobStateConflictErrorResponseV2Schema,
     EvaluationRunStateConflictErrorResponseV2Schema,
     SwiftStudioSessionStateConflictErrorResponseV2Schema,
+    ModelRegistryConflictErrorResponseV2Schema,
   ])
   .meta({ id: 'ErrorResponse409V2' })
 export type ErrorResponse409V2 = z.infer<typeof ErrorResponse409V2Schema>
@@ -1049,6 +1121,16 @@ export class TransformJobStateConflictErrorV2 extends ConflictError {
   constructor(detailInput: TransformJobStateConflictDetailV2) {
     const detail = Object.freeze(TransformJobStateConflictDetailV2Schema.parse(detailInput))
     super(`V2 transform job state conflict for ${detail.job_id}`, detail)
+  }
+}
+
+export class ModelRegistryConflictErrorV2 extends ConflictError {
+  override readonly name = 'ModelRegistryConflictErrorV2'
+  override readonly code = 'model_registry_conflict'
+
+  constructor(detailInput: ModelRegistryConflictDetailV2) {
+    const detail = Object.freeze(ModelRegistryConflictDetailV2Schema.parse(detailInput))
+    super('Model Registry state conflicts with this request', detail)
   }
 }
 

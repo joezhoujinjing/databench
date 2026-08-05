@@ -1,9 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, ArrowRight, Check, Plus, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBackend } from '@/api/backend.js'
+import { ApiError } from '@/api/errors.js'
 import { ErrorState, Spinner } from '@/components/common/State.js'
 import { Badge } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
@@ -18,6 +19,7 @@ import {
 } from '@/components/ui/table.js'
 import { formatDateTime } from '@/lib/format.js'
 import {
+  activateModelVersionDeploymentV2,
   commitModelRegistrationV2,
   inspectModelRegistrationV2,
   listModelsV2,
@@ -29,6 +31,16 @@ import { listModelArtifactsV2, type ModelArtifactV2 } from '@/training/api/artif
 
 type ArchiveFilter = 'active' | 'archived' | 'all'
 type SourceFilter = '' | 'databench_artifact' | 'repository_reference' | 'existing_service'
+type MutabilityFilter = '' | 'immutable' | 'mutable' | 'unknown'
+type VerificationFilter =
+  | ''
+  | 'content_verified'
+  | 'provider_verified'
+  | 'operator_attested'
+  | 'unverified'
+type AliasFilter = '' | 'candidate' | 'none'
+type LifecycleFilter = '' | 'registered' | 'active' | 'disabled'
+type HealthFilter = '' | 'unknown' | 'healthy' | 'unhealthy'
 
 export function ModelsRoute() {
   const { t } = useTranslation()
@@ -39,10 +51,35 @@ export function ModelsRoute() {
   const [search, setSearch] = useState('')
   const [archive, setArchive] = useState<ArchiveFilter>('active')
   const [sourceKind, setSourceKind] = useState<SourceFilter>('')
+  const [sourceMutability, setSourceMutability] = useState<MutabilityFilter>('')
+  const [verification, setVerification] = useState<VerificationFilter>('')
+  const [taskFamily, setTaskFamily] = useState('')
+  const [artifactKind, setArtifactKind] = useState<'' | 'lora_adapter'>('')
+  const [alias, setAlias] = useState<AliasFilter>('')
+  const [deploymentLifecycle, setDeploymentLifecycle] = useState<LifecycleFilter>('')
+  const [deploymentHealth, setDeploymentHealth] = useState<HealthFilter>('')
+  const [tag, setTag] = useState('')
   const [cursors, setCursors] = useState<Array<string | null>>([null])
   const pageIndex = cursors.length - 1
   const modelsQuery = useQuery({
-    queryKey: [connectionScope, base, 'models', search, archive, sourceKind, cursors[pageIndex]],
+    queryKey: [
+      connectionScope,
+      base,
+      'models',
+      search,
+      archive,
+      sourceKind,
+      sourceMutability,
+      verification,
+      taskFamily,
+      artifactKind,
+      artifact,
+      alias,
+      deploymentLifecycle,
+      deploymentHealth,
+      tag,
+      cursors[pageIndex],
+    ],
     queryFn: ({ signal }) =>
       listModelsV2({
         archive,
@@ -52,10 +89,40 @@ export function ModelsRoute() {
         search,
         signal,
         ...(sourceKind === '' ? {} : { sourceKind }),
+        ...(sourceMutability === '' ? {} : { sourceMutability }),
+        ...(verification === '' ? {} : { verificationLevel: verification }),
+        ...(taskFamily.trim() === '' ? {} : { taskFamily: taskFamily.trim() }),
+        ...(artifactKind === '' ? {} : { artifactKind }),
+        ...(artifact === undefined ? {} : { artifactId: artifact }),
+        ...(alias === '' ? {} : { alias }),
+        ...(deploymentLifecycle === '' ? {} : { deploymentLifecycle }),
+        ...(deploymentHealth === '' ? {} : { deploymentHealth }),
+        ...(tag.trim() === '' ? {} : { tag: tag.trim() }),
         token,
       }),
     retry: false,
   })
+  const registrationModelsQuery = useInfiniteQuery({
+    queryKey: [connectionScope, base, 'models', 'registration-targets'],
+    queryFn: ({ signal, pageParam }) =>
+      listModelsV2({
+        archive: 'active',
+        base,
+        cursor: pageParam,
+        limit: 100,
+        search: '',
+        signal,
+        token,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    enabled: registrationOpen,
+    retry: false,
+  })
+  const registrationModels = useMemo(
+    () => registrationModelsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [registrationModelsQuery.data?.pages],
+  )
   const resetPage = (): void => setCursors([null])
 
   return (
@@ -78,7 +145,12 @@ export function ModelsRoute() {
 
       {registrationOpen ? (
         <RegistrationWorkflow
-          models={modelsQuery.data}
+          models={registrationModels}
+          modelsError={registrationModelsQuery.error}
+          modelsHasMore={registrationModelsQuery.hasNextPage}
+          modelsLoading={registrationModelsQuery.isLoading}
+          modelsLoadingMore={registrationModelsQuery.isFetchingNextPage}
+          onLoadMoreModels={() => void registrationModelsQuery.fetchNextPage()}
           onClose={() => setRegistrationOpen(false)}
           {...(artifact === undefined ? {} : { initialArtifactId: artifact })}
         />
@@ -102,7 +174,11 @@ export function ModelsRoute() {
             />
             <input
               className="input pl-9"
-              onChange={(event) => setDraftSearch(event.target.value)}
+              onChange={(event) => {
+                setDraftSearch(event.target.value)
+                setSearch(event.target.value.trim())
+                resetPage()
+              }}
               placeholder={t('models.searchPlaceholder')}
               value={draftSearch}
             />
@@ -137,6 +213,115 @@ export function ModelsRoute() {
           {t('common.apply')}
         </Button>
       </form>
+
+      <details className="border-border border-y py-3">
+        <summary className="cursor-pointer select-none font-medium text-sm text-primary">
+          {t('models.moreFilters')}
+        </summary>
+        <div className="mt-4 grid grid-cols-4 gap-3 max-xl:grid-cols-3 max-lg:grid-cols-2 max-sm:grid-cols-1">
+          <FilterSelect
+            label={t('models.mutabilityLabel')}
+            onChange={(value) => {
+              setSourceMutability(value as MutabilityFilter)
+              resetPage()
+            }}
+            value={sourceMutability}
+          >
+            <option value="">{t('models.filterAll')}</option>
+            {(['immutable', 'mutable', 'unknown'] as const).map((value) => (
+              <option key={value} value={value}>
+                {t(`models.mutability.${value}`)}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label={t('models.verificationLabel')}
+            onChange={(value) => {
+              setVerification(value as VerificationFilter)
+              resetPage()
+            }}
+            value={verification}
+          >
+            <option value="">{t('models.filterAll')}</option>
+            {(
+              ['content_verified', 'provider_verified', 'operator_attested', 'unverified'] as const
+            ).map((value) => (
+              <option key={value} value={value}>
+                {t(`models.verification.${value}`)}
+              </option>
+            ))}
+          </FilterSelect>
+          <FormInput
+            label={t('models.taskFamily')}
+            onChange={(value) => {
+              setTaskFamily(value)
+              resetPage()
+            }}
+            value={taskFamily}
+          />
+          <FormInput
+            label={t('models.tagFilter')}
+            onChange={(value) => {
+              setTag(value)
+              resetPage()
+            }}
+            value={tag}
+          />
+          <FilterSelect
+            label={t('models.artifactKind')}
+            onChange={(value) => {
+              setArtifactKind(value as '' | 'lora_adapter')
+              resetPage()
+            }}
+            value={artifactKind}
+          >
+            <option value="">{t('models.filterAll')}</option>
+            <option value="lora_adapter">LoRA adapter</option>
+          </FilterSelect>
+          <FilterSelect
+            label={t('models.aliasStage')}
+            onChange={(value) => {
+              setAlias(value as AliasFilter)
+              resetPage()
+            }}
+            value={alias}
+          >
+            <option value="">{t('models.filterAll')}</option>
+            <option value="candidate">candidate</option>
+            <option value="none">{t('models.noCandidate')}</option>
+          </FilterSelect>
+          <FilterSelect
+            label={t('models.lifecycleLabel')}
+            onChange={(value) => {
+              setDeploymentLifecycle(value as LifecycleFilter)
+              resetPage()
+            }}
+            value={deploymentLifecycle}
+          >
+            <option value="">{t('models.filterAll')}</option>
+            {(['registered', 'active', 'disabled'] as const).map((value) => (
+              <option key={value} value={value}>
+                {t(`models.lifecycle.${value}`)}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label={t('models.healthLabel')}
+            onChange={(value) => {
+              setDeploymentHealth(value as HealthFilter)
+              resetPage()
+            }}
+            value={deploymentHealth}
+          >
+            <option value="">{t('models.filterAll')}</option>
+            {(['unknown', 'healthy', 'unhealthy'] as const).map((value) => (
+              <option key={value} value={value}>
+                {t(`models.health.${value}`)}
+              </option>
+            ))}
+          </FilterSelect>
+        </div>
+      </details>
 
       {modelsQuery.isLoading ? <Spinner label={t('models.loading')} /> : null}
       {modelsQuery.isError ? <ErrorState error={modelsQuery.error} /> : null}
@@ -192,6 +377,7 @@ export function ModelRegistryResults({ page }: { readonly page: ModelPageV2 }) {
               <TableHead>{t('models.candidate')}</TableHead>
               <TableHead>{t('models.source')}</TableHead>
               <TableHead>{t('models.baseModel')}</TableHead>
+              <TableHead>{t('models.latestEvaluation')}</TableHead>
               <TableHead>{t('models.deployments')}</TableHead>
               <TableHead>{t('models.updated')}</TableHead>
             </TableRow>
@@ -232,9 +418,24 @@ export function ModelRegistryResults({ page }: { readonly page: ModelPageV2 }) {
                   {item.candidate?.base_model_reference ?? '—'}
                 </TableCell>
                 <TableCell>
-                  <span className="font-medium tabular-nums">{item.adopted_deployment_count}</span>
+                  {item.latest_comparable_evaluation === null ? (
+                    <span className="text-dim-foreground">—</span>
+                  ) : (
+                    <div className="space-y-1">
+                      <span className="font-medium tabular-nums">
+                        {item.latest_comparable_evaluation.score}
+                      </span>
+                      <p className="text-dim-foreground text-xs">
+                        {item.latest_comparable_evaluation.benchmark} ·{' '}
+                        {item.latest_comparable_evaluation.output_key}
+                      </p>
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <span className="font-medium tabular-nums">{item.deployment_summary.active}</span>
                   <span className="ml-2 text-success text-xs">
-                    {t('models.healthy', { count: item.healthy_adopted_deployment_count })}
+                    {t('models.healthy', { count: item.deployment_summary.healthy_active })}
                   </span>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">
@@ -288,10 +489,16 @@ export function ModelRegistryResults({ page }: { readonly page: ModelPageV2 }) {
                 </dd>
                 <dt className="text-muted-foreground">{t('models.deployments')}</dt>
                 <dd className="min-w-0">
-                  <span className="font-medium tabular-nums">{item.adopted_deployment_count}</span>
+                  <span className="font-medium tabular-nums">{item.deployment_summary.active}</span>
                   <span className="ml-2 text-success text-xs">
-                    {t('models.healthy', { count: item.healthy_adopted_deployment_count })}
+                    {t('models.healthy', { count: item.deployment_summary.healthy_active })}
                   </span>
+                </dd>
+                <dt className="text-muted-foreground">{t('models.latestEvaluation')}</dt>
+                <dd className="min-w-0">
+                  {item.latest_comparable_evaluation === null
+                    ? '—'
+                    : `${item.latest_comparable_evaluation.score} · ${item.latest_comparable_evaluation.benchmark} / ${item.latest_comparable_evaluation.output_key}`}
                 </dd>
                 <dt className="text-muted-foreground">{t('models.updated')}</dt>
                 <dd className="min-w-0 text-muted-foreground">
@@ -309,27 +516,37 @@ export function ModelRegistryResults({ page }: { readonly page: ModelPageV2 }) {
 function RegistrationWorkflow({
   initialArtifactId,
   models,
+  modelsError,
+  modelsHasMore,
+  modelsLoading,
+  modelsLoadingMore,
   onClose,
+  onLoadMoreModels,
 }: {
   readonly initialArtifactId?: string
-  readonly models: ModelPageV2 | undefined
+  readonly models: ModelPageV2['items']
+  readonly modelsError: unknown
+  readonly modelsHasMore: boolean
+  readonly modelsLoading: boolean
+  readonly modelsLoadingMore: boolean
   readonly onClose: () => void
+  readonly onLoadMoreModels: () => void
 }) {
   const { t } = useTranslation()
   const { base, connectionScope, token } = useBackend()
   const queryClient = useQueryClient()
   const [step, setStep] = useState(0)
   const [targetKind, setTargetKind] = useState<'create_model' | 'existing_model'>('create_model')
-  const [existingModelId, setExistingModelId] = useState(models?.items[0]?.model.id ?? '')
+  const [existingModelId, setExistingModelId] = useState(models[0]?.model.id ?? '')
   const [modelKey, setModelKey] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [description, setDescription] = useState('')
   const [taskFamily, setTaskFamily] = useState('chat')
   const [tags, setTags] = useState('')
   const [versionLabel, setVersionLabel] = useState('r1')
-  const [sourceKind, setSourceKind] = useState<'databench_artifact' | 'repository_reference'>(
-    'databench_artifact',
-  )
+  const [sourceKind, setSourceKind] = useState<
+    'databench_artifact' | 'repository_reference' | 'existing_service'
+  >('databench_artifact')
   const [artifactId, setArtifactId] = useState(initialArtifactId ?? '')
   const [repositoryProvider, setRepositoryProvider] = useState<'modelscope' | 'operator_managed'>(
     'modelscope',
@@ -341,22 +558,50 @@ function RegistrationWorkflow({
   >('commit')
   const [baseModelReference, setBaseModelReference] = useState('')
   const [baseModelRevision, setBaseModelRevision] = useState('')
+  const [externalModelRef, setExternalModelRef] = useState('')
+  const [externalVersionRef, setExternalVersionRef] = useState('')
+  const [declaredReferenceKind, setDeclaredReferenceKind] = useState<
+    'immutable_version' | 'mutable_alias' | 'opaque'
+  >('immutable_version')
+  const [connectivityScope, setConnectivityScope] = useState<'private_network' | 'public_network'>(
+    'private_network',
+  )
+  const [deploymentDisplayName, setDeploymentDisplayName] = useState('')
+  const [servedModelName, setServedModelName] = useState('')
+  const [endpointBaseUrl, setEndpointBaseUrl] = useState('')
+  const [authProfile, setAuthProfile] = useState<'none' | 'bearer_ref'>('none')
+  const [credentialRef, setCredentialRef] = useState('')
+  const [declaredInterface, setDeclaredInterface] = useState<
+    'chat_completions' | 'embeddings' | 'vision' | 'tools'
+  >('chat_completions')
+  const [contextLimit, setContextLimit] = useState('')
   const [plan, setPlan] = useState<ModelRegistrationPlanV2 | null>(null)
-  const artifactsQuery = useQuery({
+  const artifactsQuery = useInfiniteQuery({
     queryKey: [connectionScope, base, 'model-registration-artifacts'],
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal, pageParam }) =>
       listModelArtifactsV2({
         base,
-        cursor: null,
+        cursor: pageParam,
         limit: 100,
         registrationStatus: 'all',
         signal,
         token,
       }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: sourceKind === 'databench_artifact',
     retry: false,
   })
-  const selectedArtifact = artifactsQuery.data?.items.find((item) => item.id === artifactId)
+  const artifacts = useMemo(
+    () => artifactsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [artifactsQuery.data?.pages],
+  )
+  const selectedArtifact = artifacts.find((item) => item.id === artifactId)
+  const candidateExpectedVersionId = candidateExpectedVersionIdV2(
+    models,
+    targetKind,
+    existingModelId,
+  )
   const registrationRequest = useMemo<ModelRegistrationRequestV2 | null>(() => {
     if (versionLabel.trim() === '') return null
     const target =
@@ -383,8 +628,57 @@ function RegistrationWorkflow({
       return {
         target,
         version_label: versionLabel.trim(),
-        alias: { alias: 'candidate', expected_version_id: null },
+        alias: { alias: 'candidate', expected_version_id: candidateExpectedVersionId },
         source: { kind: 'databench_artifact', artifact_id: artifactId },
+      }
+    }
+    if (sourceKind === 'existing_service') {
+      if (
+        externalModelRef.trim() === '' ||
+        externalVersionRef.trim() === '' ||
+        deploymentDisplayName.trim() === '' ||
+        servedModelName.trim() === '' ||
+        endpointBaseUrl.trim() === '' ||
+        (authProfile === 'bearer_ref' && credentialRef.trim() === '')
+      ) {
+        return null
+      }
+      const parsedContextLimit = contextLimit.trim() === '' ? null : Number(contextLimit)
+      if (
+        parsedContextLimit !== null &&
+        (!Number.isSafeInteger(parsedContextLimit) || parsedContextLimit < 1)
+      ) {
+        return null
+      }
+      return {
+        target,
+        version_label: versionLabel.trim(),
+        source: {
+          kind: 'existing_service',
+          provider: 'openai_compatible',
+          external_model_ref: externalModelRef.trim(),
+          external_version_ref: externalVersionRef.trim(),
+          declared_reference_kind: declaredReferenceKind,
+          base_model:
+            baseModelReference.trim() === ''
+              ? null
+              : {
+                  reference: baseModelReference.trim(),
+                  revision: baseModelRevision.trim() === '' ? null : baseModelRevision.trim(),
+                },
+          deployment: {
+            display_name: deploymentDisplayName.trim(),
+            served_model_name: servedModelName.trim(),
+            connectivity_scope: connectivityScope,
+            endpoint_base_url: endpointBaseUrl.trim(),
+            auth_profile: authProfile,
+            credential_ref: authProfile === 'none' ? null : credentialRef.trim(),
+            declared_capabilities: {
+              interfaces: [declaredInterface],
+              context_limit: parsedContextLimit,
+            },
+          },
+        },
       }
     }
     if (repositoryId.trim() === '' || repositoryRevision.trim() === '') return null
@@ -410,14 +704,26 @@ function RegistrationWorkflow({
     artifactId,
     baseModelReference,
     baseModelRevision,
+    candidateExpectedVersionId,
     description,
+    authProfile,
     displayName,
+    connectivityScope,
+    contextLimit,
+    credentialRef,
+    declaredInterface,
+    declaredReferenceKind,
+    deploymentDisplayName,
+    endpointBaseUrl,
+    externalModelRef,
+    externalVersionRef,
     existingModelId,
     modelKey,
     repositoryId,
     repositoryProvider,
     repositoryRevision,
     repositoryRevisionKind,
+    servedModelName,
     sourceKind,
     tags,
     targetKind,
@@ -456,6 +762,27 @@ function RegistrationWorkflow({
           queryKey: [connectionScope, base, 'model-registration-artifacts'],
         }),
       ])
+    },
+    onError: async (error) => {
+      if (modelRegistrationConflictReason(error) === 'model_alias_conflict') {
+        await queryClient.invalidateQueries({ queryKey: [connectionScope, base, 'models'] })
+      }
+    },
+  })
+  const activate = useMutation({
+    mutationFn: async () => {
+      if (commit.data?.deployment_id === null || commit.data === undefined) {
+        throw new Error('Registration did not create a Deployment')
+      }
+      return await activateModelVersionDeploymentV2({
+        base,
+        token,
+        versionId: commit.data.model_version_id,
+        deploymentId: commit.data.deployment_id,
+      })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [connectionScope, base, 'models'] })
     },
   })
   const canContinueModel =
@@ -507,18 +834,35 @@ function RegistrationWorkflow({
               <option value="existing_model">{t('models.wizard.existingModel')}</option>
             </FormSelect>
             {targetKind === 'existing_model' ? (
-              <FormSelect
-                label={t('models.wizard.model')}
-                onChange={setExistingModelId}
-                value={existingModelId}
-              >
-                <option value="">{t('models.wizard.chooseModel')}</option>
-                {(models?.items ?? []).map((item) => (
-                  <option key={item.model.id} value={item.model.id}>
-                    {item.model.display_name}
+              <div>
+                <FormSelect
+                  label={t('models.wizard.model')}
+                  onChange={setExistingModelId}
+                  value={existingModelId}
+                >
+                  <option value="">
+                    {modelsLoading ? t('models.loading') : t('models.wizard.chooseModel')}
                   </option>
-                ))}
-              </FormSelect>
+                  {models.map((item) => (
+                    <option key={item.model.id} value={item.model.id}>
+                      {item.model.display_name}
+                    </option>
+                  ))}
+                </FormSelect>
+                {modelsHasMore ? (
+                  <Button
+                    className="mt-2"
+                    disabled={modelsLoadingMore}
+                    onClick={onLoadMoreModels}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    {t('common.next')}
+                  </Button>
+                ) : null}
+                {modelsError !== null ? <ErrorState error={modelsError} /> : null}
+              </div>
             ) : (
               <FormInput label={t('models.wizard.key')} onChange={setModelKey} value={modelKey} />
             )}
@@ -561,16 +905,20 @@ function RegistrationWorkflow({
             >
               <option value="databench_artifact">{t('models.wizard.sourceArtifact')}</option>
               <option value="repository_reference">{t('models.wizard.sourceRepository')}</option>
+              <option value="existing_service">{t('models.wizard.sourceService')}</option>
             </FormSelect>
             {sourceKind === 'databench_artifact' ? (
               <ArtifactPicker
-                artifacts={artifactsQuery.data?.items ?? []}
+                artifacts={artifacts}
                 error={artifactsQuery.error}
+                hasMore={artifactsQuery.hasNextPage}
                 loading={artifactsQuery.isLoading}
+                loadingMore={artifactsQuery.isFetchingNextPage}
                 onChange={setArtifactId}
+                onLoadMore={() => void artifactsQuery.fetchNextPage()}
                 selected={artifactId}
               />
-            ) : (
+            ) : sourceKind === 'repository_reference' ? (
               <div className="grid max-w-4xl grid-cols-2 gap-4 max-sm:grid-cols-1">
                 <FormSelect
                   label={t('models.wizard.repositoryProvider')}
@@ -617,6 +965,103 @@ function RegistrationWorkflow({
                   {t('models.wizard.repositoryBoundary')}
                 </p>
               </div>
+            ) : (
+              <div className="grid max-w-5xl grid-cols-2 gap-4 max-sm:grid-cols-1">
+                <FormInput
+                  label={t('models.wizard.externalModelRef')}
+                  onChange={setExternalModelRef}
+                  value={externalModelRef}
+                />
+                <FormInput
+                  label={t('models.wizard.externalVersionRef')}
+                  onChange={setExternalVersionRef}
+                  value={externalVersionRef}
+                />
+                <FormSelect
+                  label={t('models.wizard.referenceKind')}
+                  onChange={(value) =>
+                    setDeclaredReferenceKind(value as typeof declaredReferenceKind)
+                  }
+                  value={declaredReferenceKind}
+                >
+                  {(['immutable_version', 'mutable_alias', 'opaque'] as const).map((kind) => (
+                    <option key={kind} value={kind}>
+                      {t(`models.wizard.referenceKinds.${kind}`)}
+                    </option>
+                  ))}
+                </FormSelect>
+                <FormSelect
+                  label={t('models.wizard.serviceLocation')}
+                  onChange={(value) => setConnectivityScope(value as typeof connectivityScope)}
+                  value={connectivityScope}
+                >
+                  <option value="private_network">{t('models.wizard.privateService')}</option>
+                  <option value="public_network">{t('models.wizard.publicService')}</option>
+                </FormSelect>
+                <FormInput
+                  label={t('models.wizard.deploymentDisplayName')}
+                  onChange={setDeploymentDisplayName}
+                  value={deploymentDisplayName}
+                />
+                <FormInput
+                  label={t('models.wizard.servedModelName')}
+                  onChange={setServedModelName}
+                  value={servedModelName}
+                />
+                <FormInput
+                  label={t('models.wizard.endpointBaseUrl')}
+                  onChange={setEndpointBaseUrl}
+                  value={endpointBaseUrl}
+                />
+                <FormSelect
+                  label={t('models.wizard.authProfile')}
+                  onChange={(value) => setAuthProfile(value as typeof authProfile)}
+                  value={authProfile}
+                >
+                  <option value="none">{t('models.wizard.noAuth')}</option>
+                  <option value="bearer_ref">{t('models.wizard.bearerRef')}</option>
+                </FormSelect>
+                {authProfile === 'bearer_ref' ? (
+                  <FormInput
+                    label={t('models.wizard.credentialRef')}
+                    onChange={setCredentialRef}
+                    value={credentialRef}
+                  />
+                ) : null}
+                <FormSelect
+                  label={t('models.wizard.declaredInterface')}
+                  onChange={(value) => setDeclaredInterface(value as typeof declaredInterface)}
+                  value={declaredInterface}
+                >
+                  {(['chat_completions', 'embeddings', 'vision', 'tools'] as const).map(
+                    (interfaceName) => (
+                      <option key={interfaceName} value={interfaceName}>
+                        {interfaceName}
+                      </option>
+                    ),
+                  )}
+                </FormSelect>
+                <FormInput
+                  label={t('models.wizard.contextLimit')}
+                  onChange={setContextLimit}
+                  value={contextLimit}
+                />
+                <FormInput
+                  label={t('models.wizard.baseModelOptional')}
+                  onChange={setBaseModelReference}
+                  value={baseModelReference}
+                />
+                <FormInput
+                  label={t('models.wizard.baseRevisionOptional')}
+                  onChange={setBaseModelRevision}
+                  value={baseModelRevision}
+                />
+                <p className="col-span-2 border-warning border-l-2 bg-warning/10 px-4 py-3 text-muted-foreground text-sm max-sm:col-span-1">
+                  {connectivityScope === 'public_network'
+                    ? t('models.wizard.publicActivationBoundary')
+                    : t('models.wizard.serviceBoundary')}
+                </p>
+              </div>
             )}
           </div>
         ) : null}
@@ -629,7 +1074,9 @@ function RegistrationWorkflow({
               value={
                 sourceKind === 'databench_artifact'
                   ? (selectedArtifact?.display_name ?? artifactId)
-                  : `${repositoryProvider} · ${repositoryId}@${repositoryRevision}`
+                  : sourceKind === 'repository_reference'
+                    ? `${repositoryProvider} · ${repositoryId}@${repositoryRevision}`
+                    : `${externalModelRef}@${externalVersionRef} · ${deploymentDisplayName}`
               }
             />
             {plan === null ? null : (
@@ -639,6 +1086,14 @@ function RegistrationWorkflow({
                   {t('models.wizard.inspected')}
                 </p>
                 <code className="mt-2 block break-all text-xs">{plan.registration_digest}</code>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge tone="accent">
+                    {t(`models.mutability.${plan.classification.source_mutability}`)}
+                  </Badge>
+                  <Badge tone="muted">
+                    {t(`models.verification.${plan.classification.verification_level}`)}
+                  </Badge>
+                </div>
                 {plan.warnings.map((warning) => (
                   <p className="mt-2 text-warning text-xs" key={`${warning.code}:${warning.path}`}>
                     {warning.message}
@@ -666,9 +1121,44 @@ function RegistrationWorkflow({
                 >
                   {t('models.wizard.openModel')}
                 </Link>
+                {commit.data.deployment_id === null ? null : (
+                  <div className="mt-3 border-border border-t pt-3">
+                    <p className="text-muted-foreground text-xs">
+                      {t('models.wizard.registeredDeployment')}
+                    </p>
+                    {activate.data === undefined ? (
+                      <Button
+                        className="mt-2"
+                        disabled={activate.isPending}
+                        onClick={() => activate.mutate()}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        {activate.isPending
+                          ? t('models.wizard.activating')
+                          : t('models.wizard.activateNow')}
+                      </Button>
+                    ) : (
+                      <Badge
+                        className="mt-2"
+                        tone={activate.data.availability === 'available' ? 'green' : 'orange'}
+                      >
+                        {t(`models.lifecycle.${activate.data.lifecycle}`)} ·{' '}
+                        {t(`models.availability.${activate.data.availability}`)}
+                      </Badge>
+                    )}
+                    {activate.isError ? <ErrorState error={activate.error} /> : null}
+                  </div>
+                )}
               </div>
             )}
-            {commit.isError ? <ErrorState error={commit.error} /> : null}
+            {commit.isError ? (
+              <>
+                <ErrorState error={commit.error} />
+                <RegistrationConflictRecovery error={commit.error} />
+              </>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -698,7 +1188,9 @@ function RegistrationWorkflow({
             disabled={
               sourceKind === 'databench_artifact'
                 ? artifactId === ''
-                : repositoryId.trim() === '' || repositoryRevision.trim() === ''
+                : sourceKind === 'repository_reference'
+                  ? repositoryId.trim() === '' || repositoryRevision.trim() === ''
+                  : registrationRequest === null
             }
             onClick={() => setStep(2)}
             type="button"
@@ -738,17 +1230,55 @@ function RegistrationWorkflow({
   )
 }
 
+function RegistrationConflictRecovery({ error }: { readonly error: unknown }) {
+  const { t } = useTranslation()
+  const reason = modelRegistrationConflictReason(error)
+  const hint =
+    reason === 'model_key_conflict'
+      ? t('models.wizard.modelKeyConflictHint')
+      : reason === 'model_alias_conflict'
+        ? t('models.wizard.aliasConflictHint')
+        : reason === 'registration_digest_mismatch'
+          ? t('models.wizard.digestMismatchHint')
+          : null
+
+  if (hint === null) return null
+  return <p className="border-warning border-l-2 bg-warning/10 px-4 py-3 text-sm">{hint}</p>
+}
+
+export function candidateExpectedVersionIdV2(
+  models: ModelPageV2['items'],
+  targetKind: 'create_model' | 'existing_model',
+  existingModelId: string,
+): string | null {
+  if (targetKind !== 'existing_model') return null
+  return models.find((item) => item.model.id === existingModelId)?.candidate?.version_id ?? null
+}
+
+function modelRegistrationConflictReason(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.code !== 'model_registry_conflict') return null
+  if (error.detail === null || typeof error.detail !== 'object') return null
+  if (!('reason' in error.detail) || typeof error.detail.reason !== 'string') return null
+  return error.detail.reason
+}
+
 function ArtifactPicker({
   artifacts,
   error,
+  hasMore,
   loading,
+  loadingMore,
   onChange,
+  onLoadMore,
   selected,
 }: {
   readonly artifacts: readonly ModelArtifactV2[]
   readonly error: unknown
+  readonly hasMore: boolean
   readonly loading: boolean
+  readonly loadingMore: boolean
   readonly onChange: (id: string) => void
+  readonly onLoadMore: () => void
   readonly selected: string
 }) {
   const { t } = useTranslation()
@@ -756,31 +1286,45 @@ function ArtifactPicker({
   if (error !== null) return <ErrorState error={error} />
   if (artifacts.length === 0) return <p>{t('models.wizard.noArtifacts')}</p>
   return (
-    <div className="grid gap-2">
-      {artifacts.map((artifact) => (
-        <label
-          className={`flex cursor-pointer items-center justify-between gap-4 border px-4 py-3 transition-colors ${
-            selected === artifact.id
-              ? 'border-primary bg-accent/55'
-              : 'border-border bg-surface hover:bg-surface-hover/55'
-          }`}
-          key={artifact.id}
-        >
-          <span>
-            <strong className="block text-sm">{artifact.display_name}</strong>
-            <span className="mt-1 block text-dim-foreground text-xs">
-              {artifact.base_model.reference} · {artifact.artifact_kind}
+    <div>
+      <div className="grid gap-2">
+        {artifacts.map((artifact) => (
+          <label
+            className={`flex cursor-pointer items-center justify-between gap-4 border px-4 py-3 transition-colors ${
+              selected === artifact.id
+                ? 'border-primary bg-accent/55'
+                : 'border-border bg-surface hover:bg-surface-hover/55'
+            }`}
+            key={artifact.id}
+          >
+            <span>
+              <strong className="block text-sm">{artifact.display_name}</strong>
+              <span className="mt-1 block text-dim-foreground text-xs">
+                {artifact.base_model.reference} · {artifact.artifact_kind}
+              </span>
             </span>
-          </span>
-          <input
-            checked={selected === artifact.id}
-            name="artifact"
-            onChange={() => onChange(artifact.id)}
-            type="radio"
-            value={artifact.id}
-          />
-        </label>
-      ))}
+            <input
+              checked={selected === artifact.id}
+              name="artifact"
+              onChange={() => onChange(artifact.id)}
+              type="radio"
+              value={artifact.id}
+            />
+          </label>
+        ))}
+      </div>
+      {hasMore ? (
+        <Button
+          className="mt-2"
+          disabled={loadingMore}
+          onClick={onLoadMore}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {t('common.next')}
+        </Button>
+      ) : null}
     </div>
   )
 }

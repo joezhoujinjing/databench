@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   V2CatalogConsistencyError,
   V2CatalogInputError,
+  V2CatalogModelAliasAdmissionError,
   V2CatalogModelAliasConflictError,
   V2CatalogModelDeploymentAdoptionConflictError,
   V2CatalogModelMetadataConflictError,
@@ -13,7 +14,10 @@ import type {
   ArchiveCatalogModelV2,
   CatalogJsonValueV2,
   CatalogModelAliasRowV2,
+  CatalogModelComparableEvaluationSummaryV2,
   CatalogModelCursorV2,
+  CatalogModelDeploymentAdoptionCursorV2,
+  CatalogModelDeploymentAdoptionPageV2,
   CatalogModelDeploymentAdoptionResultV2,
   CatalogModelDeploymentAdoptionRowV2,
   CatalogModelListFilterV2,
@@ -37,6 +41,7 @@ import type {
   CreateModelDeploymentAdoptionV2,
   CreateModelRegistrationV2,
   CreateModelVersionDeploymentV2,
+  RestoreCatalogModelV2,
   UpdateCatalogModelMetadataV2,
 } from './types.js'
 
@@ -74,6 +79,23 @@ interface ModelVersionDeploymentSqlRow {
   readonly activatedAt: Date | null
   readonly disabledAt: Date | null
   readonly updatedAt: Date
+}
+
+interface ComparableEvaluationSqlRow {
+  readonly modelId: string
+  readonly runId: string
+  readonly modelVersionId: string
+  readonly modelDeploymentId: string
+  readonly benchmark: string
+  readonly datasetVersion: string
+  readonly metricId: string
+  readonly outputKey: string
+  readonly score: number
+  readonly finishedAt: Date
+  readonly sourceMutability: string
+  readonly verificationLevel: string
+  readonly sourceEvidenceDigest: string | null
+  readonly sourceObservedAt: Date
 }
 
 const MODEL_VERSION_DEPLOYMENT_COLUMNS = Prisma.sql`
@@ -450,6 +472,135 @@ export async function getModelVersionV2(
   }
 }
 
+function modelVersionFilterPredicate(filter: CatalogModelListFilterV2): Prisma.Sql {
+  if (
+    filter.sourceKind === null &&
+    filter.sourceMutability === null &&
+    filter.verificationLevel === null &&
+    filter.artifactKind === null &&
+    filter.artifactId === null
+  ) {
+    return Prisma.sql`TRUE`
+  }
+  const providerVerified = Prisma.sql`EXISTS (
+    SELECT 1
+    FROM "model_source_evidence_v2" AS "verified_evidence"
+    WHERE
+      "verified_evidence"."namespace_id" = "filtered_version"."namespace_id" AND
+      "verified_evidence"."model_version_id" = "filtered_version"."id" AND
+      "verified_evidence"."evidence_kind" = 'provider_resolution' AND
+      "verified_evidence"."result" = 'verified' AND
+      "verified_evidence"."response_digest" IS NOT NULL AND
+      (
+        (
+          "filtered_version"."source_kind" = 'repository_reference' AND
+          (
+            "repository_source"."revision_kind" = 'tag' OR
+            "verified_evidence"."observed_revision" = "repository_source"."revision"
+          )
+        ) OR
+        (
+          "filtered_version"."source_kind" = 'existing_service' AND
+          "verified_evidence"."observed_revision" = "service_source"."external_version_ref"
+        )
+      ) AND
+      NOT EXISTS (
+        SELECT 1
+        FROM "model_source_evidence_v2" AS "later_drift"
+        WHERE
+          "later_drift"."namespace_id" = "verified_evidence"."namespace_id" AND
+          "later_drift"."model_version_id" = "verified_evidence"."model_version_id" AND
+          "later_drift"."result" = 'revision_mismatch' AND
+          (
+            "later_drift"."observed_at",
+            "later_drift"."created_at",
+            "later_drift"."id"::text COLLATE "C"
+          ) > (
+            "verified_evidence"."observed_at",
+            "verified_evidence"."created_at",
+            "verified_evidence"."id"::text COLLATE "C"
+          )
+      )
+  )`
+  const mutability = Prisma.sql`CASE
+    WHEN "filtered_version"."source_kind" = 'databench_artifact' THEN 'immutable'
+    WHEN "repository_source"."revision_kind" = 'tag' THEN 'mutable'
+    WHEN "service_source"."declared_reference_kind" = 'mutable_alias' THEN 'mutable'
+    WHEN
+      "filtered_version"."source_kind" = 'repository_reference' AND
+      "repository_source"."revision_kind" IN ('commit', 'digest') AND
+      ${providerVerified}
+    THEN 'immutable'
+    ELSE 'unknown'
+  END`
+  const verification = Prisma.sql`CASE
+    WHEN "filtered_version"."source_kind" = 'databench_artifact' THEN 'content_verified'
+    WHEN ${providerVerified} THEN 'provider_verified'
+    ELSE 'operator_attested'
+  END`
+  return Prisma.sql`EXISTS (
+    SELECT 1
+    FROM "model_versions_v2" AS "filtered_version"
+    LEFT JOIN "model_version_artifact_sources_v2" AS "artifact_source"
+      ON "artifact_source"."namespace_id" = "filtered_version"."namespace_id" AND
+         "artifact_source"."model_version_id" = "filtered_version"."id"
+    LEFT JOIN "model_version_repository_sources_v2" AS "repository_source"
+      ON "repository_source"."namespace_id" = "filtered_version"."namespace_id" AND
+         "repository_source"."model_version_id" = "filtered_version"."id"
+    LEFT JOIN "model_version_service_sources_v2" AS "service_source"
+      ON "service_source"."namespace_id" = "filtered_version"."namespace_id" AND
+         "service_source"."model_version_id" = "filtered_version"."id"
+    WHERE
+      "filtered_version"."namespace_id" = "models_v2"."namespace_id" AND
+      "filtered_version"."model_id" = "models_v2"."id" AND
+      (${filter.sourceKind}::text IS NULL OR
+        "filtered_version"."source_kind" = ${filter.sourceKind}) AND
+      (${filter.sourceMutability}::text IS NULL OR
+        (${mutability}) = ${filter.sourceMutability}) AND
+      (${filter.verificationLevel}::text IS NULL OR
+        (${verification}) = ${filter.verificationLevel}) AND
+      (${filter.artifactKind}::text IS NULL OR
+        "artifact_source"."artifact_kind" = ${filter.artifactKind}) AND
+      (${filter.artifactId}::text IS NULL OR
+        "artifact_source"."artifact_id" = ${filter.artifactId}::uuid)
+  )`
+}
+
+function comparableEvaluationRow(
+  row: ComparableEvaluationSqlRow,
+): CatalogModelComparableEvaluationSummaryV2 {
+  if (!Number.isFinite(row.score)) {
+    throw new V2CatalogConsistencyError('Comparable Evaluation score is invalid')
+  }
+  if (!['immutable', 'mutable', 'unknown'].includes(row.sourceMutability)) {
+    throw new V2CatalogConsistencyError('Comparable Evaluation source mutability is invalid')
+  }
+  if (
+    !['content_verified', 'provider_verified', 'operator_attested', 'unverified'].includes(
+      row.verificationLevel,
+    )
+  ) {
+    throw new V2CatalogConsistencyError('Comparable Evaluation verification is invalid')
+  }
+  return Object.freeze({
+    runId: row.runId,
+    modelVersionId: row.modelVersionId,
+    modelDeploymentId: row.modelDeploymentId,
+    benchmark: row.benchmark,
+    datasetVersion: row.datasetVersion,
+    metricId: row.metricId,
+    outputKey: row.outputKey,
+    score: row.score,
+    finishedAt: row.finishedAt,
+    sourceMutability:
+      row.sourceMutability as CatalogModelComparableEvaluationSummaryV2['sourceMutability'],
+    verificationLevel:
+      row.verificationLevel as CatalogModelComparableEvaluationSummaryV2['verificationLevel'],
+    sourceEvidenceDigest: row.sourceEvidenceDigest,
+    sourceObservedAt: row.sourceObservedAt,
+  })
+}
+
 export async function listModelsV2(
   client: PrismaClient,
   namespaceId: string,
@@ -467,15 +618,48 @@ export async function listModelsV2(
       : filter.archive === 'archived'
         ? Prisma.sql`"archived_at" IS NOT NULL`
         : Prisma.sql`TRUE`
-  const sourcePredicate =
-    filter.sourceKind === null
+  const sourcePredicate = modelVersionFilterPredicate(filter)
+  const taskPredicate =
+    filter.taskFamily === null ? Prisma.sql`TRUE` : Prisma.sql`"task_family" = ${filter.taskFamily}`
+  const tagPredicate =
+    filter.tag === null
+      ? Prisma.sql`TRUE`
+      : Prisma.sql`"tags_json" @> jsonb_build_array(${filter.tag}::text)`
+  const aliasPredicate =
+    filter.alias === null
+      ? Prisma.sql`TRUE`
+      : filter.alias === 'candidate'
+        ? Prisma.sql`EXISTS (
+            SELECT 1 FROM "model_aliases_v2" AS "filtered_alias"
+            WHERE
+              "filtered_alias"."namespace_id" = "models_v2"."namespace_id" AND
+              "filtered_alias"."model_id" = "models_v2"."id" AND
+              "filtered_alias"."alias" = 'candidate'
+          )`
+        : Prisma.sql`NOT EXISTS (
+            SELECT 1 FROM "model_aliases_v2" AS "filtered_alias"
+            WHERE
+              "filtered_alias"."namespace_id" = "models_v2"."namespace_id" AND
+              "filtered_alias"."model_id" = "models_v2"."id" AND
+              "filtered_alias"."alias" = 'candidate'
+          )`
+  const deploymentPredicate =
+    filter.deploymentLifecycle === null && filter.deploymentHealth === null
       ? Prisma.sql`TRUE`
       : Prisma.sql`EXISTS (
-          SELECT 1 FROM "model_versions_v2" AS "filtered_version"
+          SELECT 1
+          FROM "model_versions_v2" AS "deployment_version"
+          JOIN "model_deployments_v2" AS "filtered_deployment"
+            ON "filtered_deployment"."namespace_id" = "deployment_version"."namespace_id" AND
+               "filtered_deployment"."model_version_id" = "deployment_version"."id" AND
+               "filtered_deployment"."deployment_profile" = 'model-version-v1'
           WHERE
-            "filtered_version"."namespace_id" = "models_v2"."namespace_id" AND
-            "filtered_version"."model_id" = "models_v2"."id" AND
-            "filtered_version"."source_kind" = ${filter.sourceKind}
+            "deployment_version"."namespace_id" = "models_v2"."namespace_id" AND
+            "deployment_version"."model_id" = "models_v2"."id" AND
+            (${filter.deploymentLifecycle}::text IS NULL OR
+              "filtered_deployment"."status" = ${filter.deploymentLifecycle}) AND
+            (${filter.deploymentHealth}::text IS NULL OR
+              "filtered_deployment"."health_status" = ${filter.deploymentHealth})
         )`
   const searchPredicate =
     filter.search.length === 0
@@ -508,6 +692,10 @@ export async function listModelsV2(
       "namespace_id" = ${namespaceId}::uuid AND
       ${archivePredicate} AND
       ${sourcePredicate} AND
+      ${taskPredicate} AND
+      ${tagPredicate} AND
+      ${aliasPredicate} AND
+      ${deploymentPredicate} AND
       ${searchPredicate} AND
       ${cursorPredicate}
     ORDER BY date_trunc('milliseconds', "updated_at") DESC, "id"::text COLLATE "C" ASC
@@ -518,7 +706,14 @@ export async function listModelsV2(
   const modelIds = pageLocators.map((row) => row.id)
   if (modelIds.length === 0) return Object.freeze({ rows: Object.freeze([]), nextCursor: null })
 
-  const [storedModels, versionCounts, candidateAliases, adoptionCounts] = await Promise.all([
+  const [
+    storedModels,
+    versionCounts,
+    candidateAliases,
+    deploymentCounts,
+    comparableEvaluations,
+    adoptionCounts,
+  ] = await Promise.all([
     client.v2Model.findMany({ where: { namespaceId, id: { in: modelIds } } }),
     client.v2ModelVersion.groupBy({
       by: ['modelId'],
@@ -531,13 +726,84 @@ export async function listModelsV2(
     client.$queryRaw<
       Array<{
         readonly modelId: string
+        readonly total: number
+        readonly registered: number
+        readonly active: number
+        readonly disabled: number
+        readonly healthyActive: number
+      }>
+    >(Prisma.sql`
+      SELECT
+        "version"."model_id" AS "modelId",
+        COUNT(*)::integer AS "total",
+        COUNT(*) FILTER (WHERE "deployment"."status" = 'registered')::integer AS "registered",
+        COUNT(*) FILTER (WHERE "deployment"."status" = 'active')::integer AS "active",
+        COUNT(*) FILTER (WHERE "deployment"."status" = 'disabled')::integer AS "disabled",
+        COUNT(*) FILTER (
+          WHERE "deployment"."status" = 'active' AND "deployment"."health_status" = 'healthy'
+        )::integer AS "healthyActive"
+      FROM "model_versions_v2" AS "version"
+      JOIN "model_deployments_v2" AS "deployment"
+        ON "deployment"."namespace_id" = "version"."namespace_id" AND
+           "deployment"."model_version_id" = "version"."id" AND
+           "deployment"."deployment_profile" = 'model-version-v1'
+      WHERE
+        "version"."namespace_id" = ${namespaceId}::uuid AND
+        "version"."model_id" IN (${Prisma.join(modelIds.map((id) => Prisma.sql`${id}::uuid`))})
+      GROUP BY "version"."model_id"
+    `),
+    client.$queryRaw<ComparableEvaluationSqlRow[]>(Prisma.sql`
+      SELECT DISTINCT ON ("run"."model_id")
+        "run"."model_id" AS "modelId",
+        "run"."id" AS "runId",
+        "run"."model_version_id" AS "modelVersionId",
+        "run"."model_deployment_id" AS "modelDeploymentId",
+        "run"."benchmark" AS "benchmark",
+        "run"."dataset_version" AS "datasetVersion",
+        "run"."primary_metric_id" AS "metricId",
+        "run"."primary_output_key" AS "outputKey",
+        ("metric"."value" ->> 'score')::double precision AS "score",
+        "run"."finished_at" AS "finishedAt",
+        "run"."source_mutability_snapshot" AS "sourceMutability",
+        "run"."verification_level_snapshot" AS "verificationLevel",
+        "run"."source_evidence_digest" AS "sourceEvidenceDigest",
+        "run"."source_observed_at" AS "sourceObservedAt"
+      FROM "evaluation_runs_v2" AS "run"
+      CROSS JOIN LATERAL jsonb_array_elements("run"."metrics_json") WITH ORDINALITY
+        AS "metric"("value", "ordinal")
+      WHERE
+        "run"."namespace_id" = ${namespaceId}::uuid AND
+        "run"."model_id" IN (${Prisma.join(modelIds.map((id) => Prisma.sql`${id}::uuid`))}) AND
+        "run"."create_profile" = 'evaluation-run-create-v6' AND
+        "run"."status" = 'completed' AND
+        "run"."finished_at" IS NOT NULL AND
+        "run"."model_version_id" IS NOT NULL AND
+        "run"."model_deployment_id" IS NOT NULL AND
+        "run"."source_mutability_snapshot" IS NOT NULL AND
+        "run"."verification_level_snapshot" IS NOT NULL AND
+        "run"."source_observed_at" IS NOT NULL AND
+        "metric"."value" ->> 'metric_id' = "run"."primary_metric_id" AND
+        "metric"."value" ->> 'output_key' = "run"."primary_output_key" AND
+        jsonb_typeof("metric"."value" -> 'score') = 'number'
+      ORDER BY
+        "run"."model_id",
+        date_trunc('milliseconds', "run"."finished_at") DESC,
+        "run"."id"::text COLLATE "C" DESC,
+        "metric"."ordinal" ASC
+    `),
+    client.$queryRaw<
+      Array<{
+        readonly modelId: string
         readonly deploymentCount: number
+        readonly activeDeploymentCount: number
         readonly healthyDeploymentCount: number
       }>
     >(Prisma.sql`
       SELECT
         "adoption"."model_id" AS "modelId",
         COUNT(*)::integer AS "deploymentCount",
+        COUNT(*) FILTER (WHERE "deployment"."status" = 'active')::integer
+          AS "activeDeploymentCount",
         COUNT(*) FILTER (
           WHERE "deployment"."status" = 'active' AND "deployment"."health_status" = 'healthy'
         )::integer AS "healthyDeploymentCount"
@@ -561,13 +827,7 @@ export async function listModelsV2(
   const candidateRows = candidateVersions.map(modelVersionRow)
   const [candidateSources, candidateEvidenceRows] = await Promise.all([
     readVersionSources(client, candidateRows),
-    candidateVersionIds.length === 0
-      ? Promise.resolve([])
-      : client.v2ModelSourceEvidence.findMany({
-          where: { namespaceId, modelVersionId: { in: candidateVersionIds } },
-          orderBy: [{ observedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-          take: 3_000,
-        }),
+    readCurrentModelSourceEvidence(client, namespaceId, candidateVersionIds),
   ])
   const candidateEvidence = new Map<string, CatalogModelSourceEvidenceRowV2[]>()
   for (const storedEvidence of candidateEvidenceRows) {
@@ -581,6 +841,10 @@ export async function listModelsV2(
   const aliasByModel = new Map(candidateAliases.map((row) => [row.modelId, modelAliasRow(row)]))
   const candidateById = new Map(candidateRows.map((row) => [row.id, row]))
   const adoptionByModel = new Map(adoptionCounts.map((row) => [row.modelId, row]))
+  const deploymentByModel = new Map(deploymentCounts.map((row) => [row.modelId, row]))
+  const evaluationByModel = new Map(
+    comparableEvaluations.map((row) => [row.modelId, comparableEvaluationRow(row)]),
+  )
   const items: CatalogModelListItemV2[] = pageLocators.map((locator) => {
     const model = modelById.get(locator.id)
     if (!model) throw new V2CatalogConsistencyError('Model list locator could not be loaded')
@@ -599,11 +863,21 @@ export async function listModelsV2(
             evidence: Object.freeze(candidateEvidence.get(candidateVersion.id) ?? []),
           }
     const deploymentCounts = adoptionByModel.get(model.id)
+    const versionDeploymentCounts = deploymentByModel.get(model.id)
     return Object.freeze({
       model,
       candidate,
       versionCount: countByModel.get(model.id) ?? 0,
+      deploymentSummary: Object.freeze({
+        total: versionDeploymentCounts?.total ?? 0,
+        registered: versionDeploymentCounts?.registered ?? 0,
+        active: versionDeploymentCounts?.active ?? 0,
+        disabled: versionDeploymentCounts?.disabled ?? 0,
+        healthyActive: versionDeploymentCounts?.healthyActive ?? 0,
+      }),
+      latestComparableEvaluation: evaluationByModel.get(model.id) ?? null,
       adoptedDeploymentCount: deploymentCounts?.deploymentCount ?? 0,
+      activeAdoptedDeploymentCount: deploymentCounts?.activeDeploymentCount ?? 0,
       healthyAdoptedDeploymentCount: deploymentCounts?.healthyDeploymentCount ?? 0,
     })
   })
@@ -666,14 +940,11 @@ export async function listModelVersionsV2(
     return { ...version, createdAt: locator.createdAt }
   })
   const sources = await readVersionSources(client, versions)
-  const evidenceRows =
-    versions.length === 0
-      ? []
-      : await client.v2ModelSourceEvidence.findMany({
-          where: { namespaceId, modelVersionId: { in: versions.map((version) => version.id) } },
-          orderBy: [{ observedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-          take: 10_000,
-        })
+  const evidenceRows = await readCurrentModelSourceEvidence(
+    client,
+    namespaceId,
+    versions.map((version) => version.id),
+  )
   const evidenceByVersion = new Map<string, CatalogModelSourceEvidenceRowV2[]>()
   for (const row of evidenceRows) {
     const evidence = modelSourceEvidenceRow(row)
@@ -772,6 +1043,35 @@ export async function archiveModelV2(
   })
 }
 
+export async function restoreModelV2(
+  client: PrismaClient,
+  input: RestoreCatalogModelV2,
+): Promise<CatalogModelRowV2 | null> {
+  validateUuid(input.namespaceId, 'namespace ID')
+  validateUuid(input.modelId, 'Model ID')
+  validateSafeBigint(input.expectedMetadataRevision, 'expected metadata revision')
+  return await client.$transaction(async (transaction) => {
+    await lockModel(transaction, input.namespaceId, input.modelId)
+    const current = await transaction.v2Model.findFirst({
+      where: { namespaceId: input.namespaceId, id: input.modelId },
+    })
+    if (!current) return null
+    if (current.archivedAt === null) return modelRow(current)
+    if (current.metadataRevision !== input.expectedMetadataRevision) {
+      throw new V2CatalogModelMetadataConflictError(
+        input.modelId,
+        input.expectedMetadataRevision,
+        current.metadataRevision,
+      )
+    }
+    const restored = await transaction.v2Model.update({
+      where: { id: input.modelId },
+      data: { archivedAt: null, metadataRevision: { increment: 1 } },
+    })
+    return modelRow(restored)
+  })
+}
+
 export async function compareAndSetModelAliasV2(
   client: PrismaClient,
   input: CompareAndSetModelAliasV2,
@@ -787,7 +1087,18 @@ export async function appendModelSourceEvidenceV2(
   client: PrismaClient,
   input: AppendModelSourceEvidenceV2,
 ): Promise<CatalogModelSourceEvidenceRowV2> {
-  return await appendModelSourceEvidenceWithClient(client, input)
+  validateEvidence(input)
+  return await client.$transaction(async (transaction) => {
+    const version = await transaction.v2ModelVersion.findFirst({
+      where: { namespaceId: input.namespaceId, id: input.modelVersionId },
+      select: { modelId: true },
+    })
+    if (version === null) {
+      throw new V2CatalogConsistencyError('Model source evidence Version was not readable')
+    }
+    await lockModel(transaction, input.namespaceId, version.modelId)
+    return await appendModelSourceEvidenceWithClient(transaction, input)
+  })
 }
 
 type ModelSourceEvidenceClient = Pick<PrismaClient, 'v2ModelSourceEvidence'>
@@ -825,10 +1136,10 @@ export async function listModelSourceEvidenceV2(
   validateUuid(modelVersionId, 'Model Version ID')
   const rows = await client.v2ModelSourceEvidence.findMany({
     where: { namespaceId, modelVersionId },
-    orderBy: [{ observedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    orderBy: [{ observedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     take: 1_000,
   })
-  return Object.freeze(rows.map(modelSourceEvidenceRow))
+  return Object.freeze(rows.reverse().map(modelSourceEvidenceRow))
 }
 
 export async function createOrReadModelDeploymentAdoptionV2(
@@ -866,15 +1177,67 @@ export async function listModelDeploymentAdoptionsV2(
   client: PrismaClient,
   namespaceId: string,
   modelVersionId: string,
-): Promise<readonly CatalogModelDeploymentAdoptionRowV2[]> {
+  before: CatalogModelDeploymentAdoptionCursorV2 | null,
+  limit: number,
+): Promise<CatalogModelDeploymentAdoptionPageV2> {
   validateUuid(namespaceId, 'namespace ID')
   validateUuid(modelVersionId, 'Model Version ID')
-  const rows = await client.v2ModelVersionDeploymentAdoption.findMany({
-    where: { namespaceId, modelVersionId },
-    orderBy: [{ adoptedAt: 'asc' }, { deploymentId: 'asc' }],
-    take: 1_000,
+  validatePageLimit(limit)
+  if (before !== null) validateModelDeploymentAdoptionCursor(before)
+  const locators = await client.$queryRaw<
+    Array<{ readonly deploymentId: string; readonly adoptedAt: Date }>
+  >(Prisma.sql`
+    SELECT
+      "deployment_id" AS "deploymentId",
+      date_trunc('milliseconds', "adopted_at") AS "adoptedAt"
+    FROM "model_version_deployment_adoptions_v2"
+    WHERE
+      "namespace_id" = ${namespaceId}::uuid AND
+      "model_version_id" = ${modelVersionId}::uuid AND
+      ${
+        before === null
+          ? Prisma.sql`TRUE`
+          : Prisma.sql`(
+              date_trunc('milliseconds', "adopted_at") < ${before.adoptedAt} OR
+              (
+                date_trunc('milliseconds', "adopted_at") = ${before.adoptedAt} AND
+                "deployment_id"::text COLLATE "C" < ${before.deploymentId}
+              )
+            )`
+      }
+    ORDER BY
+      date_trunc('milliseconds', "adopted_at") DESC,
+      "deployment_id"::text COLLATE "C" DESC
+    LIMIT ${limit + 1}
+  `)
+  const hasMore = locators.length > limit
+  const pageLocators = locators.slice(0, limit)
+  const stored =
+    pageLocators.length === 0
+      ? []
+      : await client.v2ModelVersionDeploymentAdoption.findMany({
+          where: {
+            namespaceId,
+            modelVersionId,
+            deploymentId: { in: pageLocators.map((row) => row.deploymentId) },
+          },
+        })
+  const byDeployment = new Map(stored.map((row) => [row.deploymentId, row]))
+  const rows = pageLocators.map((locator) => {
+    const row = byDeployment.get(locator.deploymentId)
+    if (row === undefined) {
+      throw new V2CatalogConsistencyError('Model Deployment adoption page is incomplete')
+    }
+    return modelDeploymentAdoptionRow({ ...row, adoptedAt: locator.adoptedAt })
   })
-  return Object.freeze(rows.map(modelDeploymentAdoptionRow))
+  const last = hasMore ? pageLocators.at(-1) : undefined
+  return Object.freeze({
+    rows: Object.freeze(rows),
+    nextCursor:
+      last === undefined
+        ? null
+        : Object.freeze({ adoptedAt: last.adoptedAt, deploymentId: last.deploymentId }),
+  })
 }
 
 async function createOrReadRegistrationModel(
@@ -1085,8 +1448,11 @@ async function compareAndSetAliasInTransaction(
   input: CompareAndSetModelAliasV2,
 ): Promise<CatalogModelAliasRowV2> {
   validateAliasInput(input)
+  if (!(await modelVersionSourceIsImmutable(transaction, input))) {
+    throw new V2CatalogModelAliasAdmissionError(input.modelId, input.newVersionId)
+  }
   if (input.expectedVersionId === null) {
-    await transaction.v2ModelAlias.createMany({
+    const created = await transaction.v2ModelAlias.createMany({
       data: [
         {
           namespaceId: input.namespaceId,
@@ -1097,6 +1463,18 @@ async function compareAndSetAliasInTransaction(
       ],
       skipDuplicates: true,
     })
+    if (created.count !== 1) {
+      const current = await transaction.v2ModelAlias.findFirst({
+        where: { namespaceId: input.namespaceId, modelId: input.modelId, alias: input.alias },
+      })
+      throw new V2CatalogModelAliasConflictError(
+        input.modelId,
+        input.alias,
+        input.expectedVersionId,
+        current?.versionId ?? null,
+        input.newVersionId,
+      )
+    }
   } else {
     const updated = await transaction.v2ModelAlias.updateMany({
       where: {
@@ -1133,6 +1511,51 @@ async function compareAndSetAliasInTransaction(
     )
   }
   return modelAliasRow(row)
+}
+
+async function modelVersionSourceIsImmutable(
+  transaction: TransactionClient,
+  input: CompareAndSetModelAliasV2,
+): Promise<boolean> {
+  const version = await transaction.v2ModelVersion.findFirst({
+    where: {
+      namespaceId: input.namespaceId,
+      modelId: input.modelId,
+      id: input.newVersionId,
+    },
+    select: { sourceKind: true },
+  })
+  if (version === null) return false
+  if (version.sourceKind === 'databench_artifact') return true
+  if (version.sourceKind !== 'repository_reference') return false
+  const repository = await transaction.v2ModelVersionRepositorySource.findFirst({
+    where: { namespaceId: input.namespaceId, modelVersionId: input.newVersionId },
+    select: { revision: true, revisionKind: true },
+  })
+  if (
+    repository === null ||
+    (repository.revisionKind !== 'commit' && repository.revisionKind !== 'digest')
+  ) {
+    return false
+  }
+  const latestRelevant = await transaction.v2ModelSourceEvidence.findFirst({
+    where: {
+      namespaceId: input.namespaceId,
+      modelVersionId: input.newVersionId,
+      OR: [
+        { result: 'revision_mismatch' },
+        {
+          result: 'verified',
+          evidenceKind: 'provider_resolution',
+          observedRevision: repository.revision,
+          responseDigest: { not: null },
+        },
+      ],
+    },
+    orderBy: [{ observedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    select: { result: true },
+  })
+  return latestRelevant?.result === 'verified'
 }
 
 async function loadRegistrationResult(
@@ -1317,6 +1740,84 @@ async function readVersionSources(
   }
   for (const version of versions) requiredVersionSource(sources, version.id)
   return sources
+}
+
+async function readCurrentModelSourceEvidence(
+  client: Pick<TransactionClient, '$queryRaw' | 'v2ModelSourceEvidence'>,
+  namespaceId: string,
+  versionIds: readonly string[],
+) {
+  if (versionIds.length === 0) return []
+  const targetIds = Prisma.join(versionIds.map((id) => Prisma.sql`${id}::uuid`))
+  const ids = await client.$queryRaw<Array<{ readonly id: string }>>(Prisma.sql`
+    WITH "latest_observation" AS (
+      SELECT DISTINCT ON ("evidence"."model_version_id") "evidence"."id"
+      FROM "model_source_evidence_v2" AS "evidence"
+      WHERE
+        "evidence"."namespace_id" = ${namespaceId}::uuid AND
+        "evidence"."model_version_id" IN (${targetIds})
+      ORDER BY
+        "evidence"."model_version_id",
+        "evidence"."observed_at" DESC,
+        "evidence"."created_at" DESC,
+        "evidence"."id"::text COLLATE "C" DESC
+    ),
+    "latest_mismatch" AS (
+      SELECT DISTINCT ON ("evidence"."model_version_id") "evidence"."id"
+      FROM "model_source_evidence_v2" AS "evidence"
+      WHERE
+        "evidence"."namespace_id" = ${namespaceId}::uuid AND
+        "evidence"."model_version_id" IN (${targetIds}) AND
+        "evidence"."result" = 'revision_mismatch'
+      ORDER BY
+        "evidence"."model_version_id",
+        "evidence"."observed_at" DESC,
+        "evidence"."created_at" DESC,
+        "evidence"."id"::text COLLATE "C" DESC
+    ),
+    "latest_matching_verification" AS (
+      SELECT DISTINCT ON ("evidence"."model_version_id") "evidence"."id"
+      FROM "model_source_evidence_v2" AS "evidence"
+      LEFT JOIN "model_version_repository_sources_v2" AS "repository"
+        ON "repository"."namespace_id" = "evidence"."namespace_id" AND
+           "repository"."model_version_id" = "evidence"."model_version_id"
+      LEFT JOIN "model_version_service_sources_v2" AS "service"
+        ON "service"."namespace_id" = "evidence"."namespace_id" AND
+           "service"."model_version_id" = "evidence"."model_version_id"
+      WHERE
+        "evidence"."namespace_id" = ${namespaceId}::uuid AND
+        "evidence"."model_version_id" IN (${targetIds}) AND
+        "evidence"."result" = 'verified' AND
+        "evidence"."evidence_kind" = 'provider_resolution' AND
+        "evidence"."response_digest" IS NOT NULL AND
+        (
+          (
+            "repository"."model_version_id" IS NOT NULL AND
+            (
+              ("repository"."revision_kind" = 'tag' AND "evidence"."observed_revision" IS NOT NULL) OR
+              "evidence"."observed_revision" = "repository"."revision"
+            )
+          ) OR
+          (
+            "service"."model_version_id" IS NOT NULL AND
+            "evidence"."observed_revision" = "service"."external_version_ref"
+          )
+        )
+      ORDER BY
+        "evidence"."model_version_id",
+        "evidence"."observed_at" DESC,
+        "evidence"."created_at" DESC,
+        "evidence"."id"::text COLLATE "C" DESC
+    )
+    SELECT "id" FROM "latest_observation"
+    UNION SELECT "id" FROM "latest_mismatch"
+    UNION SELECT "id" FROM "latest_matching_verification"
+  `)
+  if (ids.length === 0) return []
+  return await client.v2ModelSourceEvidence.findMany({
+    where: { namespaceId, id: { in: ids.map((row) => row.id) } },
+    orderBy: [{ observedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+  })
 }
 
 function requiredVersionSource(
@@ -2120,7 +2621,23 @@ function validateModelListFilter(filter: CatalogModelListFilterV2): void {
     (filter.sourceKind !== null &&
       !['databench_artifact', 'repository_reference', 'existing_service'].includes(
         filter.sourceKind,
-      ))
+      )) ||
+    (filter.sourceMutability !== null &&
+      !['immutable', 'mutable', 'unknown'].includes(filter.sourceMutability)) ||
+    (filter.verificationLevel !== null &&
+      !['content_verified', 'provider_verified', 'operator_attested', 'unverified'].includes(
+        filter.verificationLevel,
+      )) ||
+    (filter.taskFamily !== null && !SAFE_TOKEN.test(filter.taskFamily)) ||
+    (filter.artifactKind !== null && !SAFE_TOKEN.test(filter.artifactKind)) ||
+    (filter.artifactId !== null && !UUID.test(filter.artifactId)) ||
+    (filter.alias !== null && !['candidate', 'none'].includes(filter.alias)) ||
+    (filter.deploymentLifecycle !== null &&
+      !['registered', 'active', 'disabled'].includes(filter.deploymentLifecycle)) ||
+    (filter.deploymentHealth !== null &&
+      !['unknown', 'healthy', 'unhealthy'].includes(filter.deploymentHealth)) ||
+    (filter.tag !== null &&
+      (filter.tag.length === 0 || new TextEncoder().encode(filter.tag).byteLength > 64))
   ) {
     throw new V2CatalogInputError('Model list filter is invalid')
   }
@@ -2134,6 +2651,13 @@ function validateModelCursor(cursor: CatalogModelCursorV2): void {
 function validateModelVersionCursor(cursor: CatalogModelVersionCursorV2): void {
   validateMillisecondDate(cursor.createdAt, 'Model Version cursor timestamp')
   validateUuid(cursor.id, 'Model Version cursor ID')
+}
+
+function validateModelDeploymentAdoptionCursor(
+  cursor: CatalogModelDeploymentAdoptionCursorV2,
+): void {
+  validateMillisecondDate(cursor.adoptedAt, 'Model Deployment adoption cursor timestamp')
+  validateUuid(cursor.deploymentId, 'Model Deployment adoption cursor ID')
 }
 
 function validatePageLimit(limit: number): void {

@@ -3,6 +3,8 @@ import {
   CheckModelVersionDeploymentRequestV2Schema,
   CreateModelVersionDeploymentRequestV2Schema,
   DisableModelVersionDeploymentRequestV2Schema,
+  ModelEvaluationDeploymentSelectorRequestV2Schema,
+  ModelEvaluationDeploymentSelectorV2Schema,
   ModelVersionDeploymentPageRequestV2Schema,
   ModelVersionDeploymentPageV2Schema,
   ModelVersionDeploymentParamsV2Schema,
@@ -21,6 +23,7 @@ import {
   V2_MODEL_DEPLOYMENT_ACTION_ERROR_RESPONSES,
   V2_MODEL_DEPLOYMENT_CREATE_ERROR_RESPONSES,
   V2_MODEL_DEPLOYMENT_LIST_ERROR_RESPONSES,
+  V2_MODEL_EVALUATION_DEPLOYMENT_LIST_ERROR_RESPONSES,
 } from './openapi.js'
 import { assertJsonContentTypeV2, readRawJsonRequestV2 } from './transport.js'
 
@@ -66,6 +69,24 @@ const listDeploymentsRoute = createRoute({
   },
 })
 
+const listEvaluationCandidatesRoute = createRoute({
+  method: 'get',
+  path: '/v2/model-versions/{version_id}/evaluation-deployments',
+  operationId: 'listModelEvaluationDeploymentCandidatesV2',
+  tags: TAGS,
+  request: {
+    params: ModelVersionParamsV2Schema,
+    query: ModelEvaluationDeploymentSelectorRequestV2Schema,
+  },
+  responses: {
+    200: jsonResponseV2(
+      ModelEvaluationDeploymentSelectorV2Schema,
+      'Evaluation Deployment candidates and exclusions',
+    ),
+    ...V2_MODEL_EVALUATION_DEPLOYMENT_LIST_ERROR_RESPONSES,
+  },
+})
+
 function actionRoute(suffix: 'activate' | 'check' | 'disable') {
   const schema =
     suffix === 'activate'
@@ -101,6 +122,7 @@ export function registerV2ModelVersionDeploymentRoutes(
   for (const route of [
     createDeploymentRoute,
     listDeploymentsRoute,
+    listEvaluationCandidatesRoute,
     activateDeploymentRoute,
     checkDeploymentRoute,
     disableDeploymentRoute,
@@ -131,6 +153,19 @@ export function registerV2ModelVersionDeploymentRoutes(
     const request = ModelVersionDeploymentPageRequestV2Schema.parse(context.req.query())
     return context.json(
       await getV2Workspace(context).listModelVersionDeployments(
+        version_id,
+        request,
+        operationContext(context),
+      ),
+      200,
+    )
+  })
+
+  app.get(listEvaluationCandidatesRoute.getRoutingPath(), async (context) => {
+    const { version_id } = ModelVersionParamsV2Schema.parse(context.req.param())
+    const request = ModelEvaluationDeploymentSelectorRequestV2Schema.parse(context.req.query())
+    return context.json(
+      await getV2Workspace(context).listModelEvaluationDeploymentCandidates(
         version_id,
         request,
         operationContext(context),

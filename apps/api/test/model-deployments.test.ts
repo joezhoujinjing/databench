@@ -114,6 +114,22 @@ function workspace(): ApiV2Workspace {
       items: [publicVersionDeployment()],
       next_cursor: null,
     })),
+    listModelEvaluationDeploymentCandidates: vi.fn(async () => ({
+      workload_profile: 'evalscope_chat_completions_v1',
+      required_interface: 'chat_completions',
+      min_context_limit: 16_384,
+      items: [
+        {
+          deployment: {
+            ...publicVersionDeployment(),
+            declared_capabilities: { interfaces: ['embeddings'], context_limit: 8_192 },
+          },
+          eligible: false,
+          exclusion_reasons: ['interface_missing', 'context_limit_insufficient'],
+        },
+      ],
+      next_cursor: null,
+    })),
     activateModelVersionDeployment: vi.fn(async () => publicVersionDeployment()),
     checkModelVersionDeployment: vi.fn(async () => publicVersionDeployment()),
     disableModelVersionDeployment: vi.fn(async () => publicVersionDeployment('disabled')),
@@ -336,5 +352,37 @@ describe('Model Deployment HTTP contract', () => {
       VERSION_DEPLOYMENT_ID,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
+  })
+
+  test('publishes workload-aware Evaluation candidates with explicit exclusions', async () => {
+    const fake = workspace()
+    const app = createTestApp({ v2Workspace: fake })
+    const response = await app.fetch(
+      request(
+        `/v2/model-versions/${VERSION_ID}/evaluation-deployments?workload_profile=evalscope_chat_completions_v1&max_output_tokens=12288&limit=100`,
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      items: [
+        {
+          eligible: false,
+          exclusion_reasons: ['interface_missing', 'context_limit_insufficient'],
+        },
+      ],
+    })
+    expect(fake.listModelEvaluationDeploymentCandidates).toHaveBeenCalledWith(
+      VERSION_ID,
+      {
+        workload_profile: 'evalscope_chat_completions_v1',
+        max_output_tokens: 12_288,
+        cursor: null,
+        limit: 100,
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    const route =
+      createOpenApiDocument().paths['/v2/model-versions/{version_id}/evaluation-deployments']?.get
+    expect(route?.responses).toHaveProperty('404')
   })
 })

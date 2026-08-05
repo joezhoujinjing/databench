@@ -57,6 +57,10 @@ export const V2_MODEL_VERSION_PAGE_DEFAULT_LIMIT = 20
 export const V2_MODEL_VERSION_PAGE_MAX_LIMIT = 100
 export const V2_MODEL_VERSION_DEPLOYMENT_PAGE_DEFAULT_LIMIT = 20
 export const V2_MODEL_VERSION_DEPLOYMENT_PAGE_MAX_LIMIT = 100
+export const V2_MODEL_DEPLOYMENT_ADOPTION_PAGE_DEFAULT_LIMIT = 20
+export const V2_MODEL_DEPLOYMENT_ADOPTION_PAGE_MAX_LIMIT = 100
+
+export const ModelEvaluationWorkloadProfileV2Schema = z.enum(['evalscope_chat_completions_v1'])
 
 const SAFE_TOKEN = /^[a-z][a-z0-9._-]{0,127}$/
 const REPOSITORY_REVISION = /^[A-Za-z0-9][A-Za-z0-9._+:/-]{0,255}$/
@@ -309,6 +313,65 @@ export const ModelVersionDeploymentPageV2Schema = z
   })
   .meta({ id: 'ModelVersionDeploymentPageV2' })
 export type ModelVersionDeploymentPageV2 = z.infer<typeof ModelVersionDeploymentPageV2Schema>
+
+export const ModelEvaluationDeploymentExclusionV2Schema = z.enum([
+  'not_active',
+  'unavailable',
+  'interface_missing',
+  'context_limit_unknown',
+  'context_limit_insufficient',
+])
+
+export const ModelEvaluationDeploymentSelectorRequestV2Schema = z
+  .strictObject({
+    workload_profile: ModelEvaluationWorkloadProfileV2Schema.default(
+      'evalscope_chat_completions_v1',
+    ),
+    max_output_tokens: z.coerce.number().int().safe().positive().max(1_000_000).optional(),
+    cursor: OpaqueCursorQueryV2Schema,
+    limit: z.coerce
+      .number()
+      .int()
+      .safe()
+      .min(1)
+      .max(V2_MODEL_VERSION_DEPLOYMENT_PAGE_MAX_LIMIT)
+      .default(V2_MODEL_VERSION_DEPLOYMENT_PAGE_DEFAULT_LIMIT),
+  })
+  .meta({ id: 'ModelEvaluationDeploymentSelectorRequestV2' })
+export type ModelEvaluationDeploymentSelectorRequestV2 = z.infer<
+  typeof ModelEvaluationDeploymentSelectorRequestV2Schema
+>
+
+export const ModelEvaluationDeploymentCandidateV2Schema = z
+  .strictObject({
+    deployment: ModelVersionDeploymentV2Schema,
+    eligible: z.boolean(),
+    exclusion_reasons: z.array(ModelEvaluationDeploymentExclusionV2Schema).max(5),
+  })
+  .superRefine((candidate, context) => {
+    if (candidate.eligible !== (candidate.exclusion_reasons.length === 0)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['eligible'],
+        message: 'Eligible Evaluation deployments cannot have exclusion reasons',
+      })
+    }
+  })
+
+export const ModelEvaluationDeploymentSelectorV2Schema = z
+  .strictObject({
+    workload_profile: ModelEvaluationWorkloadProfileV2Schema,
+    required_interface: ModelDeclaredInterfaceV2Schema,
+    min_context_limit: z.number().int().safe().positive().max(10_000_000).nullable(),
+    items: z
+      .array(ModelEvaluationDeploymentCandidateV2Schema)
+      .max(V2_MODEL_VERSION_DEPLOYMENT_PAGE_MAX_LIMIT),
+    next_cursor: z.string().min(1).max(1_536).nullable(),
+  })
+  .meta({ id: 'ModelEvaluationDeploymentSelectorV2' })
+export type ModelEvaluationDeploymentSelectorV2 = z.infer<
+  typeof ModelEvaluationDeploymentSelectorV2Schema
+>
 
 export const ModelArtifactRegistrationSourceV2Schema = z.strictObject({
   kind: z.literal('databench_artifact'),
@@ -787,6 +850,43 @@ export const ModelDeploymentAdoptionV2Schema = z
   })
   .meta({ id: 'ModelDeploymentAdoptionV2' })
 export type ModelDeploymentAdoptionV2 = z.infer<typeof ModelDeploymentAdoptionV2Schema>
+
+export const ModelDeploymentAdoptionRecordV2Schema = z
+  .strictObject({
+    model_id: ModelIdV2Schema,
+    model_version_id: ModelVersionIdV2Schema,
+    deployment_id: z.uuid(),
+    artifact_id: ModelArtifactIdV2Schema,
+    adopted_at: Rfc3339UtcSchema,
+  })
+  .meta({ id: 'ModelDeploymentAdoptionRecordV2' })
+export type ModelDeploymentAdoptionRecordV2 = z.infer<typeof ModelDeploymentAdoptionRecordV2Schema>
+
+export const ModelDeploymentAdoptionPageRequestV2Schema = z
+  .strictObject({
+    cursor: OpaqueCursorQueryV2Schema,
+    limit: z.coerce
+      .number()
+      .int()
+      .safe()
+      .min(1)
+      .max(V2_MODEL_DEPLOYMENT_ADOPTION_PAGE_MAX_LIMIT)
+      .default(V2_MODEL_DEPLOYMENT_ADOPTION_PAGE_DEFAULT_LIMIT),
+  })
+  .meta({ id: 'ModelDeploymentAdoptionPageRequestV2' })
+export type ModelDeploymentAdoptionPageRequestV2 = z.infer<
+  typeof ModelDeploymentAdoptionPageRequestV2Schema
+>
+
+export const ModelDeploymentAdoptionPageV2Schema = z
+  .strictObject({
+    items: z
+      .array(ModelDeploymentAdoptionRecordV2Schema)
+      .max(V2_MODEL_DEPLOYMENT_ADOPTION_PAGE_MAX_LIMIT),
+    next_cursor: z.string().min(1).max(1_536).nullable(),
+  })
+  .meta({ id: 'ModelDeploymentAdoptionPageV2' })
+export type ModelDeploymentAdoptionPageV2 = z.infer<typeof ModelDeploymentAdoptionPageV2Schema>
 
 export function classifyModelVersionSourceV2(
   source: ModelRegistrationSourceV2,

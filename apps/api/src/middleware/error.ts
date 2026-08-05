@@ -12,6 +12,7 @@ import {
   IdentityConflictDetailV2Schema,
   IntegrityErrorDetailV2Schema,
   LayoutConflictDetailV2Schema,
+  ModelRegistryConflictDetailV2Schema,
   NotFoundDetailV2Schema,
   RefConflictDetailV2Schema,
   RefStateConflictDetailV2Schema,
@@ -41,6 +42,7 @@ type ErrorCode =
   | 'integrity_error'
   | 'internal_error'
   | 'layout_conflict'
+  | 'model_registry_conflict'
   | 'method_not_allowed'
   | 'not_found'
   | 'resource_limit'
@@ -265,6 +267,12 @@ function normalizeV2Error(
         detail: LayoutConflictDetailV2Schema.safeParse(detail).data ?? {
           reason: 'layout_conflict',
         },
+      }
+    case 'model_registry_conflict':
+      return {
+        code: 'model_registry_conflict',
+        message,
+        detail: ModelRegistryConflictDetailV2Schema.parse(detail),
       }
     case 'ref_conflict':
       return {

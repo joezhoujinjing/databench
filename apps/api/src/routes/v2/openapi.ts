@@ -273,6 +273,11 @@ export const V2_MODEL_DEPLOYMENT_LIST_ERROR_RESPONSES = {
   ...dataFailureResponses,
 } as const
 
+export const V2_MODEL_EVALUATION_DEPLOYMENT_LIST_ERROR_RESPONSES = {
+  ...V2_MODEL_DEPLOYMENT_LIST_ERROR_RESPONSES,
+  404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Model Version was not found'),
+} as const
+
 export const V2_MODEL_DEPLOYMENT_SHOW_ERROR_RESPONSES = {
   ...commonAuthRateResponses,
   404: jsonResponseV2(NotFoundErrorResponseV2Schema, 'Model Deployment was not found'),

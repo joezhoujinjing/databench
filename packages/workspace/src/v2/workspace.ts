@@ -21,6 +21,8 @@ import {
   type CatalogModelArtifactPageV2,
   type CatalogModelArtifactRowV2,
   type CatalogModelCursorV2,
+  type CatalogModelDeploymentAdoptionCursorV2,
+  type CatalogModelDeploymentAdoptionPageV2,
   type CatalogModelDeploymentAdoptionResultV2,
   type CatalogModelDeploymentCursorV2,
   type CatalogModelDeploymentHealthV2,
@@ -79,6 +81,7 @@ import {
   type TransitionSwiftStudioSessionV2,
   V2Catalog,
   V2CatalogDeterminismConflictError,
+  V2CatalogModelAliasAdmissionError,
   V2CatalogModelAliasConflictError,
   V2CatalogModelArtifactImportConflictError,
   V2CatalogModelDeploymentAdoptionConflictError,
@@ -244,6 +247,10 @@ import {
   type ModelArtifactPageV2,
   ModelArtifactPageV2Schema,
   type ModelArtifactV2,
+  type ModelDeploymentAdoptionPageRequestV2,
+  ModelDeploymentAdoptionPageRequestV2Schema,
+  type ModelDeploymentAdoptionPageV2,
+  ModelDeploymentAdoptionPageV2Schema,
   type ModelDeploymentAdoptionV2,
   ModelDeploymentIdV2Schema,
   type ModelDeploymentPageRequestV2,
@@ -251,6 +258,10 @@ import {
   type ModelDeploymentPageV2,
   ModelDeploymentPageV2Schema,
   type ModelDeploymentV2,
+  type ModelEvaluationDeploymentSelectorRequestV2,
+  ModelEvaluationDeploymentSelectorRequestV2Schema,
+  type ModelEvaluationDeploymentSelectorV2,
+  ModelEvaluationDeploymentSelectorV2Schema,
   ModelIdV2Schema,
   type ModelPageRequestV2,
   ModelPageRequestV2Schema,
@@ -258,6 +269,7 @@ import {
   ModelPageV2Schema,
   type ModelRegistrationInspectRequestV2,
   type ModelRegistrationPlanV2,
+  ModelRegistryConflictErrorV2,
   type ModelSourceEvidenceV2,
   type ModelV2,
   type ModelVersionDeploymentPageRequestV2,
@@ -301,6 +313,8 @@ import {
   type ResolvedModelDeploymentV2,
   type ResolvedModelVersionDeploymentV2,
   ResourceLimitError,
+  type RestoreModelV2,
+  RestoreModelV2Schema,
   type RestoreRefRequestV2,
   RestoreRefRequestV2Schema,
   type RestoreRefResultV2,
@@ -404,6 +418,7 @@ import {
   classifyCatalogModelSourceV2,
   modelAliasFromCatalogV2,
   modelDeploymentAdoptionFromCatalogV2,
+  modelDeploymentAdoptionRecordFromCatalogV2,
   modelFromCatalogV2,
   modelListItemFromCatalogV2,
   modelVersionFromCatalogV2,
@@ -570,6 +585,11 @@ export interface V2WorkspaceCatalog {
     readonly modelId: string
     readonly expectedMetadataRevision: bigint
   }): Promise<CatalogModelRowV2 | null>
+  restoreModel(input: {
+    readonly namespaceId: string
+    readonly modelId: string
+    readonly expectedMetadataRevision: bigint
+  }): Promise<CatalogModelRowV2 | null>
   compareAndSetModelAlias(input: {
     readonly namespaceId: string
     readonly modelId: string
@@ -587,6 +607,12 @@ export interface V2WorkspaceCatalog {
   createOrReadModelDeploymentAdoption(
     input: CreateModelDeploymentAdoptionV2,
   ): Promise<CatalogModelDeploymentAdoptionResultV2>
+  listModelDeploymentAdoptions(
+    namespaceId: string,
+    modelVersionId: string,
+    before: CatalogModelDeploymentAdoptionCursorV2 | null,
+    limit: number,
+  ): Promise<CatalogModelDeploymentAdoptionPageV2>
   createOrReadModelDeployment(input: CreateModelDeploymentV2): Promise<CatalogModelDeploymentRowV2>
   getModelDeployment(namespaceId: string, id: string): Promise<CatalogModelDeploymentRowV2 | null>
   listModelDeployments(
@@ -1084,15 +1110,42 @@ export class V2Workspace {
     const namespaceId = await this.#namespace(context.signal)
     const search = request.search ?? ''
     const sourceKind = request.source_kind ?? null
+    const cursorFilters = {
+      search,
+      archive: request.archive,
+      source_kind: sourceKind,
+      source_mutability: request.source_mutability ?? null,
+      verification_level: request.verification_level ?? null,
+      task_family: request.task_family ?? null,
+      artifact_kind: request.artifact_kind ?? null,
+      artifact_id: request.artifact_id ?? null,
+      alias: request.alias ?? null,
+      deployment_lifecycle: request.deployment_lifecycle ?? null,
+      deployment_health: request.deployment_health ?? null,
+      tag: request.tag ?? null,
+    } as const
     const state =
       request.cursor === null
         ? null
-        : this.#cursor.decodeModel(request.cursor, namespaceId, search, request.archive, sourceKind)
+        : this.#cursor.decodeModel(request.cursor, namespaceId, cursorFilters)
     let page: CatalogModelPageV2
     try {
       page = await this.#catalog.listModels(
         namespaceId,
-        { search, archive: request.archive, sourceKind },
+        {
+          search,
+          archive: request.archive,
+          sourceKind,
+          sourceMutability: request.source_mutability ?? null,
+          verificationLevel: request.verification_level ?? null,
+          taskFamily: request.task_family ?? null,
+          artifactKind: request.artifact_kind ?? null,
+          artifactId: request.artifact_id ?? null,
+          alias: request.alias ?? null,
+          deploymentLifecycle: request.deployment_lifecycle ?? null,
+          deploymentHealth: request.deployment_health ?? null,
+          tag: request.tag ?? null,
+        },
         state === null ? null : { updatedAt: new Date(state.updated_at), id: state.id },
         request.limit,
       )
@@ -1107,9 +1160,7 @@ export class V2Workspace {
           : this.#cursor.encodeModel(namespaceId, {
               updated_at: page.nextCursor.updatedAt.toISOString(),
               id: page.nextCursor.id,
-              search,
-              archive: request.archive,
-              source_kind: sourceKind,
+              ...cursorFilters,
             }),
     })
   }
@@ -1167,6 +1218,29 @@ export class V2Workspace {
     const namespaceId = await this.#namespace(context.signal)
     try {
       const row = await this.#catalog.archiveModel({
+        namespaceId,
+        modelId,
+        expectedMetadataRevision: BigInt(request.expected_metadata_revision),
+      })
+      if (row === null) throw new NotFoundError('Model was not found', { model_id: modelId })
+      return modelFromCatalogV2(row)
+    } catch (error) {
+      if (error instanceof NotFoundError) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async restoreModel(
+    modelIdInput: string,
+    requestInput: RestoreModelV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelV2> {
+    context.signal?.throwIfAborted()
+    const modelId = ModelIdV2Schema.parse(modelIdInput)
+    const request = RestoreModelV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    try {
+      const row = await this.#catalog.restoreModel({
         namespaceId,
         modelId,
         expectedMetadataRevision: BigInt(request.expected_metadata_revision),
@@ -1317,7 +1391,7 @@ export class V2Workspace {
     ])
     if (model === null) throw new NotFoundError('Model was not found', { model_id: modelId })
     if (model.archivedAt !== null) {
-      throw new ConflictError('Archived Model cannot change candidate Alias', {
+      throw new ModelRegistryConflictErrorV2({
         reason: 'model_archived',
         model_id: modelId,
       })
@@ -1399,7 +1473,7 @@ export class V2Workspace {
       deployment.artifactId !== request.expected_artifact_id ||
       deployment.createDigest !== request.expected_deployment_digest
     ) {
-      throw new ConflictError('Model Deployment adoption input does not match Catalog state', {
+      throw new ModelRegistryConflictErrorV2({
         reason: 'adoption_binding_mismatch',
         model_version_id: versionId,
         deployment_id: deploymentId,
@@ -1427,6 +1501,52 @@ export class V2Workspace {
       })
       return modelDeploymentAdoptionFromCatalogV2(result)
     } catch (error) {
+      throw mapModelRegistryCatalogError(error)
+    }
+  }
+
+  async listModelDeploymentAdoptions(
+    versionIdInput: string,
+    requestInput: ModelDeploymentAdoptionPageRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelDeploymentAdoptionPageV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const request = ModelDeploymentAdoptionPageRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const version = await this.#catalog.getModelVersion(namespaceId, versionId)
+    if (version === null) {
+      throw new NotFoundError('Model Version was not found', { model_version_id: versionId })
+    }
+    const cursorState =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeModelDeploymentAdoption(request.cursor, namespaceId, versionId)
+    const before =
+      cursorState === null
+        ? null
+        : {
+            adoptedAt: new Date(cursorState.adopted_at),
+            deploymentId: cursorState.deployment_id,
+          }
+    try {
+      const page = await waitWithAbort(
+        this.#catalog.listModelDeploymentAdoptions(namespaceId, versionId, before, request.limit),
+        context.signal,
+      )
+      return ModelDeploymentAdoptionPageV2Schema.parse({
+        items: page.rows.map(modelDeploymentAdoptionRecordFromCatalogV2),
+        next_cursor:
+          page.nextCursor === null
+            ? null
+            : this.#cursor.encodeModelDeploymentAdoption(namespaceId, {
+                adopted_at: page.nextCursor.adoptedAt.toISOString(),
+                deployment_id: page.nextCursor.deploymentId,
+                model_version_id: versionId,
+              }),
+      })
+    } catch (error) {
+      if (context.signal?.aborted) throw error
       throw mapModelRegistryCatalogError(error)
     }
   }
@@ -2104,6 +2224,8 @@ export class V2Workspace {
     const namespaceId = await this.#namespace(context.signal)
     const datasetVersion = request.dataset_version ?? null
     const modelDeploymentId = request.model_deployment_id ?? null
+    const modelId = request.model_id ?? null
+    const modelVersionId = request.model_version_id ?? null
     const status = request.status ?? null
     const cursorState =
       request.cursor === null
@@ -2113,6 +2235,8 @@ export class V2Workspace {
             namespaceId,
             datasetVersion,
             modelDeploymentId,
+            modelId,
+            modelVersionId,
             status,
           )
     const before =
@@ -2124,7 +2248,7 @@ export class V2Workspace {
       page = await waitWithAbort(
         this.#catalog.listEvaluationRuns(
           namespaceId,
-          { datasetVersion, modelDeploymentId, status },
+          { datasetVersion, modelDeploymentId, modelId, modelVersionId, status },
           before,
           request.limit,
         ),
@@ -2149,6 +2273,8 @@ export class V2Workspace {
               id: page.nextCursor.id,
               dataset_version: datasetVersion,
               model_deployment_id: modelDeploymentId,
+              model_id: modelId,
+              model_version_id: modelVersionId,
               status,
             }),
     })
@@ -3268,6 +3394,96 @@ export class V2Workspace {
     })
   }
 
+  async listModelEvaluationDeploymentCandidates(
+    versionIdInput: string,
+    requestInput: ModelEvaluationDeploymentSelectorRequestV2,
+    context: V2WorkspaceOperationOptions = {},
+  ): Promise<ModelEvaluationDeploymentSelectorV2> {
+    context.signal?.throwIfAborted()
+    const versionId = ModelVersionIdV2Schema.parse(versionIdInput)
+    const request = ModelEvaluationDeploymentSelectorRequestV2Schema.parse(requestInput)
+    const namespaceId = await this.#namespace(context.signal)
+    const version = await this.#catalog.getModelVersion(namespaceId, versionId)
+    if (version === null) {
+      throw new NotFoundError('Model Version was not found', { model_version_id: versionId })
+    }
+    const workload = modelEvaluationWorkload(request)
+    const cursorState =
+      request.cursor === null
+        ? null
+        : this.#cursor.decodeModelEvaluationDeployment(
+            request.cursor,
+            namespaceId,
+            versionId,
+            request.workload_profile,
+            request.max_output_tokens ?? null,
+          )
+    const before =
+      cursorState === null
+        ? null
+        : { createdAt: new Date(cursorState.created_at), id: cursorState.id }
+    let page: CatalogModelVersionDeploymentPageV2
+    try {
+      page = await waitWithAbort(
+        this.#catalog.listModelVersionDeployments(
+          namespaceId,
+          versionId,
+          null,
+          before,
+          request.limit,
+        ),
+        context.signal,
+      )
+    } catch (error) {
+      if (context.signal?.aborted) throw error
+      throw mapModelRegistryCatalogError(error)
+    }
+    const deployments = await Promise.all(
+      page.rows.map((row) => this.#projectModelVersionDeployment(row)),
+    )
+    return ModelEvaluationDeploymentSelectorV2Schema.parse({
+      workload_profile: request.workload_profile,
+      required_interface: workload.requiredInterface,
+      min_context_limit: workload.minContextLimit,
+      items: deployments.map((deployment) => {
+        const exclusionReasons: Array<
+          | 'not_active'
+          | 'unavailable'
+          | 'interface_missing'
+          | 'context_limit_unknown'
+          | 'context_limit_insufficient'
+        > = []
+        if (deployment.lifecycle !== 'active') exclusionReasons.push('not_active')
+        if (deployment.availability !== 'available') exclusionReasons.push('unavailable')
+        if (!deployment.declared_capabilities.interfaces.includes(workload.requiredInterface)) {
+          exclusionReasons.push('interface_missing')
+        }
+        if (workload.minContextLimit !== null) {
+          if (deployment.declared_capabilities.context_limit === null) {
+            exclusionReasons.push('context_limit_unknown')
+          } else if (deployment.declared_capabilities.context_limit < workload.minContextLimit) {
+            exclusionReasons.push('context_limit_insufficient')
+          }
+        }
+        return {
+          deployment,
+          eligible: exclusionReasons.length === 0,
+          exclusion_reasons: exclusionReasons,
+        }
+      }),
+      next_cursor:
+        page.nextCursor === null
+          ? null
+          : this.#cursor.encodeModelEvaluationDeployment(namespaceId, {
+              created_at: page.nextCursor.createdAt.toISOString(),
+              id: page.nextCursor.id,
+              model_version_id: versionId,
+              workload_profile: request.workload_profile,
+              max_output_tokens: request.max_output_tokens ?? null,
+            }),
+    })
+  }
+
   async activateModelVersionDeployment(
     versionIdInput: string,
     deploymentIdInput: string,
@@ -3284,7 +3500,7 @@ export class V2Workspace {
       context.signal,
     )
     if (row.lifecycle === 'disabled') {
-      throw new ConflictError('Disabled Model Deployment cannot be activated', {
+      throw new ModelRegistryConflictErrorV2({
         reason: 'model_deployment_disabled',
         model_version_id: versionId,
         deployment_id: deploymentId,
@@ -7410,8 +7626,20 @@ function mapModelArtifactCatalogError(error: unknown): Error {
 }
 
 function mapModelRegistryCatalogError(error: unknown): Error {
+  if (error instanceof V2CatalogModelAliasAdmissionError) {
+    return new ValidationError('Only immutable Model Versions can receive candidate Alias', {
+      issues: [
+        {
+          path: '/new_version_id',
+          line: null,
+          code: 'model_alias_requires_immutable_source',
+          message: 'The selected Model Version source is not verified immutable',
+        },
+      ],
+    })
+  }
   if (error instanceof V2CatalogModelMetadataConflictError) {
-    return new ConflictError('Model metadata compare-and-set conflict', {
+    return new ModelRegistryConflictErrorV2({
       reason: 'model_metadata_conflict',
       model_id: error.modelId,
       expected_metadata_revision: Number(error.expectedMetadataRevision),
@@ -7419,7 +7647,7 @@ function mapModelRegistryCatalogError(error: unknown): Error {
     })
   }
   if (error instanceof V2CatalogModelAliasConflictError) {
-    return new ConflictError('Model alias compare-and-set conflict', {
+    return new ModelRegistryConflictErrorV2({
       reason: 'model_alias_conflict',
       model_id: error.modelId,
       alias: error.alias,
@@ -7429,7 +7657,7 @@ function mapModelRegistryCatalogError(error: unknown): Error {
     })
   }
   if (error instanceof V2CatalogModelDeploymentAdoptionConflictError) {
-    return new ConflictError('Model Deployment is already adopted by another Version', {
+    return new ModelRegistryConflictErrorV2({
       reason: 'model_deployment_adoption_conflict',
       deployment_id: error.deploymentId,
       current_model_version_id: error.currentModelVersionId,
@@ -7437,6 +7665,28 @@ function mapModelRegistryCatalogError(error: unknown): Error {
     })
   }
   return mapV2CatalogError(error, false)
+}
+
+function modelEvaluationWorkload(request: ModelEvaluationDeploymentSelectorRequestV2): {
+  readonly requiredInterface: 'chat_completions'
+  readonly minContextLimit: number
+} {
+  if (request.workload_profile !== 'evalscope_chat_completions_v1') {
+    throw new ValidationError('Unsupported Model Evaluation workload profile', {
+      issues: [
+        {
+          path: '/workload_profile',
+          line: null,
+          code: 'unsupported_workload_profile',
+          message: 'The requested Evaluation workload profile is not supported',
+        },
+      ],
+    })
+  }
+  return {
+    requiredInterface: 'chat_completions',
+    minContextLimit: 4_096 + (request.max_output_tokens ?? 0),
+  }
 }
 
 function requireProviderImportId(row: CatalogModelArtifactImportRowV2): string {

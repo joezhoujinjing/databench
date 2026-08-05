@@ -142,20 +142,41 @@ describe('V2CursorCodec', () => {
       search: 'qwen',
       archive: 'active',
       source_kind: 'databench_artifact',
+      source_mutability: 'immutable',
+      verification_level: 'content_verified',
+      task_family: 'chat',
+      artifact_kind: 'lora_adapter',
+      artifact_id: '44444444-4444-4444-8444-444444444444',
+      alias: 'candidate',
+      deployment_lifecycle: 'active',
+      deployment_health: 'healthy',
+      tag: 'assistant',
+    }
+    const modelFilters = {
+      search: modelState.search,
+      archive: modelState.archive,
+      source_kind: modelState.source_kind,
+      source_mutability: modelState.source_mutability,
+      verification_level: modelState.verification_level,
+      task_family: modelState.task_family,
+      artifact_kind: modelState.artifact_kind,
+      artifact_id: modelState.artifact_id,
+      alias: modelState.alias,
+      deployment_lifecycle: modelState.deployment_lifecycle,
+      deployment_health: modelState.deployment_health,
+      tag: modelState.tag,
     }
     const modelCursor = codec.encodeModel(NAMESPACE, modelState)
-    expect(
-      codec.decodeModel(modelCursor, NAMESPACE, 'qwen', 'active', 'databench_artifact'),
-    ).toEqual(modelState)
+    expect(codec.decodeModel(modelCursor, NAMESPACE, modelFilters)).toEqual(modelState)
     expect(() =>
-      codec.decodeModel(modelCursor, NAMESPACE, 'other', 'active', 'databench_artifact'),
+      codec.decodeModel(modelCursor, NAMESPACE, { ...modelFilters, search: 'other' }),
     ).toThrowError(expect.objectContaining({ message: 'Invalid or expired V2 Model cursor' }))
     expect(() =>
-      codec.decodeModel(modelCursor, NAMESPACE, 'qwen', 'archived', 'databench_artifact'),
+      codec.decodeModel(modelCursor, NAMESPACE, { ...modelFilters, archive: 'archived' }),
     ).toThrowError(expect.objectContaining({ message: 'Invalid or expired V2 Model cursor' }))
-    expect(() => codec.decodeModel(modelCursor, NAMESPACE, 'qwen', 'active', null)).toThrowError(
-      expect.objectContaining({ message: 'Invalid or expired V2 Model cursor' }),
-    )
+    expect(() =>
+      codec.decodeModel(modelCursor, NAMESPACE, { ...modelFilters, source_kind: null }),
+    ).toThrowError(expect.objectContaining({ message: 'Invalid or expired V2 Model cursor' }))
 
     const modelVersionState = {
       created_at: '2026-08-04T12:34:56.789Z',
@@ -194,6 +215,72 @@ describe('V2CursorCodec', () => {
       codec.decodeModelArtifact(cursor, NAMESPACE, null, 'lora_adapter', 'registered'),
     ).toThrowError(
       expect.objectContaining({ message: 'Invalid or expired V2 Model Artifact cursor' }),
+    )
+  })
+
+  test('binds Evaluation Deployment cursors to Version and workload admission scope', () => {
+    const codec = new V2CursorCodec(SECRET)
+    const state = {
+      created_at: '2026-08-04T12:34:56.789Z',
+      id: '44444444-4444-4444-8444-444444444444',
+      model_version_id: '22222222-2222-4222-8222-222222222222',
+      workload_profile: 'evalscope_chat_completions_v1',
+      max_output_tokens: 4_096,
+    }
+    const cursor = codec.encodeModelEvaluationDeployment(NAMESPACE, state)
+
+    expect(
+      codec.decodeModelEvaluationDeployment(
+        cursor,
+        NAMESPACE,
+        state.model_version_id,
+        state.workload_profile,
+        state.max_output_tokens,
+      ),
+    ).toEqual(state)
+    for (const [versionId, workloadProfile, maxOutputTokens] of [
+      ['33333333-3333-4333-8333-333333333333', state.workload_profile, 4_096],
+      [state.model_version_id, 'another-profile', 4_096],
+      [state.model_version_id, state.workload_profile, 8_192],
+    ] as const) {
+      expect(() =>
+        codec.decodeModelEvaluationDeployment(
+          cursor,
+          NAMESPACE,
+          versionId,
+          workloadProfile,
+          maxOutputTokens,
+        ),
+      ).toThrowError(
+        expect.objectContaining({
+          message: 'Invalid or expired V2 Model Evaluation Deployment cursor',
+        }),
+      )
+    }
+  })
+
+  test('binds historical Deployment adoption cursors to the exact Model Version', () => {
+    const codec = new V2CursorCodec(SECRET)
+    const state = {
+      adopted_at: '2026-08-04T12:34:56.789Z',
+      deployment_id: '44444444-4444-4444-8444-444444444444',
+      model_version_id: '22222222-2222-4222-8222-222222222222',
+    }
+    const cursor = codec.encodeModelDeploymentAdoption(NAMESPACE, state)
+
+    expect(codec.decodeModelDeploymentAdoption(cursor, NAMESPACE, state.model_version_id)).toEqual(
+      state,
+    )
+    expect(() =>
+      codec.decodeModelDeploymentAdoption(
+        cursor,
+        NAMESPACE,
+        '33333333-3333-4333-8333-333333333333',
+      ),
+    ).toThrowError(
+      expect.objectContaining({
+        message: 'Invalid or expired V2 Model Deployment adoption cursor',
+      }),
     )
   })
 

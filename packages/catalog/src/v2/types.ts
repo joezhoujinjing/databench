@@ -364,6 +364,8 @@ export interface CatalogEvaluationRunPageV2 {
 export interface CatalogEvaluationRunListFilterV2 {
   readonly datasetVersion: string | null
   readonly modelDeploymentId: string | null
+  readonly modelId: string | null
+  readonly modelVersionId: string | null
   readonly status: CatalogEvaluationRunStatusV2 | null
 }
 
@@ -959,6 +961,40 @@ export interface CatalogModelListFilterV2 {
   readonly search: string
   readonly archive: 'active' | 'archived' | 'all'
   readonly sourceKind: CatalogModelSourceKindV2 | null
+  readonly sourceMutability: 'immutable' | 'mutable' | 'unknown' | null
+  readonly verificationLevel:
+    | 'content_verified'
+    | 'provider_verified'
+    | 'operator_attested'
+    | 'unverified'
+    | null
+  readonly taskFamily: string | null
+  readonly artifactKind: string | null
+  readonly artifactId: string | null
+  readonly alias: 'candidate' | 'none' | null
+  readonly deploymentLifecycle: CatalogModelVersionDeploymentLifecycleV2 | null
+  readonly deploymentHealth: 'unknown' | 'healthy' | 'unhealthy' | null
+  readonly tag: string | null
+}
+
+export interface CatalogModelComparableEvaluationSummaryV2 {
+  readonly runId: string
+  readonly modelVersionId: string
+  readonly modelDeploymentId: string
+  readonly benchmark: string
+  readonly datasetVersion: string
+  readonly metricId: string
+  readonly outputKey: string
+  readonly score: number
+  readonly finishedAt: Date
+  readonly sourceMutability: 'immutable' | 'mutable' | 'unknown'
+  readonly verificationLevel:
+    | 'content_verified'
+    | 'provider_verified'
+    | 'operator_attested'
+    | 'unverified'
+  readonly sourceEvidenceDigest: string | null
+  readonly sourceObservedAt: Date
 }
 
 export interface CatalogModelListItemV2 {
@@ -970,7 +1006,16 @@ export interface CatalogModelListItemV2 {
     readonly evidence: readonly CatalogModelSourceEvidenceRowV2[]
   } | null
   readonly versionCount: number
+  readonly deploymentSummary: {
+    readonly total: number
+    readonly registered: number
+    readonly active: number
+    readonly disabled: number
+    readonly healthyActive: number
+  }
+  readonly latestComparableEvaluation: CatalogModelComparableEvaluationSummaryV2 | null
   readonly adoptedDeploymentCount: number
+  readonly activeAdoptedDeploymentCount: number
   readonly healthyAdoptedDeploymentCount: number
 }
 
@@ -1001,6 +1046,12 @@ export interface ArchiveCatalogModelV2 {
   readonly expectedMetadataRevision: bigint
 }
 
+export interface RestoreCatalogModelV2 {
+  readonly namespaceId: string
+  readonly modelId: string
+  readonly expectedMetadataRevision: bigint
+}
+
 export interface CreateModelDeploymentAdoptionV2 {
   readonly namespaceId: string
   readonly deploymentId: string
@@ -1019,6 +1070,16 @@ export interface CatalogModelDeploymentAdoptionRowV2 extends CreateModelDeployme
 export interface CatalogModelDeploymentAdoptionResultV2 {
   readonly row: CatalogModelDeploymentAdoptionRowV2
   readonly replayed: boolean
+}
+
+export interface CatalogModelDeploymentAdoptionCursorV2 {
+  readonly adoptedAt: Date
+  readonly deploymentId: string
+}
+
+export interface CatalogModelDeploymentAdoptionPageV2 {
+  readonly rows: readonly CatalogModelDeploymentAdoptionRowV2[]
+  readonly nextCursor: CatalogModelDeploymentAdoptionCursorV2 | null
 }
 
 export interface PrepareEvaluationRunArchiveV2 {

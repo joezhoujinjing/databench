@@ -3,8 +3,8 @@
 > 唯一实施计划见 [PLAN.md](PLAN.md)。状态符号：⬜ 未开始 / 🔄 进行中 / ✅ 完成 / ⛔ 阻塞。
 
 <!-- model-registry-status
-current_step: MR7
-last_completed_step: MR6
+current_step: MR8
+last_completed_step: MR7
 capability_enabled: false
 runtime_implemented: true
 public_network_activation: false
@@ -14,16 +14,16 @@ gpu_gate: deferred
 
 ## 当前检查点
 
-- **工作分支:** `feat/model-registry-mr6`
-- **代码基线:** `feat/model-registry-mr5@30afdeb`
-- **当前 Step:** MR7——完整 Model 产品面
+- **工作分支:** `feat/model-registry-mr7`
+- **代码基线:** `feat/model-registry-mr6@5725b47`
+- **当前 Step:** MR8——CLI、离线生命周期与 Final Gate
 - **Owner 范围:** MR2 candidate Alias；MR3 ModelScope + operator-managed；CLI MR2 read/MR8 write；
   一级导航“数据集 / 训练 / 模型 / 测评”
-- **Runtime:** MR6 已完成 Evaluation v5/v6 exact Registry lineage、三来源 source snapshot、internal v2 单次
-  resolve、atomic claim 后的 endpoint/credential admission、typed terminal 与 anonymous FD spawn-child secret
-  handoff；legacy Evaluation v1-v4 保持不变
-- **Capability:** 整体 Model Registry capability 仍未启用；MR6 不开放完整 Evaluation selector，也不能据此
-  宣称完整 Model 产品面或 Model Registry final gate 已完成
+- **Runtime:** MR7 已完成三来源注册、Model 注册表与六 Tab detail、Version detail、exact lineage、可比 Evaluation
+  summary、Model → Version → Deployment selector、capability exclusion、archive/restore 与 archived-but-serving
+  产品闭环；legacy Evaluation v1-v4 保持不变
+- **Capability:** 整体 Model Registry capability 仍未启用；MR7 只关闭完整产品面 Gate，不能据此宣称 CLI/离线
+  生命周期、Model Registry final gate 或 production readiness 已完成
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
 - **GPU/V16/V17:** 状态不变，Model Registry 的实施不自动完成 V16/V17，也不打开 GPU gate
 
@@ -38,7 +38,7 @@ gpu_gate: deferred
 | MR4 | Endpoint/secret 安全底座 | ✅ | `feat/model-registry-mr4` | GMR4 green | legacy network hardening + offline projection |
 | MR5 | Existing Service 与 Deployment v2 | ✅ | `feat/model-registry-mr5` | GMR5 green | internal v1/v2 隔离 |
 | MR6 | Evaluation v5/v6 | ✅ | `feat/model-registry-mr6` | GMR6 green | v1-v4 identity/read 保持 |
-| MR7 | 完整 Model 产品面 | ⬜ | | GMR7 | 浏览器与 selector gate |
+| MR7 | 完整 Model 产品面 | ✅ | `feat/model-registry-mr7` | GMR7 green | 三来源、六 Tabs、selector 与浏览器 gate |
 | MR8 | CLI、离线与 Final Gate | ⬜ | | GMR8 | 不自动完成 V16/V17 |
 
 ## Owner 决策
@@ -269,3 +269,40 @@ V16/V17、GE9、GPU 或 production readiness。
 GMR6 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不实现
 MR7完整Model详情/lineage/comparable Evaluation summary/selector/browser gate，不启用Hugging Face adapter或
 hosted secret backend，也不自动完成V16/V17、GE9、GPU或production readiness。
+
+## GMR7 完成证据
+
+- [x] `/models` 一级导航、stable cursor、搜索与 source/mutability/verification/task/artifact/alias/
+  deployment/archive/tags 筛选；Catalog bounded summary 不读取 Artifact object 或 Evaluation report；
+- [x] Artifact、ModelScope offline declared-only、operator-managed provider-verified immutable 与 Existing
+  Service 三来源注册向导，支持 create Model、add Version、activation handoff、digest mismatch 零写入与 typed
+  `model_key_conflict` 恢复；
+- [x] Model detail 六 Tabs（概览、版本、产物、测评、部署、血缘）、Version direct refresh、typed `not_found`、
+  Artifact→Model、Model→Evaluation 与 historical adoption exact 导航；
+- [x] 最近一次可比评测按 Benchmark/Dataset/Metric/output/time/reproducibility 分组；不存在全局“关键分数”，
+  mutable/unknown observation 不进入不可比较的聚合或受保护 Alias；
+- [x] Evaluation selector 固定 Model → Version → active + available Deployment，并显式排除 disabled、unavailable
+  与 context/output budget capability mismatch；registered + unavailable 显示完整 exclusion reason；
+- [x] verified、declared、healthy、compatible、evaluated 与 GPU validated 状态语义隔离；归档 Model 继续服务时
+  显示告警，Restore Model 使用 CAS/幂等 action 且不改变原 Deployment row、lifecycle、availability 或 health；
+- [x] REST/OpenAPI/generated Web client、operator auth、Schema/Catalog/Workspace/API/Web 回归与中英文文案同步；
+- [x] 真实 PostgreSQL + MinIO、ModelScope/operator-managed/fake Existing Service/fake EvalScope、桌面与窄屏真实
+  浏览器、direct refresh、keyboard/a11y、中文/English 和 console gate 通过。
+
+本次实际通过：
+
+- `pnpm exec prisma format`、`pnpm exec prisma validate`；
+- `pnpm lint`、`pnpm build`（initial JS 927829 bytes，11 lazy route entries）、`pnpm typecheck`、`pnpm test`；
+- `pnpm openapi:check`、`pnpm models:status:test`、`pnpm models:status:check`、
+  `pnpm v2:status:check`；
+- `pnpm peers check`、`pnpm models:migration:check`、`pnpm offline:check`；
+- `RUN_MINIO_STORE_TESTS=true pnpm --filter @databench/workspace test`（205 passed / 10 skipped）；
+- `pnpm test:evalscope:python`、`pnpm evalscope:parity:check`；
+- 浏览器验证三来源 registration、create/add Version、activation、digest mismatch、typed conflict、六 Tabs、
+  selector exclusion/context budget、archived-but-serving + Restore Model、1440×1000 desktop、390×844 narrow、
+  中文/English、a11y 与 console（0 page error / 0 warning）；
+- `git diff --check`。
+
+GMR7 保持 `capability_enabled: false`、`public_network_activation: false` 和 `gpu_gate: deferred`。它不实现
+MR8 CLI 写操作、完整离线生命周期或 Final Gate，不启用 Hugging Face adapter、hosted secret backend、
+managed serving 或 GPU gate，也不自动完成 V16/V17、GE9 或 production readiness。

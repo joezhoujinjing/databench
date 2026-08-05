@@ -9,6 +9,7 @@ import {
   V2CatalogImmutableConflictError,
   V2CatalogInputError,
   V2CatalogLineageCycleError,
+  V2CatalogModelAliasAdmissionError,
   V2CatalogModelAliasConflictError,
   V2CatalogModelDeploymentAdmissionError,
   V2CatalogModelMetadataConflictError,
@@ -2165,6 +2166,176 @@ describe('V2Catalog evaluation runs', () => {
     ).rejects.toBeInstanceOf(V2CatalogModelDeploymentAdmissionError)
   })
 
+  test('projects one latest complete v6 primary result without aggregating incomparable runs', async () => {
+    await v2Catalog.registerCommittedLayout(
+      registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
+    )
+    await v2Catalog.registerCommittedLayout(
+      registration('beta', [withParents(fixtureRevision('inputBeta'))]),
+    )
+    const namespaceId = await v2Catalog.getOrCreateNamespace(v2Fixture.namespaceScope)
+    const deploymentInput = {
+      id: '40000000-0000-8000-8000-000000000001',
+      namespaceId,
+      deploymentProfile: 'model-version-v1' as const,
+      createDigest: 'd'.repeat(64),
+      modelVersionId: MODEL_REGISTRY_VERSION_ID,
+      artifactId: null,
+      provider: 'openai_compatible' as const,
+      displayName: 'Mutable repository service',
+      servedModelName: 'repository-latest',
+      endpointBaseUrl: 'http://model-service:8000/v1',
+      connectivityScope: 'private_network' as const,
+      authProfile: 'none' as const,
+      credentialRef: null,
+      declaredCapabilities: { interfaces: ['chat_completions' as const], contextLimit: 8_192 },
+    }
+    const registrationResult = await v2Catalog.registerModelVersion(
+      modelRegistrationInput(namespaceId, {
+        source: {
+          kind: 'repository_reference',
+          provider: 'modelscope',
+          repositoryId: 'Qwen/Qwen3-0.6B',
+          revision: 'latest',
+          revisionKind: 'tag',
+        },
+        deployment: deploymentInput,
+      }),
+    )
+    const active = await v2Catalog.activateModelVersionDeployment({
+      namespaceId,
+      modelVersionId: registrationResult.version.id,
+      deploymentId: deploymentInput.id,
+      policyGeneration: 1n,
+      credentialGeneration: null,
+    })
+    if (active === null) throw new Error('comparable Evaluation Deployment was not activated')
+    const binding = {
+      modelId: registrationResult.model.id,
+      modelVersionId: registrationResult.version.id,
+      deploymentId: active.id,
+      deploymentDigest: active.createDigest,
+      artifactId: null,
+      servedModelName: active.servedModelName,
+      sourceMutability: 'mutable' as const,
+      verificationLevel: 'operator_attested' as const,
+      evidenceDigest: null,
+    }
+    const scoringConfig = (
+      benchmark: string,
+      metricId: string,
+      outputKey: string,
+      implementationDigest: string,
+    ) => ({
+      schema_version: 1 as const,
+      mode: 'explicit' as const,
+      evalscope_commit: 'a'.repeat(40),
+      benchmark,
+      metrics: [
+        {
+          id: metricId,
+          implementation_digest: implementationDigest,
+          parameters: {},
+          output_keys: [outputKey],
+        },
+      ],
+      primary_metric_id: metricId,
+      primary_output_key: outputKey,
+    })
+    const complete = async (
+      providerTaskId: string,
+      datasetVersion: string,
+      benchmark: string,
+      metricId: string,
+      outputKey: string,
+      score: number,
+      finishedAt: Date,
+      digestDigit: string,
+    ) => {
+      const run = await v2Catalog.createOrReadEvaluationRun({
+        ...versionDeploymentEvaluationRunInput(namespaceId, binding, providerTaskId),
+        createProfile: 'evaluation-run-create-v6' as const,
+        createRequestDigest: digestDigit.repeat(64),
+        datasetVersion,
+        benchmark,
+        scoringConfig: scoringConfig(benchmark, metricId, outputKey, digestDigit.repeat(64)),
+        primaryMetricId: metricId,
+        primaryOutputKey: outputKey,
+      })
+      await v2Catalog.transitionEvaluationRun({ namespaceId, id: run.id, status: 'running' })
+      await v2Catalog.transitionEvaluationRun({
+        namespaceId,
+        id: run.id,
+        status: 'completed',
+        metrics: [
+          {
+            dataset: benchmark,
+            subset: 'databench',
+            metricId,
+            outputKey,
+            metric: metricId,
+            score,
+            sampleCount: 4,
+            categories: [],
+          },
+        ],
+        providerReportIds: [`report-${providerTaskId}`],
+      })
+      await prisma.v2EvaluationRun.update({ where: { id: run.id }, data: { finishedAt } })
+      return run
+    }
+    await complete(
+      'task-comparable-older',
+      fixtureVersion('alpha'),
+      'general_qa',
+      'exact_match',
+      'exact_match',
+      0.25,
+      new Date('2030-08-04T10:00:00.000Z'),
+      '5',
+    )
+    const latest = await complete(
+      'task-comparable-latest',
+      fixtureVersion('beta'),
+      'arc',
+      'accuracy',
+      'accuracy',
+      0.9,
+      new Date('2030-08-04T11:00:00.000Z'),
+      '6',
+    )
+    const page = await v2Catalog.listModels(
+      namespaceId,
+      {
+        search: '',
+        archive: 'active',
+        sourceKind: null,
+        sourceMutability: null,
+        verificationLevel: null,
+        taskFamily: null,
+        artifactKind: null,
+        artifactId: null,
+        alias: null,
+        deploymentLifecycle: null,
+        deploymentHealth: null,
+        tag: null,
+      },
+      null,
+      20,
+    )
+    expect(page.rows).toHaveLength(1)
+    expect(page.rows[0]?.latestComparableEvaluation).toMatchObject({
+      runId: latest.id,
+      benchmark: 'arc',
+      datasetVersion: fixtureVersion('beta'),
+      metricId: 'accuracy',
+      outputKey: 'accuracy',
+      score: 0.9,
+      sourceMutability: 'mutable',
+      verificationLevel: 'operator_attested',
+    })
+  })
+
   test('serializes archive attempts and replays concurrent finalize without changing the locator', async () => {
     await v2Catalog.registerCommittedLayout(
       registration('alpha', [withParents(fixtureRevision('inputAlpha'))]),
@@ -2282,6 +2453,8 @@ describe('V2Catalog evaluation runs', () => {
       {
         datasetVersion: prepared.datasetVersion,
         modelDeploymentId: null,
+        modelId: null,
+        modelVersionId: null,
         status: 'completed',
       },
       null,
@@ -4025,8 +4198,35 @@ describe('V2Catalog transform jobs', () => {
 
   test('enforces Model metadata and Alias compare-and-set with the three-column FK', async () => {
     const namespaceId = await v2Catalog.getOrCreateNamespace('default')
+    const verifiedEvidence = (
+      id: string,
+      modelVersionId: string,
+      observedRevision: string,
+      digestDigit: string,
+    ) => ({
+      id,
+      namespaceId,
+      modelVersionId,
+      evidenceProfile: 'model-source-evidence-v1' as const,
+      evidenceDigest: digestDigit.repeat(64),
+      evidenceKind: 'provider_resolution' as const,
+      adapter: 'hugging-face',
+      adapterVersion: '1',
+      observedRevision,
+      observedAt: new Date('2026-08-04T12:00:00.000Z'),
+      result: 'verified' as const,
+      responseDigest: digestDigit.repeat(64),
+      license: null,
+      cacheStatus: 'not_cached' as const,
+    })
     const first = await v2Catalog.registerModelVersion(
       modelRegistrationInput(namespaceId, {
+        initialEvidence: verifiedEvidence(
+          '30000000-0000-8000-8000-000000000001',
+          MODEL_REGISTRY_VERSION_ID,
+          'abc123',
+          'a',
+        ),
         alias: { alias: 'candidate', expectedVersionId: null },
       }),
     )
@@ -4071,8 +4271,23 @@ describe('V2Catalog transform jobs', () => {
           revision: 'def456',
           revisionKind: 'commit',
         },
+        initialEvidence: verifiedEvidence(
+          '30000000-0000-8000-8000-000000000002',
+          '20000000-0000-8000-8000-000000000002',
+          'def456',
+          'b',
+        ),
       }),
     )
+    await expect(
+      v2Catalog.compareAndSetModelAlias({
+        namespaceId,
+        modelId: first.model.id,
+        alias: 'candidate',
+        expectedVersionId: null,
+        newVersionId: first.version.id,
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogModelAliasConflictError)
     await expect(
       v2Catalog.compareAndSetModelAlias({
         namespaceId,
@@ -4091,6 +4306,54 @@ describe('V2Catalog transform jobs', () => {
         newVersionId: first.version.id,
       }),
     ).rejects.toBeInstanceOf(V2CatalogModelAliasConflictError)
+
+    await prisma.v2ModelSourceEvidence.createMany({
+      data: Array.from({ length: 1_001 }, (_, index) => {
+        const ordinal = index + 100
+        const digest = ordinal.toString(16).padStart(64, '0')
+        return {
+          id: `30000000-0000-8000-8000-${ordinal.toString(16).padStart(12, '0')}`,
+          namespaceId,
+          modelVersionId: first.version.id,
+          evidenceProfile: 'model-source-evidence-v1',
+          evidenceDigest: digest,
+          evidenceKind: 'provider_resolution',
+          adapter: 'hugging-face',
+          adapterVersion: '1',
+          observedRevision: null,
+          observedAt: new Date(Date.parse('2026-08-04T12:01:00.000Z') + index),
+          result: 'unavailable',
+          responseDigest: null,
+          license: null,
+          cacheStatus: 'not_cached',
+        }
+      }),
+    })
+    await v2Catalog.appendModelSourceEvidence({
+      id: '30000000-0000-8000-8000-000000009999',
+      namespaceId,
+      modelVersionId: first.version.id,
+      evidenceProfile: 'model-source-evidence-v1',
+      evidenceDigest: 'c'.repeat(64),
+      evidenceKind: 'provider_resolution',
+      adapter: 'hugging-face',
+      adapterVersion: '1',
+      observedRevision: 'drifted-revision',
+      observedAt: new Date('2026-08-04T12:02:00.000Z'),
+      result: 'revision_mismatch',
+      responseDigest: 'd'.repeat(64),
+      license: null,
+      cacheStatus: 'not_cached',
+    })
+    await expect(
+      v2Catalog.compareAndSetModelAlias({
+        namespaceId,
+        modelId: first.model.id,
+        alias: 'candidate',
+        expectedVersionId: second.version.id,
+        newVersionId: first.version.id,
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogModelAliasAdmissionError)
 
     const constraints = await prisma.$queryRaw<
       Array<{ readonly name: string; readonly definition: string }>
@@ -4146,16 +4409,88 @@ describe('V2Catalog transform jobs', () => {
       registrationFor('6', 'beta-model', 'Beta Model'),
       registrationFor('7', 'gamma-model', 'Gamma Model'),
     ]
-    await Promise.all(registrations.map((input) => v2Catalog.registerModelVersion(input)))
+    const registered = await Promise.all(
+      registrations.map((input) => v2Catalog.registerModelVersion(input)),
+    )
+    const beta = registered[1]
+    if (beta === undefined) throw new Error('beta Model registration is missing')
+    await v2Catalog.appendModelSourceEvidence({
+      id: '30000000-0000-8000-8000-000000000006',
+      namespaceId,
+      modelVersionId: beta.version.id,
+      evidenceProfile: 'model-source-evidence-v1',
+      evidenceDigest: 'a'.repeat(64),
+      evidenceKind: 'provider_resolution',
+      adapter: 'modelscope',
+      adapterVersion: '1',
+      observedRevision: '66666666',
+      observedAt: new Date('2030-08-04T11:00:00.000Z'),
+      result: 'verified',
+      responseDigest: 'b'.repeat(64),
+      license: null,
+      cacheStatus: 'not_cached',
+    })
+    await v2Catalog.compareAndSetModelAlias({
+      namespaceId,
+      modelId: beta.model.id,
+      alias: 'candidate',
+      expectedVersionId: null,
+      newVersionId: beta.version.id,
+    })
+    const betaDeployment = await v2Catalog.createOrReadModelVersionDeployment({
+      id: '40000000-0000-8000-8000-000000000006',
+      namespaceId,
+      deploymentProfile: 'model-version-v1',
+      createDigest: 'c'.repeat(64),
+      modelVersionId: beta.version.id,
+      artifactId: null,
+      provider: 'openai_compatible',
+      displayName: 'Beta service',
+      servedModelName: 'beta-model',
+      endpointBaseUrl: 'http://model-service:8000/v1',
+      connectivityScope: 'private_network',
+      authProfile: 'none',
+      credentialRef: null,
+      declaredCapabilities: { interfaces: ['chat_completions'], contextLimit: 8_192 },
+    })
+    await v2Catalog.activateModelVersionDeployment({
+      namespaceId,
+      modelVersionId: beta.version.id,
+      deploymentId: betaDeployment.id,
+      policyGeneration: 1n,
+      credentialGeneration: null,
+    })
+    await v2Catalog.updateModelVersionDeploymentHealth(
+      namespaceId,
+      beta.version.id,
+      betaDeployment.id,
+      { status: 'healthy', error: null },
+    )
     await prisma.$executeRaw`
       UPDATE "models_v2"
       SET "updated_at" = '2030-08-04T12:00:00.123Z'::timestamptz
       WHERE "namespace_id" = ${namespaceId}::uuid
     `
 
+    const modelFilter = {
+      sourceMutability: null,
+      verificationLevel: null,
+      taskFamily: null,
+      artifactKind: null,
+      artifactId: null,
+      alias: null,
+      deploymentLifecycle: null,
+      deploymentHealth: null,
+      tag: null,
+    } as const
     const firstPage = await v2Catalog.listModels(
       namespaceId,
-      { search: '', archive: 'active', sourceKind: 'repository_reference' },
+      {
+        ...modelFilter,
+        search: '',
+        archive: 'active',
+        sourceKind: 'repository_reference',
+      },
       null,
       2,
     )
@@ -4168,7 +4503,12 @@ describe('V2Catalog transform jobs', () => {
     })
     const secondPage = await v2Catalog.listModels(
       namespaceId,
-      { search: '', archive: 'active', sourceKind: 'repository_reference' },
+      {
+        ...modelFilter,
+        search: '',
+        archive: 'active',
+        sourceKind: 'repository_reference',
+      },
       firstPage.nextCursor,
       2,
     )
@@ -4178,22 +4518,72 @@ describe('V2Catalog transform jobs', () => {
     await expect(
       v2Catalog.listModels(
         namespaceId,
-        { search: 'BETA', archive: 'active', sourceKind: 'repository_reference' },
+        {
+          ...modelFilter,
+          search: 'BETA',
+          archive: 'active',
+          sourceKind: 'repository_reference',
+        },
         null,
         20,
       ),
     ).resolves.toMatchObject({ rows: [{ model: { key: 'beta-model' } }], nextCursor: null })
 
+    const fullyFiltered = {
+      search: 'beta',
+      archive: 'active' as const,
+      sourceKind: 'repository_reference' as const,
+      sourceMutability: 'immutable' as const,
+      verificationLevel: 'provider_verified' as const,
+      taskFamily: 'chat',
+      artifactKind: null,
+      artifactId: null,
+      alias: 'candidate' as const,
+      deploymentLifecycle: 'active' as const,
+      deploymentHealth: 'healthy' as const,
+      tag: 'beta-model',
+    }
+    await expect(v2Catalog.listModels(namespaceId, fullyFiltered, null, 20)).resolves.toMatchObject(
+      {
+        rows: [
+          {
+            model: { id: beta.model.id },
+            candidate: { version: { id: beta.version.id } },
+            deploymentSummary: { active: 1, healthyActive: 1 },
+          },
+        ],
+        nextCursor: null,
+      },
+    )
+    for (const mismatched of [
+      { sourceMutability: 'mutable' as const },
+      { verificationLevel: 'operator_attested' as const },
+      { taskFamily: 'completion' },
+      { alias: 'none' as const },
+      { deploymentLifecycle: 'disabled' as const },
+      { deploymentHealth: 'unhealthy' as const },
+      { tag: 'missing-tag' },
+    ]) {
+      await expect(
+        v2Catalog.listModels(namespaceId, { ...fullyFiltered, ...mismatched }, null, 20),
+      ).resolves.toMatchObject({ rows: [], nextCursor: null })
+    }
+
     const archived = await v2Catalog.archiveModel({
       namespaceId,
-      modelId: '10000000-0000-8000-8000-000000000007',
+      modelId: beta.model.id,
       expectedMetadataRevision: 0n,
     })
     expect(archived).toMatchObject({ metadataRevision: 1n })
     await expect(
       v2Catalog.listModels(
         namespaceId,
-        { search: '', archive: 'archived', sourceKind: 'repository_reference' },
+        {
+          ...modelFilter,
+          search: '',
+          archive: 'archived',
+          sourceKind: 'repository_reference',
+        },
         null,
         20,
       ),
@@ -4205,6 +4595,27 @@ describe('V2Catalog transform jobs', () => {
         expectedMetadataRevision: 0n,
       }),
     ).resolves.toMatchObject({ metadataRevision: 1n, archivedAt: archived?.archivedAt })
+    await expect(
+      v2Catalog.restoreModel({
+        namespaceId,
+        modelId: archived?.id ?? '',
+        expectedMetadataRevision: 0n,
+      }),
+    ).rejects.toBeInstanceOf(V2CatalogModelMetadataConflictError)
+    const deploymentBeforeRestore = await v2Catalog.getModelVersionDeployment(
+      namespaceId,
+      beta.version.id,
+      betaDeployment.id,
+    )
+    const restored = await v2Catalog.restoreModel({
+      namespaceId,
+      modelId: archived?.id ?? '',
+      expectedMetadataRevision: 1n,
+    })
+    expect(restored).toMatchObject({ metadataRevision: 2n, archivedAt: null })
+    await expect(
+      v2Catalog.getModelVersionDeployment(namespaceId, beta.version.id, betaDeployment.id),
+    ).resolves.toEqual(deploymentBeforeRestore)
   })
 
   test('adopts an exact legacy Deployment once and keeps the association append-only', async () => {
@@ -4220,6 +4631,51 @@ describe('V2Catalog transform jobs', () => {
     const first = await v2Catalog.registerModelVersion(
       artifactModelRegistrationInput(namespaceId, artifact),
     )
+    await expect(
+      v2Catalog.listModels(
+        namespaceId,
+        {
+          search: '',
+          archive: 'active',
+          sourceKind: 'databench_artifact',
+          sourceMutability: 'immutable',
+          verificationLevel: 'content_verified',
+          taskFamily: 'chat',
+          artifactKind: 'lora_adapter',
+          artifactId: artifact.id,
+          alias: 'candidate',
+          deploymentLifecycle: null,
+          deploymentHealth: null,
+          tag: 'fixture',
+        },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({
+      rows: [{ model: { id: first.model.id }, candidate: { version: { id: first.version.id } } }],
+      nextCursor: null,
+    })
+    await expect(
+      v2Catalog.listModels(
+        namespaceId,
+        {
+          search: '',
+          archive: 'active',
+          sourceKind: 'databench_artifact',
+          sourceMutability: 'immutable',
+          verificationLevel: 'content_verified',
+          taskFamily: 'chat',
+          artifactKind: 'lora_adapter',
+          artifactId: '99999999-9999-4999-8999-999999999999',
+          alias: 'candidate',
+          deploymentLifecycle: null,
+          deploymentHealth: null,
+          tag: 'fixture',
+        },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({ rows: [], nextCursor: null })
     await expect(
       v2Catalog.listModelArtifacts(
         namespaceId,
@@ -4248,9 +4704,83 @@ describe('V2Catalog transform jobs', () => {
     expect(new Set(results.map(({ row }) => row.modelVersionId))).toEqual(
       new Set([first.version.id]),
     )
+    const additionalDeployments = await Promise.all(
+      Array.from({ length: 100 }, (_, index) =>
+        v2Catalog.createOrReadModelDeployment(
+          modelDeploymentInput(
+            namespaceId,
+            artifact.id,
+            (index + 1_000).toString(16).padStart(64, '0'),
+          ),
+        ),
+      ),
+    )
+    await Promise.all(
+      additionalDeployments.map((additionalDeployment, index) =>
+        v2Catalog.createOrReadModelDeploymentAdoption({
+          ...adoption,
+          deploymentId: additionalDeployment.id,
+          deploymentDigest: additionalDeployment.createDigest,
+          adoptionDigest: (index + 2_000).toString(16).padStart(64, '0'),
+        }),
+      ),
+    )
+    const firstAdoptionPage = await v2Catalog.listModelDeploymentAdoptions(
+      namespaceId,
+      first.version.id,
+      null,
+      100,
+    )
+    expect(firstAdoptionPage.rows).toHaveLength(100)
+    expect(firstAdoptionPage.nextCursor).not.toBeNull()
+    const secondAdoptionPage = await v2Catalog.listModelDeploymentAdoptions(
+      namespaceId,
+      first.version.id,
+      firstAdoptionPage.nextCursor,
+      100,
+    )
+    expect(secondAdoptionPage.rows).toHaveLength(1)
+    expect(secondAdoptionPage.nextCursor).toBeNull()
+    expect(
+      new Set(
+        [...firstAdoptionPage.rows, ...secondAdoptionPage.rows].map((row) => row.deploymentId),
+      ),
+    ).toEqual(new Set([deployment.id, ...additionalDeployments.map(({ id }) => id)]))
+
+    await v2Catalog.archiveModel({
+      namespaceId,
+      modelId: first.model.id,
+      expectedMetadataRevision: 0n,
+    })
     await expect(
-      v2Catalog.listModelDeploymentAdoptions(namespaceId, first.version.id),
-    ).resolves.toMatchObject([{ deploymentId: deployment.id }])
+      v2Catalog.listModels(
+        namespaceId,
+        {
+          search: '',
+          archive: 'archived',
+          sourceKind: null,
+          sourceMutability: null,
+          verificationLevel: null,
+          taskFamily: null,
+          artifactKind: null,
+          artifactId: null,
+          alias: null,
+          deploymentLifecycle: null,
+          deploymentHealth: null,
+          tag: null,
+        },
+        null,
+        20,
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          model: { id: first.model.id },
+          adoptedDeploymentCount: 101,
+          activeAdoptedDeploymentCount: 101,
+        },
+      ],
+    })
 
     const second = await v2Catalog.registerModelVersion(
       artifactModelRegistrationInput(namespaceId, artifact, {

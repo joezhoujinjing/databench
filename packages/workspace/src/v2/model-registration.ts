@@ -7,6 +7,7 @@ import {
   type CreateModelRegistrationV2,
   V2CatalogConsistencyError,
   V2CatalogInputError,
+  V2CatalogModelAliasAdmissionError,
   V2CatalogModelAliasConflictError,
   V2CatalogModelRegistrationConflictError,
 } from '@databench/catalog'
@@ -44,7 +45,6 @@ import {
 import {
   type CommitModelRegistrationRequestV2,
   CommitModelRegistrationRequestV2Schema,
-  ConflictError,
   classifyModelVersionSourceV2,
   IntegrityError,
   type ModelArtifactRegistrationRequestV2,
@@ -55,6 +55,7 @@ import {
   type ModelRegistrationPlanV2,
   ModelRegistrationPlanV2Schema,
   type ModelRegistrationWarningV2,
+  ModelRegistryConflictErrorV2,
   type ModelRepositoryRegistrationRequestV2,
   ModelRepositoryRegistrationRequestV2Schema,
   type ModelServiceRegistrationRequestV2,
@@ -147,7 +148,7 @@ export async function commitModelRegistrationV2(
     signal,
   )
   if (request.expected_registration_digest !== inspected.plan.registration_digest) {
-    throw new ConflictError('Model registration plan changed before commit', {
+    throw new ModelRegistryConflictErrorV2({
       reason: 'registration_digest_mismatch',
       expected_registration_digest: request.expected_registration_digest,
       current_registration_digest: inspected.plan.registration_digest,
@@ -248,7 +249,7 @@ async function inspectModelTarget(
       })
     }
     if (stored.archivedAt !== null) {
-      throw new ConflictError('Archived Model cannot receive a new Version', {
+      throw new ModelRegistryConflictErrorV2({
         reason: 'model_archived',
         model_id: stored.id,
       })
@@ -422,19 +423,20 @@ async function inspectRepositoryRegistration(
     version_create_digest: versionCreateDigest,
     classification,
   })
-  const warnings: ModelRegistrationWarningV2[] = [
-    {
-      code:
-        classification.source_mutability === 'mutable'
-          ? 'repository_revision_mutable'
-          : 'repository_revision_unverified',
+  const warnings: ModelRegistrationWarningV2[] = []
+  if (classification.source_mutability === 'mutable') {
+    warnings.push({
+      code: 'repository_revision_mutable',
       path: '/source/revision',
-      message:
-        classification.source_mutability === 'mutable'
-          ? 'The declared repository revision is mutable'
-          : 'The repository revision is declared-only and has not been provider verified',
-    },
-  ]
+      message: 'The declared repository revision is mutable',
+    })
+  } else if (classification.verification_level !== 'provider_verified') {
+    warnings.push({
+      code: 'repository_revision_unverified',
+      path: '/source/revision',
+      message: 'The repository revision is declared-only and has not been provider verified',
+    })
+  }
   if (request.source.provider === 'hugging_face') {
     warnings.push({
       code: 'repository_provider_not_enabled',
@@ -817,14 +819,14 @@ function assertArtifactNamespace(artifact: CatalogModelArtifactRowV2, namespaceI
 
 function mapModelRegistrationCatalogError(error: unknown, registrationDigest: string): unknown {
   if (error instanceof V2CatalogModelRegistrationConflictError) {
-    return new ConflictError('Model registration conflicts with existing immutable state', {
+    return new ModelRegistryConflictErrorV2({
       reason: error.reason,
       registration_digest: error.registrationDigest,
     })
   }
   if (error instanceof V2CatalogModelAliasConflictError) {
-    return new ConflictError('Model alias compare-and-set failed', {
-      reason: 'alias_conflict',
+    return new ModelRegistryConflictErrorV2({
+      reason: 'model_alias_conflict',
       model_id: error.modelId,
       alias: error.alias,
       expected_version_id: error.expectedVersionId,
@@ -833,8 +835,8 @@ function mapModelRegistrationCatalogError(error: unknown, registrationDigest: st
       registration_digest: registrationDigest,
     })
   }
-  if (error instanceof V2CatalogInputError) {
-    return new ConflictError('Model registration source changed before commit', {
+  if (error instanceof V2CatalogInputError || error instanceof V2CatalogModelAliasAdmissionError) {
+    return new ModelRegistryConflictErrorV2({
       reason: 'registration_source_conflict',
       registration_digest: registrationDigest,
     })

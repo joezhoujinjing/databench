@@ -1,9 +1,11 @@
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeAll, describe, expect, test, vi } from 'vitest'
 import i18n from '@/i18n/index.js'
 import type { ModelPageV2 } from '@/models/api/registry.js'
-import { ModelRegistryResults } from './registry.js'
+import { candidateExpectedVersionIdV2, ModelRegistryResults } from './registry.js'
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
@@ -28,7 +30,15 @@ const modelId = '123e4567-e89b-42d3-a456-426614174010'
 const page: ModelPageV2 = {
   items: [
     {
+      active_adopted_deployment_count: 1,
       adopted_deployment_count: 2,
+      deployment_summary: {
+        total: 1,
+        registered: 0,
+        active: 1,
+        disabled: 0,
+        healthy_active: 1,
+      },
       candidate: {
         base_model_reference: 'Qwen/Qwen2.5-7B-Instruct',
         source_kind: 'databench_artifact',
@@ -38,6 +48,7 @@ const page: ModelPageV2 = {
         version_label: 'r2',
       },
       healthy_adopted_deployment_count: 1,
+      latest_comparable_evaluation: null,
       model: {
         archived_at: null,
         created_at: '2026-08-04T01:00:00.000Z',
@@ -80,5 +91,27 @@ describe('Model Registry responsive results', () => {
     expect(html).toContain('<dt class="text-muted-foreground">Updated</dt>')
     expect(html.match(new RegExp(`/models/${modelId}`, 'gu'))).toHaveLength(2)
     expect(html.match(/Support Model/gu)).toHaveLength(2)
+  })
+
+  test('uses the current candidate Version as the existing-Model Alias CAS baseline', () => {
+    expect(candidateExpectedVersionIdV2(page.items, 'create_model', modelId)).toBeNull()
+    expect(candidateExpectedVersionIdV2(page.items, 'existing_model', modelId)).toBe(
+      page.items[0]?.candidate?.version_id,
+    )
+    expect(
+      candidateExpectedVersionIdV2(
+        page.items,
+        'existing_model',
+        '123e4567-e89b-42d3-a456-426614174099',
+      ),
+    ).toBeNull()
+  })
+
+  test('keeps registration targets independent from the visible registry filters', async () => {
+    const source = await readFile(path.resolve(import.meta.dirname, 'registry.tsx'), 'utf8')
+
+    expect(source).toContain("'models', 'registration-targets'")
+    expect(source).toContain('models={registrationModels}')
+    expect(source).not.toContain('models={modelsQuery.data}')
   })
 })

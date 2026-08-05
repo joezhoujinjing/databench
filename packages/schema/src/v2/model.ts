@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { DigestHexSchema, Rfc3339UtcSchema } from './common.js'
 import { OpaqueCursorQueryV2Schema } from './contracts.js'
 import { IdentityNamespaceV2Schema } from './identity.js'
+import { ModelArtifactIdV2Schema, ModelArtifactKindV2Schema } from './model-artifact.js'
 
 export const V2_MODEL_TAG_MAX_ITEMS = 32
 export const V2_MODEL_PAGE_DEFAULT_LIMIT = 20
@@ -155,11 +156,21 @@ export const ArchiveModelV2Schema = z
   .meta({ id: 'ArchiveModelV2' })
 export type ArchiveModelV2 = z.infer<typeof ArchiveModelV2Schema>
 
+export const RestoreModelV2Schema = z
+  .strictObject({
+    expected_metadata_revision: z.number().int().safe().nonnegative(),
+  })
+  .meta({ id: 'RestoreModelV2' })
+export type RestoreModelV2 = z.infer<typeof RestoreModelV2Schema>
+
 export const ModelParamsV2Schema = z
   .strictObject({ model_id: ModelIdV2Schema })
   .meta({ id: 'ModelParamsV2' })
 
 export const ModelArchiveFilterV2Schema = z.enum(['active', 'archived', 'all'])
+export const ModelAliasFilterV2Schema = z.enum(['candidate', 'none'])
+export const ModelDeploymentLifecycleFilterV2Schema = z.enum(['registered', 'active', 'disabled'])
+export const ModelDeploymentHealthFilterV2Schema = z.enum(['unknown', 'healthy', 'unhealthy'])
 export const ModelSearchV2Schema = modelRegistryBoundedTextV2(256, {
   allowEmpty: true,
   rejectPath: true,
@@ -170,6 +181,15 @@ export const ModelPageRequestV2Schema = z
     search: ModelSearchV2Schema.optional(),
     archive: ModelArchiveFilterV2Schema.default('active'),
     source_kind: ModelSourceKindV2Schema.optional(),
+    source_mutability: ModelSourceMutabilityV2Schema.optional(),
+    verification_level: ModelVerificationLevelV2Schema.optional(),
+    task_family: ModelTaskFamilyV2Schema.optional(),
+    artifact_kind: ModelArtifactKindV2Schema.optional(),
+    artifact_id: ModelArtifactIdV2Schema.optional(),
+    alias: ModelAliasFilterV2Schema.optional(),
+    deployment_lifecycle: ModelDeploymentLifecycleFilterV2Schema.optional(),
+    deployment_health: ModelDeploymentHealthFilterV2Schema.optional(),
+    tag: ModelTagV2Schema.optional(),
     cursor: OpaqueCursorQueryV2Schema,
     limit: z.coerce
       .number()
@@ -191,12 +211,44 @@ export const ModelCandidateSummaryV2Schema = z.strictObject({
   base_model_reference: modelRegistryBoundedTextV2(512, { rejectPath: true }).nullable(),
 })
 
+export const ModelDeploymentSummaryV2Schema = z.strictObject({
+  total: z.number().int().safe().nonnegative(),
+  registered: z.number().int().safe().nonnegative(),
+  active: z.number().int().safe().nonnegative(),
+  disabled: z.number().int().safe().nonnegative(),
+  healthy_active: z.number().int().safe().nonnegative(),
+})
+
+export const ModelEvaluationReproducibilityV2Schema = z.strictObject({
+  kind: z.enum(['exact_source', 'mutable_observation', 'unknown_observation']),
+  source_mutability: ModelSourceMutabilityV2Schema,
+  verification_level: ModelVerificationLevelV2Schema,
+  source_evidence_digest: DigestHexSchema.nullable(),
+  source_observed_at: Rfc3339UtcSchema,
+})
+
+export const ModelComparableEvaluationSummaryV2Schema = z.strictObject({
+  run_id: z.uuid(),
+  model_version_id: z.uuid(),
+  model_deployment_id: z.uuid(),
+  benchmark: modelRegistryBoundedTextV2(128, { rejectPath: true }),
+  dataset_version: DigestHexSchema,
+  metric_id: modelRegistryBoundedTextV2(128, { rejectPath: true }),
+  output_key: modelRegistryBoundedTextV2(128, { rejectPath: true }),
+  score: z.number().finite(),
+  finished_at: Rfc3339UtcSchema,
+  reproducibility: ModelEvaluationReproducibilityV2Schema,
+})
+
 export const ModelListItemV2Schema = z
   .strictObject({
     model: ModelV2Schema,
     candidate: ModelCandidateSummaryV2Schema.nullable(),
     version_count: z.number().int().safe().nonnegative(),
+    deployment_summary: ModelDeploymentSummaryV2Schema,
+    latest_comparable_evaluation: ModelComparableEvaluationSummaryV2Schema.nullable(),
     adopted_deployment_count: z.number().int().safe().nonnegative(),
+    active_adopted_deployment_count: z.number().int().safe().nonnegative(),
     healthy_adopted_deployment_count: z.number().int().safe().nonnegative(),
   })
   .meta({ id: 'ModelListItemV2' })

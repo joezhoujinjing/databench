@@ -129,6 +129,7 @@ import {
   postTrainingV2Capability,
   registrationFromCommittedDataset,
   V2DatasetCache,
+  type V2ModelRepositoryRuntime,
   type V2ModelVersionDeploymentRuntime,
   V2ModelVersionDeploymentRuntimeError,
   type V2TransformLimits,
@@ -3369,6 +3370,59 @@ describe('V2Workspace Model Registry', () => {
     ).resolves.toMatchObject({ replayed: true })
   })
 
+  test('does not emit declared-only warnings for a provider-verified immutable repository', async () => {
+    const rig = createRig()
+    const repositoryRuntime: V2ModelRepositoryRuntime = {
+      mode: 'connected',
+      async resolve() {
+        return {
+          evidence_kind: 'provider_resolution',
+          adapter: 'operator-managed',
+          adapter_version: '1',
+          observed_revision: '0123456789abcdef0123456789abcdef01234567',
+          observed_at: '2026-08-04T00:00:00.000Z',
+          result: 'verified',
+          response_digest: 'a'.repeat(64),
+          license: 'apache-2.0',
+          cache_status: 'cached',
+        }
+      },
+    }
+    const workspace = new V2Workspace({
+      catalog: rig.catalog,
+      store: rig.store,
+      cursorSecret: CURSOR_SECRET,
+      modelRepository: repositoryRuntime,
+    })
+    const plan = await workspace.inspectModelRegistration({
+      target: {
+        kind: 'create_model',
+        key: 'verified-repository-model',
+        display_name: 'Verified Repository Model',
+        description: '',
+        task_family: null,
+        tags: [],
+      },
+      version_label: 'r1',
+      source: {
+        kind: 'repository_reference',
+        provider: 'operator_managed',
+        repository_id: 'local-qwen',
+        revision: '0123456789abcdef0123456789abcdef01234567',
+        revision_kind: 'commit',
+        base_model: null,
+      },
+    })
+
+    expect(plan).toMatchObject({
+      classification: {
+        source_mutability: 'immutable',
+        verification_level: 'provider_verified',
+      },
+      warnings: [],
+    })
+  })
+
   test('fails before writes on digest drift and mutable Alias, then registers and activates an Existing Service Deployment', async () => {
     const runtime: V2ModelVersionDeploymentRuntime = {
       configuration: vi.fn(async () => ({ policyGeneration: 1, credentialGeneration: null })),
@@ -3401,7 +3455,7 @@ describe('V2Workspace Model Registry', () => {
         request: repositoryRequest,
         expected_registration_digest: '0'.repeat(64),
       }),
-    ).rejects.toMatchObject({ code: 'conflict' })
+    ).rejects.toMatchObject({ code: 'model_registry_conflict' })
     await expect(
       rig.workspace.commitModelRegistration({
         request: repositoryRequest,
@@ -3512,9 +3566,151 @@ describe('V2Workspace Model Registry', () => {
       artifact_id: null,
       endpoint_base_url: 'https://models.example.test/v1',
     })
+
+    const active = rig.catalog.modelVersionDeployments.get(deploymentId)
+    if (active === undefined) throw new Error('active Deployment was not persisted')
+    rig.catalog.modelVersionDeployments.set(deploymentId, {
+      ...active,
+      declaredCapabilities: { interfaces: ['chat_completions'], contextLimit: 32_768 },
+    })
+    const selectorRows: ReadonlyArray<CatalogModelVersionDeploymentRowV2> = [
+      {
+        ...active,
+        id: '40000000-0000-8000-8000-000000000002',
+        createDigest: '2'.repeat(64),
+        lifecycle: 'disabled',
+        declaredCapabilities: { interfaces: ['chat_completions'], contextLimit: 32_768 },
+        disabledAt: NOW,
+      },
+      {
+        ...active,
+        id: '40000000-0000-8000-8000-000000000003',
+        createDigest: '3'.repeat(64),
+        policyGeneration: 1n,
+        declaredCapabilities: { interfaces: ['chat_completions'], contextLimit: 32_768 },
+      },
+      {
+        ...active,
+        id: '40000000-0000-8000-8000-000000000004',
+        createDigest: '4'.repeat(64),
+        declaredCapabilities: { interfaces: ['embeddings'], contextLimit: 32_768 },
+      },
+      {
+        ...active,
+        id: '40000000-0000-8000-8000-000000000005',
+        createDigest: '5'.repeat(64),
+        declaredCapabilities: { interfaces: ['chat_completions'], contextLimit: 1_024 },
+      },
+    ]
+    for (const row of selectorRows) rig.catalog.modelVersionDeployments.set(row.id, row)
+    for (let index = 0; index < 97; index += 1) {
+      const id = `50000000-0000-8000-8000-${String(index + 1).padStart(12, '0')}`
+      rig.catalog.modelVersionDeployments.set(id, {
+        ...active,
+        id,
+        createDigest: (index + 100).toString(16).padStart(64, '0'),
+        lifecycle: 'disabled',
+        declaredCapabilities: { interfaces: ['chat_completions'], contextLimit: 32_768 },
+        disabledAt: NOW,
+      })
+    }
+    const firstCandidates = await rig.workspace.listModelEvaluationDeploymentCandidates(
+      created.model_version_id,
+      {
+        workload_profile: 'evalscope_chat_completions_v1',
+        max_output_tokens: 4_096,
+        cursor: null,
+        limit: 100,
+      },
+    )
+    expect(firstCandidates.items).toHaveLength(100)
+    expect(firstCandidates.next_cursor).not.toBeNull()
+    const secondCandidates = await rig.workspace.listModelEvaluationDeploymentCandidates(
+      created.model_version_id,
+      {
+        workload_profile: 'evalscope_chat_completions_v1',
+        max_output_tokens: 4_096,
+        cursor: firstCandidates.next_cursor,
+        limit: 100,
+      },
+    )
+    expect(secondCandidates.items).toHaveLength(2)
+    expect(secondCandidates.next_cursor).toBeNull()
+    await expect(
+      rig.workspace.listModelEvaluationDeploymentCandidates(created.model_version_id, {
+        workload_profile: 'evalscope_chat_completions_v1',
+        max_output_tokens: 8_192,
+        cursor: firstCandidates.next_cursor,
+        limit: 100,
+      }),
+    ).rejects.toMatchObject({ code: 'validation_error' })
+    const candidates = [...firstCandidates.items, ...secondCandidates.items]
+    const assertedCandidateIds = new Set([deploymentId, ...selectorRows.map(({ id }) => id)])
+    expect(
+      new Map(
+        candidates
+          .filter((candidate) => assertedCandidateIds.has(candidate.deployment.id))
+          .map((candidate) => [candidate.deployment.id, candidate]),
+      ),
+    ).toEqual(
+      new Map([
+        [deploymentId, expect.objectContaining({ eligible: true, exclusion_reasons: [] })],
+        [
+          '40000000-0000-8000-8000-000000000002',
+          expect.objectContaining({
+            eligible: false,
+            exclusion_reasons: ['not_active', 'unavailable'],
+          }),
+        ],
+        [
+          '40000000-0000-8000-8000-000000000003',
+          expect.objectContaining({ eligible: false, exclusion_reasons: ['unavailable'] }),
+        ],
+        [
+          '40000000-0000-8000-8000-000000000004',
+          expect.objectContaining({ eligible: false, exclusion_reasons: ['interface_missing'] }),
+        ],
+        [
+          '40000000-0000-8000-8000-000000000005',
+          expect.objectContaining({
+            eligible: false,
+            exclusion_reasons: ['context_limit_insufficient'],
+          }),
+        ],
+      ]),
+    )
     await expect(
       rig.workspace.disableModelVersionDeployment(created.model_version_id, deploymentId),
     ).resolves.toMatchObject({ lifecycle: 'disabled', availability: 'unavailable' })
+  })
+
+  test('maps a Catalog registration collision to the typed Model Registry conflict', async () => {
+    const rig = createRig()
+    const artifact = modelArtifactRowForRegistration()
+    rig.catalog.modelArtifacts.set(artifact.id, artifact)
+    const request = artifactRegistrationRequest(
+      artifact.id,
+      'registration-conflict',
+      'Registration Conflict',
+      'r1',
+    )
+    const plan = await rig.workspace.inspectModelRegistration(request)
+    rig.catalog.registerModelVersion.mockRejectedValueOnce(
+      new V2CatalogModelRegistrationConflictError('model_key_conflict', plan.registration_digest),
+    )
+
+    await expect(
+      rig.workspace.commitModelRegistration({
+        request,
+        expected_registration_digest: plan.registration_digest,
+      }),
+    ).rejects.toMatchObject({
+      code: 'model_registry_conflict',
+      detail: {
+        reason: 'model_key_conflict',
+        registration_digest: plan.registration_digest,
+      },
+    })
   })
 
   test('lists, searches, filters, paginates, and reads Models with filter-bound cursors', async () => {
@@ -3654,7 +3850,7 @@ describe('V2Workspace Model Registry', () => {
         tags: [],
       }),
     ).rejects.toMatchObject({
-      code: 'conflict',
+      code: 'model_registry_conflict',
       detail: {
         reason: 'model_metadata_conflict',
         expected_metadata_revision: 0,
@@ -3674,7 +3870,7 @@ describe('V2Workspace Model Registry', () => {
         new_version_id: created.model_version_id,
       }),
     ).rejects.toMatchObject({
-      code: 'conflict',
+      code: 'model_registry_conflict',
       detail: { reason: 'model_alias_conflict', current_version_id: created.model_version_id },
     })
 
@@ -3716,6 +3912,17 @@ describe('V2Workspace Model Registry', () => {
     ).resolves.toMatchObject({ items: [] })
     await expect(
       rig.workspace.listModels({ archive: 'archived', cursor: null, limit: 20 }),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({ model: expect.objectContaining({ id: created.model_id }) }),
+      ],
+    })
+    const restored = await rig.workspace.restoreModel(created.model_id, {
+      expected_metadata_revision: 2,
+    })
+    expect(restored).toMatchObject({ metadata_revision: 3, archived_at: null })
+    await expect(
+      rig.workspace.listModels({ archive: 'active', cursor: null, limit: 20 }),
     ).resolves.toMatchObject({
       items: [
         expect.objectContaining({ model: expect.objectContaining({ id: created.model_id }) }),
@@ -3777,7 +3984,7 @@ describe('V2Workspace Model Registry', () => {
     await expect(
       rig.workspace.adoptModelDeployment(second.model_version_id, deployment.id, adoptionRequest),
     ).rejects.toMatchObject({
-      code: 'conflict',
+      code: 'model_registry_conflict',
       detail: {
         reason: 'model_deployment_adoption_conflict',
         current_model_version_id: first.model_version_id,
@@ -3790,7 +3997,7 @@ describe('V2Workspace Model Registry', () => {
         expected_deployment_digest: 'f'.repeat(64),
       }),
     ).rejects.toMatchObject({
-      code: 'conflict',
+      code: 'model_registry_conflict',
       detail: { reason: 'adoption_binding_mismatch' },
     })
   })
@@ -4573,6 +4780,10 @@ class FakeCatalog implements V2WorkspaceCatalog {
           const adoptions = [...this.modelDeploymentAdoptions.values()].filter(
             (adoption) => adoption.namespaceId === namespaceId && adoption.modelId === model.id,
           )
+          const versionIds = new Set(versions.map(({ version }) => version.id))
+          const versionDeployments = [...this.modelVersionDeployments.values()].filter(
+            (deployment) => versionIds.has(deployment.modelVersionId),
+          )
           return {
             model,
             candidate:
@@ -4585,7 +4796,26 @@ class FakeCatalog implements V2WorkspaceCatalog {
                     evidence: this.modelSourceEvidence.get(candidateVersion.version.id) ?? [],
                   },
             versionCount: versions.length,
+            deploymentSummary: {
+              total: versionDeployments.length,
+              registered: versionDeployments.filter(
+                (deployment) => deployment.lifecycle === 'registered',
+              ).length,
+              active: versionDeployments.filter((deployment) => deployment.lifecycle === 'active')
+                .length,
+              disabled: versionDeployments.filter(
+                (deployment) => deployment.lifecycle === 'disabled',
+              ).length,
+              healthyActive: versionDeployments.filter(
+                (deployment) =>
+                  deployment.lifecycle === 'active' && deployment.healthStatus === 'healthy',
+              ).length,
+            },
+            latestComparableEvaluation: null,
             adoptedDeploymentCount: adoptions.length,
+            activeAdoptedDeploymentCount: adoptions.filter(
+              ({ deploymentId }) => this.modelDeployments.get(deploymentId)?.status === 'active',
+            ).length,
             healthyAdoptedDeploymentCount: adoptions.filter(
               ({ deploymentId }) =>
                 this.modelDeployments.get(deploymentId)?.healthStatus === 'healthy',
@@ -4715,6 +4945,34 @@ class FakeCatalog implements V2WorkspaceCatalog {
       }
       this.models.set(row.id, archived)
       return archived
+    },
+  )
+
+  readonly restoreModel = vi.fn(
+    async (input: {
+      readonly namespaceId: string
+      readonly modelId: string
+      readonly expectedMetadataRevision: bigint
+    }): Promise<CatalogModelRowV2 | null> => {
+      if (this.failures.modelMetadata !== undefined) throw this.failures.modelMetadata
+      const row = this.models.get(input.modelId)
+      if (row === undefined || row.namespaceId !== input.namespaceId) return null
+      if (row.archivedAt === null) return row
+      if (row.metadataRevision !== input.expectedMetadataRevision) {
+        throw new V2CatalogModelMetadataConflictError(
+          row.id,
+          input.expectedMetadataRevision,
+          row.metadataRevision,
+        )
+      }
+      const restored = {
+        ...row,
+        archivedAt: null,
+        metadataRevision: row.metadataRevision + 1n,
+        updatedAt: NOW,
+      }
+      this.models.set(row.id, restored)
+      return restored
     },
   )
 

@@ -35,7 +35,7 @@ export function EvaluationForm({
 }: {
   readonly canSubmit?: boolean
   readonly databenchSource: (limit: string) => ReactNode
-  readonly deploymentSource: ReactNode
+  readonly deploymentSource: (maxOutputTokens: number | undefined) => ReactNode
   readonly disabled: boolean
   readonly initialBenchmark?: string | undefined
   readonly onSourceChange: (source: EvaluationSourceKind) => void
@@ -214,7 +214,9 @@ export function EvaluationForm({
             />
           </TaskFormField>
         ) : (
-          <div className="md:col-span-2">{deploymentSource}</div>
+          <div className="md:col-span-2">
+            {deploymentSource(values.maxTokens === '' ? undefined : Number(values.maxTokens))}
+          </div>
         )}
 
         {source === 'benchmark' ? (
