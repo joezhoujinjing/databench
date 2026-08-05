@@ -4,7 +4,7 @@
 
 - 主产品已按 ADR 0013 切换为 v2-only。
 - 产品切换 R0-R5 已完成；最终全仓、真实依赖、浏览器与离线发布 gate 均已通过。
-- v2 V0-V16 已完成；V17 final/release gate 未完成。
+- v2 V0-V17 已完成并通过 GV-final；完整证据见 `docs/v2/V17-FINAL-REPORT.md`。
 - Web 与 CLI 不带版本；REST、Postgres、对象 key 与内部类型继续保留 v2 稳定命名。
 - Owner 于 2026-07-29 接受当前产品壳修订：全局一级导航为“数据集 / 测评”，数据集工作区
   在桌面使用“数据集列表 / 导入 / 转换”左侧栏、测评工作区使用“看板 / 报告 / 性能 / 任务 /
@@ -193,7 +193,8 @@ REST
    非公共状态契约只使用已登记的隔离 exact Zod adapter。
 6. 不修改旧仓库 `~/Desktop/databench/`。
 7. 普通启动、请求和 migration wrapper 不隐式删除对象。
-8. V17 未过不宣称 production readiness。
+8. GV-final 不替代 GE9 Ubuntu 目标机、GPU 或公共云 D3 gate；这些未过不宣称整个产品
+   production readiness。
 
 ## R4 数据基线
 

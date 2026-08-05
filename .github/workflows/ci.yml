@@ -118,6 +118,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm v2:status:check
+      - run: pnpm architecture:check
+      - run: pnpm architecture:test
       - run: pnpm evalscope:parity:check
       - run: pnpm evalscope:parity:test
       - run: pnpm ecs:check

@@ -25,8 +25,8 @@ gpu_gate: deferred
 - **Capability:** Model Registry 已在已实现的本地/可信内网范围启用；这不包含 public-network activation、
   hosted secret backend、managed serving、Hugging Face runtime、GPU 或 production readiness
 - **网络:** ADR 0012 offline 仍禁止 public-network activation；公共云 D3 未决定
-- **GPU/V17:** Model Registry 的实施不自动完成 V16/V17；V16 后续已独立通过 GV16，V17 与 GPU gate
-  仍未完成
+- **GPU/V17:** Model Registry 的实施没有自动完成 V16/V17；两者随后已分别通过 GV16/GV-final。
+  GPU gate 仍独立 deferred
 
 ## Step 状态
 
@@ -341,5 +341,5 @@ managed serving 或 GPU gate，也不自动完成 V16/V17、GE9 或 production r
 
 GMR8 后 `capability_enabled: true` 只表示 ADR 0019 的 Model Registry 计划在已实现本地/可信内网范围完成。
 `public_network_activation: false`、`hosted_secret_backend: undecided-d3` 和 `gpu_gate: deferred` 保持；不启用
-Hugging Face runtime、managed serving 或 Model Registry MCP tools，也不自动完成 V16/V17、GE9 或
-production readiness。
+Hugging Face runtime、managed serving 或 Model Registry MCP tools。V16/V17 随后已由各自 Gate 独立完成；
+GE9、GPU 和整体 production readiness 状态不因此改变。

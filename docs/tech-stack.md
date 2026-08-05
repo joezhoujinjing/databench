@@ -19,10 +19,11 @@
 | API streaming | Web Streams + bounded multipart parsing |
 | Tests | Vitest; real Postgres/MinIO integration gates |
 
-The currently implemented core/domain/public API has no Python runtime. ADR 0010
-now plans an optional long-running Python Worker over internal gRPC; it is not
-implemented until its independently gated steps land. TypeScript remains the
-domain, identity, publication and public API authority.
+The core domain, identity, publication and public API authority remains TypeScript.
+Optional private Python runtimes are implemented behind bounded contracts: the
+gRPC Worker for allowlisted batch transforms, backend-only EvalScope for evaluation,
+and the ms-swift Provider beside its native Gradio runtime. All are disabled in the
+ordinary local profile unless explicitly configured.
 
 ## Frontend
 
@@ -53,6 +54,8 @@ unversioned; the generated client consumes the stable `/v2` API contract.
 | Hosted object store | Aliyun OSS |
 | Offline single host | Docker Compose + Caddy + Postgres + MinIO |
 | Public cloud API host | pending D3 owner decision |
+| Architecture policy | executable workspace DAG, deep-import, app-boundary and PG-payload CI check |
 
-V16/V17 recovery/security/capacity work remains separate from the product
-cutover and is not implied by this implemented stack.
+V16 recovery/security/capacity is complete. V17 final status is recorded in
+`docs/v2/STATUS.md` and `docs/v2/V17-FINAL-REPORT.md`; neither changes the separately
+deferred Ubuntu offline target, NVIDIA/GPU or public-cloud D3 gates.

@@ -31,7 +31,8 @@ integration_mode: native-full-gradio
 - **首期模式:** 完整原生 Gradio；Databench 桥接 Session、exact Dataset、workspace、immutable Artifact、
   operator-attested Deployment 与 Evaluation lineage
 - **控制面状态:** 没有 Training Run/Attempt；原生任务仍由 ms-swift Gradio 管理
-- **发布声明:** 不改变 V16/V17、公共云 D3、ADR 0012 或 EvalScope E8/E9
+- **发布声明:** S4 没有自动改变 V16/V17；两者随后已分别通过 GV16/GV-final。公共云 D3、
+  ADR 0012、EvalScope E8/E9 与 GPU gate 仍按各自状态记录
 - **离线交付:** ADR 0012 通道已接入第八张、默认关闭的 Swift CUDA 镜像；显式
   `DATABENCH_ENABLE_SWIFT_STUDIO=true` 可启用 UI-only Studio，只有 `runtime_mode=gpu` 才叠加
   NVIDIA profile。API 使用当次 bundle 的真实 local image digest；Caddy、Provider/Gradio doctor、

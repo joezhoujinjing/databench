@@ -10,33 +10,43 @@
 - [conventions.md](conventions.md) — 确定性、契约、测试与协作规则。
 - [tech-stack.md](tech-stack.md) — 当前已实现技术栈。
 
-## MCP Agent 导入（实施中）
+## MCP Agent 导入
 
 - [ADR 0015](decisions/0015-internal-agent-mcp-ingest.md) — API 内嵌 MCP、四个 tools、匿名
   可信内网与 agent 自主编排。
 - [ADR 0016](decisions/0016-canonical-draft-raw-adapter-identity.md) — canonical draft 的
   deterministic IDs、claims 与重放语义。
 - [MCP 技术方案](mcp/TECHNICAL-DESIGN.md) — 已接受的最终边界与验收。
-- [MCP 实施计划](mcp/PLAN.md) / [状态](mcp/STATUS.md) — M0-M3 的真实进度。
+- [MCP 实施计划](mcp/PLAN.md) / [状态](mcp/STATUS.md) — M0-M3 已完成。
 - [目标 agent 预检](mcp/AGENT-PREFLIGHT.md) — Excel 与 MCP/HTTP 客户端能力证据。
 
-MCP M0-M3 已完成并获准进入匿名可信内网离线通道。通用 runtime
-仍默认关闭，公网部署未授权。
+MCP M0-M3 已完成并获准进入匿名可信内网离线通道。通用 runtime 仍默认关闭，只有 operator
+显式提供稳定、agent 可达的 public base 才能启用；公网部署未授权。
 
-## EvalScope 集成（实施中）
+## EvalScope 集成
 
 - [ADR 0017](decisions/0017-evalscope-native-ui-integration.md) — 锁定最新 EvalScope React UI 的业务
   功能等价迁移、Databench 产品/视觉所有权与 backend-only EvalScope 边界。
 - [EvalScope 技术方案](evalscope/TECHNICAL-DESIGN.md) — 全页面 parity、TanStack Router、scoped
   visual tokens、same-origin API adapter、`general_qa`、run、归档、许可证与升级设计。
-- [EvalScope 实施计划](evalscope/PLAN.md) / [状态](evalscope/STATUS.md) — E0-E9 纵向交付；E0 已完成，
-  GE7 是完整 UI parity gate，GE9 是最终安全/离线集成 gate。
+- [EvalScope 实施计划](evalscope/PLAN.md) / [状态](evalscope/STATUS.md) — E0-E8、E10 已完成；
+  E9 本地实现完成，真实 Ubuntu 22.04 amd64 断网目标机证据由 owner 后验。
 
-owner 已确认“功能完整复刻、UI 使用 Databench 风格、不使用 iframe 嵌入 EvalScope SPA”的总体方向；
-file-level source manifest 与 capability-level parity manifest 分开验收，上游功能、安全替代和
-Databench 扩展分类追踪，扩展不计入上游 parity coverage。
-generated report/chart 为保留业务能力，只能在清洗重写后进入不含 `allow-same-origin` 的受限 sandbox
-frame。ADR、技术方案和计划已接受；E0 基线门已完成，当前进入 E1，尚未发布 EvalScope runtime surface。
+`/evaluations/*` 已迁入 Databench SPA；锁定 React 基线的业务能力 parity 已完成。backend-only
+EvalScope 通过 same-origin gateway 使用，普通本地启动仍默认关闭；ADR 0012 离线 profile 可显式启用。
+generated report/chart 只能在清洗重写后进入不含 `allow-same-origin` 的受限 sandbox frame。
+
+## 训练与模型
+
+- [ADR 0018](decisions/0018-ms-swift-native-gradio-studio.md) / [Swift 状态](swift/STATUS.md) —
+  原生 Gradio Studio、exact Dataset Session 和 immutable LoRA Model Artifact 已完成 non-GPU contract；
+  真实 NVIDIA 训练/推理 gate 后置。
+- [ADR 0019](decisions/0019-model-registry.md) / [Model Registry 状态](models/STATUS.md) — MR0-MR8
+  已完成，支持 Databench Artifact、Repository reference、Existing Service 三种来源和
+  Model/Version/Deployment/Evaluation lineage。
+
+Model Registry 只在已实现的本地/可信内网范围启用。Hugging Face runtime、hosted secret backend、
+managed serving、public-network activation 与 GPU 证明不在当前已完成范围。
 
 ## 产品切换
 
@@ -54,7 +64,8 @@ frame。ADR、技术方案和计划已接受；E0 基线门已完成，当前进
 - [ADR 0011](decisions/0011-identity-hashing-versioning-v2.md) — identity、
   hashing 与 versioning。
 - [v2 技术方案](v2/TECHNICAL-DESIGN.md) — 已接受协议设计。
-- [v2 实施计划](v2/PLAN.md) — V0-V17；V16/V17 仍保持真实未完成状态。
+- [v2 实施计划](v2/PLAN.md) / [最终报告](v2/V17-FINAL-REPORT.md) — V0-V17 已完成并通过
+  GV-final；独立的 GPU、GE9 与 D3 状态不因此改变。
 - [扩展 schema 参考](v2/canonical-record-extended-profile.md) — 非规范候选。
 
 ## 部署
@@ -64,8 +75,8 @@ frame。ADR、技术方案和计划已接受；E0 基线门已完成，当前进
 - [阿里云 ECS 中文 runbook](deployment/aliyun-ecs.zh-CN.md)。
 - [Aliyun ECS English runbook](deployment/aliyun-ecs.md)。
 
-公共云 API 托管平台仍受 D3 owner 决策门约束。离线通道是独立授权，不会自动完成
-V16/V17。
+公共云 API 托管平台仍受 D3 owner 决策门约束。离线通道是独立授权；真实 Ubuntu 22.04 amd64
+断网目标机与 NVIDIA 证据仍按各自状态页记录，不能由本地 final gate 替代。
 
 ## 历史记录
 

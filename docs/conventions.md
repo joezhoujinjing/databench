@@ -130,6 +130,6 @@ Host/TLS SNI/CA/hostname validation 保留在原始 hostname 上，只将 socket
 
 - Conventional Commits，scope 使用 app/package/领域名。
 - 一个已接受 Step 一个 PR/commit，未过当前 gate 不进入下一 Step。
-- pre-commit 跑 Biome；R5 至少运行 lint、build、typecheck、test、openapi、
+- pre-commit 跑 Biome；final gate 至少运行 architecture、lint、build、typecheck、test、openapi、
   status、peer、真实依赖、浏览器和离线 smoke。
 - 不修改旧参考仓库 `~/Desktop/databench/`。

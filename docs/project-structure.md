@@ -55,7 +55,7 @@ databench-ts/
 │  └─ offline/          ADR 0012 Ubuntu 单机离线发布
 ├─ third_party/
 │  └─ ms-swift/         锁定 upstream archive、patch 与 Gradio compatibility baseline；非 runtime 代码
-├─ scripts/             repo gate、测试 schema、EvalScope parity、Swift GPU gate 与辅助脚本
+├─ scripts/             architecture/status gate、测试 schema、EvalScope parity、Swift GPU gate 与辅助脚本
 ├─ THIRD_PARTY_NOTICES.md
 └─ docs/
    ├─ mcp/               已接受的 MCP 技术方案、实施计划、状态与 agent preflight
@@ -181,6 +181,9 @@ MCP 让 API 直连下层包；transport SDK 只负责协议，不成为数据访
    contract 或成为任意 HTTP client。
 6. `tooling/v1-retirement` 不得被应用启动、普通请求或隐式 migration 调用；它只服务
    ADR 0013 的显式数据退役流程。
+
+前四条中的 package DAG、deep import、应用数据边界与 PostgreSQL payload 红线由
+`pnpm architecture:check` 自动验证；`pnpm architecture:test` 锁定反例，CI 的 `validate` job 必须执行两者。
 
 ## 单包模板
 

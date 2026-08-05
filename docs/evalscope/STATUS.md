@@ -49,7 +49,8 @@ e10_gate: passed
   Docker 验证不替代该目标 gate。Owner 于 2026-07-29 批准先合并，并由 owner 后续手工执行该验证
 - **Swift S4 交叉扩展:** opaque Databench Deployment model source、server-side resolve 与
   Dataset/Artifact/Deployment Evaluation lineage 已完成 non-GPU gate；不改变 E8/E9 状态
-- **既有状态:** V15 complete、V16 current；本集成没有改变 V16/V17 或公共云 D3
+- **既有状态:** 本集成没有自动改变 V16/V17；两者随后已分别通过 GV16/GV-final。公共云 D3
+  仍未决定，GE9 目标机后验状态不变
 
 ## Step 状态
 

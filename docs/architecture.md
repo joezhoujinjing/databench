@@ -5,8 +5,8 @@
 
 ## 系统目标
 
-Databench 管理 LLM post-training 数据：immutable versioned datasets、record/dataset
-lineage、确定性 transforms、可审计导入和显式 fidelity 的导出。
+Databench 管理 LLM post-training 数据与模型资产：immutable versioned datasets、record/dataset/model
+lineage、确定性 transforms、可审计导入、显式 fidelity 导出、模型注册和测评。
 
 系统分为：
 
@@ -34,10 +34,11 @@ lineage、确定性 transforms、可审计导入和显式 fidelity 的导出。
           ▼
 ┌───────────────────────────────────────────────┐
 │ Engine · IO · Ops · Store · Catalog          │
-└─────────────────┬───────────────────┬─────────┘
-                  │                   │
-                  ▼                   ▼
-             PostgreSQL        OSS / S3 / MinIO
+└───────┬─────────────────┬─────────────────┬───┘
+        │                 │                 │
+        ▼                 ▼                 ▼
+   PostgreSQL       OSS / S3 / MinIO   optional private runtimes
+                                      Worker · EvalScope · Swift
 
 CLI ───────────────► Workspace
 ```
@@ -49,8 +50,8 @@ Web 不 import 后端包，只消费由 OpenAPI 生成的类型。
 
 | 层 | 当前入口 |
 |---|---|
-| Web | `/datasets`、`/ingest`、`/transforms` 及其详情子路由 |
-| CLI | `databench dataset|converter|transform|ref|lineage ...` |
+| Web | `/datasets`、`/ingest`、`/transforms`、`/training`、`/models`、`/evaluations` 及详情子路由 |
+| CLI | `databench dataset|converter|transform|ref|lineage|model ...` |
 | REST | `/health`、`/version`、`/capabilities`、`/v2/*` |
 | Postgres | `*_v2` catalog tables |
 | Object store | `objects/v2/` |
@@ -80,13 +81,18 @@ Web 不 import 后端包，只消费由 OpenAPI 生成的类型。
 
 退役的 v1 Recipe/Vocabulary/Processing 产品实现不在当前 runtime 中。ADR 0010 的可选 Worker
 是新的内部执行边界，不恢复 Processing 产品：Worker 只运行 allowlisted Python capability，
-Workspace 仍负责 canonical Dataset、Run、cache 和 lineage。P1 已完成 Proto、通用 Python
-server 与 Workspace internal client；Job、staging、Data-Juicer 和应用生命周期尚未接入，当前
-已部署拓扑仍只有 TypeScript API、Postgres 与对象存储。
+Workspace 仍负责 canonical Dataset、Run、cache 和 lineage。Job、staging、Data-Juicer 与应用生命周期
+已经接入，但普通本地启动默认关闭。
+
+EvalScope 是 backend-only 私网执行与报告 runtime，Web UI 属于 Databench SPA；Swift Studio 使用受控
+Gateway 嵌入完整原生 Gradio，并由 Databench 管理 exact Dataset Session 和 immutable Model Artifact。
+Model Registry 将 Databench Artifact、Repository reference 与 Existing Service 统一成 immutable
+Model/Version，加上 version-bound Deployment 与 Evaluation lineage。所有可选 runtime 都不能成为
+canonical Dataset/identity/public API 的权威来源。
 
 ## 部署
 
-有状态依赖始终只有：
+canonical 数据基础设施的有状态依赖始终只有：
 
 1. Postgres；
 2. 对象存储。
@@ -99,7 +105,7 @@ server 与 Workspace internal client；Job、staging、Data-Juicer 和应用生�
   Web 入口并把外部 `/api/*` 去前缀转发到 API。
 
 公共云 API 托管平台仍受 D3 owner 决策门约束。ADR 0012 的 Ubuntu 单机离线通道是独立
-已接受路径，不代表 V16/V17 recovery/security/capacity gate 已完成。
+已接受路径；真实 Ubuntu 断网安装与 NVIDIA 证明仍是独立后验 gate。
 
 ## 不变量
 
@@ -109,4 +115,6 @@ server 与 Workspace internal client；Job、staging、Data-Juicer 和应用生�
    输入。
 4. Catalog 不依赖领域包；应用不绕过 Workspace。
 5. 对象是 immutable，refs 是可变指针；二者不能混为一层。
-6. 产品切换 R0-R5 不自动完成 V16/V17，也不扩大 D3 的部署授权。
+6. `pnpm architecture:check` 在 CI 锁定 package DAG、禁止内部 deep import、API/CLI Workspace
+   边界和 PostgreSQL payload 红线。
+7. V17 final gate、产品切换 R0-R5、离线授权、GPU/GE9 与公共云 D3 是独立状态，不能互相代替。

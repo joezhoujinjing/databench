@@ -4,8 +4,8 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V17
-last_completed_step: V16
+current_step: complete
+last_completed_step: V17
 capability_enabled: true
 capability_owner_decision: owner-approved-2026-07-24
 schema_amendment: system-content-2026-07-24
@@ -14,14 +14,13 @@ offline_production_release_authorized: true
 
 ## 当前检查点
 
-- **当前分支:** `main`
-- **下一步:** V16 已完成并通过 GV16；按计划进入 V17 final gate。产品切换 R0-R5 已全部完成，
-  公共云 D3 仍待 owner 决策
-- **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外。
-  V16 现已独立完成，但不代表 V17 或 GV-final 已完成
-- **离线发布:** owner于2026-07-24明确授权当前`main`直接生成production离线包；V16/V17
-  不阻断该离线发布通道，但其未开始状态与gate记录保持真实。Owner于2026-07-30追加精确基线
-  绑定的增量升级包；完整八镜像包仍是首次安装与恢复基线
+- **当前分支:** `feat/model-registry-mr8`
+- **下一步:** V0-V17 与 GV-final 已全部完成；没有后续 accepted V Step。公共云 D3、GE9 真实
+  Ubuntu 断网目标机与 GPU gate 仍按各自状态页保持独立
+- **Capability:** 已按 owner 2026-07-24 明确决定开启；V17 复核 `/capabilities`、OpenAPI/generated
+  client 与 env 说明一致，没有恢复旧 capability 开关
+- **离线发布:** owner于2026-07-24明确授权当前产品线生成production离线包，2026-07-30追加精确
+  基线绑定的增量升级包；完整八镜像包仍是首次安装与恢复基线。GE9 目标机后验不因 GV-final 自动通过
 - **Schema修订:** owner于2026-07-24确认删除顶层`system_instruction`，改为共享
   `contents[0]`中至多一条、单text且`loss_weight=0`的`system` content；修订前实验数据须迁移重导
 - **数据边界:** v2 不与旧 Python golden 对拍，不修改 `~/Desktop/databench/`
@@ -51,7 +50,7 @@ offline_production_release_authorized: true
 | V14 | Web foundation、refs与 record read | ✅ | 当前分支 | GV14 | capability gate、session隔离、exact-version读取与完整Unified Record renderer已过闸门 |
 | V15 | Web ingest/transform/lineage/export | ✅ | 当前分支 | GV15 | 桌面真实电缆 JSONL 浏览器 E2E 通过 |
 | V16 | Recovery、安全与容量 | ✅ | 当前分支 | GV16 | 10 项 fault/security/capacity 矩阵与真实双 API 实例 gate 通过 |
-| V17 | Final gate与 capability发布准备 | ⬜ | | GV-final | |
+| V17 | Final gate与 capability发布准备 | ✅ | 当前分支 | GV-final | 架构 CI、文档/契约、真实依赖、浏览器与双 ABI matrix 通过 |
 
 ## V0 Gate 记录
 
@@ -358,6 +357,25 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   Python worker tests skipped）、Catalog 66/66、API 177/177、CLI 20/20、Web 206/206，其余包全部通过；
 - `pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm openapi:check`、`pnpm models:status:check`、
   `pnpm peers check` 与 `git diff --check` 全部通过；V17/GV-final 尚未完成，GPU、GE9 与 D3 状态不变。
+
+## V17 Gate 记录
+
+- 新增 `pnpm architecture:check`/`architecture:test` 并接入 CI，自动锁定 13 个 workspace 的 package
+  DAG、`workspace:*`、deep import、API/CLI Workspace 边界，以及 24 个 Prisma models/19 个 migrations
+  的 PG payload 红线；六个 checker tests（1 基线 + 5 负向）通过；
+- 用户文档、`.env.example`、capability 说明、OpenAPI/generated client 已同步；`pnpm openapi:check`
+  确认 wire contract 无漂移；
+- `RUN_MINIO_STORE_TESTS=true pnpm turbo run test --force` 以 0 cache 全绿：Store 94、Workspace 205
+  （10 个 Python Worker gated tests skipped）、Catalog 66、API 177、CLI 20、Web 206，其余 packages 通过；
+- 当前 Engine/layout 的 `darwin-arm64` 与 fresh `linux-x64-gnu` Node 22 container raw-byte matrix 均 8/8；
+- 浏览器复核 `/models` 三来源 registration、六 Tabs、Version/Deployment/lineage、390 px 窄屏与
+  unavailable runtime 状态，console 0 error / 0 warning；
+- ADR 0013 后不恢复 v1/v2 coexistence runtime；以 R4 exact retirement + R5 v2-only lifecycle 作为替代
+  evidence。当前 public v1 table 数为 0，`/v1/datasets` 为 404；
+- `pnpm lint`（696 files）、`pnpm build`、`pnpm typecheck`、`pnpm openapi:check`、Prisma validate/forward
+  migration、EvalScope Python/parity、offline、status、peers 与 `git diff --check` 全部通过；
+- 完整证据见 [V17-FINAL-REPORT.md](V17-FINAL-REPORT.md)。GV-final 不替代 GE9 Ubuntu 目标机、GPU 或
+  公共云 D3 gate，不据此宣称整个产品 production ready。
 
 ## 2026-07-24 Schema 修订 Gate 记录
 

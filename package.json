@@ -20,6 +20,8 @@
     "test:worker:python": "bash workers/python/scripts/check-package.sh",
     "test:evalscope:python": "uv run --project workers/evalscope --frozen pytest -q workers/evalscope/tests",
     "test:swift:python": "uv run --project workers/swift-studio --frozen pytest -q workers/swift-studio/tests",
+    "architecture:check": "node scripts/check-architecture.mjs",
+    "architecture:test": "node --test scripts/check-architecture.test.mjs",
     "evalscope:parity:check": "node scripts/check-evalscope-parity.mjs",
     "evalscope:parity:check:green": "node scripts/check-evalscope-parity.mjs --require-green",
     "evalscope:parity:test": "node --test scripts/check-evalscope-parity.test.mjs",

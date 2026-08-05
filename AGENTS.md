@@ -6,8 +6,9 @@
 
 Databench 是 LLM post-training 数据基础设施。本仓库是全 TypeScript monorepo。
 
-- v2 V0-V16 已完成；V17 仍未完成。
-- ADR 0013 产品切换 R0-R5 已完成并过最终 gate；V16/V17 状态不因此改变。
+- v2 V0-V17 已完成并通过 GV-final。
+- ADR 0013 产品切换 R0-R5 已完成并过最终 gate；V17 以 R4/R5 retirement evidence 取代旧
+  coexistence runtime 要求。
 - v2 是唯一产品面：Web/CLI 无版本入口，REST/DB/object/internal types 保留稳定 v2 命名。
 - v1 runtime、产品 surface、领域实现和本地持久化数据已经退役。
 - `tooling/v1-retirement`、forward migration 与 runbook 暂时保留，供尚未执行 R4 的安装环境
@@ -75,8 +76,8 @@ generated OpenAPI client ← apps/web
 
 ## 产品与契约边界
 
-- Web 只有 `/datasets`、`/ingest`、`/transforms` 及详情子路由。
-- CLI 使用 `databench dataset|converter|transform|ref|lineage ...`。
+- Web 使用 `/datasets`、`/ingest`、`/transforms`、`/training`、`/models`、`/evaluations` 及详情子路由。
+- CLI 使用 `databench dataset|converter|transform|ref|lineage|model ...`。
 - REST 使用 meta + `/v2/*`；不要把 `/v2` 改成 `/v1` 或无版本 API。
 - wire schema 只在 `@databench/schema` 定义；改契约必须重生成 client 并跑
   `pnpm openapi:check`。
@@ -86,9 +87,10 @@ generated OpenAPI client ← apps/web
 
 - 一个 accepted Step 一个 PR/commit，当前 gate 通过后再进入下一步。
 - Conventional Commits。
-- R5 gate：lint、build、typecheck、test、openapi、v2 status、peer、真实 Postgres/MinIO、
+- final gate：architecture、lint、build、typecheck、test、openapi、v2 status、peer、真实 Postgres/MinIO、
   浏览器和离线 lifecycle smoke。
-- V17 未过时不得宣称 production readiness。
+- GV-final 不替代 GE9 Ubuntu 目标机、GPU 或公共云 D3 gate；这些未过时不得宣称整个产品
+  production readiness。
 - 不修改旧参考仓库，不在普通启动/请求中隐式删除数据。
 
 ## 常用命令
@@ -101,6 +103,7 @@ pnpm lint
 pnpm build
 pnpm typecheck
 pnpm test
+pnpm architecture:check
 pnpm openapi:check
 pnpm v2:status:check
 pnpm offline:check

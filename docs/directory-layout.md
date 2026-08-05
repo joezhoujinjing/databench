@@ -78,6 +78,16 @@ scripts/
 运行证据只写 ignored `output/swift-gpu-gate/`；这些脚本和 fixture 不进入 `deploy/swift-studio/`、Provider
 runtime 或第三方构建输入。
 
+V17 的仓库架构闸门固定落在：
+
+```text
+scripts/
+├─ check-architecture.mjs       package DAG、deep import、应用数据边界与 PG payload 检查
+└─ check-architecture.test.mjs  仓库基线与五类负向路径回归
+```
+
+入口为 `pnpm architecture:check` 和 `pnpm architecture:test`，CI `validate` job 在构建和测试前执行。
+
 ## `apps/api`
 
 ```text
