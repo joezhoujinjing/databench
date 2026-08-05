@@ -434,7 +434,8 @@ export function ModelRegistryResults({ page }: { readonly page: ModelPageV2 }) {
                 </TableCell>
                 <TableCell>
                   <span className="font-medium tabular-nums">{item.deployment_summary.active}</span>
-                  <span className="ml-2 text-success text-xs">
+                  <span className="mx-1 text-dim-foreground">/</span>
+                  <span className="text-success text-xs">
                     {t('models.healthy', { count: item.deployment_summary.healthy_active })}
                   </span>
                 </TableCell>
@@ -490,7 +491,8 @@ export function ModelRegistryResults({ page }: { readonly page: ModelPageV2 }) {
                 <dt className="text-muted-foreground">{t('models.deployments')}</dt>
                 <dd className="min-w-0">
                   <span className="font-medium tabular-nums">{item.deployment_summary.active}</span>
-                  <span className="ml-2 text-success text-xs">
+                  <span className="mx-1 text-dim-foreground">/</span>
+                  <span className="text-success text-xs">
                     {t('models.healthy', { count: item.deployment_summary.healthy_active })}
                   </span>
                 </dd>

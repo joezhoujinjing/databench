@@ -88,6 +88,7 @@ describe('Model Registry responsive results', () => {
     expect(html).toContain('<dt class="text-muted-foreground">Source</dt>')
     expect(html).toContain('<dt class="text-muted-foreground">Base model</dt>')
     expect(html).toContain('<dt class="text-muted-foreground">Deployments / health</dt>')
+    expect(html.match(/1<\/span><span[^>]*>\/<\/span><span[^>]*>1 healthy/gu)).toHaveLength(2)
     expect(html).toContain('<dt class="text-muted-foreground">Updated</dt>')
     expect(html.match(new RegExp(`/models/${modelId}`, 'gu'))).toHaveLength(2)
     expect(html.match(/Support Model/gu)).toHaveLength(2)
