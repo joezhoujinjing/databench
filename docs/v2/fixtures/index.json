@@ -252,7 +252,7 @@
       "path": "apps/api/test/golden/fixtures/v2/v2-fault-security-capacity-matrix.fixture.json",
       "assertion": "Crash, concurrency, auth, resource and untrusted-output boundaries fail safely",
       "source": "PLAN-V16",
-      "status": "planned"
+      "status": "verified"
     }
   ]
 }

@@ -4,8 +4,8 @@
 > gate结果与备注。唯一实施计划见 [PLAN.md](PLAN.md)。
 
 <!-- v2-status
-current_step: V16
-last_completed_step: V15
+current_step: V17
+last_completed_step: V16
 capability_enabled: true
 capability_owner_decision: owner-approved-2026-07-24
 schema_amendment: system-content-2026-07-24
@@ -15,10 +15,10 @@ offline_production_release_authorized: true
 ## 当前检查点
 
 - **当前分支:** `main`
-- **下一步:** 产品切换 R0-R5 已全部完成并过闸门；产品切换没有后续 Step。V16/V17
-  仍按 owner 决策保持未开始，公共云 D3 仍待 owner 决策
-- **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外，
-  不代表 V16、V17 或 GV-final 已完成
+- **下一步:** V16 已完成并通过 GV16；按计划进入 V17 final gate。产品切换 R0-R5 已全部完成，
+  公共云 D3 仍待 owner 决策
+- **Capability:** 已按 owner 2026-07-24 明确决定开启；这是对原 V17 顺序的显式发布例外。
+  V16 现已独立完成，但不代表 V17 或 GV-final 已完成
 - **离线发布:** owner于2026-07-24明确授权当前`main`直接生成production离线包；V16/V17
   不阻断该离线发布通道，但其未开始状态与gate记录保持真实。Owner于2026-07-30追加精确基线
   绑定的增量升级包；完整八镜像包仍是首次安装与恢复基线
@@ -50,7 +50,7 @@ offline_production_release_authorized: true
 | V13 | `databench v2` CLI | ✅ | 当前分支 | GV13 | 完整命令面、流式输出、原子文件写入与取消边界已过闸门 |
 | V14 | Web foundation、refs与 record read | ✅ | 当前分支 | GV14 | capability gate、session隔离、exact-version读取与完整Unified Record renderer已过闸门 |
 | V15 | Web ingest/transform/lineage/export | ✅ | 当前分支 | GV15 | 桌面真实电缆 JSONL 浏览器 E2E 通过 |
-| V16 | Recovery、安全与容量 | ⬜ | | GV16 | |
+| V16 | Recovery、安全与容量 | ✅ | 当前分支 | GV16 | 10 项 fault/security/capacity 矩阵与真实双 API 实例 gate 通过 |
 | V17 | Final gate与 capability发布准备 | ⬜ | | GV-final | |
 
 ## V0 Gate 记录
@@ -340,6 +340,24 @@ typecheck 21 tasks、test 21 tasks、OpenAPI check 11 tasks全部通过。首次
   `pnpm v2:status:check`与`git diff --check`通过；此前V15全仓build、lint、OpenAPI、peers gate均已通过；
 - V15代码完成后按owner决定暂停，不进入V16/V17；owner随后于2026-07-24明确要求提前开启
   capability。运行时和Web入口已开启，但V16/V17仍保持未开始，GV16/GV-final不视为通过。
+
+## V16 Gate 记录
+
+- `apps/api/test/golden/fixtures/v2/v2-fault-security-capacity-matrix.fixture.json` 将 V16 接受计划的
+  10 项要求逐项绑定到实际 runnable tests；聚合测试验证 10/10 项、允许 outcome 与 GV16 五条不变量，
+  fixture index 状态由 `planned` 更新为 `verified`；
+- 新增真实 PostgreSQL + MinIO 双 API 实例并发写 gate：两个独立 `V2Workspace`、独立 temp root 与
+  独立 Hono app 对同一 canonical Dataset/layout 并发 ingest，两个请求均幂等成功，最终
+  Dataset version、artifact digest 与 `record-json-v1` layout 完全一致；
+- detached canonical round-trip 增加 catalog 外精确 parent refs 断言：只导出 child record，re-import
+  后 logical ID、record digest、parent ID 与 parent digest 全部保持，二次 export bytes 不变；
+- crash windows、conditional-create ambiguous transport、namespace/claim/ref/run 并发、late parent/cycle、
+  read/transform capacity 与 cancellation、hostile JSON/request、auth/cache/redaction、untrusted output 与
+  interrupted export 均由矩阵锁定并在全仓 suite 实际执行；
+- `RUN_MINIO_STORE_TESTS=true pnpm test` 全绿：Store 94/94、Workspace 205/205（10 个显式 gated
+  Python worker tests skipped）、Catalog 66/66、API 177/177、CLI 20/20、Web 206/206，其余包全部通过；
+- `pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm openapi:check`、`pnpm models:status:check`、
+  `pnpm peers check` 与 `git diff --check` 全部通过；V17/GV-final 尚未完成，GPU、GE9 与 D3 状态不变。
 
 ## 2026-07-24 Schema 修订 Gate 记录
 

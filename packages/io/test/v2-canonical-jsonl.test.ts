@@ -45,6 +45,37 @@ describe('canonical v2 JSONL round-trip', () => {
     )
   })
 
+  test('round-trips detached canonical bytes with exact IDs and parent refs', async () => {
+    const parentRevision = createRecordRevisionV2(makeRecord('6', 'Detached parent'))
+    const child = {
+      ...makeRecord('a', 'Detached child'),
+      lineage: {
+        parent_refs: [
+          {
+            id: parentRevision.record.id,
+            record_digest: parentRevision.record_digest,
+          },
+        ],
+        recipe: null,
+        recipe_revision: null,
+        run_id: null,
+        steps: [],
+      },
+    } satisfies PostTrainingRecordV2
+    const childRevision = createRecordRevisionV2(child)
+    const exported = await collectBytes(writeCanonicalJsonlV2([childRevision]))
+
+    const imported = await collectRecords(readCanonicalJsonlV2(chunks(exported, [1, 13])))
+    expect(imported).toEqual([child])
+    expect(imported[0]?.lineage?.parent_refs).toEqual(child.lineage.parent_refs)
+    expect(imported.map(createRecordRevisionV2)).toEqual([childRevision])
+
+    const reexported = await collectBytes(
+      writeCanonicalJsonlV2(imported.map(createRecordRevisionV2)),
+    )
+    expect(reexported).toEqual(exported)
+  })
+
   test('preserves imported IDs, record digests, and deterministic output bytes', async () => {
     const inputRecords = [
       makeRecord('2', '你好，世界🌍'),

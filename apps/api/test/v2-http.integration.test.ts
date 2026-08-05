@@ -236,6 +236,65 @@ describe.runIf(runIntegration)('V2 HTTP API against real MinIO and Postgres', ()
     expect(exportedText).not.toContain(SECOND_ID)
   })
 
+  test('lets two API instances converge on one immutable Dataset and layout', async () => {
+    const firstRoot = await mkdtemp(join(tmpdir(), 'databench-v16-api-first-'))
+    const secondRoot = await mkdtemp(join(tmpdir(), 'databench-v16-api-second-'))
+    const workspaceOptions = {
+      cursorSecret: 'v16-dual-api-cursor-secret',
+      ...(process.env.DATABASE_URL === undefined ? {} : { databaseUrl: process.env.DATABASE_URL }),
+      storeConfig: {
+        kind: 's3' as const,
+        bucket: process.env.S3_BUCKET ?? 'databench',
+        region: process.env.S3_REGION ?? 'us-east-1',
+        endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
+        accessKeyId: process.env.S3_ACCESS_KEY_ID ?? 'databench',
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? 'databench-secret',
+        forcePathStyle: true,
+      },
+    }
+    let firstWorkspace: V2Workspace | undefined
+    let secondWorkspace: V2Workspace | undefined
+    try {
+      ;[firstWorkspace, secondWorkspace] = await Promise.all([
+        V2Workspace.open({ ...workspaceOptions, root: firstRoot }),
+        V2Workspace.open({ ...workspaceOptions, root: secondRoot }),
+      ])
+      const firstApp = createTestApp({ v2Workspace: firstWorkspace })
+      const secondApp = createTestApp({ v2Workspace: secondWorkspace })
+      const record = structuredClone(fixtureRecords[0]) as Record<string, unknown>
+      record.id = `rec_${randomUUID().replaceAll('-', '').repeat(2)}`
+      const ingest = async (app: ReturnType<typeof createTestApp>): Promise<Response> => {
+        const form = new FormData()
+        form.set('file', new File([`${JSON.stringify(record)}\n`], 'v16.jsonl'))
+        return await app.fetch(request('/v2/datasets:ingest-jsonl', { method: 'POST', body: form }))
+      }
+
+      const responses = await Promise.all([ingest(firstApp), ingest(secondApp)])
+      expect(responses.map(({ status }) => status)).toEqual([200, 200])
+      const results = await Promise.all(
+        responses.map((response) =>
+          responseJson<{
+            dataset_version: string
+            manifest: { artifact_digest: string; layout_version: string }
+          }>(response),
+        ),
+      )
+      expect(results[1]).toMatchObject({
+        dataset_version: results[0]?.dataset_version,
+        manifest: {
+          artifact_digest: results[0]?.manifest.artifact_digest,
+          layout_version: 'record-json-v1',
+        },
+      })
+    } finally {
+      await Promise.allSettled([firstWorkspace?.close(), secondWorkspace?.close()])
+      await Promise.all([
+        rm(firstRoot, { force: true, recursive: true }),
+        rm(secondRoot, { force: true, recursive: true }),
+      ])
+    }
+  })
+
   test('creates, replays, lists, and transitions an evaluation run over REST', async () => {
     const app = createTestApp({ v2Workspace: workspace })
     const ingested = await workspace.addRecords(fixtureRecords, {

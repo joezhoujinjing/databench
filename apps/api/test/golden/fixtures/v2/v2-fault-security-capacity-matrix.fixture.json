@@ -1,0 +1,214 @@
+{
+  "fixture_version": 1,
+  "requirements": [
+    {
+      "id": "crash-windows",
+      "plan_item": 1,
+      "expected_outcomes": ["idempotent_success", "typed_failure", "typed_conflict"],
+      "evidence": [
+        {
+          "path": "packages/workspace/test/v2-workspace.test.ts",
+          "test": "stops at prepare failure without attempting cleanup or later stages"
+        },
+        {
+          "path": "packages/workspace/test/v2-workspace.test.ts",
+          "test": "discards a committed artifact after catalog registration failure and never attempts CAS"
+        },
+        {
+          "path": "packages/workspace/test/v2-workspace.test.ts",
+          "test": "reports a CAS conflict after preserving the newly committed exact dataset"
+        },
+        {
+          "path": "packages/store/test/v2-store.test.ts",
+          "test": "recovers an artifact-only crash without replacing the existing artifact"
+        },
+        {
+          "path": "packages/workspace/test/v2-workspace.integration.test.ts",
+          "test": "ingest → persist → describe → read/cache → audit → conflict → recovery → ref"
+        }
+      ]
+    },
+    {
+      "id": "conditional-write-ambiguity",
+      "plan_item": 2,
+      "expected_outcomes": ["idempotent_success", "typed_failure", "typed_conflict"],
+      "evidence": [
+        {
+          "path": "packages/store/test/v2-store.test.ts",
+          "test": "probes an ambiguous success and retries an ambiguous absence exactly once"
+        },
+        {
+          "path": "packages/store/test/v2-store.test.ts",
+          "test": "fails closed after one retry when conditional creation remains ambiguous"
+        },
+        {
+          "path": "packages/store/test/v2-s3-adapter.test.ts",
+          "test": "classifies an in-flight caller abort as ambiguous and destroys the upload stream"
+        }
+      ]
+    },
+    {
+      "id": "dual-api-writer",
+      "plan_item": 3,
+      "expected_outcomes": ["idempotent_success"],
+      "evidence": [
+        {
+          "path": "apps/api/test/v2-http.integration.test.ts",
+          "test": "lets two API instances converge on one immutable Dataset and layout"
+        },
+        {
+          "path": "packages/store/test/v2-store.minio.test.ts",
+          "test": "two independent V2 Stores concurrently commit and read the same immutable dataset"
+        }
+      ]
+    },
+    {
+      "id": "catalog-concurrency",
+      "plan_item": 4,
+      "expected_outcomes": ["idempotent_success", "typed_conflict"],
+      "evidence": [
+        {
+          "path": "packages/catalog/test/catalog.golden.test.ts",
+          "test": "namespace and claim creation remain stable under concurrency"
+        },
+        {
+          "path": "packages/catalog/test/catalog.golden.test.ts",
+          "test": "registers immutable runs atomically and never overwrites a cache conflict"
+        },
+        {
+          "path": "packages/catalog/test/catalog.golden.test.ts",
+          "test": "uses compare-and-set refs without lost updates and paginates by seek name"
+        }
+      ]
+    },
+    {
+      "id": "lineage-late-parent-cycle",
+      "plan_item": 5,
+      "expected_outcomes": ["idempotent_success", "typed_conflict"],
+      "evidence": [
+        {
+          "path": "packages/catalog/test/catalog.golden.test.ts",
+          "test": "preserves unresolved exact parents and resolves them when the parent arrives later"
+        },
+        {
+          "path": "packages/catalog/test/catalog.golden.test.ts",
+          "test": "rejects a cross-snapshot lineage cycle and rolls back the entire registration"
+        },
+        {
+          "path": "packages/catalog/test/catalog.golden.test.ts",
+          "test": "serializes concurrent inverse lineage edges so only one side can commit"
+        }
+      ]
+    },
+    {
+      "id": "resource-admission-cancellation",
+      "plan_item": 6,
+      "expected_outcomes": ["idempotent_success", "typed_failure"],
+      "evidence": [
+        {
+          "path": "packages/workspace/test/v2-transform-semaphore.test.ts",
+          "test": "physically removes an aborted queued run and frees queue capacity"
+        },
+        {
+          "path": "packages/workspace/test/v2-transform-semaphore.test.ts",
+          "test": "keeps a non-cooperative aborted run in its slot until it settles"
+        },
+        {
+          "path": "packages/workspace/test/v2-cache.test.ts",
+          "test": "bounds distinct pending cold loads while preserving exact-key coalescing"
+        },
+        {
+          "path": "packages/workspace/test/v2-cache.test.ts",
+          "test": "uncached cancellation holds admission until the underlying operation settles"
+        }
+      ]
+    },
+    {
+      "id": "hostile-input-bounds",
+      "plan_item": 7,
+      "expected_outcomes": ["typed_failure"],
+      "evidence": [
+        {
+          "path": "packages/io/test/v2-canonical-jsonl.test.ts",
+          "test": "rejects duplicate keys before schema validation with one-based line and root pointer"
+        },
+        {
+          "path": "packages/io/test/v2-canonical-jsonl.test.ts",
+          "test": "maps JSON nesting depth admission to a typed resource limit"
+        },
+        {
+          "path": "packages/io/test/v2-canonical-jsonl.test.ts",
+          "test": "enforces the default and configurable total transport byte limit inclusively"
+        },
+        {
+          "path": "apps/api/test/v2-multipart.test.ts",
+          "test": "enforces an inclusive total request byte limit while reading chunks"
+        }
+      ]
+    },
+    {
+      "id": "auth-cache-log-isolation",
+      "plan_item": 8,
+      "expected_outcomes": ["idempotent_success", "typed_failure"],
+      "evidence": [
+        {
+          "path": "apps/api/test/model-deployments.test.ts",
+          "test": "requires the operator role for create, health check, and disable"
+        },
+        {
+          "path": "apps/web/src/api/backend-scope.test.ts",
+          "test": "aborts and removes the old base and scope before a new identity can reuse them"
+        },
+        {
+          "path": "apps/api/test/model-credentials.test.ts",
+          "test": "snapshot inspection, JSON, and centralized redaction never expose secret/ref/header"
+        },
+        {
+          "path": "apps/api/test/v2-http.test.ts",
+          "test": "does not expose untyped V2 runtime failures"
+        }
+      ]
+    },
+    {
+      "id": "untrusted-output-and-interruption",
+      "plan_item": 9,
+      "expected_outcomes": ["idempotent_success", "typed_failure"],
+      "evidence": [
+        {
+          "path": "apps/web/src/v2/api/export.test.ts",
+          "test": "treats Content-Disposition as an untrusted filename hint"
+        },
+        {
+          "path": "apps/web/src/v2/components/records/RecordView.test.tsx",
+          "test": "renders untrusted text and URIs as escaped inert text without eager JSON serialization"
+        },
+        {
+          "path": "apps/api/test/v2-http.test.ts",
+          "test": "cancelling a binary response closes the converter iterator and aborts the operation"
+        }
+      ]
+    },
+    {
+      "id": "detached-canonical-round-trip",
+      "plan_item": 10,
+      "expected_outcomes": ["idempotent_success"],
+      "evidence": [
+        {
+          "path": "packages/io/test/v2-canonical-jsonl.test.ts",
+          "test": "round-trips detached canonical bytes with exact IDs and parent refs"
+        },
+        {
+          "path": "apps/api/test/v2-http.integration.test.ts",
+          "test": "MCP preview → import → show → canonical export → idempotent reimport"
+        }
+      ]
+    }
+  ],
+  "invariants": [
+    "no_overwrite",
+    "no_payload_in_postgres",
+    "no_reader_visible_orphan",
+    "no_cross_identity_cache_reuse",
+    "no_temp_resource_leak"
+  ]
+}
