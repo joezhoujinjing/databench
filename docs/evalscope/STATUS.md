@@ -460,3 +460,16 @@ MinIO v4 lifecycle、OpenAPI、patch dry-run、parity 和全仓静态/测试 gat
 单样本 Exact Match 闭环，并验收 Reports 列表与详情。详细证据见
 [E10-METRIC-SELECTION.md](evidence/E10-METRIC-SELECTION.md)。手机版竖屏未纳入本轮实现或验收；
 GE9 的 Ubuntu 22.04 amd64 断网目标机后验状态保持不变。
+
+## 2026-08-08 单 ECS 受控公网测试
+
+- Owner 授权使用既有 2 核、3.4 GiB ECS 做测试部署；不要求测试机扩到 4 核、16 GiB，也不把该规格
+  认定为生产容量；
+- 发布 profile 使用同 revision API + EvalScope 双镜像、Docker 私网 `evalscope:9000`、持久化
+  input/output volumes、只读根、无 GPU、单并发、1.25 CPU、1536 MiB 和 256 PID；
+- `/evalscope-api` 增加至少 32 字节共享 Bearer；验证后签发默认 15 分钟、path-scoped 的签名 HttpOnly
+  Cookie，支持同源 generated document/media，credential 不转发 upstream；
+- CDN 只对 `/evalscope-api/*` 条件回源到既有 API origin 并禁用缓存，EvalScope root/static SPA、未知
+  route 和 operator endpoints 继续不可达；
+- endpoint policy 默认 deny-all，只允许 operator 为测试模型显式配置 exact private hostname/CIDR/port；
+- 此项线上证据只记录受控测试可用性。公共云 D3、GE9 断网目标机、GPU 和多实例生产状态不变。

@@ -1,6 +1,65 @@
 name: databench
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
 services:
+  evalscope:
+    image: ${DATABENCH_EVALSCOPE_IMAGE:?set DATABENCH_EVALSCOPE_IMAGE in compose.env}
+    container_name: databench-evalscope
+    restart: unless-stopped
+    pull_policy: never
+    env_file:
+      - /opt/databench/evalscope.env
+    environment:
+      CUDA_VISIBLE_DEVICES: ""
+      NVIDIA_VISIBLE_DEVICES: "void"
+      HOME: /var/lib/evalscope/home
+      EVALSCOPE_SERVE_WEB: "false"
+      EVALSCOPE_OUTPUT_DIR: /var/lib/evalscope/outputs
+      EVALSCOPE_INPUT_DIR: /var/lib/evalscope/inputs
+      EVALSCOPE_ALLOWED_MEDIA_ROOTS: /var/lib/evalscope/outputs,/var/lib/evalscope/inputs
+      EVALSCOPE_MODEL_REDIRECT_MAX_HOPS: "0"
+      EVALSCOPE_MODEL_ENDPOINT_POLICY: /run/config/model-endpoint-policy.json
+      EVALSCOPE_MODEL_CREDENTIALS: /run/config/evalscope-model-credentials.json
+      EVALSCOPE_PLOTLY_ASSET_PATH: /opt/vendor/plotly-2.35.2.min.js
+      EVALSCOPE_PLOTLY_ASSET_SHA256: 6d21266ce1bd7d9e5ab4e115989c70c20de0382fd973a8f26ab58619eba4d603
+      DATABENCH_BASE_URL: http://api:8000
+      DATABENCH_ORIGIN: https://databench.jinjing.me
+    volumes:
+      - evalscope-outputs:/var/lib/evalscope/outputs
+      - evalscope-inputs:/var/lib/evalscope/inputs
+      - /opt/databench/config/model-endpoint-policy.json:/run/config/model-endpoint-policy.json:ro
+      - /opt/databench/config/evalscope-model-credentials.json:/run/config/evalscope-model-credentials.json:ro
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /var/lib/evalscope/home:size=128m,uid=10001,gid=10001,mode=0700
+    read_only: true
+    mem_limit: 1536m
+    cpus: 1.25
+    pids_limit: 256
+    stop_grace_period: 60s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/app/.venv/bin/python -c \"import json,urllib.request; body=json.load(urllib.request.urlopen('http://127.0.0.1:9000/health',timeout=3)); raise SystemExit(0 if body.get('ready') is True else 1)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *default-logging
+    networks:
+      - databench
+
   api:
     image: ${DATABENCH_API_IMAGE:?set DATABENCH_API_IMAGE in compose.env}
     container_name: databench-api
@@ -9,8 +68,14 @@ services:
       - /opt/databench/api.env
     environment:
       DATABENCH_OBJECT_STORE: oss
+      DATABENCH_EVALSCOPE_ENABLED: "true"
+      DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: http://evalscope:9000
+      DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: /app/evalscope-api-routes.json
       NODE_ENV: production
       PORT: "8000"
+    depends_on:
+      evalscope:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -27,6 +92,7 @@ services:
       start_period: 20s
     networks:
       - databench
+    logging: *default-logging
 
   caddy:
     image: caddy:2-alpine
@@ -44,9 +110,12 @@ services:
       - caddy-config:/config
     networks:
       - databench
+    logging: *default-logging
 
 volumes:
   workspace-data:
+  evalscope-outputs:
+  evalscope-inputs:
   caddy-data:
   caddy-config:
 

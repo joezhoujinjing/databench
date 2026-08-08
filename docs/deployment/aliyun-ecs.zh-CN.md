@@ -12,8 +12,8 @@
 
 - 前端：`apps/web` 由 GitHub Actions 构建成静态文件，同步到阿里云 OSS
   bucket `databench-ui`，然后刷新 CDN 域名 `databench.jinjing.me`。
-- 后端：`apps/api` 由 GitHub Actions 构建成 Docker 镜像，保存为
-  `.tar.gz` 后通过 SSH 上传到 ECS，在服务器上加载镜像、执行 Prisma
+- 后端：`apps/api` 与 backend-only EvalScope 由 GitHub Actions 构建成同 revision 的
+  `linux/amd64` Docker 镜像，保存为一个 `.tar.gz` 后通过 SSH 上传到 ECS，在服务器上加载镜像、执行 Prisma
   migration，并由 Caddy 对外提供 `https://api.databench.jinjing.me`。
 
 当前没有使用 ACR 镜像仓库。后端镜像通过 `scp` 从 GitHub Actions 传到
@@ -228,7 +228,10 @@ GitHub Secrets。
 | `/opt/databench/cleanup.sh` | Databench 镜像与发布归档的定向过期清理 |
 | `/opt/databench/deploy.env` | 可选的清理模式和保留数量配置，不由 workflow 覆盖 |
 | `/opt/databench/caddy/Caddyfile` | Caddy 反向代理配置 |
-| `/opt/databench/compose.env` | `deploy.sh` 写入当前镜像 tag |
+| `/opt/databench/evalscope.env` | EvalScope 稳定 secret 与测试容量上限，权限 `600` |
+| `/opt/databench/config/model-endpoint-policy.json` | 版本化模型 endpoint policy，默认 deny-all |
+| `/opt/databench/config/evalscope-model-credentials.json` | EvalScope 最小模型凭证投影，默认空 |
+| `/opt/databench/compose.env` | `deploy.sh` 写入当前 API/EvalScope 镜像 tag |
 | `/opt/databench/releases/*.tar.gz` | GitHub Actions 上传的后端镜像压缩包 |
 
 `/opt/databench/api.env` 至少需要这些变量：
@@ -244,6 +247,8 @@ OSS_INTERNAL=true
 DATABENCH_CORS_ORIGINS=https://databench.jinjing.me
 DATABENCH_ROOT=/var/lib/databench
 DATABENCH_V2_CURSOR_SECRET=<at-least-16-character-random-secret>
+DATABENCH_EVALSCOPE_ACCESS_TOKEN=<32-random-bytes-as-64-hex>
+DATABENCH_EVALSCOPE_SESSION_TTL_SECONDS=900
 PORT=8000
 ```
 
@@ -274,7 +279,7 @@ DATABENCH_DEPLOY_MIN_FREE_MIB=4096
 
 ## 后端镜像和部署流程
 
-后端镜像由 `apps/api/Dockerfile` 构建。
+后端发布同时构建 `apps/api/Dockerfile` 与 `deploy/evalscope/Dockerfile`，两张镜像绑定同一 Git revision。
 
 关键点：
 
@@ -326,8 +331,9 @@ gh workflow run "Deploy Backend" --repo joezhoujinjing/databench --ref main
 GitHub Actions 执行步骤：
 
 1. checkout 代码。
-2. 构建 `apps/api/Dockerfile`，镜像名是 `databench-api:${GITHUB_SHA}`。
-3. 把镜像保存为 `databench-api-${GITHUB_SHA}.tar.gz`。
+2. 用 Buildx 构建 `linux/amd64` API 与 EvalScope 镜像，镜像名分别是
+   `databench-api:${GITHUB_SHA}` 和 `databench-evalscope:${GITHUB_SHA}`。
+3. 把两张镜像保存为 `databench-release-${GITHUB_SHA}.tar.gz`。
 4. 用 GitHub Secrets 配置 SSH。
 5. 在 ECS 上创建 `/opt/databench/releases` 和 `/opt/databench/caddy`。
 6. 先上传轻量部署资产并执行发布前清理与 4 GiB 默认磁盘准入；清理成功后把
@@ -335,7 +341,7 @@ GitHub Actions 执行步骤：
 7. 在 ECS 上执行：
 
    ```bash
-   /opt/databench/deploy.sh /opt/databench/releases/databench-api-${GITHUB_SHA}.tar.gz ${GITHUB_SHA}
+   /opt/databench/deploy.sh /opt/databench/releases/databench-release-${GITHUB_SHA}.tar.gz ${GITHUB_SHA}
    ```
 
 8. 对公网域名执行 smoke test：
@@ -346,12 +352,14 @@ GitHub Actions 执行步骤：
 
 ECS 上的 `deploy/ecs/deploy.sh` 会做这些事：
 
-1. 校验参数和 `/opt/databench/api.env`，必要时一次性生成 cursor secret。
+1. 校验参数和 `/opt/databench/api.env`，必要时一次性生成 cursor secret、EvalScope access token、
+   task HMAC 与 operator token；默认模型 endpoint policy 为 deny-all。
 2. 再执行一次 Databench 定向清理，然后 `docker load` 加载镜像压缩包。
 3. 写入 `/opt/databench/compose.env`：
 
    ```env
    DATABENCH_API_IMAGE=databench-api:<git-sha>
+   DATABENCH_EVALSCOPE_IMAGE=databench-evalscope:<git-sha>
    ```
 
 4. 先执行数据库 migration：
@@ -363,8 +371,8 @@ ECS 上的 `deploy/ecs/deploy.sh` 会做这些事：
    ```
 
 5. migration 成功后，如果 `/opt/liber-stack/docker-compose.yaml` 存在，则停止旧栈。
-6. 启动 `databench-api` 和 `databench-caddy`。
-7. 在 ECS 本机等待 `http://127.0.0.1:8000/health` 返回成功。
+6. 启动 `databench-evalscope`、`databench-api` 和 `databench-caddy`。
+7. 在 ECS 本机等待 API health 和 EvalScope Docker health 同时成功。
 8. health 成功后再次收敛归档和镜像到配置的保留数量。
 
 注意：migration 是在停止旧栈前执行的。这样如果新镜像或 migration 已经失败，
@@ -375,6 +383,12 @@ ECS 上的 `deploy/ecs/deploy.sh` 会做这些事：
 Compose project name 是 `databench`。
 
 服务：
+
+- `databench-evalscope`
+  - 镜像：`databench-evalscope:<git-sha>`
+  - 不发布宿主机端口，只在 Docker 私网监听 `9000`
+  - 单 eval/perf 并发、1.25 CPU、1536 MiB、256 PID、无 GPU、只读根
+  - input/output 使用独立 persistent Docker volumes
 
 - `databench-api`
   - 镜像：`databench-api:<git-sha>`
@@ -397,6 +411,7 @@ ssh -i ~/.ssh/databench_ecs_deploy root@8.217.10.40
 cd /opt/databench
 docker compose --env-file compose.env -f docker-compose.yml ps
 docker compose --env-file compose.env -f docker-compose.yml logs --tail=200 api
+docker compose --env-file compose.env -f docker-compose.yml logs --tail=200 evalscope
 docker compose --env-file compose.env -f docker-compose.yml logs --tail=200 caddy
 curl -fsS http://127.0.0.1:8000/health
 curl -fsS http://127.0.0.1:8000/version
@@ -463,7 +478,9 @@ GitHub Actions 执行步骤：
 7. 用 `aliyun oss sync --delete` 把 `apps/web/dist/` 同步到
    `oss://databench-ui/`。
 8. 给 `oss://databench-ui/index.html` 设置 `Cache-Control:no-cache`。
-9. 刷新 CDN：
+9. 通过规则引擎把 `/evalscope-api/*` 条件回源到 `api.databench.jinjing.me`，同时禁用该路径缓存；
+   其他路径继续回源 OSS。
+10. 刷新 CDN：
 
    ```text
    https://databench.jinjing.me/
@@ -493,7 +510,7 @@ curl -fsS https://databench.jinjing.me | sed -n '1,40p'
 | `apps/api/src/openapi.ts` | 否 | 是 |
 | `packages/**` | 是 | 只有 `packages/schema/**` 会触发前端 |
 | `prisma/**` | 是 | 否 |
-| `deploy/ecs/**` | 是 | 否 |
+| `deploy/ecs/**` | 是 | `configure-cdn-evalscope.sh` 变更时是 |
 | `deploy/smoke.sh` | 是 | 否 |
 | `package.json` / `pnpm-lock.yaml` / `turbo.json` / `tsconfig.base.json` | 是 | 是 |
 | 文档改动 | 否 | 否 |
@@ -584,6 +601,10 @@ gh run watch <run-id> --repo joezhoujinjing/databench --exit-status
 - `/version`
 - `/capabilities`
 
+受控 EvalScope smoke 还必须检查：无 token 的允许路径为 401、有效 Bearer 的 `/health` 和 `/config`
+为锁定 JSON、未知路径为 404，并确认响应不被 CDN 缓存。浏览器在连接菜单填入
+`/opt/databench/api.env` 中的 `DATABENCH_EVALSCOPE_ACCESS_TOKEN`；不要把 token 放进 URL。
+
 后端 workflow 会对公网域名执行：
 
 ```bash
@@ -603,6 +624,7 @@ deploy/smoke.sh https://api.databench.jinjing.me
 ssh -i ~/.ssh/databench_ecs_deploy root@8.217.10.40
 cd /opt/databench
 printf 'DATABENCH_API_IMAGE=databench-api:<previous-sha>\n' > compose.env
+printf 'DATABENCH_EVALSCOPE_IMAGE=databench-evalscope:<previous-sha>\n' >> compose.env
 docker compose --env-file compose.env -f docker-compose.yml up -d
 docker compose --env-file compose.env -f docker-compose.yml ps
 curl -fsS http://127.0.0.1:8000/health

@@ -1573,6 +1573,25 @@ Owner 于 2026-07-28 明确：offline source build 不是本集成的交付边�
 image，使目标机 install/start/eval/report/upgrade/rollback 全程无公网访问。仓库不提交 wheelhouse 或
 Debian mirror；未来若要求 air-gapped source build，必须单独设计供应链和制品 gate。
 
+### 13.4 单 ECS 受控公网测试 profile
+
+Owner 于 2026-08-08 只授权在既有 ECS 上进行受控公网测试。该 profile 不替代 §13.3，也不关闭公共云
+D3。部署保持 `Web/CDN → same-origin /evalscope-api → Databench API → Docker private EvalScope:9000`：
+
+- CDN 只按 `/evalscope-api/*` 条件回源到 `api.databench.jinjing.me`，保留原路径并禁止缓存；
+- API 镜像内置 exact route manifest；EvalScope 镜像与 API 镜像使用同一 Git revision 发布、保留和回滚；
+- API 的 `DATABENCH_EVALSCOPE_ACCESS_TOKEN` 至少 32 字节并稳定保存在 ECS `api.env`；无 token 的通用/
+  离线 profile 行为不变；
+- 有效 Bearer 换取最长 1 小时、默认 15 分钟的签名 HttpOnly Cookie。Cookie 仅限
+  `/evalscope-api`、`Secure`、`SameSite=Strict`，不含原 token；
+- EvalScope 不映射宿主机端口，使用持久化 input/output volumes、只读根、无 GPU、单 eval/perf 并发、
+  1.25 CPU、1536 MiB 和 256 PID；默认任务最多 100 samples、30 分钟；
+- endpoint policy 默认 deny-all。operator 只可用版本化 exact hostname/CIDR/port policy 开放测试模型；
+  不允许为了公网 UI 恢复通用网络出口；
+- 发布失败不得删除当前容器引用镜像或 persistent volumes，双镜像 archive 和最近回滚版本定向保留。
+
+这是容量受限测试面，不是 production readiness 证据。
+
 ## 14. Upstream 源码、许可证与升级
 
 ### 14.1 来源文件

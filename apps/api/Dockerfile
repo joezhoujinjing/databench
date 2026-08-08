@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /opt/databench-runtime /app
+COPY deploy/evalscope/api-routes.json /app/evalscope-api-routes.json
 
 EXPOSE 8000
 

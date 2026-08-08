@@ -512,6 +512,18 @@ docs/evalscope/evidence/E10-METRIC-SELECTION.md
 THIRD_PARTY_NOTICES.md
 ```
 
+受控公网 ECS 测试发布资产为：
+
+```text
+deploy/ecs/
+├─ docker-compose.yml                 API + private EvalScope + Caddy
+├─ deploy.sh · cleanup.sh             双镜像发布、稳定 secret、定向保留/回滚保护
+├─ configure-cdn-evalscope.sh         `/evalscope-api/*` 条件回源与 no-cache
+├─ api.env.example · evalscope.env.example
+├─ model-endpoint-policy.example.json 默认 deny-all
+└─ evalscope-model-credentials.example.json
+```
+
 E3 后的 backend runtime 布局为：
 
 ```text

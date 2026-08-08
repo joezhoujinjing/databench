@@ -36,6 +36,18 @@ describe('EvalScope exact client', () => {
     expect(fetchImplementation.mock.calls[0]?.[0]).toBe('/evalscope-api/api/v1/config')
   })
 
+  test('reuses the current Databench connection token without putting it in the URL', async () => {
+    const fetchImplementation = vi.fn<typeof fetch>(async () => jsonResponse(configFixture))
+    const client = createEvalScopeClient(fetchImplementation, () => 'scoped-token')
+
+    await client.request('config')
+
+    expect(fetchImplementation.mock.calls[0]?.[0]).toBe('/evalscope-api/api/v1/config')
+    expect(new Headers(fetchImplementation.mock.calls[0]?.[1]?.headers).get('authorization')).toBe(
+      'Bearer scoped-token',
+    )
+  })
+
   test('rejects fields outside the reviewed query manifest before fetch', async () => {
     const fetchImplementation = vi.fn<typeof fetch>()
     const client = createEvalScopeClient(fetchImplementation)

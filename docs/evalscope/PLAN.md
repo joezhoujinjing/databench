@@ -565,6 +565,13 @@ pnpm offline:check
 
 ## 8. 计划外变化
 
+### 2026-08-08 受控公网测试发布补充
+
+Owner 已授权在既有单台 ECS 上完成一次测试用途发布。实施范围固定为共享 token + 短期签名 Cookie、
+CDN `/evalscope-api/*` 条件回源、API/EvalScope 同 revision 双镜像发布、单并发低容量 Compose、持久化与
+回滚保护、真实极小 Evaluation 和线上回归。该补充不授权匿名公网、不选择新的托管平台、不关闭 D3，
+也不改变 GE9/GPU 状态。
+
 下列变化必须先回到 ADR/技术方案评审，不能实施中顺手加入：
 
 - 把功能等价改回 iframe 或第二个 SPA；

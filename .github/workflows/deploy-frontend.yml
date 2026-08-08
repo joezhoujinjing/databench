@@ -16,6 +16,7 @@ on:
       - turbo.json
       - tsconfig.base.json
       - .github/workflows/deploy-frontend.yml
+      - deploy/ecs/configure-cdn-evalscope.sh
 
 permissions:
   contents: read
@@ -76,9 +77,59 @@ jobs:
           aliyun --profile ci oss set-meta "oss://${WEB_OSS_BUCKET}/index.html" Cache-Control:no-cache \
             --endpoint "${OSS_ENDPOINT}" -f
 
+      - name: Configure EvalScope conditional origin
+        run: deploy/ecs/configure-cdn-evalscope.sh
+        env:
+          ALIYUN_PROFILE: ci
+          EVALSCOPE_ORIGIN_HOST: api.databench.jinjing.me
+
       - name: Refresh CDN
         run: |
           aliyun cdn RefreshObjectCaches \
             --ObjectPath "https://${CDN_DOMAIN}/" --ObjectType Directory --profile ci
           aliyun cdn RefreshObjectCaches \
             --ObjectPath "https://${CDN_DOMAIN}/index.html" --ObjectType File --profile ci
+          aliyun cdn RefreshObjectCaches \
+            --ObjectPath "https://${CDN_DOMAIN}/evalscope-api/" --ObjectType Directory --profile ci
+
+      - name: Configure SSH for authenticated smoke
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+          ECS_KNOWN_HOSTS: ${{ secrets.ECS_KNOWN_HOSTS }}
+        run: |
+          test -n "${ECS_HOST}"
+          test -n "${ECS_SSH_KEY}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${ECS_SSH_KEY}" > ~/.ssh/ecs_deploy
+          chmod 600 ~/.ssh/ecs_deploy
+          if [ -n "${ECS_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${ECS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${ECS_HOST}" > ~/.ssh/known_hosts
+          fi
+
+      - name: Verify public EvalScope route
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+        run: |
+          for attempt in $(seq 1 30); do
+            status=$(curl -sS -o /dev/null -w '%{http_code}' \
+              "https://${CDN_DOMAIN}/evalscope-api/health")
+            if [ "${status}" = 401 ]; then
+              break
+            fi
+            if [ "${attempt}" = 30 ]; then
+              echo "EvalScope CDN route returned ${status}, expected 401" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          ECS_USER="${ECS_USER:-root}"
+          ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
+            "set -eu; token=\$(grep -E '^DATABENCH_EVALSCOPE_ACCESS_TOKEN=' /opt/databench/api.env | tail -n1 | cut -d= -f2-); \
+             curl -fsS -H \"Authorization: Bearer \${token}\" 'https://${CDN_DOMAIN}/evalscope-api/health' >/dev/null; \
+             curl -fsS -H \"Authorization: Bearer \${token}\" 'https://${CDN_DOMAIN}/evalscope-api/api/v1/config' | grep -q 'evalscope_commit'"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' \
+            "https://${CDN_DOMAIN}/evalscope-api/unknown")" = 404

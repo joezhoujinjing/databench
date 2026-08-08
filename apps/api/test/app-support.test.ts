@@ -149,6 +149,7 @@ describe('api support', () => {
       enabled: false,
       intranetHttpDocuments: false,
       proxyPrefix: '/evalscope-api',
+      sessionTtlSeconds: 900,
     })
     const manifest = fileURLToPath(
       new URL('../../../deploy/evalscope/api-routes.json', import.meta.url),
@@ -160,12 +161,16 @@ describe('api support', () => {
         DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS: 'true',
         DATABENCH_EVALSCOPE_INTERNAL_BASE_URL: 'http://evalscope:9000',
         DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: manifest,
+        DATABENCH_EVALSCOPE_ACCESS_TOKEN: 'a'.repeat(64),
+        DATABENCH_EVALSCOPE_SESSION_TTL_SECONDS: '600',
       }).evalscope,
     ).toMatchObject({
       enabled: true,
       intranetHttpDocuments: true,
       internalBaseUrl: 'http://evalscope:9000',
       routeManifestPath: manifest,
+      accessToken: 'a'.repeat(64),
+      sessionTtlSeconds: 600,
     })
     expect(() =>
       loadConfig({

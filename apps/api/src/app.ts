@@ -130,6 +130,7 @@ function createRoutedApp(
       proxyPrefix: '/evalscope-api',
       requestMaxBytes: 1024 * 1024,
       responseMaxBytes: 16 * 1024 * 1024,
+      sessionTtlSeconds: 900,
       timeoutMs: 30_000,
     },
     ...(options.evalscopeFetch === undefined ? {} : { fetch: options.evalscopeFetch }),

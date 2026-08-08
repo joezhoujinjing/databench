@@ -265,6 +265,7 @@ disabled-by-default，`/training` 在未启用时显示明确 unavailable
 boundary。EvalScope E9 本地实现完成、目标机 gate pending；通用部署仍 disabled-by-default，结果归档与
 八镜像离线接线已完成。MCP、CPU-only Worker、backend-only EvalScope 和可选 Swift GPU Studio 只获
 授权进入 ADR 0012 的
-匿名可信内网离线通道；通用部署保持默认关闭，公网部署未授权。V16/V17 的
+匿名可信内网离线通道；通用部署保持默认关闭。Owner 于 2026-08-08 另行授权既有单 ECS 的
+共享令牌受控公网测试，该窄 profile 不构成通用公网或生产授权。V16/V17 的
 recovery/security/capacity 状态不因产品切换或这些 scoped gate 自动完成；公共云 API 托管平台
 仍受 D3 owner 决策门约束。

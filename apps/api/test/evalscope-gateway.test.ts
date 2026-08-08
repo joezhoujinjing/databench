@@ -19,6 +19,7 @@ function config(overrides: Partial<EvalScopeGatewayConfig> = {}): EvalScopeGatew
     routeManifestPath: fileURLToPath(
       new URL('../../../deploy/evalscope/api-routes.json', import.meta.url),
     ),
+    sessionTtlSeconds: 900,
     timeoutMs: 5000,
     ...overrides,
   }
@@ -54,6 +55,70 @@ describe('EvalScope same-origin gateway', () => {
       expect((await app.fetch(request(path, { method }))).status).toBe(404)
     }
     expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  test('requires the configured public token and exchanges Bearer for a scoped session cookie', async () => {
+    const accessToken = 'a'.repeat(64)
+    const fetchMock = vi.fn(async () => Response.json({ status: 'ok' }))
+    const app = createTestApp({
+      evalscope: config({ accessToken }),
+      evalscopeFetch: fetchMock as typeof fetch,
+    })
+
+    const anonymous = await app.fetch(request('/evalscope-api/health'))
+    expect(anonymous.status).toBe(401)
+    expect(anonymous.headers.get('www-authenticate')).toContain('Bearer')
+    const invalid = await app.fetch(
+      request('/evalscope-api/health', { headers: { authorization: `Bearer ${'b'.repeat(64)}` } }),
+    )
+    expect(invalid.status).toBe(401)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    const bearer = await app.fetch(
+      request('/evalscope-api/health', { headers: { authorization: `Bearer ${accessToken}` } }),
+    )
+    expect(bearer.status).toBe(200)
+    const setCookie = bearer.headers.get('set-cookie')
+    expect(setCookie).toContain('databench_evalscope_session=')
+    expect(setCookie).toContain('Path=/evalscope-api')
+    expect(setCookie).toContain('HttpOnly')
+    expect(setCookie).toContain('Secure')
+    expect(setCookie).toContain('SameSite=Strict')
+
+    const session = setCookie?.split(';', 1)[0]
+    expect(session).toBeDefined()
+    const cookie = await app.fetch(
+      request('/evalscope-api/health', { headers: { cookie: session as string } }),
+    )
+    expect(cookie.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    expect((await app.fetch(request('/evalscope-api/unknown'))).status).toBe(404)
+  })
+
+  test('prevents authenticated assets from being shared through an intermediary cache', async () => {
+    const accessToken = 'a'.repeat(64)
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('/* pinned plotly */', {
+          headers: {
+            'cache-control': 'public, max-age=31536000',
+            'content-type': 'application/javascript',
+          },
+        }),
+    )
+    const app = createTestApp({
+      evalscope: config({ accessToken }),
+      evalscopeFetch: fetchMock as typeof fetch,
+    })
+    const response = await app.fetch(
+      request(`/evalscope-api/generated-assets/plotly-${EVALSCOPE_PLOTLY_ASSET_SHA256}.min.js`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      }),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+    expect(response.headers.get('set-cookie')).toContain('databench_evalscope_session=')
   })
 
   test('materializes only the pinned Plotly asset digest', async () => {

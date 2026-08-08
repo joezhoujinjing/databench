@@ -1,4 +1,5 @@
 import type { output } from 'zod'
+import { getApiBaseUrl, getStoredToken } from '../../api/config.js'
 import { EVALSCOPE_CLIENT_CONFIG, EVALSCOPE_PLOTLY_ASSET_SHA256 } from './config.js'
 import { EvalScopeApiError } from './errors.js'
 import {
@@ -36,6 +37,7 @@ const RELATIVE_LOCATOR = /^[^\\]{1,2048}$/u
 
 export function createEvalScopeClient(
   fetchImplementation: typeof fetch = globalThis.fetch,
+  getAccessToken: () => string = () => getStoredToken(getApiBaseUrl()),
 ): EvalScopeClient {
   return {
     async request<K extends EvalScopeJsonOperation>(
@@ -44,7 +46,7 @@ export function createEvalScopeClient(
     ): Promise<OperationOutput<K>> {
       const descriptor = EVALSCOPE_JSON_OPERATIONS[operationName]
       const url = buildOperationUrl(descriptor, options.query)
-      const init = buildRequestInit(descriptor, options)
+      const init = buildRequestInit(descriptor, options, getAccessToken())
       let response: Response
 
       try {
@@ -121,8 +123,11 @@ function buildOperationUrl<K extends EvalScopeJsonOperation>(
 function buildRequestInit<K extends EvalScopeJsonOperation>(
   descriptor: OperationDescriptor<K>,
   options: EvalScopeRequestOptions<K>,
+  accessToken: string,
 ): RequestInit {
   const headers = new Headers({ accept: 'application/json' })
+  const token = accessToken.trim()
+  if (token !== '') headers.set('authorization', `Bearer ${token}`)
   const expectsBody = 'requestBody' in descriptor && descriptor.requestBody === 'json'
   if (expectsBody !== (options.body !== undefined)) {
     throw new EvalScopeApiError(

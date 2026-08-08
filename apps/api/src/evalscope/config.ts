@@ -5,6 +5,7 @@ import { EVALSCOPE_PROXY_ROUTE_KEYS } from './routes.js'
 
 const EvalScopeEnvSchema = z
   .object({
+    DATABENCH_EVALSCOPE_ACCESS_TOKEN: z.string().trim().min(32).max(4096).optional(),
     DATABENCH_EVALSCOPE_ALLOWED_ROUTES_MANIFEST: z.string().trim().min(1).optional(),
     DATABENCH_EVALSCOPE_ENABLED: z.enum(['true', 'false']).default('false'),
     DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS: z.enum(['true', 'false']).default('false'),
@@ -28,6 +29,7 @@ const EvalScopeEnvSchema = z
       .positive()
       .max(64 * 1024 * 1024)
       .default(16 * 1024 * 1024),
+    DATABENCH_EVALSCOPE_SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
     DATABENCH_EVALSCOPE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(30_000),
   })
   .superRefine((value, context) => {
@@ -49,6 +51,7 @@ const EvalScopeEnvSchema = z
   })
 
 export interface EvalScopeGatewayConfig {
+  readonly accessToken?: string
   readonly enabled: boolean
   readonly intranetHttpDocuments: boolean
   readonly internalBaseUrl?: string
@@ -57,6 +60,7 @@ export interface EvalScopeGatewayConfig {
   readonly requestMaxBytes: number
   readonly responseMaxBytes: number
   readonly routeManifestPath?: string
+  readonly sessionTtlSeconds: number
   readonly timeoutMs: number
 }
 
@@ -66,12 +70,16 @@ export function evalScopeGatewayConfigFromEnv(
   const parsed = EvalScopeEnvSchema.parse(env)
   if (parsed.DATABENCH_EVALSCOPE_ENABLED !== 'true') {
     return {
+      ...(parsed.DATABENCH_EVALSCOPE_ACCESS_TOKEN === undefined
+        ? {}
+        : { accessToken: parsed.DATABENCH_EVALSCOPE_ACCESS_TOKEN }),
       enabled: false,
       intranetHttpDocuments: parsed.DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS === 'true',
       invokeTimeoutMs: parsed.DATABENCH_EVALSCOPE_INVOKE_TIMEOUT_MS,
       proxyPrefix: parsed.DATABENCH_EVALSCOPE_PROXY_PREFIX,
       requestMaxBytes: parsed.DATABENCH_EVALSCOPE_REQUEST_MAX_BYTES,
       responseMaxBytes: parsed.DATABENCH_EVALSCOPE_RESPONSE_MAX_BYTES,
+      sessionTtlSeconds: parsed.DATABENCH_EVALSCOPE_SESSION_TTL_SECONDS,
       timeoutMs: parsed.DATABENCH_EVALSCOPE_TIMEOUT_MS,
     }
   }
@@ -85,6 +93,9 @@ export function evalScopeGatewayConfigFromEnv(
   }
   assertRouteManifest(routeManifestPath)
   return {
+    ...(parsed.DATABENCH_EVALSCOPE_ACCESS_TOKEN === undefined
+      ? {}
+      : { accessToken: parsed.DATABENCH_EVALSCOPE_ACCESS_TOKEN }),
     enabled: true,
     intranetHttpDocuments: parsed.DATABENCH_EVALSCOPE_INTRANET_HTTP_DOCUMENTS === 'true',
     internalBaseUrl,
@@ -93,6 +104,7 @@ export function evalScopeGatewayConfigFromEnv(
     requestMaxBytes: parsed.DATABENCH_EVALSCOPE_REQUEST_MAX_BYTES,
     responseMaxBytes: parsed.DATABENCH_EVALSCOPE_RESPONSE_MAX_BYTES,
     routeManifestPath,
+    sessionTtlSeconds: parsed.DATABENCH_EVALSCOPE_SESSION_TTL_SECONDS,
     timeoutMs: parsed.DATABENCH_EVALSCOPE_TIMEOUT_MS,
   }
 }

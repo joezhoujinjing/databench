@@ -2,7 +2,8 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/databench}"
-DATABENCH_IMAGE_REPOSITORY="${DATABENCH_IMAGE_REPOSITORY:-databench-api}"
+DATABENCH_IMAGE_REPOSITORIES="${DATABENCH_IMAGE_REPOSITORIES:-databench-api databench-evalscope}"
+DATABENCH_RELEASE_ARCHIVE_PREFIXES="${DATABENCH_RELEASE_ARCHIVE_PREFIXES:-databench-release databench-api}"
 DATABENCH_RELEASES_DIR="${DATABENCH_RELEASES_DIR:-${APP_DIR}/releases}"
 DATABENCH_DEPLOY_CONFIG="${DATABENCH_DEPLOY_CONFIG:-${APP_DIR}/deploy.env}"
 DATABENCH_DOCKER_BIN="${DATABENCH_DOCKER_BIN:-docker}"
@@ -96,17 +97,21 @@ cleanup_archives() {
   local incoming_archive="$3"
   mkdir -p "${DATABENCH_RELEASES_DIR}"
 
-  local partial
-  for partial in "${DATABENCH_RELEASES_DIR}/${DATABENCH_IMAGE_REPOSITORY}-"*.tar.gz.part; do
-    [[ -f "${partial}" ]] || continue
-    remove_archive "${mode}" "${partial}"
+  local partial prefix
+  for prefix in ${DATABENCH_RELEASE_ARCHIVE_PREFIXES}; do
+    for partial in "${DATABENCH_RELEASES_DIR}/${prefix}-"*.tar.gz.part; do
+      [[ -f "${partial}" ]] || continue
+      remove_archive "${mode}" "${partial}"
+    done
   done
 
   local entries=()
   local archive
-  for archive in "${DATABENCH_RELEASES_DIR}/${DATABENCH_IMAGE_REPOSITORY}-"*.tar.gz; do
-    [[ -f "${archive}" ]] || continue
-    entries+=("$(file_mtime "${archive}")"$'\t'"${archive}")
+  for prefix in ${DATABENCH_RELEASE_ARCHIVE_PREFIXES}; do
+    for archive in "${DATABENCH_RELEASES_DIR}/${prefix}-"*.tar.gz; do
+      [[ -f "${archive}" ]] || continue
+      entries+=("$(file_mtime "${archive}")"$'\t'"${archive}")
+    done
   done
   if [[ ${#entries[@]} -eq 0 ]]; then
     return
@@ -146,6 +151,7 @@ cleanup_images() {
   local mode="$1"
   local keep_count="$2"
   local incoming_tag="$3"
+  local repository="$4"
 
   local image_entries=()
   local image
@@ -154,7 +160,7 @@ cleanup_images() {
     local inspected
     inspected="$("${DATABENCH_DOCKER_BIN}" image inspect --format '{{.Created}}|{{.Id}}' "${image}")"
     image_entries+=("${inspected}|${image}")
-  done < <("${DATABENCH_DOCKER_BIN}" image ls --format '{{.Repository}}:{{.Tag}}' "${DATABENCH_IMAGE_REPOSITORY}" | sort -u)
+  done < <("${DATABENCH_DOCKER_BIN}" image ls --format '{{.Repository}}:{{.Tag}}' "${repository}" | sort -u)
   if [[ ${#image_entries[@]} -eq 0 ]]; then
     return
   fi
@@ -173,7 +179,7 @@ cleanup_images() {
   done < <("${DATABENCH_DOCKER_BIN}" ps -aq)
 
   if [[ -n "${incoming_tag}" ]]; then
-    local incoming_ref="${DATABENCH_IMAGE_REPOSITORY}:${incoming_tag}"
+    local incoming_ref="${repository}:${incoming_tag}"
     if "${DATABENCH_DOCKER_BIN}" image inspect "${incoming_ref}" >/dev/null 2>&1; then
       append_unique protected_ids "$("${DATABENCH_DOCKER_BIN}" image inspect --format '{{.Id}}' "${incoming_ref}")"
     fi
@@ -257,7 +263,10 @@ cleanup_databench_releases() {
   log_cleanup "phase=${phase} mode=${mode} keep=${keep_count}"
   if [[ "${mode}" != 'off' ]]; then
     cleanup_archives "${mode}" "${keep_count}" "${incoming_archive}"
-    cleanup_images "${mode}" "${keep_count}" "${incoming_tag}"
+    local repository
+    for repository in ${DATABENCH_IMAGE_REPOSITORIES}; do
+      cleanup_images "${mode}" "${keep_count}" "${incoming_tag}" "${repository}"
+    done
   else
     log_cleanup 'cleanup disabled; disk admission still applies'
   fi

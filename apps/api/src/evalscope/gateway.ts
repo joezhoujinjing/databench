@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { ResourceLimitError } from '@databench/schema'
 import type { OpenAPIHono } from '@hono/zod-openapi'
 import type { Context } from 'hono'
@@ -16,6 +17,7 @@ const TASK_ID =
 const OPAQUE_DOCUMENT_ID = /^[A-Za-z0-9_-]{43}$/
 const URI_LIKE = /^[A-Za-z][A-Za-z0-9+.-]*:/
 const MAX_QUERY_BYTES = 8192
+const SESSION_COOKIE = 'databench_evalscope_session'
 const RESPONSE_HEADERS = new Set([
   'accept-ranges',
   'cache-control',
@@ -47,10 +49,84 @@ export function registerEvalScopeGateway(
   const fetchImplementation = options.fetch ?? globalThis.fetch
   for (const route of EVALSCOPE_PROXY_ROUTES) {
     const publicPath = `${options.config.proxyPrefix}${honoPath(route.path)}`
-    app.on(route.method, publicPath, async (context) =>
-      proxyEvalScope(context, route, options.config, fetchImplementation),
-    )
+    app.on(route.method, publicPath, async (context) => {
+      const authorization = authorizeEvalScopeRequest(context, options.config)
+      if (!authorization.authorized) {
+        const response = gatewayError(
+          context,
+          401,
+          'evalscope_auth_required',
+          'EvalScope access token is required',
+        )
+        response.headers.set('www-authenticate', 'Bearer realm="databench-evalscope"')
+        return response
+      }
+      const response = await proxyEvalScope(context, route, options.config, fetchImplementation)
+      if (authorization.sessionCookie !== undefined) {
+        response.headers.append('set-cookie', authorization.sessionCookie)
+      }
+      return response
+    })
   }
+}
+
+function authorizeEvalScopeRequest(
+  context: Context<ApiEnv>,
+  config: EvalScopeGatewayConfig,
+): { readonly authorized: boolean; readonly sessionCookie?: string } {
+  if (config.accessToken === undefined) return { authorized: true }
+
+  const authorization = context.req.header('authorization')
+  if (authorization?.startsWith('Bearer ')) {
+    const token = authorization.slice('Bearer '.length)
+    if (constantTimeEqual(token, config.accessToken)) {
+      return {
+        authorized: true,
+        sessionCookie: createSessionCookie(config.accessToken, config.sessionTtlSeconds),
+      }
+    }
+  }
+
+  const cookie = readCookie(context.req.header('cookie'), SESSION_COOKIE)
+  if (cookie !== undefined && validSessionCookie(cookie, config.accessToken)) {
+    return { authorized: true }
+  }
+  return { authorized: false }
+}
+
+function createSessionCookie(accessToken: string, ttlSeconds: number): string {
+  const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds
+  const payload = `v1.${expiresAt}`
+  const signature = createHmac('sha256', accessToken).update(payload).digest('base64url')
+  return `${SESSION_COOKIE}=${payload}.${signature}; Path=/evalscope-api; Max-Age=${ttlSeconds}; HttpOnly; Secure; SameSite=Strict`
+}
+
+function validSessionCookie(cookie: string, accessToken: string): boolean {
+  const match = /^(v1)\.([0-9]{10})\.([A-Za-z0-9_-]{43})$/.exec(cookie)
+  if (match === null) return false
+  const expiresAt = Number(match[2])
+  if (!Number.isSafeInteger(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return false
+  const payload = `${match[1]}.${match[2]}`
+  const expected = createHmac('sha256', accessToken).update(payload).digest('base64url')
+  return constantTimeEqual(match[3] as string, expected)
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftBytes = Buffer.from(left)
+  const rightBytes = Buffer.from(right)
+  return leftBytes.byteLength === rightBytes.byteLength && timingSafeEqual(leftBytes, rightBytes)
+}
+
+function readCookie(header: string | undefined, name: string): string | undefined {
+  if (header === undefined || header.length > 8192) return undefined
+  let result: string | undefined
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=')
+    if (separator < 1 || part.slice(0, separator).trim() !== name) continue
+    if (result !== undefined) return undefined
+    result = part.slice(separator + 1).trim()
+  }
+  return result
 }
 
 async function proxyEvalScope(
@@ -179,7 +255,9 @@ async function proxyEvalScope(
     if (RESPONSE_HEADERS.has(name.toLowerCase())) responseHeaders.set(name, value)
   }
   responseHeaders.set('x-content-type-options', 'nosniff')
-  if (route.response !== 'asset') responseHeaders.set('cache-control', 'private, no-store')
+  if (route.response !== 'asset' || config.accessToken !== undefined) {
+    responseHeaders.set('cache-control', 'private, no-store')
+  }
   return new Response(exactArrayBuffer(bytes), {
     status: upstream.status,
     headers: responseHeaders,

@@ -7,9 +7,11 @@ on:
       - main
     paths:
       - apps/api/**
+      - workers/evalscope/**
       - packages/**
       - prisma/**
       - deploy/ecs/**
+      - deploy/evalscope/**
       - deploy/smoke.sh
       - package.json
       - pnpm-lock.yaml
@@ -26,7 +28,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: databench-api
+  API_IMAGE_NAME: databench-api
+  EVALSCOPE_IMAGE_NAME: databench-evalscope
+  IMAGE_ARCHIVE_NAME: databench-release
   REMOTE_APP_DIR: /opt/databench
 
 jobs:
@@ -35,16 +39,36 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Build Docker image
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build API image for ECS
         run: |
-          docker build \
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --cache-from type=gha,scope=databench-api \
+            --cache-to type=gha,mode=max,scope=databench-api \
             -f apps/api/Dockerfile \
-            -t "${IMAGE_NAME}:${GITHUB_SHA}" \
+            -t "${API_IMAGE_NAME}:${GITHUB_SHA}" \
             .
 
-      - name: Save image archive
+      - name: Build EvalScope image for ECS
         run: |
-          docker save "${IMAGE_NAME}:${GITHUB_SHA}" | gzip > "${IMAGE_NAME}-${GITHUB_SHA}.tar.gz"
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --cache-from type=gha,scope=databench-evalscope \
+            --cache-to type=gha,mode=max,scope=databench-evalscope \
+            -f deploy/evalscope/Dockerfile \
+            -t "${EVALSCOPE_IMAGE_NAME}:${GITHUB_SHA}" \
+            .
+
+      - name: Save release image archive
+        run: |
+          docker save \
+            "${API_IMAGE_NAME}:${GITHUB_SHA}" \
+            "${EVALSCOPE_IMAGE_NAME}:${GITHUB_SHA}" \
+            | gzip > "${IMAGE_ARCHIVE_NAME}-${GITHUB_SHA}.tar.gz"
 
       - name: Configure SSH
         env:
@@ -73,18 +97,21 @@ jobs:
             "mkdir -p '${REMOTE_APP_DIR}/releases' '${REMOTE_APP_DIR}/caddy'"
           scp -i ~/.ssh/ecs_deploy \
             deploy/ecs/docker-compose.yml deploy/ecs/deploy.sh deploy/ecs/cleanup.sh \
-            deploy/ecs/api.env.example deploy/ecs/deploy.env.example \
+            deploy/ecs/api.env.example deploy/ecs/evalscope.env.example \
+            deploy/ecs/model-endpoint-policy.example.json \
+            deploy/ecs/evalscope-model-credentials.example.json \
+            deploy/ecs/deploy.env.example \
             "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/"
           scp -i ~/.ssh/ecs_deploy deploy/ecs/caddy/Caddyfile \
             "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/caddy/Caddyfile"
           ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
             "chmod +x '${REMOTE_APP_DIR}/deploy.sh' '${REMOTE_APP_DIR}/cleanup.sh' && \
              APP_DIR='${REMOTE_APP_DIR}' '${REMOTE_APP_DIR}/cleanup.sh' '${GITHUB_SHA}' '' before-upload"
-          scp -i ~/.ssh/ecs_deploy "${IMAGE_NAME}-${GITHUB_SHA}.tar.gz" \
-            "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/releases/${IMAGE_NAME}-${GITHUB_SHA}.tar.gz.part"
+          scp -i ~/.ssh/ecs_deploy "${IMAGE_ARCHIVE_NAME}-${GITHUB_SHA}.tar.gz" \
+            "${ECS_USER}@${ECS_HOST}:${REMOTE_APP_DIR}/releases/${IMAGE_ARCHIVE_NAME}-${GITHUB_SHA}.tar.gz.part"
           ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
-            "mv '${REMOTE_APP_DIR}/releases/${IMAGE_NAME}-${GITHUB_SHA}.tar.gz.part' \
-                '${REMOTE_APP_DIR}/releases/${IMAGE_NAME}-${GITHUB_SHA}.tar.gz'"
+            "mv '${REMOTE_APP_DIR}/releases/${IMAGE_ARCHIVE_NAME}-${GITHUB_SHA}.tar.gz.part' \
+                '${REMOTE_APP_DIR}/releases/${IMAGE_ARCHIVE_NAME}-${GITHUB_SHA}.tar.gz'"
 
       - name: Deploy on ECS
         env:
@@ -93,7 +120,18 @@ jobs:
         run: |
           ECS_USER="${ECS_USER:-root}"
           ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
-            "'${REMOTE_APP_DIR}/deploy.sh' '${REMOTE_APP_DIR}/releases/${IMAGE_NAME}-${GITHUB_SHA}.tar.gz' '${GITHUB_SHA}'"
+            "'${REMOTE_APP_DIR}/deploy.sh' '${REMOTE_APP_DIR}/releases/${IMAGE_ARCHIVE_NAME}-${GITHUB_SHA}.tar.gz' '${GITHUB_SHA}'"
 
       - name: Smoke test
         run: deploy/smoke.sh https://api.databench.jinjing.me
+
+      - name: Authenticated EvalScope origin smoke
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+        run: |
+          ECS_USER="${ECS_USER:-root}"
+          ssh -i ~/.ssh/ecs_deploy "${ECS_USER}@${ECS_HOST}" \
+            "set -eu; token=\$(grep -E '^DATABENCH_EVALSCOPE_ACCESS_TOKEN=' '${REMOTE_APP_DIR}/api.env' | tail -n1 | cut -d= -f2-); \
+             curl -fsS -H \"Authorization: Bearer \${token}\" 'https://api.databench.jinjing.me/evalscope-api/health' | grep -q 'ready'; \
+             curl -fsS -H \"Authorization: Bearer \${token}\" 'https://api.databench.jinjing.me/evalscope-api/api/v1/config' | grep -q 'evalscope_commit'"

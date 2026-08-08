@@ -23,6 +23,9 @@
 - v1 产品面、runtime、领域代码和已确认的本地持久化数据已删除。
 - R4 maintenance tool、forward migration 和 runbook保留，供其他安装环境显式退役。
 - 公共云 API 托管平台 D3 未决定；不得擅自进入 S22。ADR 0012 离线单机发布是独立通道。
+- Owner 于 2026-08-08 窄授权在既有单台 ECS 上进行带共享访问令牌的 EvalScope 公网测试；该 profile
+  使用同源 `/evalscope-api`、私网 EvalScope 容器和低资源单并发，不关闭 D3，也不构成 production
+  readiness。
 - MCP Excel/CSV agent 导入 M0-M3 已完成；当前进度见
   `docs/mcp/STATUS.md`。通用 runtime 仍
   disabled-by-default；ADR 0012 离线包会在 operator 显式提供稳定、agent 可达的 `/api` public

@@ -3,7 +3,8 @@
 - **状态:** Accepted——owner 于 2026-07-27 确认方案 review 问题修复并要求开始实施；2026-07-28
   确认预构建镜像离线交付口径，并接受 ms-swift S4 的 opaque Model Deployment 扩展；2026-07-29
   接受测评工作区桌面侧栏与窄屏横向导航；2026-07-30 接受受控内网 HTTP 下 generated document
-  缺失 Fetch Metadata 的同源 Viewer 兼容，并接受单 Benchmark、原生 Metric 选择与显式主指标扩展
+  缺失 Fetch Metadata 的同源 Viewer 兼容，并接受单 Benchmark、原生 Metric 选择与显式主指标扩展；
+  2026-08-08 授权在既有单台 ECS 上进行带共享访问令牌的受控公网测试，不关闭公共云 D3
 - **日期:** 2026-07-27
 - **决策者:** owner
 - **依赖:** [ADR 0003](0003-storage-postgres-object-store.md)、
@@ -274,6 +275,23 @@ Task ID 只负责定位任务，不单独构成幂等保证。EvalScope 必须�
   运行任务时不得临时联网下载 Metric 模型或权重；离线镜像未携带或未挂载所需资产时，只能禁用该项；
 - 本期不实现自定义 Metric 上传、编辑或执行。Descriptor/Catalog 保留 future source/version 扩展点，
   但浏览器和 Provider 均不得执行用户提供的 Python、JavaScript、module path、URL 或任意 callable。
+
+### 14. 既有单台 ECS 可用于带鉴权的受控公网测试
+
+- 该 profile 只用于当前测试，不构成生产容量或公共云平台选型。公共云 D3、GE9 真实 Ubuntu 断网目标机
+  和 GPU gate 均保持原状态；
+- Web 仍只访问同源 `/evalscope-api/*`。CDN 只对该前缀条件回源到既有 ECS API origin，并禁用缓存；
+- EvalScope `9000` 不发布宿主机端口，只允许 Databench API 通过 Docker 私网访问；
+- `/evalscope-api` 必须配置至少 32 字节共享访问令牌。浏览器请求携带现有 Databench Connection Bearer，
+  网关验证后签发短期、`HttpOnly`、`Secure`、`SameSite=Strict`、限定 `/evalscope-api` path 的签名 Cookie，
+  供 generated-document iframe 和 media 子资源使用；Bearer、Cookie 均不得转发到 EvalScope；
+- 单机 profile 固定一份 EvalScope、一个 WSGI process、单 evaluation/performance 并发、无 GPU、只读根和
+  有界 CPU/内存/PID/输入/输出/任务时间。2 核、3.4 GiB ECS 可用于极小任务验证，但不得据此宣称
+  4 核、16 GiB 生产建议已经被替代；
+- 未携带有效令牌的已允许路径返回 401；未知 method/path 继续保持 404/405，不能因鉴权 middleware
+  扩大 exact allowlist；
+- 线上验收至少覆盖认证 health/config、未知路径和 upstream SPA 阻断、极小真实 Evaluation、报告查看、
+  容器资源以及既有 API/Caddy/同机服务回归。
 
 ## 非目标
 
